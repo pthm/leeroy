@@ -27,6 +27,7 @@ case "$goal" in
   money:*) goal_text="hold $n copper" ;;
   item:*) goal_text="own item $n (item_template entry)" ;;
   quality:*) goal_text="own any item of quality $n or better (3 = rare)" ;;
+  score:*) goal_text="make as much overall progress with your character as you can" ;;
   achpoints:*) goal_text="earn as many achievement points as you can" ;;
   quest:*) goal_text="complete the quest \"$(bin/worlddb "SELECT LogTitle FROM quest_template WHERE ID = $n" | tail -1)\" (quest $n): accept it, do its objectives, and turn it in" ;;
 esac
@@ -38,6 +39,12 @@ case "$goal" in achpoints:*)
 (ones already earned don't count). There is no finish line: keep earning until time runs out. Achievement
 names, points and criteria are in worlddb (see AGENTS.md); bot.achievements() shows your progress."
   stop_text="Do not stop early: keep earning points until the time runs out." ;;
+score:*)
+  score_text="Your score is a weighted sum of how much these grow during the next $mins minutes (weight per unit):
+$(jq -r '.weights | to_entries[] | "  \(.key): \(.value)"' "$root/score.json")
+Fractional level counts (10.5 = halfway to 11); avg_item_level is over your 17 gear slots; wealth_copper is money
+plus the vendor value of what you own; deaths subtract. There is no finish line."
+  stop_text="Do not stop early: keep improving your score until the time runs out." ;;
 esac
 
 bun account.ts "$acct" "$acct" # non-GM

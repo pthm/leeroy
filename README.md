@@ -46,7 +46,9 @@ bun judge.ts Agentone level:10 --timeout 4h                    # in parallel; pr
 # ...give the agent AGENTS.md + the goal; it drives the session with bin/wow
 ```
 
-Goals: `level:<n>`, `item:<entry>`, `quality:<n>` (3 = rare), `money:<copper>`. Multiple agents = one
+Goals: `level:<n>`, `item:<entry>`, `quality:<n>` (3 = rare), `money:<copper>`, `quests:<n>`, `quest:<id>`,
+`achpoints:<n>`, and `score:<n>`: a weighted composite of every progress signal (`bun signals.ts <char>` lists
+them; weights in `score.json`). For "as much as possible" goals pass a large n and read `value` at timeout. Multiple agents = one
 account, character and `WOW_PORT` each.
 
 Server config overrides live in `server.override.yml` (Warden off, 15s character saves for the judge).

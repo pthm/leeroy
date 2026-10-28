@@ -1,0 +1,17 @@
+{
+  "about": "Composite score for `score:<n>` goals: sum of weight x (signal now - signal when the judge started). Points-equivalents anchored on 1 achievement point; a typical achievement is 10. Signals with no weight (money_copper, arena_points, creatures_killed, played_s) are reported but not scored.",
+  "weights": {
+    "achievement_points": 1,
+    "level": 10,
+    "avg_item_level": 2,
+    "wealth_copper": 0.001,
+    "honor": 0.1,
+    "honorable_kills": 1,
+    "quests": 2,
+    "reputation": 0.002,
+    "profession_skill": 0.1,
+    "explored_areas": 0.5,
+    "flight_paths": 2,
+    "deaths": -2
+  }
+}
