@@ -135,6 +135,9 @@ var methods = map[string]method{
 		out := map[string]any{"result": res}
 		if se := e.TakeScriptErrors(); se != nil {
 			out["script_errors"] = se
+			if b := session_(s, p.Char); b != nil {
+				b.Record("script_error", se)
+			}
 		}
 		return out, nil
 	}),
@@ -214,12 +217,13 @@ var methods = map[string]method{
 		return eval(s, p.Char, fmt.Sprintf(code, lua(p.To), lua(p.Text)))
 	}),
 	"chat.read": typed(func(s Sessions, p charParams) (any, error) { return eval(s, p.Char, "return bot.read_chat()") }),
-	// wait.chat: returns once another player messages the character (or timeout_s passes), then drains chat
+	// wait.chat: returns once another player messages the character (or timeout_s passes) with the number of
+	// unread messages; read them with chat.read
 	"wait.chat": typed(func(s Sessions, p struct {
 		Char    string  `json:"char"`
 		Timeout float64 `json:"timeout_s"`
 	}) (any, error) {
-		return waitFor(s, p.Char, p.Timeout, "return bot.chat_pending() > 0", "return bot.read_chat()")
+		return waitFor(s, p.Char, p.Timeout, "return bot.chat_pending() > 0", "return bot.chat_pending()")
 	}),
 	// wait.idle: returns once the character has stopped moving (arrived or gave up), with its position
 	"wait.idle": typed(func(s Sessions, p struct {
@@ -249,6 +253,31 @@ func waitFor(s Sessions, char string, timeout float64, cond, then string) (any, 
 	}
 }
 
+// session_ finds a character's session (char may be empty for a single-character daemon), or nil.
+func session_(s Sessions, char string) *session.Bot {
+	if char == "" && len(s) == 1 {
+		for _, b := range s {
+			return b
+		}
+	}
+	return s[char]
+}
+
+// callRecorded runs a method and, with a recorder attached, logs it as an "api" event (params truncated).
+// Read-only and waiting methods are skipped.
+func callRecorded(s Sessions, name string, params json.RawMessage, m method) (any, error) {
+	var p charParams
+	json.Unmarshal(params, &p)
+	if b := session_(s, p.Char); b != nil && name != "sessions.list" && name != "state.get" && name != "wait.chat" && name != "wait.idle" {
+		raw := string(params)
+		if len(raw) > 500 {
+			raw = raw[:500] + "..."
+		}
+		b.Record("api", map[string]any{"method": name, "params": raw})
+	}
+	return m(s, params)
+}
+
 // Handler serves POST /rpc (one JSON-RPC request per body) and GET /methods (method names).
 func Handler(s Sessions) http.Handler {
 	mux := http.NewServeMux()
@@ -259,7 +288,7 @@ func Handler(s Sessions) http.Handler {
 			resp["error"] = rpcError{-32700, "parse error: " + err.Error()}
 		} else if m, ok := methods[req.Method]; !ok {
 			resp["id"], resp["error"] = req.ID, rpcError{-32601, "unknown method " + req.Method}
-		} else if res, err := m(s, req.Params); err != nil {
+		} else if res, err := callRecorded(s, req.Method, req.Params, m); err != nil {
 			resp["id"], resp["error"] = req.ID, rpcError{-32000, err.Error()}
 		} else {
 			resp["id"], resp["result"] = req.ID, res

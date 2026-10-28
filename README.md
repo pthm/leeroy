@@ -55,14 +55,25 @@ Goals: `level:<n>`, `item:<entry>`, `quality:<n>` (3 = rare), `money:<copper>`, 
 `achpoints:<n>`, and `score:<n>`: a weighted composite of every progress signal (`bun bench/judge/signals.ts <char>`
 lists them; weights in `bench/judge/score.json`). For "as much as possible" goals pass a large n and read `value` at timeout.
 
-## Replays
+## Replays and live view
 
-`mod-recorder` logs every player's position (1/s), chat, damage, heals, casts, kills, deaths, levels, quests,
-achievements and loot to `server/azerothcore/env/dist/logs/recorder.jsonl`. Runs then get a `replay.html`: a
-self-contained page with a terrain map rendered from `data/maps`, every player's route, a seek bar with key events
-marked, and chat, combat and event logs synced to the playhead. By hand: `bun server/recorder/replay.ts bench/runs/<id>` (or
-`--chars A,B --from <ISO> --to <ISO>`). `bun server/recorder/movecheck.ts` audits the same log for speed, slopes and
-swimming.
+Two sources write the same event format (positions once a second, chat, damage, kills, deaths, levels, XP,
+quests, achievements, loot):
+- **Client side, by default:** `azsdk -record <file>` logs its own characters plus agent-side events the server can't
+  see (each API call and the Lua it ran, script errors). `bench.sh`/`team.sh` record every run this way
+  (`record.jsonl`, or `<agent>.record.jsonl` in a team dir). Works on any AzerothCore server.
+- **Server side, optional and authoritative:** the `mod-recorder` module (`server/recorder/mod-recorder`) logs every
+  player to `server/azerothcore/env/dist/logs/recorder.jsonl`.
+
+Viewers (`server/recorder/`):
+- `bun server/recorder/live.ts [log ...] [--port 8800] [--since 60m]`: live view at http://localhost:8800/ that
+  tails the logs (default: the server log); the playhead follows the newest data until you seek back.
+- `bun server/recorder/replay.ts bench/runs/<id>`: a self-contained `replay.html` for a finished run (the run's own
+  records if it has them, else the server log; `--log`, `--chars`, `--from`, `--to` to choose).
+- `bun server/recorder/movecheck.ts [log]` audits recorded movement for speed, slopes and swimming.
+
+Both viewers show a terrain map rendered from `data/maps`, every player's route, a seek bar with key events marked,
+and chat, combat, event and agent (API calls) panels synced to the playhead.
 
 ## Run a task by hand
 

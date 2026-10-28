@@ -15,8 +15,8 @@ if [ "$1" = "-w" ] || [ "$1" = "-c" ]; then
   case "$2" in ''|*[!0-9]*) echo "usage: wow $1 <seconds> <lua>"; exit 1 ;; esac
   t=$(( $2 > 600 ? 600 : $2 ))
   if [ "$1" = "-w" ]; then sleep "$t"; else
-    end=$(( $(date +%s) + t ))
-    while [ "$(date +%s)" -lt "$end" ] && ! eval_ 'return bot.chat_pending() > 0' | grep -q true; do sleep 1; done
+    jq -n --argjson t "$t" '{jsonrpc: "2.0", id: 1, method: "wait.chat", params: {timeout_s: $t}}' |
+      curl -sS "127.0.0.1:${WOW_PORT:-8090}/rpc" --data-binary @- >/dev/null # long-polls until a message arrives
   fi
   shift 2
 fi

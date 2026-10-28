@@ -30,6 +30,11 @@ await me.eval("function on_tick() ... end");      // in-daemon script for tight 
 
 `GET /methods` lists the API; `sdk/ts/examples/smoke.ts` exercises it.
 
+`-record events.jsonl` appends an event log for replays and live viewing (`../server/recorder/live.ts`): positions,
+combat, chat, kills, loot, quests, achievements, and each API call with the Lua it ran. Single-character mode
+(`-char NAME -account A [-race R -class C -listen ADDR -data DIR -duration 8s]`) runs one character without a
+config file, as the bench does.
+
 ## Layout
 
 | Package | |

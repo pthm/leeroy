@@ -10,7 +10,7 @@ Benchmarks where headless Claude Code agents play WoW through scripts and get sc
 | `agent/` | what the agent is given: `AGENTS.md` (workspace, session, rules) and `bin/` (`wow`: Lua eval and scripts via the daemon's `script.eval`; `worlddb` raw SQL; `wowdb` structured lookups) |
 | `client/` | `play.sh`: runs one character in its own `azsdk` daemon (`../azeroth-sdk`) on `$WOW_PORT`; `--duration` for the short first login that creates it |
 | `workspaces/<agent>/` | each agent's persistent script library (gitignored) |
-| `runs/<id>/` | results: `judge.json`, `samples.jsonl`, `agent.jsonl` (transcript), `session.log`, `replay.html` (gitignored) |
+| `runs/<id>/` | results: `judge.json`, `samples.jsonl`, `agent.jsonl` (transcript), `session.log`, `record.jsonl` (client-side events), `replay.html` (gitignored). Watch a run live: `bun ../server/recorder/live.ts runs/<id>/record.jsonl` |
 
 An agent's workspace `AGENTS.md` is assembled each run from `agent/AGENTS.md` plus the SDK reference
 (`../azeroth-sdk/docs/lua-api.md`, `../azeroth-sdk/docs/world-data.md`), and it gets

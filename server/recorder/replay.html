@@ -43,7 +43,8 @@ aside { display: grid; grid-template-rows: auto 1fr; min-height: 0; border-left:
 .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; margin: 3px 0; }
 .bar > div { height: 100%; }
 .stats { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--quiet); font-size: 12px; }
-footer { display: grid; grid-template-columns: auto auto auto 1fr; align-items: center; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--panel); }
+#live[aria-pressed="true"] { color: var(--death); border-color: var(--death); }
+footer { display: grid; grid-template-columns: auto auto auto auto 1fr; align-items: center; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--panel); }
 footer button, footer select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
 #clock { font-variant-numeric: tabular-nums; min-width: 110px; }
 #timeline { width: 100%; height: 38px; cursor: pointer; display: block; }
@@ -72,12 +73,14 @@ footer button, footer select { font: inherit; color: var(--ink); background: var
       <button role="tab" data-tab="events">Events</button>
       <button role="tab" data-tab="chat">Chat</button>
       <button role="tab" data-tab="combat">Combat</button>
+      <button role="tab" data-tab="agent">Agent</button>
     </div>
     <div class="pane" id="pane"></div>
   </aside>
 </main>
 <footer>
   <button id="play" aria-label="Play">▶</button>
+  <button id="live" hidden aria-pressed="true" title="Follow the newest data">● Live</button>
   <select id="speed" aria-label="Speed"><option value="1">1×</option><option value="10">10×</option><option value="30" selected>30×</option><option value="60">60×</option><option value="300">300×</option></select>
   <div id="clock">0:00 / 0:00</div>
   <div class="tlwrap"><canvas id="timeline"></canvas></div>
@@ -85,12 +88,15 @@ footer button, footer select { font: inherit; color: var(--ink); background: var
 <script type="application/json" id="data">__DATA__</script>
 <script>
 const D = JSON.parse(document.getElementById("data").textContent);
-const img = new Image(); img.src = "__MAP__";
+const LIVE = !!D.live; // live.ts: data streams in over /stream and the map comes as /tile/<map>/<gx>/<gy>.png
+const img = new Image(); if (!LIVE) img.src = "__MAP__";
 const $ = (id) => document.getElementById(id);
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const fmt = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const P = D.players, color = Object.fromEntries(P.map((p) => [p.name, p.color]));
+const CLASSES = ["", "Warrior", "Paladin", "Hunter", "Rogue", "Priest", "Death Knight", "Shaman", "Mage", "Warlock", "", "Druid"];
+const COLORS = ["#888", "#C79C6E", "#F58CBA", "#ABD473", "#FFF569", "#FFFFFF", "#C41F3B", "#0070DE", "#69CCF0", "#9482C9", "#888", "#FF7D0A"];
 const CHAT = { 1: "say", 2: "party", 3: "raid", 4: "guild", 6: "yell", 7: "whisper", 10: "emote", 17: "channel" };
 const POWER = { 0: ["mana", "--mana"], 1: ["rage", "--rage"], 3: ["energy", "--energy"], 6: ["runic", "--rage"] };
 let t = 0, playing = false, speed = 30, follow = null, tab = "players";
@@ -107,12 +113,38 @@ function at(p, t) {
 }
 
 // ---------- map view ----------
+// World (x north, y west) -> map pixels at M.res yards/px, origin at (M.xMax, M.yMax). A static replay has one
+// image covering that box; live mode draws 533-yard grid tiles around whatever is on screen.
 const cv = $("map"), cx = cv.getContext("2d"), M = D.map;
 const toPx = (x, y) => [(M.yMax - y) / M.res, (M.xMax - x) / M.res];
 let view = { s: 1, ox: 0, oy: 0 };
+function sizeCanvas() { const r = cv.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio; return r; }
+function fitBox(xMin, xMax, yMin, yMax) {
+  const r = sizeCanvas(), [x0, y0] = toPx(xMax, yMax), [x1, y1] = toPx(xMin, yMin);
+  view.s = Math.min(r.width / Math.max(1, x1 - x0), r.height / Math.max(1, y1 - y0));
+  view.ox = (r.width - (x1 + x0) * view.s) / 2; view.oy = (r.height - (y1 + y0) * view.s) / 2;
+}
 function fit() {
-  const r = cv.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio;
-  view.s = Math.min(r.width / M.w, r.height / M.h); view.ox = (r.width - M.w * view.s) / 2; view.oy = (r.height - M.h * view.s) / 2;
+  if (!LIVE) return fitBox(M.xMax - M.h * M.res, M.xMax, M.yMax - M.w * M.res, M.yMax);
+  const pts = P.flatMap((p) => p.track.filter((r) => r[15] === M.id).slice(-60));
+  if (!pts.length) return sizeCanvas();
+  const xs = pts.map((r) => r[1]), ys = pts.map((r) => r[2]);
+  fitBox(Math.min(...xs) - 300, Math.max(...xs) + 300, Math.min(...ys) - 300, Math.max(...ys) + 300);
+}
+const GRID = 1600 / 3, tiles = new Map();
+function drawTiles(w, h) {
+  // grid squares under the screen: gx = floor(32 - x / GRID), likewise gy
+  const wx = (sx, sy) => [M.xMax - ((sy - view.oy) / view.s) * M.res, M.yMax - ((sx - view.ox) / view.s) * M.res];
+  const [xa, ya] = wx(0, 0), [xb, yb] = wx(w, h);
+  const g = (v) => Math.floor(32 - v / GRID);
+  for (let gx = g(xa); gx <= g(xb); gx++) for (let gy = g(ya); gy <= g(yb); gy++) {
+    if (gx < 0 || gy < 0 || gx > 63 || gy > 63) continue;
+    const key = `${M.id}/${gx}/${gy}`;
+    if (!tiles.has(key)) { const im = new Image(); im.onload = () => drawMap(); im.src = `tile/${key}.png`; tiles.set(key, im); }
+    const im = tiles.get(key); if (!im.complete || !im.naturalWidth) continue;
+    const [sx, sy] = scr(GRID * (32 - gx), GRID * (32 - gy)), size = (GRID / M.res) * view.s;
+    cx.drawImage(im, sx, sy, size + 0.5, size + 0.5);
+  }
 }
 const scr = (x, y) => { const [px, py] = toPx(x, y); return [view.ox + px * view.s, view.oy + py * view.s]; };
 function drawMap() {
@@ -121,7 +153,7 @@ function drawMap() {
   cx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   cx.clearRect(0, 0, r.width, r.height);
   cx.imageSmoothingEnabled = view.s < 2;
-  cx.drawImage(img, view.ox, view.oy, M.w * view.s, M.h * view.s);
+  if (LIVE) drawTiles(r.width, r.height); else cx.drawImage(img, view.ox, view.oy, M.w * view.s, M.h * view.s);
   // labels
   cx.textAlign = "center";
   for (const l of D.labels) {
@@ -209,14 +241,15 @@ const who = (n) => `<span class="who" style="color:${color[n] ?? "inherit"}">${e
 const unitName = (u) => (u ? (u.pl ? who(u.n) : esc(u.n) + (u.lvl ? ` <span class="muted">(${u.lvl})</span>` : "")) : "?");
 function line(e) {
   switch (e.ev) {
-    case "chat": return `${who(e.n)} <span class="muted">[${CHAT[e.type] ?? e.type}${e.to ? " → " + esc(e.to) : ""}]</span> ${esc(e.msg)}`;
+    // server records name the speaker (n); client records are written by the listener, speaker in `from`
+    case "chat": return `${who(e.from ?? e.n)} <span class="muted">[${CHAT[e.type] ?? e.type}${e.to ? " → " + esc(e.to) : ""}]</span> ${esc(e.msg)}`;
     case "death": return `${who(e.n)} was killed by ${unitName(e.killer)}`;
     case "kill": return `${who(e.n)} killed ${unitName(e.victim)}`;
     case "pvp": return `${who(e.n)} killed player ${unitName(e.victim)}`;
     case "achievement": return `${who(e.n)} earned <b>${esc(e.title)}</b> (${e.points} pts)`;
     case "level": return `${who(e.n)} reached level <b>${e.to}</b>`;
     case "quest": return `${who(e.n)} completed <b>${esc(e.title)}</b>`;
-    case "loot": return `${who(e.n)} looted ${esc(D.items[e.item] ?? "item " + e.item)}${e.count > 1 ? " ×" + e.count : ""}`;
+    case "loot": return `${who(e.n)} looted ${esc(D.items[e.item] ?? e.itemName ?? "item " + e.item)}${e.count > 1 ? " ×" + e.count : ""}`;
     case "zone": return `${who(e.n)} entered ${esc(D.zones[e.area] ?? D.zones[e.zone] ?? "zone " + e.zone)}`;
     case "release": return `${who(e.n)} released spirit`;
     case "resurrect": return `${who(e.n)} resurrected${e.sickness ? " (sickness)" : ""}`;
@@ -227,12 +260,15 @@ function line(e) {
     case "heal": return `${unitName(e.src)} healed ${unitName(e.dst)} for <b>${e.amount}</b>`;
     case "cast": return `${who(e.n)} cast ${esc(e.name)}${e.target ? " on " + unitName(e.target) : ""}`;
     case "xp": return `${who(e.n)} +${e.amount} xp`;
+    case "api": { let p = {}; try { p = JSON.parse(e.params || "{}"); } catch {}
+      return `${who(e.n)} <span class="muted">${esc(e.method)}</span> <code>${esc((p.code ?? JSON.stringify({ ...p, char: undefined })).slice(0, 160))}</code>`; }
+    case "script_error": return `${who(e.n)} <span style="color:var(--death)">script error ×${e.count}</span> ${esc(e.last)}`;
     case "money": return `${who(e.n)} ${e.delta > 0 ? "+" : ""}${e.delta}c`;
     default: return `${who(e.n)} ${esc(e.ev)}`;
   }
 }
 const KINDS = { events: ["death", "kill", "pvp", "achievement", "level", "quest", "loot", "zone", "release", "resurrect", "login", "logout", "spell"],
-  chat: ["chat"], combat: ["dmg", "heal", "cast", "kill", "death", "xp"] };
+  chat: ["chat"], combat: ["dmg", "heal", "cast", "kill", "death", "xp"], agent: ["api", "script_error"] };
 let lastPane = "";
 function renderPane() {
   let html = "";
@@ -271,8 +307,13 @@ function renderChips() {
 $("chips").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; follow = follow === c.dataset.n ? null : c.dataset.n; if (follow) view.s = Math.max(view.s, 2.5); renderChips(); drawMap(); });
 
 // ---------- playback ----------
-function setT(v) { t = Math.max(0, Math.min(D.duration, v)); render(); }
-function render() { $("clock").textContent = `${fmt(t)} / ${fmt(D.duration)}`; drawMap(); drawTimeline(); renderPane(); }
+let liveFollow = LIVE; // live mode keeps the playhead at the newest data until you seek back
+function setT(v) { t = Math.max(0, Math.min(D.duration, v)); liveFollow = LIVE && t >= D.duration - 1500; render(); }
+function render() {
+  $("clock").textContent = `${fmt(t)} / ${fmt(D.duration)}`;
+  if (LIVE) $("live").setAttribute("aria-pressed", liveFollow);
+  drawMap(); drawTimeline(); renderPane();
+}
 $("play").addEventListener("click", () => { playing = !playing; $("play").textContent = playing ? "❚❚" : "▶"; $("play").setAttribute("aria-label", playing ? "Pause" : "Play"); if (playing && t >= D.duration) t = 0; last = performance.now(); });
 $("speed").addEventListener("change", (e) => (speed = Number(e.target.value)));
 addEventListener("keydown", (e) => {
@@ -283,11 +324,40 @@ addEventListener("keydown", (e) => {
 });
 let last = performance.now();
 function frame(now) {
-  if (playing) { t += (now - last) * speed; if (t >= D.duration) { t = D.duration; playing = false; $("play").textContent = "▶"; } render(); }
+  if (liveFollow) { t = D.duration; render(); }
+  else if (playing) { t += (now - last) * speed; if (t >= D.duration) { t = D.duration; playing = false; $("play").textContent = "▶"; liveFollow = LIVE; } render(); }
   last = now; requestAnimationFrame(frame);
 }
 addEventListener("resize", () => { fit(); render(); });
-img.onload = () => { fit(); renderChips(); render(); requestAnimationFrame(frame); };
+if (!LIVE) img.onload = () => { fit(); renderChips(); render(); requestAnimationFrame(frame); };
+else {
+  // live: recorder events arrive over server-sent events, absolute times; the replay clock starts at D.start
+  const player = (n) => {
+    let p = P.find((q) => q.name === n);
+    if (!p) { p = { name: n, cls: "", color: "#888", track: [] }; P.push(p); color[n] = p.color; renderChips(); }
+    return p;
+  };
+  let fitted = false;
+  const es = new EventSource(`stream?since=${D.start}`);
+  es.onmessage = (m) => {
+    const e = JSON.parse(m.data), rel = e.t - D.start;
+    if (D.chars.length && !D.chars.includes(e.n)) return;
+    if (e.ev === "pos") {
+      const p = player(e.n);
+      p.track.push([rel, e.x, e.y, e.hp, e.hpmax, e.pw, e.pwmax, e.pt, e.lvl, e.xp, e.money, e.alive, e.ghost, e.combat, e.zone, e.m]);
+      if (!fitted || (follow === e.n && e.m !== M.id)) { M.id = e.m; }
+      if (!fitted) { fitted = true; fit(); }
+    } else {
+      if (e.ev === "login") { const p = player(e.n); p.cls = CLASSES[e.cls] ?? ""; p.color = COLORS[e.cls] ?? "#888"; color[e.n] = p.color; renderChips(); }
+      D.events.push({ ...e, t: rel });
+    }
+    D.duration = Math.max(D.duration, rel);
+  };
+  setInterval(() => { D.duration = Math.max(D.duration, Date.now() - D.start); }, 1000);
+  $("live").hidden = false;
+  $("live").addEventListener("click", () => { liveFollow = true; playing = false; $("play").textContent = "▶"; render(); });
+  fit(); renderChips(); render(); requestAnimationFrame(frame);
+}
 </script>
 </body>
 </html>

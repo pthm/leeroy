@@ -10,13 +10,11 @@ import (
 	"sync/atomic"
 	"time"
 
-
-	"github.com/pthm/wowbench/azeroth-sdk/script"
 	"github.com/pthm/wowbench/azeroth-sdk/client"
 	"github.com/pthm/wowbench/azeroth-sdk/movement"
 	"github.com/pthm/wowbench/azeroth-sdk/navigation"
+	"github.com/pthm/wowbench/azeroth-sdk/script"
 )
-
 
 type BotStatus string
 
@@ -55,6 +53,7 @@ type BotEvent struct {
 
 // Bot implements the WoW client bot logic with behavior tree AI.
 type Bot struct {
+	rec              *Recorder // optional event log (-record)
 	lastMoveNoPath   bool
 	lastAttackReject atomic.Pointer[attackReject] // for bot.last_attack_error() // last move_to found no navmesh path (move_to returns false)
 	id               string
@@ -1569,7 +1568,6 @@ func (b *Bot) HasAuraOn(guid uint64, spellID uint32) bool {
 	}
 	return obj.HasAura(spellID)
 }
-
 
 func (b *Bot) CanCast(spellID uint32, targetGUID uint64) bool {
 	if b.world == nil {

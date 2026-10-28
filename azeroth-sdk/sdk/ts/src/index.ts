@@ -88,10 +88,10 @@ export class Character {
   channel(name: string, text: string) { return this.call("chat.send", { kind: "channel", to: name, text }); }
   async readChat(): Promise<ChatMessage[]> { return list(await this.call("chat.read")); }
 
-  /** Resolves when another player messages you (or after timeoutS), with the drained messages. */
+  /** Resolves when another player messages you (or after timeoutS), with the messages (drained). */
   async waitForChat(timeoutS = 60): Promise<WaitResult<ChatMessage[]>> {
-    const r = await this.call<WaitResult<ChatMessage[]>>("wait.chat", { timeout_s: timeoutS });
-    return { ...r, result: list(r.result) };
+    const r = await this.call<WaitResult<number>>("wait.chat", { timeout_s: timeoutS });
+    return { timed_out: r.timed_out, result: await this.readChat() };
   }
   /** Resolves when the character stops moving, with its position. */
   waitIdle(timeoutS = 120) { return this.call<WaitResult<{ x: number; y: number; z: number }>>("wait.idle", { timeout_s: timeoutS }); }

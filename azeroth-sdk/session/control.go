@@ -62,6 +62,7 @@ func (b *Bot) setupControl() {
 	w.AddPacketHook(func(op uint16, data []byte) { c.onPacket(w, op, data) })
 
 	b.setupAgentAPI()
+	b.startRecording()
 	e := b.lua
 	e.RegisterCall("call", w) // bot.call("QuestgiverHello", guid) etc. — any exported WorldClient method
 	e.RegisterFunc("read_chat", func() []ChatMessage {

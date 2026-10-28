@@ -19,6 +19,8 @@ name=$1 char=$2 race=$3 class=$4 goal=$5 mins=${6:-60}
 export WOW_PORT=${WOW_PORT:-8090}
 id="$(date +%Y%m%d-%H%M%S)-$name"; dir="runs/$id"
 root=$(pwd); repo=$(dirname "$root"); ws="$root/workspaces/$name"
+# client-side event log for replays: in the team dir when run by team.sh (one replay for everyone)
+record="$root/$dir/record.jsonl"; [ -z "$GO" ] || record="$(dirname "$GO")/$name.record.jsonl"
 mkdir -p "$dir" "$ws"
 # refreshed each run: bench task docs + the SDK reference, and an example script
 cat agent/AGENTS.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/world-data.md > "$ws/AGENTS.md"
@@ -73,7 +75,7 @@ fi
 trap 'kill $agent $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM
 [ -n "$LEVEL$MONEY$START" ] || : > "$ws/session.log" # the workspace (and old log) persists
 for try in 1 2 3; do # the auth server sometimes times out the logon proof
-  ACCOUNT=$acct client/play.sh "$char" --race "$race" --class "$class" >> "$ws/session.log" 2>&1 &
+  ACCOUNT=$acct RECORD="$record" client/play.sh "$char" --race "$race" --class "$class" >> "$ws/session.log" 2>&1 &
   session=$!
   until agent/bin/wow 'return 1' 2>/dev/null | grep -q result || ! kill -0 $session 2>/dev/null; do sleep 1; done
   kill -0 $session 2>/dev/null && break
