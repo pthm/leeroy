@@ -95,9 +95,13 @@ whisper echoed, 17 channel, 0x0C+ NPC speech. You start in your zone's General c
 not rejoined automatically when you change zone. Custom channels use id 0 and any name, and work
 across zones.
 
-**Status:** `bot.status()` (or `wow status` from the shell) → level, xp, hp, power, money, position, alive/ghost/
-combat/resting/casting, free bag slots, broken gear, quest progress, target, attackers, group, nearby players,
-corpse, the last cast error, unread chat and what `act` is doing.
+**Status:** `bot.status()` (or `wow status` from the shell) → level, xp, hp, power, money, position and
+`where` (zone and area), alive/ghost/combat/resting/casting, free bag slots, broken gear, usable upgrades sitting in
+your bags (`bag_upgrades`), quest progress, target, attackers, hostile mobs within 30 yd (`mobs_nearby`: count,
+highest level, elites), your last minute of fighting (`last_minute`: dps, damage, healing, taken, kills), group,
+nearby players with class, corpse, the last cast error, unread chat and what `act` is doing.
+`location()` → `{zone, area, zone_id, area_id}` · `reaction(guid)` → "hostile" (attacks on sight), "neutral" or
+"friendly" toward you.
 
 **Combat log, meters, inspect** (what a real client sees: fights within ~100 yd, any source and target, party
 included): `combat_log([since_ms])` → `{t, kind, src, dst, spell, amount, over, crit}` events (default the last 30s;

@@ -374,7 +374,7 @@ function bot.status()
   local p, pm = bot.get_power()
   local xp, xpn = bot.get_xp()
   local s = { level = bot.get_level(), xp = xp, xp_next = xpn, hp = h, hp_max = hm, power = p, power_max = pm,
-    money = bot.money(), pos = { math.floor(x), math.floor(y), math.floor(z) },
+    money = bot.money(), pos = { math.floor(x), math.floor(y), math.floor(z) }, where = bot.location(),
     alive = bot.is_alive(), ghost = bot.is_ghost(), combat = bot.in_combat(), resting = bot.is_resting(),
     free_slots = bot.free_slots(), chat_pending = bot.chat_pending(), quests = {} }
   local c = bot.is_casting()
@@ -399,8 +399,40 @@ function bot.status()
     end
   end
   local near = {}
-  for _, pl in ipairs(bot.get_nearby_players(60)) do near[#near + 1] = (pl.name ~= "" and pl.name or pl.guid) .. " L" .. pl.level end
+  for _, pl in ipairs(bot.get_nearby_players(60)) do
+    local i = bot.inspect(pl.guid)
+    near[#near + 1] = string.format("%s L%d %s %dyd", pl.name ~= "" and pl.name or pl.guid, pl.level, (i and i.class) or "?", math.floor(pl.distance))
+  end
   if #near > 0 then s.players = near end
+  -- hostile mobs within 30 yd (not just the ones attacking you): how many, the highest level, elites
+  local mobs, hi, elites = 0, 0, 0
+  for _, u in ipairs(bot.get_nearby_units(30)) do
+    local untargetable = math.floor((u.flags or 0) / 0x2000000) % 2 == 1 or math.floor((u.flags or 0) / 2) % 2 == 1 -- triggers, dummies
+    if u.is_alive and not u.is_player and not untargetable and u.level >= s.level - 5 and bot.reaction(u.guid) == "hostile" then
+      mobs = mobs + 1
+      if u.level > hi then hi = u.level end
+      if u.max_health > 3 * u.level * 15 then elites = elites + 1 end -- ponytail: elites have several times normal health
+    end
+  end
+  if mobs > 0 then s.mobs_nearby = { count = mobs, max_level = hi, elites = elites > 0 and elites or nil } end
+  -- usable items in your bags that beat what you wear (by item level)
+  local up = {}
+  for _, it in ipairs(bot.bag_items()) do
+    if (it.bag ~= 255 or it.slot >= 23) and it.usable then
+      local c = bot.compare(it.guid)
+      if c and c.usable and c.item_level > 0 then up[#up + 1] = string.format("%s (+%d ilvl %s)", it.name or it.entry, c.item_level, c.slot) end
+    end
+  end
+  if #up > 0 then s.bag_upgrades = up end
+  -- your last minute of fighting
+  for _, m in ipairs(bot.meter(60)) do
+    if m.guid == bot.get_own_guid() and (m.damage > 0 or m.healing > 0) then
+      s.last_minute = { dps = m.dps, hps = m.hps, damage = m.damage, healing = m.healing, kills = m.kills }
+    end
+  end
+  for _, m in ipairs(bot.meter(60)) do
+    if m.guid == bot.get_own_guid() and m.taken > 0 then s.last_minute = s.last_minute or {} s.last_minute.taken = m.taken end
+  end
   if not s.alive then local cx, cy, _, w = bot.corpse_position() if cx then s.corpse = { math.floor(cx), math.floor(cy), w } end end
   local e = bot.last_cast_error()
   if e and now() - e.time_ms < 15000 then s.last_cast_error = e.reason .. (e.hint and (" (" .. e.hint .. ")") or "") end

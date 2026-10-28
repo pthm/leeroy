@@ -57,6 +57,8 @@ type agentState struct {
 	earned    map[uint32]bool   // achievement ids
 	criteria  map[uint32]uint64 // achievement criteria id -> counter
 	achAsked  bool
+	zone      uint32 // from SMSG_INIT_WORLD_STATES, sent on login and every zone/area change
+	area      uint32
 }
 
 func (b *Bot) setupAgentAPI() {
@@ -158,6 +160,32 @@ func (b *Bot) setupAgentAPI() {
 		return nil
 	})
 	e.RegisterFunc("spell_info", func(id uint32) *spellRec { return spellInfo(id) })
+	// reaction(guid) -> "hostile" (attacks on sight), "neutral" (fights back) or "friendly", toward you
+	e.RegisterFunc("reaction", func(g uint64) any {
+		o, me := w.GetObject(g), w.GetObject(w.CharGUID())
+		if o == nil || me == nil {
+			return nil
+		}
+		return factionReaction(o.Value(fieldUnitFaction), me.Value(fieldUnitFaction))
+	})
+	// location() -> {zone, area, zone_id, area_id}: where you are, by the game's own area names
+	e.RegisterFunc("location", func() map[string]any {
+		s.mu.Lock()
+		z, a := s.zone, s.area
+		s.mu.Unlock()
+		names := areaNames()
+		areaNames() // loads areaParent too
+		if a == 0 { // the server's world-states packet came before we were listening: read the map's area grid
+			x, y, _, _, m := w.Position()
+			if a = areaAt(b.config.DataDir, m, x, y); a != 0 {
+				z = areaParent[a]
+				if z == 0 {
+					z = a
+				}
+			}
+		}
+		return map[string]any{"zone": names[z], "area": names[a], "zone_id": z, "area_id": a}
+	})
 
 	// corpse_position() -> x, y, z, seconds until it can be reclaimed; nil when not dead. The first call
 	// after dying asks the server and returns nil; ask again a moment later.
@@ -327,6 +355,9 @@ func (s *agentState) onPacket(me uint64, op uint16, data []byte) {
 			readPackedGUID(r)
 			r.Seek(16, io.SeekCurrent) // flags, date, 2x elapsed
 		}
+	case 0x2C2: // SMSG_INIT_WORLD_STATES: map, zone, area, ...
+		u32()
+		s.zone, s.area = u32(), u32()
 	case smsgCorpseReclaimWait:
 		s.reclaimAt = now.Add(time.Duration(u32()) * time.Millisecond)
 	}
@@ -470,6 +501,134 @@ func dbcColumn(name string, col int) map[uint32]uint32 {
 	for i := uint32(0); i < n; i++ {
 		rec := b[20+i*rs:]
 		out[le.Uint32(rec)] = le.Uint32(rec[col*4:])
+	}
+	return out
+}
+
+var (
+	areaOnce   sync.Once
+	areaNameM  map[uint32]string
+	areaParent map[uint32]uint32 // area -> its zone (0 for a zone)
+	areaGrids  sync.Map          // "map/gx/gy" -> []uint16 (16x16 area ids of one .map grid)
+)
+
+// areaAt: the area id at (x, y) from <data>/maps/MMMXXYY.map, the same grid the server uses
+func areaAt(dataDir string, mapID uint32, x, y float32) uint32 {
+	const S = 1600.0 / 3
+	fx, fy := 32-float64(x)/S, 32-float64(y)/S
+	gx, gy := int(math.Floor(fx)), int(math.Floor(fy))
+	key := fmt.Sprintf("%d/%d/%d", mapID, gx, gy)
+	v, ok := areaGrids.Load(key)
+	if !ok {
+		var grid []uint16
+		if b, err := os.ReadFile(filepath.Join(dataDir, "maps", fmt.Sprintf("%03d%02d%02d.map", mapID, gx, gy))); err == nil && len(b) > 16 {
+			le := binary.LittleEndian
+			if off := le.Uint32(b[12:]); off != 0 && int(off)+8 <= len(b) {
+				grid = make([]uint16, 256)
+				flags, single := le.Uint16(b[off+4:]), le.Uint16(b[off+6:])
+				for i := range grid {
+					if flags&1 != 0 || int(off)+8+i*2+2 > len(b) {
+						grid[i] = single
+					} else {
+						grid[i] = le.Uint16(b[int(off)+8+i*2:])
+					}
+				}
+			}
+		}
+		areaGrids.Store(key, grid)
+		v = grid
+	}
+	grid := v.([]uint16)
+	if grid == nil {
+		return 0
+	}
+	i, j := min(127, int((fx-float64(gx))*128)), min(127, int((fy-float64(gy))*128))
+	return uint32(grid[(i>>3)*16+(j>>3)])
+}
+
+// areaNames: AreaTable.dbc id -> name (field 11, a string offset)
+func areaNames() map[uint32]string {
+	areaOnce.Do(func() {
+		areaNameM, areaParent = map[uint32]string{}, map[uint32]uint32{}
+		b, err := os.ReadFile(filepath.Join(spellsDir, "dbc", "AreaTable.dbc"))
+		if err != nil || len(b) < 20 || string(b[:4]) != "WDBC" {
+			return
+		}
+		le := binary.LittleEndian
+		n, rs := le.Uint32(b[4:]), le.Uint32(b[12:])
+		strs := b[20+n*rs:]
+		for i := uint32(0); i < n; i++ {
+			rec := b[20+i*rs:]
+			if off := le.Uint32(rec[11*4:]); off < uint32(len(strs)) {
+				end := bytes.IndexByte(strs[off:], 0)
+				areaNameM[le.Uint32(rec)] = string(strs[off : off+uint32(end)])
+				areaParent[le.Uint32(rec)] = le.Uint32(rec[2*4:])
+			}
+		}
+	})
+	return areaNameM
+}
+
+const fieldUnitFaction = 0x37 // UNIT_FIELD_FACTIONTEMPLATE (OBJECT_END + 0x31)
+
+type factionTemplate struct {
+	faction, our, friend, hostile uint32
+	enemies, friends              [4]uint32
+}
+
+var (
+	ftOnce sync.Once
+	ftByID map[uint32]factionTemplate
+)
+
+// factionReaction: FactionTemplateEntry::IsHostileTo / IsFriendlyTo (reputation-based standing isn't modelled)
+func factionReaction(unitFT, playerFT uint32) string {
+	ftOnce.Do(func() {
+		ftByID = map[uint32]factionTemplate{}
+		for id, rec := range dbcRows("FactionTemplate.dbc") {
+			f := func(i int) uint32 { return binary.LittleEndian.Uint32(rec[i*4:]) }
+			ftByID[id] = factionTemplate{f(1), f(3), f(4), f(5), [4]uint32{f(6), f(7), f(8), f(9)}, [4]uint32{f(10), f(11), f(12), f(13)}}
+		}
+	})
+	c, okc := ftByID[unitFT]
+	p, okp := ftByID[playerFT]
+	switch {
+	case !okc || !okp:
+		return "neutral"
+	case unitFT == playerFT:
+		return "friendly"
+	}
+	for _, e := range c.enemies {
+		if e != 0 && e == p.faction {
+			return "hostile"
+		}
+	}
+	for _, fr := range c.friends {
+		if fr != 0 && fr == p.faction {
+			return "friendly"
+		}
+	}
+	if c.hostile&p.our != 0 {
+		return "hostile"
+	}
+	if c.friend&p.our != 0 || c.our&p.friend != 0 {
+		return "friendly"
+	}
+	return "neutral"
+}
+
+// dbcRows: id -> raw record of a DBC in <data>/dbc
+func dbcRows(name string) map[uint32][]byte {
+	out := map[uint32][]byte{}
+	b, err := os.ReadFile(filepath.Join(spellsDir, "dbc", name))
+	if err != nil || len(b) < 20 || string(b[:4]) != "WDBC" {
+		return out
+	}
+	le := binary.LittleEndian
+	n, rs := le.Uint32(b[4:]), le.Uint32(b[12:])
+	for i := uint32(0); i < n; i++ {
+		rec := b[20+i*rs : 20+(i+1)*rs]
+		out[le.Uint32(rec)] = rec
 	}
 	return out
 }
