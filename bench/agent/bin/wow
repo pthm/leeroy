@@ -27,9 +27,15 @@ elif [ "$1" = "-f" ]; then
   code="return dofile(\"$(cd "$(dirname "$2")" && pwd)/$(basename "$2")\")"
 elif [ -n "$1" ]; then code="$1"; else code="$(cat)"; fi
 out=$(eval_ "$code")
-# unread messages from other players (chat, whispers, party, invites) ride along on every reply until read
-n=$(eval_ 'return bot.chat_pending()' | jq -r '.result // 0' 2>/dev/null)
+# unread messages from other players (chat, whispers, party, invites) and broken gear ride along on every reply
+extra=$(eval_ 'local b = 0 if bot.broken_gear then local ok, g = pcall(bot.broken_gear) if ok then b = #g end end return {bot.chat_pending(), b}' | jq -c '.result // [0, 0]' 2>/dev/null)
+n=$(printf '%s' "$extra" | jq -r '.[0] // 0' 2>/dev/null) broken=$(printf '%s' "$extra" | jq -r '.[1] // 0' 2>/dev/null)
 if [ "${n:-0}" -gt 0 ] 2>/dev/null; then
-  printf '%s\n' "$out" | jq -c --argjson n "$n" --arg hint "$n unread message(s) from other players: wow 'return bot.read_chat()'" \
-    '. + {chat_pending: $n, chat: $hint}'
-else printf '%s\n' "$out"; fi
+  out=$(printf '%s\n' "$out" | jq -c --argjson n "$n" --arg hint "$n unread message(s) from other players: wow 'return bot.read_chat()'" \
+    '. + {chat_pending: $n, chat: $hint}')
+fi
+if [ "${broken:-0}" -gt 0 ] 2>/dev/null; then
+  out=$(printf '%s\n' "$out" | jq -c --argjson b "$broken" --arg hint "$broken equipped item(s) broken (0 durability: no stats; a broken weapon means fighting bare-handed): repair at an armorer or weaponsmith (npc_flags 0x1000) with bot.repair(npc); see bot.broken_gear()" \
+    '. + {broken_gear: $b, gear: $hint}')
+fi
+printf '%s\n' "$out"

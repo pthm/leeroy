@@ -18,6 +18,8 @@ how you fight, what you kill, when you rest, what to do about death and how to w
 - Lua 5.2: `goto` is a reserved word (don't name a function `goto`); there's no `&`/`|`, use
   `bit32.band(u.npc_flags, 0x80) ~= 0`.
 - GUIDs are strings. Compare and pass them as they are.
+- Reloading: `wow -f script.lua` re-runs the file, but globals keep their old values, so a library written as
+  `lib = lib or {}` keeps its old functions. Reset it (`lib = nil`) before reloading, or define functions unconditionally.
 - `wow` and `on_tick` share one lock: never loop or wait inside either. Keep state in globals and check it
   on the next tick.
 
@@ -99,7 +101,9 @@ how you fight, what you kill, when you rest, what to do about death and how to w
 
 Dying costs about a minute: release (`RepopRequest`), walk back from the graveyard as a ghost, reclaim near your
 corpse. Each death soon after another lengthens the reclaim wait. Time spent dead is time not progressing.
-Mobs three or more levels above you, or several at once, are what kill low-level characters; so do mob camps
+Mobs three or more levels above you, or several at once, are what kill low-level characters. Mobs in a camp come to
+each other's help: attack one and others of its kind within about 10 yards often join (social aggro), and a fleeing
+mob runs to its friends and brings them back. Look at what stands around a target before you pull it; so do mob camps
 next to graveyards (you revive among them) and running past camps on the way somewhere. Rest before a pull
 when you're low. You can't earn exploration credit as a ghost.
 
