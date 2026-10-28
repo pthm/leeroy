@@ -9,6 +9,41 @@ export const CLASS = ["", "Warrior", "Paladin", "Hunter", "Rogue", "Priest", "De
 export const COLOR = ["#888", "#C79C6E", "#F58CBA", "#ABD473", "#FFF569", "#FFFFFF", "#C41F3B", "#0070DE", "#69CCF0", "#9482C9", "#888", "#FF7D0A"];
 
 export type Ev = { t: number; ev: string; n?: string; [k: string]: unknown };
+
+// An agent transcript (Claude Code stream-json) as "say" events: only the agent's visible text messages.
+export const transcriptEvents = (text: string, name: string): Ev[] =>
+  text.split("\n").filter(Boolean).flatMap((l) => {
+    let m: { type?: string; timestamp?: string; message?: { content?: { type: string; text?: string }[] } };
+    try { m = JSON.parse(l); } catch { return []; }
+    if (m.type !== "assistant" || !m.timestamp) return [];
+    return (m.message?.content ?? []).filter((c) => c.type === "text" && c.text?.trim())
+      .map((c) => ({ t: Date.parse(m.timestamp!), ev: "say", n: name, text: c.text!.trim() }));
+  });
+
+// Everything a bench run directory has: record files, and each agent's transcript with its character name.
+// A team dir holds <agent>.record.jsonl; the agents' own run dirs (<time>-<agent>/) sit beside it.
+export function runSources(dir: string) {
+  const { readdirSync, existsSync, readFileSync } = require("node:fs") as typeof import("node:fs");
+  const { join, dirname, basename } = require("node:path") as typeof import("node:path");
+  const records = readdirSync(dir).filter((f) => /(^|\.)record\.jsonl$/.test(f)).map((f) => join(dir, f));
+  const transcripts: { name: string; path: string }[] = [];
+  const charOf = (runDir: string) => {
+    const p = join(runDir, "prompt.md");
+    return existsSync(p) ? readFileSync(p, "utf8").match(/Your\s+character (\w+)/)?.[1] : undefined;
+  };
+  if (existsSync(join(dir, "agent.jsonl"))) { // a single run
+    const name = charOf(dir);
+    if (name) transcripts.push({ name, path: join(dir, "agent.jsonl") });
+  }
+  for (const r of records) { // team: find each agent's run dir by its suffix
+    const agent = basename(r).replace(/\.?record\.jsonl$/, "");
+    if (!agent) continue;
+    const runDir = readdirSync(dirname(dir)).filter((d) => d.endsWith(`-${agent}`)).sort().at(-1);
+    const name = runDir && charOf(join(dirname(dir), runDir));
+    if (name) transcripts.push({ name, path: join(dirname(dir), runDir!, "agent.jsonl") });
+  }
+  return { records, transcripts };
+}
 export const parseLines = (text: string): Ev[] =>
   text.split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((e): e is Ev => !!e);
 

@@ -316,6 +316,7 @@ function line(e) {
     case "xp": return `${who(e.n)} +${e.amount} xp`;
     case "api": { let p = {}; try { p = JSON.parse(e.params || "{}"); } catch {}
       return `${who(e.n)} <span class="muted">${esc(e.method)}</span> <code>${esc((p.code ?? JSON.stringify({ ...p, char: undefined })).slice(0, 160))}</code>`; }
+    case "say": return `${who(e.n)} <span style="color:var(--accent)">“${esc(e.text.length > 600 ? e.text.slice(0, 600) + "…" : e.text)}”</span>`;
     case "script_error": return `${who(e.n)} <span style="color:var(--death)">script error ×${e.count}</span> ${esc(e.last)}`;
     case "group": return e.grp ? `${who(e.n)} is in a group: ${(e.members ?? []).map(who).join(", ")}${e.leader ? ` <span class="muted">(leader ${esc(e.leader)})</span>` : ""}`
       : `${who(e.n)} left their group`;
@@ -324,7 +325,7 @@ function line(e) {
   }
 }
 const KINDS = { events: ["death", "kill", "pvp", "achievement", "level", "quest", "loot", "zone", "release", "resurrect", "login", "logout", "spell", "group"],
-  chat: ["chat"], combat: ["dmg", "heal", "cast", "kill", "death", "xp"], agent: ["api", "script_error"] };
+  chat: ["chat"], combat: ["dmg", "heal", "cast", "kill", "death", "xp"], agent: ["say", "api", "script_error"] };
 let lastPane = "";
 function renderPane() {
   let html = "";

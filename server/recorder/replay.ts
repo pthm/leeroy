@@ -6,7 +6,7 @@
 // run's judge.json (or team.json), or from --chars/--from/--to.
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CLASS, COLOR, areas, itemNames, labels as areaLabels, nameUnits, parseLines, renderMap, trackRow } from "./map.ts";
+import { CLASS, COLOR, areas, itemNames, labels as areaLabels, nameUnits, parseLines, renderMap, runSources, trackRow, transcriptEvents } from "./map.ts";
 
 const [dirArg, ...rest] = process.argv.slice(2);
 const flag = (k: string) => { const i = rest.indexOf(`--${k}`); return i >= 0 ? rest[i + 1] : undefined; };
@@ -32,7 +32,9 @@ const runRecords = dirArg && existsSync(dirArg) ? readdirSync(dirArg).filter((f)
 const logFiles = flag("log") ? [flag("log")!] : runRecords.length ? runRecords
   : [new URL("../azerothcore/env/dist/logs/recorder.jsonl", import.meta.url).pathname];
 const logFile = logFiles.join(", ");
-const all = logFiles.flatMap((f) => parseLines(readFileSync(f, "utf8"))).sort((a, b) => a.t - b.t);
+const transcripts = dirArg && existsSync(dirArg) ? runSources(dirArg).transcripts.filter((t) => existsSync(t.path)) : [];
+const all = [...logFiles.flatMap((f) => parseLines(readFileSync(f, "utf8"))),
+  ...transcripts.flatMap((t) => transcriptEvents(readFileSync(t.path, "utf8"), t.name))].sort((a, b) => a.t - b.t);
 nameUnits(all);
 const evs = all.filter((e) => (!chars.length || chars.includes(e.n ?? "")) && (!from || e.t >= from) && (!to || e.t <= to));
 if (!evs.length) throw new Error(`no recorder events for ${chars.join(",") || "anyone"} in that window (${logFile})`);

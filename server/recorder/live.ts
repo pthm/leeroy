@@ -1,15 +1,21 @@
-// bun server/recorder/live.ts [log.jsonl ...] [--port 8800] [--chars A,B] [--since 60m]
+// bun server/recorder/live.ts [log.jsonl ...] [--run <run or team dir>] [--port 8800] [--chars A,B] [--since 60m]
 // Live run viewer: tails recorder-format logs (default: the server's mod-recorder log; also azsdk -record
 // files, several at once) and serves the replay viewer in live mode at http://localhost:<port>/ with the map
 // as terrain tiles rendered on demand. Events stream to the browser as server-sent events; the playhead
-// follows the newest data until you seek back.
+// follows the newest data until you seek back. --run <dir> takes a bench run (or team) dir: its record files plus
+// each agent's transcript, whose visible messages appear in the Agent tab.
 import { existsSync, openSync, readSync, statSync, closeSync, readFileSync } from "node:fs";
-import { S, areas, itemNames, labels, nameUnits, parseLines, renderMap, type Ev } from "./map.ts";
+import { S, areas, itemNames, labels, nameUnits, parseLines, renderMap, runSources, transcriptEvents, type Ev } from "./map.ts";
 
 const args = process.argv.slice(2);
 const flag = (k: string) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : undefined; };
 const files = args.filter((a, i) => !a.startsWith("--") && !args[i - 1]?.startsWith("--"));
+const run = flag("run") ? runSources(flag("run")!) : { records: [], transcripts: [] };
+files.push(...run.records);
 if (!files.length) files.push(new URL("../azerothcore/env/dist/logs/recorder.jsonl", import.meta.url).pathname);
+// transcripts: path -> character name; parsed as "say" events instead of recorder lines
+const transcriptOf = new Map(run.transcripts.map((t) => [t.path, t.name]));
+files.push(...transcriptOf.keys());
 const port = Number(flag("port") ?? 8800), chars = flag("chars")?.split(",") ?? [];
 const sinceMin = Number((flag("since") ?? "60m").replace(/m$/, ""));
 const start = Date.now() - sinceMin * 60_000;
@@ -32,7 +38,9 @@ function poll() {
     offsets.set(f, size);
     const text = (partial.get(f) ?? "") + buf.toString("utf8"), cut = text.lastIndexOf("\n") + 1;
     partial.set(f, text.slice(cut));
-    fresh.push(...parseLines(text.slice(0, cut)).filter((e) => e.t >= start && (!chars.length || chars.includes(e.n ?? ""))));
+    const lines = text.slice(0, cut), name = transcriptOf.get(f);
+    fresh.push(...(name ? transcriptEvents(lines, name) : parseLines(lines))
+      .filter((e) => e.t >= start && (!chars.length || chars.includes(e.n ?? ""))));
   }
   fresh.sort((a, b) => a.t - b.t);
   nameUnits(fresh);
