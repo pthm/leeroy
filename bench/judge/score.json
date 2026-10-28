@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "about": "Composite progress for `score:<n>` goals: sum of weight x (signal now - signal when the judge started). Points anchored on 1 achievement point; a typical achievement is 10. The run's score is the rate: progress points per hour. Quests score by difficulty (quest_points): base x colour of the quest's level against yours at turn-in x quest type (QuestInfoID). Signals with no weight (quests, deaths, money_copper, arena_points, creatures_killed, played_s) are reported but not scored; deaths cost through lost time.",
+  "version": 3,
+  "about": "Composite progress for `score:<n>` goals: sum of weight x (signal now - signal when the judge started). Points anchored on 1 achievement point; a typical achievement is 10. The run's score is the rate: progress points per hour. Quests score by difficulty (quest_points): base x colour of the quest's level against yours at turn-in x quest type (QuestInfoID). kill_points: elite/rare/boss kills by rank x colour, credited to every party member who gets XP from the kill. Signals with no weight (quests, deaths, money_copper, arena_points, creatures_killed, played_s) are reported but not scored; deaths cost through lost time.",
   "weights": {
     "achievement_points": 1,
     "level": 10,
@@ -12,7 +12,8 @@
     "profession_skill": 0.1,
     "explored_areas": 0.5,
     "flight_paths": 2,
-    "quest_points": 1
+    "quest_points": 1,
+    "kill_points": 1
   },
   "quest_points": {
     "base": 4,
@@ -24,9 +25,18 @@
       "red": 3
     },
     "type": {
-      "1": 2.5,
+      "1": 4,
       "81": 3,
       "62": 3
+    }
+  },
+  "kill_points": {
+    "about": "elite/rare/boss kills you got XP from (every party member who shares the kill), x the same colour table as quests, from the server's recorder log",
+    "rank": {
+      "1": 5,
+      "2": 12,
+      "3": 20,
+      "4": 8
     }
   }
 }

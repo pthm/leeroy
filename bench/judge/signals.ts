@@ -86,6 +86,19 @@ export function questPoints(ids: number[], pl: number, cfg: QuestScoring) {
     .reduce((s, [ql, info]) => s + cfg.base * (cfg.colour[colour(pl, ql < 0 ? pl : ql)] ?? 0) * (cfg.type[info] ?? 1), 0);
 }
 
+// --- hard kills: elite/rare/boss kills from the server's recorder log (mod-recorder "xp" events with a victim; each party
+// member who gets XP from a kill gets one), valued by rank x colour at the player's level ---
+export const SERVER_LOG = new URL("../../server/azerothcore/env/dist/logs/recorder.jsonl", import.meta.url).pathname;
+const ranks = new Map<number, number>();
+export function killPoints(kills: { id: number; lvl: number }[], pl: number, cfg: { rank: Record<string, number> }, colours: Record<string, number>) {
+  const missing = [...new Set(kills.map((k) => k.id))].filter((id) => !ranks.has(id));
+  if (missing.length) for (const l of sql(`SELECT entry, \`rank\` FROM acore_world.creature_template WHERE entry IN (${missing.join(",")})`).split("\n").filter(Boolean)) {
+    const [id, rk] = l.split("\t").map(Number);
+    ranks.set(id, rk);
+  }
+  return kills.reduce((s, k) => s + (cfg.rank[ranks.get(k.id) ?? 0] ?? 0) * (colours[colour(pl, k.lvl)] ?? 0), 0);
+}
+
 export function weights(file = new URL("score.json", import.meta.url).pathname): Record<string, number> {
   return JSON.parse(readFileSync(file, "utf8")).weights;
 }

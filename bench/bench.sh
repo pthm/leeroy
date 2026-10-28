@@ -54,7 +54,9 @@ Fractional level counts (10.5 = halfway to 11); avg_item_level is over your 17 g
 plus the vendor value of what you own.
 quest_points: quests are worth more the harder they are for you when you turn them in. Each is worth
 $(jq -r '.quest_points | "\(.base) x its difficulty colour against your level (" + (.colour | to_entries | map("\(.key) \(.value)") | join(", ")) + ")"' "$root/judge/score.json"),
-x 2.5 for group quests and x 3 for dungeon quests. Trivial (grey) quests are worth nothing.
+x 4 for group quests and x 3 for dungeon quests. Trivial (grey) quests are worth nothing.
+kill_points: elite, rare and boss kills (normal mobs count only through XP): elite 5, rare 8, rare elite 12, boss 20,
+x the same difficulty colour. Every party member who gets XP from the kill gets the points.
 YOUR SCORE IS YOUR RATE: progress points per hour over the whole $mins minutes. Sustained progress is what counts:
 deaths, stalls and time spent stuck cost you through the time they lose. There is no finish line.
 The standings command shows where every player in this run stands right now (rank, score, recent rate, level)."
