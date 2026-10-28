@@ -1,7 +1,7 @@
 // bun judge.ts <character> <goal> [--timeout 4h] [--every 15s] [--samples file.jsonl]
 // Goals: level:<n> | item:<entry> | quality:<0-5> (any owned item of that quality or better; 3 = rare)
 //        | money:<copper> | quests:<n> (quests turned in) | quest:<id> (that quest turned in)
-//        | achpoints:<n> (achievement points earned since the judge started; needs `bun achievements.ts`.
+//        | achpoints:<n> (achievement points earned since the judge started; needs `bun dbsetup.ts`.
 //          Use a large n to score "as many as possible" by the value at timeout)
 //        | score:<n> (composite: weighted change in every signal since the judge started; weights in score.json,
 //          signals in signals.ts. Same "large n" convention)

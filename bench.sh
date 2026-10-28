@@ -117,7 +117,7 @@ PROMPT
 (cd "$ws" && PATH="$root/bin:$PATH" exec timeout "${mins}m" claude -p "$(cat "$root/$dir/prompt.md")" \
   --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
   --add-dir "$root/ghost/client" "$root/server/src/server/game" "$root/server/src/server/shared" \
-  --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
+  --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(wowdb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
     "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Edit(/**)" \
   > "$root/$dir/agent.jsonl" 2>&1) &
 agent=$!

@@ -143,7 +143,30 @@ numbers are little-endian. Write parsers once and keep them in your lib.
 
 **GM commands:** `send_command(".cmd")` works only on GM accounts. Scored runs use non-GM accounts.
 
-## World database: `worlddb`
+## World data: `wowdb` (structured) and `worlddb` (raw SQL)
+
+`wowdb` answers the usual planning questions in one call, as JSON, with relations already resolved: where
+an item drops (with chances and spawn locations), who gives a quest and where its targets are, which NPCs
+are hostile to you, the nearest trainer or vendor. Start here; drop to `worlddb` SQL for anything else.
+
+```sh
+wowdb search "Hogger"                          # items, quests, npcs, objects, spells, zones, achievements by name
+wowdb item 1931                                # stats + sources: drops, chests/nodes, vendors, quest rewards, crafting
+wowdb quest 176                                # giver/turn-in with coordinates, objectives with spawns, rewards, chain
+wowdb npc 448                                  # level, elite?, hostile/neutral/friendly to you, spawns, loot, vendor stock, trainer spells
+wowdb spell 6673                               # cost, cast time, range, cooldowns, which trainers teach it and for how much
+wowdb zone "Elwynn Forest"                     # sub-areas, mobs by level, graveyards, inns, flight masters, vendors, trainers
+wowdb near -9460 70 --kind trainer             # nearest trainer|vendor|questgiver|flightmaster|innkeeper|repair|banker|graveyard|object
+wowdb near -9460 70 --kind mob --hostile --level 9-11   # nearest mobs that attack on sight, levels 9-11
+wowdb quests --level 10 --race 1 --class 1 --near -9460,70   # quests you can pick up, nearest givers first
+wowdb area -9460 70                            # which area/zone a point is in
+```
+
+`reaction` is relative to a new character of each side (`hostile` attacks on sight; `neutral` only fights
+back). Races: 1 Human, 3 Dwarf, 4 Night Elf, 7 Gnome; classes: 1 Warrior, 2 Paladin, 4 Rogue, 5 Priest,
+8 Mage. Results are capped (15 per list); counts like `drops_total` give the full size.
+
+### Raw SQL: `worlddb`
 
 `worlddb "SELECT ..."` runs read-only SQL against the game's static world data (MySQL; TSV output, max
 300 rows). Use it to plan: where to go, what to kill, who gives which quest, what drops an item.
@@ -159,7 +182,9 @@ numbers are little-endian. Write parsers once and keep them in your lib.
 | `npc_vendor` | `entry` (vendor creature), `item` |
 | `gameobject`, `gameobject_template`, `gameobject_loot_template` | spawns, names and loot of chests, herbs, ore |
 
-The achievement catalogue and area locations are in the `wowbench` schema (qualify the table names):
+The achievement catalogue, area locations and other derived data are in the `wowbench` schema (qualify the
+table names; `creature_spawn`/`gameobject_spawn` are the spawn tables with `area` and `zone` filled in,
+`reaction` maps `creature_template.faction` to hostility, `spell` has names, costs and cooldowns):
 
 | Table | Useful columns |
 |---|---|
