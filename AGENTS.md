@@ -85,6 +85,10 @@ wear (bag 255 = your own slots: 0-18 equipped, 19-22 bags, 23-38 backpack; bag 1
 kill/objective counters; for item objectives use `has_item`) · `turn_in(npc, quest, reward_index)` does
 the whole hand-in (it silently does nothing if the quest isn't complete).
 
+**Achievements:** `achievements()` → `{earned = {ids}, criteria = {{id, counter}}}`: what you've earned and
+your progress on each achievement criterion (look both up in worlddb's `wowbench` tables, below). An
+earned achievement also announces itself in chat (type 48) to players nearby.
+
 **World:** `get_nearby_units(dist)` / `get_nearby_players(dist)` → array of units · `get_unit(guid)`.
 Unit fields: `guid, entry, name, level, health, max_health, x, y, z, distance, is_alive, is_player,
 faction, npc_flags, flags, dyn_flags, lootable, target` (`target` = guid the unit is targeting).
@@ -92,7 +96,7 @@ faction, npc_flags, flags, dyn_flags, lootable, target` (`target` = guid the uni
 id). `npc_flags` tells you what an NPC offers (bitmask: 0x1 gossip, 0x2 quest giver, 0x80 vendor,
 0x1000 repair, 0x2000 flight master, 0x10 trainer).
 
-**Act:** `move_to(x,y,z)` (pathfinds on the navmesh; returns false if there's no path, and then walks a
+**Act:** `ground_z(x,y)` → terrain height at x,y (for picking a `move_to` z) · `move_to(x,y,z)` (pathfinds on the navmesh; returns false if there's no path, and then walks a
 straight line) · `stop_moving()` · `is_moving()` · `set_target(guid)` ·
 `attack(guid)` · `stop_attack()` · `face_target(guid)` · `set_facing(o)` · `cast_spell(id, guid)` ·
 `is_spell_ready(id)` · `can_cast(id, guid)` · `has_aura_on(guid, id)` · `is_behind_target(guid)` ·
@@ -154,6 +158,20 @@ numbers are little-endian. Write parsers once and keep them in your lib.
 | `creature_queststarter` / `creature_questender` | `id` (creature entry), `quest` |
 | `npc_vendor` | `entry` (vendor creature), `item` |
 | `gameobject`, `gameobject_template`, `gameobject_loot_template` | spawns, names and loot of chests, herbs, ore |
+
+The achievement catalogue and area locations are in the `wowbench` schema (qualify the table names):
+
+| Table | Useful columns |
+|---|---|
+| `wowbench.achievement` | `id, name, description, points, category, faction` (-1 any, 1 Alliance), `flags` (0x1 = statistic, not earnable), `count`/`ref_achievement` (meta achievements) |
+| `wowbench.achievement_criteria` | `id, achievement, type, asset, quantity, description`: all of an achievement's criteria are needed unless `achievement.count` says how many |
+| `wowbench.criteria_type` | `id, name` for `achievement_criteria.type` (`explore_area`, `complete_quest_count`, `kill_creature`, `do_emote`, `learn_skill_level`...); `asset` means a creature, quest, spell, item, map-overlay... id depending on the type |
+| `wowbench.achievement_category` | `id, parent, name` |
+| `wowbench.area` | `id, map, zone` (parent zone id, 0 = a zone itself), `level, name` |
+| `wowbench.map_overlay` | `id` (= `asset` of `explore_area` criteria), `area1..area4` (the area ids that reveal it) |
+| `wowbench.area_location` | `area, map, x, y` (a point inside the area), `min_x, max_x, min_y, max_y` |
+
+You get `explore_area` credit by entering the area: `bot.move_to(x, y, bot.ground_z(x, y))`.
 
 ```sh
 # level 3-5 mobs near Northshire (map 0 = Eastern Kingdoms), by spawn count

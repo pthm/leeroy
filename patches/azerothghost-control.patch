@@ -460,10 +460,10 @@ index 0000000..9e18a95
 +}
 diff --git i/bot/agentapi.go w/bot/agentapi.go
 new file mode 100644
-index 0000000..2e96bf5
+index 0000000..8bfe9b5
 --- /dev/null
 +++ w/bot/agentapi.go
-@@ -0,0 +1,328 @@
+@@ -0,0 +1,398 @@
 +package bot
 +
 +// Agent API: game state the client doesn't track itself (casting, cooldowns, corpse, bags, quest log),
@@ -473,6 +473,7 @@ index 0000000..2e96bf5
 +	"bytes"
 +	"encoding/binary"
 +	"fmt"
++	"io"
 +	"math"
 +	"os"
 +	"path/filepath"
@@ -493,6 +494,10 @@ index 0000000..2e96bf5
 +	cmsgSpiritHealerAct   = 0x21C
 +	smsgCorpseReclaimWait = 0x269
 +	cmsgQuestRequestRew   = 0x18C
++	smsgAchievementEarned = 0x468
++	smsgCriteriaUpdate    = 0x46A
++	cmsgInspectAchieves   = 0x46B
++	smsgInspectAchieves   = 0x46C
 +
 +	fieldPlayerFlags   = 0x96  // PLAYER_FLAGS
 +	fieldQuestLog      = 0x9E  // PLAYER_QUEST_LOG_1_1; 25 slots x 5 fields: id, state, counters (4 x u16), time
@@ -513,10 +518,14 @@ index 0000000..2e96bf5
 +	corpse    []float32 // x, y, z, map
 +	corpseAt  time.Time
 +	reclaimAt time.Time
++	earned    map[uint32]bool   // achievement ids
++	criteria  map[uint32]uint64 // achievement criteria id -> counter
++	achAsked  bool
 +}
 +
 +func (b *Bot) setupAgentAPI() {
-+	s := &agentState{cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}}
++	s := &agentState{cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, earned: map[uint32]bool{},
++		criteria: map[uint32]uint64{}}
 +	w := b.world
 +	spellsDir = b.config.DataDir
 +	go loadSpells() // ~50MB; don't stall the packet goroutine on first use
@@ -566,6 +575,34 @@ index 0000000..2e96bf5
 +			return nil
 +		}
 +		return map[string]any{"reason": r.Reason, "guid": fmt.Sprint(r.GUID), "time_ms": r.at.UnixMilli()}
++	})
++	// achievements() -> {earned = {ids...}, criteria = {{id, counter}...}}. Join with worlddb's
++	// wowbench.achievement / achievement_criteria. The first call asks the server for the full list.
++	e.RegisterFunc("achievements", func() map[string]any {
++		s.mu.Lock()
++		defer s.mu.Unlock()
++		if !s.achAsked {
++			s.achAsked = true
++			w.SendPacketRaw(cmsgInspectAchieves, packGUID(w.CharGUID()))
++		}
++		earned, crit := []uint32{}, []map[string]any{}
++		for id := range s.earned {
++			earned = append(earned, id)
++		}
++		for id, n := range s.criteria {
++			crit = append(crit, map[string]any{"id": id, "counter": n})
++		}
++		return map[string]any{"earned": earned, "criteria": crit}
++	})
++	// ground_z(x, y) -> terrain height there on your current map (nil if no map data), for move_to
++	e.RegisterFunc("ground_z", func(x, y float32) any {
++		_, _, _, _, m := w.Position()
++		if tn, ok := b.nav.(terrainHeightNavigator); ok && b.nav != nil {
++			if gh, ok := tn.GetTerrainHeight(m, x, y); ok {
++				return gh
++			}
++		}
++		return nil
 +	})
 +	e.RegisterFunc("spell_info", func(id uint32) *spellRec { return spellInfo(id) })
 +
@@ -697,6 +734,28 @@ index 0000000..2e96bf5
 +			m := u32()
 +			s.corpse = []float32{f32(), f32(), f32(), float32(m)}
 +		}
++	case smsgAchievementEarned: // also sent for players nearby
++		if readPackedGUID(r) == me {
++			s.earned[u32()] = true
++		}
++	case smsgCriteriaUpdate:
++		id := u32()
++		if n := readPackedGUID(r); readPackedGUID(r) == me {
++			s.criteria[id] = n
++		}
++	case smsgInspectAchieves: // AchievementMgr::BuildAllDataPacket after the player's packed guid
++		if readPackedGUID(r) != me {
++			return
++		}
++		for id := u32(); id != 0xFFFFFFFF && r.Len() > 0; id = u32() {
++			s.earned[id] = true
++			u32() // packed date
++		}
++		for id := u32(); id != 0xFFFFFFFF && r.Len() > 0; id = u32() {
++			s.criteria[id] = readPackedGUID(r)
++			readPackedGUID(r)
++			r.Seek(16, io.SeekCurrent) // flags, date, 2x elapsed
++		}
 +	case smsgCorpseReclaimWait:
 +		s.reclaimAt = now.Add(time.Duration(u32()) * time.Millisecond)
 +	}
@@ -705,6 +764,17 @@ index 0000000..2e96bf5
 +type attackReject struct {
 +	client.AttackReject
 +	at time.Time
++}
++
++func packGUID(g uint64) []byte {
++	out := []byte{0}
++	for i := 0; i < 8; i++ {
++		if b := byte(g >> (8 * i)); b != 0 {
++			out[0] |= 1 << i
++			out = append(out, b)
++		}
++	}
++	return out
 +}
 +
 +func guidAt(o *client.WorldObject, f uint16) uint64 {

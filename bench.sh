@@ -27,7 +27,17 @@ case "$goal" in
   money:*) goal_text="hold $n copper" ;;
   item:*) goal_text="own item $n (item_template entry)" ;;
   quality:*) goal_text="own any item of quality $n or better (3 = rare)" ;;
+  achpoints:*) goal_text="earn as many achievement points as you can" ;;
   quest:*) goal_text="complete the quest \"$(bin/worlddb "SELECT LogTitle FROM quest_template WHERE ID = $n" | tail -1)\" (quest $n): accept it, do its objectives, and turn it in" ;;
+esac
+score_text="You are scored on wall-clock time until an external judge sees the goal met; if time
+runs out ($mins minutes), your progress toward it is the score."
+stop_text="Do not stop until the goal is met: confirm it yourself with wow before finishing."
+case "$goal" in achpoints:*)
+  score_text="Your score is the total points of the achievements you earn during the next $mins minutes
+(ones already earned don't count). There is no finish line: keep earning until time runs out. Achievement
+names, points and criteria are in worlddb (see AGENTS.md); bot.achievements() shows your progress."
+  stop_text="Do not stop early: keep earning points until the time runs out." ;;
 esac
 
 bun account.ts "$acct" "$acct" # non-GM
@@ -70,8 +80,7 @@ cat > "$dir/prompt.md" <<PROMPT
 You are playing World of Warcraft (3.3.5a) on a local private server set up for AI benchmarking. Your
 character $char is already logged in and waiting.
 
-GOAL: $goal_text. You are scored on wall-clock time until an external judge sees the goal met; if time
-runs out ($mins minutes), your progress toward it is the score.${HINT:+
+GOAL: $goal_text. $score_text${HINT:+
 $HINT}
 
 Read AGENTS.md first. It documents your session (wow), the bot API, and worlddb, a read-only SQL view
@@ -87,7 +96,7 @@ HOW TO WORK
   Track your XP/min and change strategy when it drops (e.g. mobs becoming too low level, frequent deaths).
 - While a script runs, poll progress with wow -w <seconds> '<lua>' (waits, then queries). Don't end your
   session.
-- Do not stop until the goal is met: confirm it yourself with wow before finishing.
+- $stop_text
 
 YOUR LIBRARY: your working directory is yours and persists across runs. Reuse what's there, and save
 anything reusable (combat, death handling, navigation, packet parsers) as you go.

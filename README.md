@@ -21,6 +21,10 @@ mkdir -p data/dbc && docker run --rm -v server_ac-client-data:/src:ro -v $PWD/da
   sh -c 'cp -r /src/maps /src/mmaps /src/vmaps /dst/ && cp /src/dbc/Spell.dbc /dst/dbc/'
 ```
 
+For achievement goals, also copy `Achievement.dbc Achievement_Criteria.dbc Achievement_Category.dbc
+AreaTable.dbc WorldMapOverlay.dbc` into `data/dbc/` the same way and run `bun achievements.ts` (loads the
+catalogue and area locations into a `wowbench` schema that `worlddb` can read).
+
 ## Run a benchmark
 
 ```sh

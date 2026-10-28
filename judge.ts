@@ -1,6 +1,8 @@
 // bun judge.ts <character> <goal> [--timeout 4h] [--every 15s] [--samples file.jsonl]
 // Goals: level:<n> | item:<entry> | quality:<0-5> (any owned item of that quality or better; 3 = rare)
 //        | money:<copper> | quests:<n> (quests turned in) | quest:<id> (that quest turned in)
+//        | achpoints:<n> (achievement points earned since the judge started; needs `bun achievements.ts`.
+//          Use a large n to score "as many as possible" by the value at timeout)
 // Reads the character DB (saved every 15s, see server.override.yml), so it can't be gamed from the client.
 // Prints one JSON line when the goal is met or the timeout hits; exit 0 = met, 1 = timed out.
 // --samples appends {elapsed_s, level, xp, money, value} each poll, for partial credit and progress curves.
@@ -8,8 +10,8 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 
 const [char, goal, ...rest] = process.argv.slice(2);
-if (!char || !/^[A-Za-z]+$/.test(char) || !/^(level|item|quality|money|quests|quest):\d+$/.test(goal ?? ""))
-  throw new Error("usage: bun judge.ts <character> <level|item|quality|money|quests|quest>:<n> [--timeout 4h] [--every 15s]");
+if (!char || !/^[A-Za-z]+$/.test(char) || !/^(level|item|quality|money|quests|quest|achpoints):\d+$/.test(goal ?? ""))
+  throw new Error("usage: bun judge.ts <character> <level|item|quality|money|quests|quest|achpoints>:<n> [--timeout 4h] [--every 15s]");
 const flag = (name: string, def: string) => { const i = rest.indexOf(`--${name}`); return i >= 0 ? rest[i + 1] : def; };
 const dur = (s: string) => { const [, n, u] = s.match(/^(\d+)(s|m|h)$/)!; return +n * { s: 1e3, m: 6e4, h: 36e5 }[u]!; };
 const timeout = dur(flag("timeout", "4h")), every = dur(flag("every", "15s")), samples = flag("samples", "");
@@ -29,12 +31,15 @@ const query = {
   quality: `SELECT COUNT(*) ${owned} AND it.Quality >= ${n}`,
   quests: `SELECT COUNT(*) FROM character_queststatus_rewarded WHERE guid = (SELECT guid FROM characters WHERE name = '${char}')`,
   quest: `SELECT COUNT(*) FROM character_queststatus_rewarded WHERE quest = ${n} AND guid = (SELECT guid FROM characters WHERE name = '${char}')`,
+  achpoints: `SELECT COALESCE(SUM(a.points), 0) FROM character_achievement ca JOIN wowbench.achievement a ON a.id = ca.achievement
+    WHERE ca.guid = (SELECT guid FROM characters WHERE name = '${char}')`,
 }[kind]!;
+const baseline = kind === "achpoints" ? Number(sql(query) || 0) : 0; // only count what's earned during the run
 const need = kind === "item" || kind === "quality" || kind === "quest" ? 1 : +n;
 
 const start = Date.now();
 for (;;) {
-  const value = Number(sql(query) || 0);
+  const value = Number(sql(query) || 0) - baseline;
   const [level, xp, money] = sql(`SELECT level, xp, money FROM characters WHERE name = '${char}'`).split("\t").map(Number);
   const elapsed_s = Math.round((Date.now() - start) / 1000);
   const sample = { elapsed_s, level, xp, money, value };
