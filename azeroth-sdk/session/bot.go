@@ -854,14 +854,8 @@ func (b *Bot) moveToPoint(x, y, z float32) {
 		}
 	}
 
-	// Clamp target Z for pursuit to avoid oscillation: bots trying to go much higher/lower
-	// than current ground then snapping back. Limit delta to ~5 yards.
-	deltaZ := z - pz
-	if deltaZ > 5.0 {
-		z = pz + 5.0
-	} else if deltaZ < -5.0 {
-		z = pz - 5.0
-	}
+	// (A clamp here kept the target within 5 yd of the current height, for the removed AI's mob pursuit. It
+	// sent every trip to a higher floor, such as Stormwind from Goldshire, to the terrain under it.)
 
 	current := navigation.Point3D{X: px, Y: py, Z: pz}
 
@@ -886,7 +880,8 @@ func (b *Bot) moveToPoint(x, y, z float32) {
 	if len(pts) == 0 {
 		// No navmesh path: only short hops (melee positioning) go straight; anything longer would climb
 		// unwalkable slopes, so don't move and let move_to report false.
-		if b.nav != nil && current.DistanceTo2D(navigation.Point3D{X: x, Y: y, Z: z}) > 5 {
+		// 3D: a target straight overhead is not a short hop (it let bots step through floors)
+		if b.nav != nil && current.DistanceTo(navigation.Point3D{X: x, Y: y, Z: z}) > 5 {
 			return
 		}
 		pts = simplifyAndDensifyPath([]navigation.Point3D{current, {X: x, Y: y, Z: z}}, 3.0, 1.0)
@@ -950,7 +945,7 @@ func snapPathToGround(nav navigation.Navigator, mapID uint32, pts []navigation.P
 		if !ok || math.IsNaN(float64(gh)) || math.IsInf(float64(gh), 0) {
 			continue
 		}
-		pts[i].Z = gh
+		pts[i].Z = movement.FloorAware(nav, mapID, pts[i].X, pts[i].Y, origZ, gh)
 	}
 }
 

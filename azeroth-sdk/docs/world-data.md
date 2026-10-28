@@ -51,7 +51,8 @@ table names; `creature_spawn`/`gameobject_spawn` are the spawn tables with `area
 | `wowbench.map_overlay` | `id` (= `asset` of `explore_area` criteria), `area1..area4` (the area ids that reveal it) |
 | `wowbench.area_location` | `area, map, x, y` (a point inside the area), `min_x, max_x, min_y, max_y` |
 
-You get `explore_area` credit by entering the area: `bot.move_to(x, y, bot.ground_z(x, y))`.
+You get `explore_area` credit by entering the area: `bot.move_to(x, y, bot.ground_z(x, y))`. For NPCs and objects
+indoors (an inn's upstairs trainer, anything in Stormwind), pass their z: `bot.move_to(x, y, bot.ground_z(x, y, z))`.
 
 ```sh
 # level 3-5 mobs near Northshire (map 0 = Eastern Kingdoms), by spawn count

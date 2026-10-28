@@ -606,6 +606,7 @@ func (m *MovementController) clampCurrentZToGround() {
 	if !ok || math.IsNaN(float64(gh)) || math.IsInf(float64(gh), 0) {
 		return
 	}
+	gh = FloorAware(m.nav, m.mapID, m.curX, m.curY, m.curZ, gh) // indoors: stay on the floor, not the terrain below
 	swim := false
 	if m.WaterFunc != nil {
 		if wl, ok := m.WaterFunc(m.curX, m.curY); ok && wl-gh > swimDepth {
@@ -697,6 +698,28 @@ func movementGroundHeightWithSource(nav navigation.Navigator, mapID uint32, x, y
 	return 0, false, false
 }
 
+// FloorAware returns the walkable floor near hintZ when it is clearly above the terrain (inside a building, on a
+// bridge), otherwise ground: terrain heights lie under building floors, and the client's vmap reader doesn't
+// find them, so snapping to "ground" put bots under inn floors and Stormwind. The navmesh floor comes from the
+// server's own geometry. ponytail: 2.5 yd separates floors from terrain noise; stairs near ground level snap to terrain.
+func FloorAware(nav navigation.Navigator, mapID uint32, x, y, hintZ, ground float32) float32 {
+	fn, ok := nav.(interface {
+		FloorHeight(mapID uint32, x, y, hint float32) (float32, bool)
+		GetTerrainHeight(mapID uint32, x, y float32) (float32, bool)
+	})
+	if !ok {
+		return ground
+	}
+	floor, ok := fn.FloorHeight(mapID, x, y, hintZ)
+	if !ok {
+		return ground
+	}
+	if terrain, ok := fn.GetTerrainHeight(mapID, x, y); ok && floor > terrain+2.5 {
+		return floor
+	}
+	return ground
+}
+
 func snapPathToGround(nav navigation.Navigator, mapID uint32, pts []navigation.Point3D) {
 	if nav == nil {
 		return
@@ -707,7 +730,7 @@ func snapPathToGround(nav navigation.Navigator, mapID uint32, pts []navigation.P
 		if !ok || math.IsNaN(float64(gh)) || math.IsInf(float64(gh), 0) {
 			continue
 		}
-		pts[i].Z = gh
+		pts[i].Z = FloorAware(nav, mapID, pts[i].X, pts[i].Y, origZ, gh)
 	}
 }
 

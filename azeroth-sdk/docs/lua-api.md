@@ -51,7 +51,9 @@ faction, npc_flags, flags, dyn_flags, lootable, target` (`target` = guid the uni
 id). `npc_flags` tells you what an NPC offers (bitmask: 0x1 gossip, 0x2 quest giver, 0x80 vendor,
 0x1000 repair, 0x2000 flight master, 0x10 trainer).
 
-**Act:** `ground_z(x,y)` → terrain height at x,y (for picking a `move_to` z) · `move_to(x,y,z)` (follows the navmesh,
+**Act:** `ground_z(x,y[,z])` → the height to stand at x,y, for a `move_to` z. Pass an approximate z (an NPC's
+spawn z from `wowdb`) to get the floor nearest it: upstairs rooms, buildings, Stormwind's streets. Without one it
+returns the outdoor terrain height, which lies under any building · `move_to(x,y,z)` (follows the navmesh,
 so no slopes steeper than ~50°; returns false and doesn't move if there's no walkable path. Moves at your current
 server speed: slower while swimming, which happens automatically in deep water, and not at all while rooted or
 stunned) · `stop_moving()` · `is_moving()` · `set_target(guid)` ·

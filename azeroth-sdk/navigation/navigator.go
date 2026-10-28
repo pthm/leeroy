@@ -125,6 +125,10 @@ func (n *embeddedNavigator) GetTerrainHeight(mapID uint32, x, y float32) (float3
 	return n.svc.GetTerrainHeight(mapID, x, y)
 }
 
+func (n *embeddedNavigator) FloorHeight(mapID uint32, x, y, hint float32) (float32, bool) {
+	return n.svc.FloorHeight(mapID, x, y, hint)
+}
+
 func (n *embeddedNavigator) GetWaterLevel(mapID uint32, x, y float32) (float32, bool) {
 	return n.svc.GetWaterLevel(mapID, x, y)
 }

@@ -1,6 +1,8 @@
 // bun server/recorder/movecheck.ts [recorder.jsonl] [--chars A,B] [--from ms]
 // Checks recorded movement against the terrain: speed (median per 1 s sample; sustained over 5 s), the steepest slope
 // crossed on each step, and whether the player was under water (a real client swims at the surface).
+// ponytail: slopes and water are measured against outdoor terrain, so steps on building floors and city streets
+// (Stormwind, inns) can show as steep climbs; check those against the route.
 import { readFileSync } from "node:fs";
 import { sample } from "./terrain.ts";
 

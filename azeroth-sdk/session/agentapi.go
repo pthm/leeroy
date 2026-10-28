@@ -128,9 +128,20 @@ func (b *Bot) setupAgentAPI() {
 		}
 		return map[string]any{"earned": earned, "criteria": crit}
 	})
-	// ground_z(x, y) -> terrain height there on your current map (nil if no map data), for move_to
-	e.RegisterFunc("ground_z", func(x, y float32) any {
+	// ground_z(x, y [, z]) -> the height to stand at (x, y) on your current map, for move_to; nil if no map data.
+	// With z (e.g. an NPC's spawn z from wowdb) it returns the walkable floor nearest that height, so indoor and
+	// upstairs targets work; without it, the outdoor terrain height (under any building).
+	e.RegisterFunc("ground_z", func(x, y, hint float32) any {
 		_, _, _, _, m := w.Position()
+		if hint != 0 {
+			if fn, ok := b.nav.(interface {
+				FloorHeight(mapID uint32, x, y, hint float32) (float32, bool)
+			}); ok {
+				if f, ok := fn.FloorHeight(m, x, y, hint); ok {
+					return f
+				}
+			}
+		}
 		if tn, ok := b.nav.(terrainHeightNavigator); ok && b.nav != nil {
 			if gh, ok := tn.GetTerrainHeight(m, x, y); ok {
 				return gh

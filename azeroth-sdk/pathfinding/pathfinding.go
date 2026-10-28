@@ -785,6 +785,16 @@ func (s *PathFindingService) GetHeight(mapID uint32, x, y, z float32) (float32, 
 	return pf.GetHeight(x, y, z)
 }
 
+// FloorHeight: the navmesh floor nearest (x, y, hint); see PathFinder.FloorHeight.
+func (s *PathFindingService) FloorHeight(mapID uint32, x, y, hint float32) (float32, bool) {
+	pf, err := s.acquirePathFinder(mapID)
+	if err != nil {
+		return 0, false
+	}
+	defer s.releasePathFinder(mapID, pf)
+	return pf.FloorHeight(x, y, hint)
+}
+
 // GetTerrainHeight returns the raw map grid height at (x,y), without using the
 // caller's Z hint or navmesh poly height. Bot movement uses this for final path
 // Z snapping so downhill terrain can pull dense wander samples down.
@@ -892,6 +902,22 @@ func (pf *PathFinder) GetHeight(x, y, z float32) (float32, bool) {
 	defer pf.navMeshRUnlock()
 
 	return pf.getHeightLocked(x, y, z)
+}
+
+// FloorHeight returns the height of the navmesh surface nearest (x, y, hint): the walkable floor at that spot,
+// including floors inside buildings and on bridges, which the server's navmesh models from its own vmaps.
+func (pf *PathFinder) FloorHeight(x, y, hint float32) (float32, bool) {
+	_ = pf.ensureTilesForPoint(Point3D{X: x, Y: y, Z: hint})
+	pf.navMeshRLock()
+	defer pf.navMeshRUnlock()
+	point := [3]float32{y, hint, x} // detour order: (y, z, x)
+	extents := [3]float32{1.5, 8.0, 1.5}
+	var ref detour.DtPolyRef
+	var closest [3]float32
+	if st := pf.query.FindNearestPoly(point[:], extents[:], pf.filter, &ref, closest[:]); !detour.DtStatusSucceed(st) || ref == invalidPolyRef {
+		return 0, false
+	}
+	return closest[1], true
 }
 
 func (pf *PathFinder) getHeightLocked(x, y, z float32) (float32, bool) {
