@@ -9,7 +9,8 @@
 # Starting conditions (applied in the DB before the agent's session): $LEVEL, $MONEY (copper),
 # $START="x y z map zone" (e.g. Goldshire: "-9460 70 56.6 0 12"). $CHANNEL: zone channel auto-joined
 # (default "General - Elwynn Forest"; real clients join their zone's General automatically).
-# $HINT: extra line appended to the task prompt.
+# $HINT: extra line appended to the task prompt. $GO: file to wait for before the judge/agent start
+# (team.sh uses it to start every clock together; touches $GO.<name>.ready once the session is up).
 set -e
 name=$1 char=$2 race=$3 class=$4 goal=$5 mins=${6:-60}
 [ -n "$goal" ] || { sed -n 2,7p "$0"; exit 1; }
@@ -35,7 +36,11 @@ docker exec ac-database mysql -uroot -ppassword -e "CREATE USER IF NOT EXISTS 'w
 sql() { docker exec ac-database mysql -uroot -ppassword -N acore_characters -e "$1" 2>/dev/null; }
 if [ -n "$LEVEL$MONEY$START" ]; then
   # create the character with a short login, then edit it while offline
-  ACCOUNT=$acct ./play.sh "$char" --race "$race" --class "$class" --duration 8s > "$ws/session.log" 2>&1
+  for try in 1 2 3; do # concurrent logins can time out on the auth server
+    ACCOUNT=$acct ./play.sh "$char" --race "$race" --class "$class" --duration 8s > "$ws/session.log" 2>&1 || true
+    [ -n "$(sql "SELECT 1 FROM characters WHERE name = '$char'")" ] && break
+    sleep $((try * 5))
+  done
   until [ "$(sql "SELECT online FROM characters WHERE name = '$char'")" = 0 ]; do sleep 1; done
   set -- $START
   sql "UPDATE characters SET health = 100000
@@ -46,10 +51,13 @@ fi
 ACCOUNT=$acct ./play.sh "$char" --race "$race" --class "$class" > "$ws/session.log" 2>&1 &
 session=$!
 trap 'kill $agent $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM
-until bin/wow 'return 1' 2>/dev/null | grep -q result; do sleep 1; done
+until bin/wow 'return 1' 2>/dev/null | grep -q result; do
+  kill -0 $session 2>/dev/null || { echo "$name: session died, see $ws/session.log"; exit 1; }; sleep 1
+done
 bin/wow "LIB = '$ws/'; bot.join_channel('${CHANNEL:-General - Elwynn Forest}', 1)" >/dev/null
 # ponytail: one zone channel joined at start; no auto-rejoin on zone change (agents can join_channel)
 
+[ -z "$GO" ] || { touch "$GO.$name.ready"; until [ -e "$GO" ]; do sleep 1; done; }
 bun judge.ts "$char" "$goal" --timeout "${mins}m" --samples "$dir/samples.jsonl" > "$dir/judge.json" &
 judge=$!
 
@@ -63,7 +71,8 @@ $HINT}
 
 Read AGENTS.md first. It documents your session (wow), the bot API, and worlddb, a read-only SQL view
 of the game's world database: mob spawns and levels, quest givers, vendors, loot tables.
-Reference source (read-only): game client $root/ghost/client, server $root/server/src/server/game.
+Reference source (read-only): game client $root/ghost/client, server $root/server/src/server/game and
+$root/server/src/server/shared.
 
 HOW TO WORK
 - Start earning progress within your first few minutes, then improve. Don't plan at length before you have
@@ -84,9 +93,9 @@ PROMPT
 
 (cd "$ws" && PATH="$root/bin:$PATH" exec timeout "${mins}m" claude -p "$(cat "$root/$dir/prompt.md")" \
   --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
-  --add-dir "$root/ghost/client" "$root/server/src/server/game" \
+  --add-dir "$root/ghost/client" "$root/server/src/server/game" "$root/server/src/server/shared" \
   --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
-    "Bash(ls:*)" "Bash(grep:*)" "Edit(/**)" \
+    "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Edit(/**)" \
   > "$root/$dir/agent.jsonl" 2>&1) &
 agent=$!
 

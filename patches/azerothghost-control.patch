@@ -1,9 +1,9 @@
 diff --git i/ai/luaengine/control.go w/ai/luaengine/control.go
 new file mode 100644
-index 0000000..c926d65
+index 0000000..67930b6
 --- /dev/null
 +++ w/ai/luaengine/control.go
-@@ -0,0 +1,219 @@
+@@ -0,0 +1,231 @@
 +package luaengine
 +
 +// Live control: evaluate Lua against the running engine (serialized with on_tick),
@@ -55,14 +55,26 @@ index 0000000..c926d65
 +	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 +		code, _ := io.ReadAll(r.Body)
 +		res, err := e.Eval(string(code))
++		out := map[string]any{"result": res}
 +		w.Header().Set("Content-Type", "application/json")
 +		if err != nil {
 +			w.WriteHeader(http.StatusBadRequest)
-+			json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
-+			return
++			out = map[string]any{"error": err.Error()}
 +		}
-+		json.NewEncoder(w).Encode(map[string]any{"result": res})
++		e.mu.Lock()
++		if e.tickErrs > 0 { // surface on_tick failures that would otherwise only reach session.log
++			out["script_errors"] = map[string]any{"count": e.tickErrs, "last": e.tickErr}
++			e.tickErrs = 0
++		}
++		e.mu.Unlock()
++		json.NewEncoder(w).Encode(out)
 +	})
++}
++
++// noteTickError is called from CallTick with e.mu held.
++func (e *Engine) noteTickError(err error) {
++	e.tickErrs++
++	e.tickErr = err.Error()
 +}
 +
 +func toGo(L *lua.State, idx, depth int) any {
@@ -223,11 +235,572 @@ index 0000000..c926d65
 +	}
 +	return v
 +}
+diff --git i/ai/luaengine/luaengine.go w/ai/luaengine/luaengine.go
+index c515585..d59a9a2 100644
+--- i/ai/luaengine/luaengine.go
++++ w/ai/luaengine/luaengine.go
+@@ -101,6 +101,7 @@ type UnitInfo struct {
+ 	Flags     uint32
+ 	DynFlags  uint32
+ 	Lootable  bool
++	Target    uint64 // UNIT_FIELD_TARGET: who this unit is targeting (0 = none)
+ }
+ 
+ // Engine wraps a Lua state and provides methods to load/run scripts.
+@@ -113,6 +114,9 @@ type Engine struct {
+ 
+ 	// Script-defined tick function name
+ 	tickFunc string
++
++	tickErrs int    // on_tick errors since the last eval (reported in the eval reply)
++	tickErr  string // the most recent one
+ }
+ 
+ // NewEngine creates a new Lua engine bound to the given bot API.
+@@ -129,6 +133,7 @@ func NewEngine(bot BotAPI) *Engine {
+ func (e *Engine) initState() {
+ 	e.state = lua.NewState()
+ 	lua.OpenLibraries(e.state)
++	installPatterns(e.state)
+ 
+ 	// Register bot API functions
+ 	e.registerBotFunctions()
+@@ -562,6 +567,9 @@ func pushUnitInfo(l *lua.State, u *UnitInfo) {
+ 
+ 	l.PushBoolean(u.Lootable)
+ 	l.SetField(-2, "lootable")
++
++	l.PushString(fmt.Sprintf("%d", u.Target))
++	l.SetField(-2, "target")
+ }
+ 
+ // DoString executes Lua code.
+@@ -594,6 +602,7 @@ func (e *Engine) CallTick() bool {
+ 	}
+ 	if err := e.state.ProtectedCall(0, 0, 0); err != nil {
+ 		e.bot.Log("[Lua] tick error: %v", err)
++		e.noteTickError(err)
+ 	}
+ 	return true
+ }
+diff --git i/ai/luaengine/patterns.go w/ai/luaengine/patterns.go
+new file mode 100644
+index 0000000..2965c60
+--- /dev/null
++++ w/ai/luaengine/patterns.go
+@@ -0,0 +1,122 @@
++package luaengine
++
++// go-lua ships string.find without pattern support (it asserts) and no match/gmatch/gsub.
++// Lua 5.x pattern matching comes from gopher-lua's standalone pm package; the string
++// functions are thin Lua wrappers around one Go primitive, string._pfind.
++
++import (
++	lua "github.com/Shopify/go-lua"
++	"github.com/yuin/gopher-lua/pm"
++)
++
++// pfind(s, pattern, init) behaves like string.find with patterns: start, end, captures...
++func pfind(l *lua.State) int {
++	s, p := lua.CheckString(l, 1), lua.CheckString(l, 2)
++	init := lua.OptInteger(l, 3, 1)
++	if init > len(s)+1 {
++		l.PushNil()
++		return 1
++	}
++	mds, err := pm.Find(p, []byte(s), init-1, 1)
++	if err != nil {
++		lua.Errorf(l, "%s", err.Error())
++	}
++	if len(mds) == 0 {
++		l.PushNil()
++		return 1
++	}
++	md := mds[0]
++	l.PushInteger(md.Capture(0) + 1)
++	l.PushInteger(md.Capture(1))
++	for i := 2; i < md.CaptureLength(); i += 2 {
++		if md.IsPosCapture(i) {
++			l.PushInteger(md.Capture(i))
++		} else {
++			l.PushString(s[md.Capture(i):md.Capture(i+1)])
++		}
++	}
++	return md.CaptureLength()/2 + 1
++}
++
++const patternPrelude = `
++local native_find, pfind, unpack, concat = string.find, string._pfind, table.unpack, table.concat
++local function start(s, i)
++  i = i or 1
++  if i < 0 then i = math.max(#s + i + 1, 1) elseif i == 0 then i = 1 end
++  return i
++end
++-- captures of a pfind result r, or the whole match when the pattern has none
++local function caps(s, r)
++  if #r > 2 then return unpack(r, 3) end
++  return s:sub(r[1], r[2])
++end
++function string.find(s, p, init, plain)
++  init = start(s, init)
++  if plain then return native_find(s, p, init, true) end
++  return pfind(s, p, init)
++end
++function string.match(s, p, init)
++  local r = {pfind(s, p, start(s, init))}
++  if r[1] == nil then return nil end
++  return caps(s, r)
++end
++function string.gmatch(s, p)
++  local pos = 1
++  return function()
++    if pos > #s + 1 then return nil end
++    local r = {pfind(s, p, pos)}
++    if r[1] == nil then pos = #s + 2; return nil end
++    pos = r[2] >= r[1] and r[2] + 1 or r[1] + 1
++    return caps(s, r)
++  end
++end
++function string.gsub(s, p, repl, n)
++  local out, pos, count, rt = {}, 1, 0, type(repl)
++  n = n or math.huge
++  while count < n and pos <= #s + 1 do
++    local r = {pfind(s, p, pos)}
++    if r[1] == nil then break end
++    local st, en = r[1], r[2]
++    local whole = s:sub(st, en)
++    local v
++    if rt == "string" or rt == "number" then
++      repl = tostring(repl)
++      local t, i = {}, 1
++      while i <= #repl do
++        local c = repl:sub(i, i)
++        if c == "%" then
++          i = i + 1
++          c = repl:sub(i, i)
++          local d = tonumber(c)
++          if d == 0 or (d == 1 and #r == 2) then c = whole
++          elseif d then c = tostring(r[d + 2]) end
++        end
++        t[#t + 1] = c
++        i = i + 1
++      end
++      v = concat(t)
++    elseif rt == "table" then v = repl[(caps(s, r))]
++    else v = repl(caps(s, r)) end
++    if v == nil or v == false then v = whole end
++    out[#out + 1] = s:sub(pos, st - 1)
++    out[#out + 1] = tostring(v)
++    count = count + 1
++    if en >= st then pos = en + 1 else
++      out[#out + 1] = s:sub(st, st)
++      pos = st + 1
++    end
++  end
++  out[#out + 1] = s:sub(pos)
++  return concat(out), count
++end
++`
++
++func installPatterns(l *lua.State) {
++	l.Global("string")
++	l.PushGoFunction(pfind)
++	l.SetField(-2, "_pfind")
++	l.Pop(1)
++	if err := lua.DoString(l, patternPrelude); err != nil {
++		panic(err)
++	}
++}
+diff --git i/ai/luaengine/patterns_test.go w/ai/luaengine/patterns_test.go
+new file mode 100644
+index 0000000..9e18a95
+--- /dev/null
++++ w/ai/luaengine/patterns_test.go
+@@ -0,0 +1,41 @@
++package luaengine
++
++import (
++	"testing"
++
++	lua "github.com/Shopify/go-lua"
++)
++
++func TestPatterns(t *testing.T) {
++	l := lua.NewState()
++	lua.OpenLibraries(l)
++	installPatterns(l)
++	err := lua.DoString(l, `
++		assert(("hello world"):find("o w") == 5)
++		assert(("a.b"):find(".", 1, true) == 2)
++		local s, e, c = ("key=val"):find("(%w+)=")
++		assert(s == 1 and e == 4 and c == "key")
++		assert(("x=10,y=20"):match("y=(%d+)") == "20")
++		assert(("abc"):match("^b") == nil)
++		local k, v = ("pos -9900.5,680"):match("(%-?[%d.]+),(%d+)")
++		assert(k == "-9900.5" and v == "680", k)
++		local t = {}
++		for w in ("a1 b22 c333"):gmatch("%a(%d+)") do t[#t+1] = w end
++		assert(#t == 3 and t[3] == "333")
++		local n = 0
++		for _ in string.gmatch("", "x*") do n = n + 1 end
++		assert(n == 1)
++		assert(("hello"):gsub("l", "L") == "heLLo")
++		local r, c2 = ("a,b,c"):gsub(",", ";", 1)
++		assert(r == "a;b,c" and c2 == 1)
++		assert(("abc"):gsub("%w", "%0%0") == "aabbcc")
++		assert(("k=v"):gsub("(%w)=(%w)", "%2=%1") == "v=k")
++		assert(("$x $y"):gsub("%$(%w)", {x = "1"}) == "1 $y")
++		assert(("ab"):gsub(".", function(c) return c:upper() end) == "AB")
++		assert(("abc"):gsub("", "-") == "-a-b-c-")
++		assert(("0a0b"):gsub("%x%x", "") == "")
++	`)
++	if err != nil {
++		t.Fatal(err)
++	}
++}
+diff --git i/bot/agentapi.go w/bot/agentapi.go
+new file mode 100644
+index 0000000..26a25b7
+--- /dev/null
++++ w/bot/agentapi.go
+@@ -0,0 +1,314 @@
++package bot
++
++// Agent API: game state the client doesn't track itself (casting, cooldowns, corpse, bags, quest log),
++// mostly from packets and update fields. Registered from setupControl.
++
++import (
++	"bytes"
++	"encoding/binary"
++	"fmt"
++	"math"
++	"os"
++	"path/filepath"
++	"sync"
++	"time"
++
++	"github.com/azerothcore/AzerothGhost/client"
++)
++
++const (
++	smsgCastFailed        = 0x130
++	smsgSpellStart        = 0x131
++	smsgSpellGo           = 0x132
++	smsgSpellFailure      = 0x133
++	msgChannelStart       = 0x139
++	msgChannelUpdate      = 0x13A
++	msgCorpseQuery        = 0x216
++	cmsgSpiritHealerAct   = 0x21C
++	smsgCorpseReclaimWait = 0x269
++	cmsgQuestRequestRew   = 0x18C
++
++	fieldPlayerFlags   = 0x96  // PLAYER_FLAGS
++	fieldQuestLog      = 0x9E  // PLAYER_QUEST_LOG_1_1; 25 slots x 5 fields: id, state, counters (4 x u16), time
++	fieldInvSlots      = 0x144 // PLAYER_FIELD_INV_SLOT_HEAD: slots 0-18 equipped, 19-22 bags, 23-38 backpack
++	fieldItemStack     = 0x0E  // ITEM_FIELD_STACK_COUNT
++	fieldContainerSize = 0x40  // CONTAINER_FIELD_NUM_SLOTS
++	fieldContainerSlot = 0x42  // CONTAINER_FIELD_SLOT_1
++)
++
++type agentState struct {
++	mu        sync.Mutex
++	castSpell uint32
++	castUntil time.Time
++	castErr   map[string]any
++	cd        map[uint32]time.Time // spell -> ready at
++	catCD     map[uint32]time.Time // spell category -> ready at
++	gcdUntil  time.Time
++	corpse    []float32 // x, y, z, map
++	corpseAt  time.Time
++	reclaimAt time.Time
++}
++
++func (b *Bot) setupAgentAPI() {
++	s := &agentState{cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}}
++	w := b.world
++	spellsDir = b.config.DataDir
++	go loadSpells() // ~50MB; don't stall the packet goroutine on first use
++	w.AddPacketHook(func(op uint16, data []byte) { s.onPacket(w.CharGUID(), op, data) })
++	e := b.lua
++
++	e.RegisterFunc("is_ghost", b.IsGhost)
++	e.RegisterFunc("is_casting", func() (any, float64) {
++		s.mu.Lock()
++		defer s.mu.Unlock()
++		if left := time.Until(s.castUntil); s.castSpell != 0 && left > 0 {
++			return s.castSpell, float64(left.Milliseconds())
++		}
++		return nil, 0
++	})
++	e.RegisterFunc("last_cast_error", func() map[string]any {
++		s.mu.Lock()
++		defer s.mu.Unlock()
++		return s.castErr
++	})
++	// is_spell_ready(id) -> ready, ms until ready. The client only knew server-pushed cooldowns, which
++	// AC doesn't send for normal casts (the real client reads them from Spell.dbc), so it said "ready"
++	// for spells on cooldown.
++	e.RegisterFunc("is_spell_ready", func(id uint32) (bool, float64) {
++		if !b.IsSpellReady(id) {
++			return false, 0
++		}
++		s.mu.Lock()
++		defer s.mu.Unlock()
++		at := s.cd[id]
++		if sp := spellInfo(id); sp != nil {
++			if c := s.catCD[sp.Category]; sp.Category != 0 && c.After(at) {
++				at = c
++			}
++			if sp.GCDCategory != 0 && s.gcdUntil.After(at) {
++				at = s.gcdUntil
++			}
++		}
++		left := time.Until(at)
++		return left <= 0, math.Max(0, float64(left.Milliseconds()))
++	})
++	e.RegisterFunc("spell_info", func(id uint32) *spellRec { return spellInfo(id) })
++
++	// corpse_position() -> x, y, z, seconds until it can be reclaimed; nil when not dead. The first call
++	// after dying asks the server and returns nil; ask again a moment later.
++	e.RegisterFunc("corpse_position", func() (any, any, any, any) {
++		s.mu.Lock()
++		defer s.mu.Unlock()
++		if b.world.Health() > 0 && !b.IsGhost() {
++			s.corpse = nil
++			return nil, nil, nil, nil
++		}
++		if time.Since(s.corpseAt) > 3*time.Second {
++			s.corpseAt = time.Now()
++			w.SendPacketRaw(msgCorpseQuery, nil)
++		}
++		if s.corpse == nil {
++			return nil, nil, nil, nil
++		}
++		return s.corpse[0], s.corpse[1], s.corpse[2], math.Max(0, time.Until(s.reclaimAt).Seconds())
++	})
++	e.RegisterFunc("spirit_res", func(npc uint64) { // resurrect at a spirit healer (with res sickness)
++		w.SendPacketRaw(cmsgSpiritHealerAct, binary.LittleEndian.AppendUint64(nil, npc))
++	})
++	// get_attackers(dist) -> living units within dist that are targeting you
++	e.RegisterFunc("get_attackers", func(dist float32) []map[string]any {
++		me := w.CharGUID()
++		out := []map[string]any{}
++		for _, u := range b.GetNearbyUnits(dist) {
++			if u.Target == me && u.IsAlive {
++				out = append(out, map[string]any{"guid": fmt.Sprint(u.GUID), "entry": u.Entry, "level": u.Level,
++					"health": u.Health, "max_health": u.MaxHealth, "distance": u.Distance, "is_player": u.IsPlayer})
++			}
++		}
++		return out
++	})
++	e.RegisterFunc("bag_items", func() []map[string]any { return bagItems(w) })
++	e.RegisterFunc("has_item", func(entry uint32) uint32 {
++		n := uint32(0)
++		for _, it := range bagItems(w) {
++			if it["entry"] == entry {
++				n += it["count"].(uint32)
++			}
++		}
++		return n
++	})
++	e.RegisterFunc("quest_log", func() []map[string]any {
++		out := []map[string]any{}
++		o := w.GetObject(w.CharGUID())
++		if o == nil {
++			return out
++		}
++		for slot := uint16(0); slot < 25; slot++ {
++			f := fieldQuestLog + slot*5
++			id := o.Value(f)
++			if id == 0 {
++				continue
++			}
++			c1, c2 := o.Value(f+2), o.Value(f+3)
++			out = append(out, map[string]any{"id": id, "complete": o.Value(f+1)&1 != 0, "failed": o.Value(f+1)&2 != 0,
++				"counts": []uint32{c1 & 0xFFFF, c1 >> 16, c2 & 0xFFFF, c2 >> 16}}) // kill/object counters (items: has_item)
++		}
++		return out
++	})
++	// turn_in(npc, quest, reward_index): complete -> request reward -> choose reward in one go.
++	// Check quest_log()/has_item first; the server silently ignores an incomplete turn-in.
++	e.RegisterFunc("turn_in", func(npc uint64, quest, reward uint32) {
++		w.QuestgiverCompleteQuest(npc, quest)
++		body := binary.LittleEndian.AppendUint64(nil, npc)
++		w.SendPacketRaw(cmsgQuestRequestRew, binary.LittleEndian.AppendUint32(body, quest))
++		w.QuestgiverChooseReward(npc, quest, reward)
++	})
++}
++
++func (s *agentState) onPacket(me uint64, op uint16, data []byte) {
++	r := bytes.NewReader(data)
++	u32 := func() (v uint32) { binary.Read(r, binary.LittleEndian, &v); return }
++	f32 := func() (v float32) { binary.Read(r, binary.LittleEndian, &v); return }
++	now := time.Now()
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	switch op {
++	case smsgSpellStart, smsgSpellGo:
++		readPackedGUID(r) // caster item
++		if readPackedGUID(r) != me {
++			return
++		}
++		r.ReadByte() // cast count
++		spell, _ := u32(), u32()
++		sp := spellInfo(spell)
++		if sp != nil && sp.GCD > 0 {
++			s.gcdUntil = now.Add(time.Duration(sp.GCD) * time.Millisecond)
++		}
++		if op == smsgSpellStart {
++			s.castSpell, s.castUntil = spell, now.Add(time.Duration(u32())*time.Millisecond)
++			return
++		}
++		if s.castSpell == spell {
++			s.castSpell = 0
++		}
++		// ponytail: base cooldowns from Spell.dbc; talents/glyphs that shorten them aren't applied
++		if sp != nil && sp.Cooldown > 0 {
++			s.cd[spell] = now.Add(time.Duration(sp.Cooldown) * time.Millisecond)
++		}
++		if sp != nil && sp.Category != 0 && sp.CategoryCooldown > 0 {
++			s.catCD[sp.Category] = now.Add(time.Duration(sp.CategoryCooldown) * time.Millisecond)
++		}
++	case smsgSpellFailure:
++		if readPackedGUID(r) == me {
++			s.castSpell = 0
++		}
++	case smsgCastFailed:
++		r.ReadByte()
++		spell := u32()
++		code, _ := r.ReadByte()
++		s.castSpell = 0
++		s.castErr = map[string]any{"spell": spell, "code": code, "reason": castResultNames[code], "time_ms": now.UnixMilli()}
++	case msgChannelStart:
++		if readPackedGUID(r) == me {
++			s.castSpell = u32()
++			s.castUntil = now.Add(time.Duration(u32()) * time.Millisecond)
++		}
++	case msgChannelUpdate:
++		if readPackedGUID(r) == me {
++			s.castUntil = now.Add(time.Duration(u32()) * time.Millisecond)
++		}
++	case msgCorpseQuery:
++		if found, _ := r.ReadByte(); found != 0 {
++			m := u32()
++			s.corpse = []float32{f32(), f32(), f32(), float32(m)}
++		}
++	case smsgCorpseReclaimWait:
++		s.reclaimAt = now.Add(time.Duration(u32()) * time.Millisecond)
++	}
++}
++
++func guidAt(o *client.WorldObject, f uint16) uint64 {
++	return uint64(o.Value(f)) | uint64(o.Value(f+1))<<32
++}
++
++// bagItems: bag 255 = the character's own slots (0-18 equipped, 19-22 bags, 23-38 backpack, the
++// same numbering as AutoEquipItem), bag 19-22 = slot inside that bag.
++func bagItems(w *client.WorldClient) []map[string]any {
++	out := []map[string]any{}
++	me := w.GetObject(w.CharGUID())
++	if me == nil {
++		return out
++	}
++	add := func(bag, slot uint8, guid uint64) {
++		if it := w.GetObject(guid); guid != 0 && it != nil {
++			out = append(out, map[string]any{"bag": bag, "slot": slot, "guid": fmt.Sprint(guid),
++				"entry": it.Value(3), "count": max(it.Value(fieldItemStack), 1)})
++		}
++	}
++	for slot := uint8(0); slot < 39; slot++ {
++		add(255, slot, guidAt(me, fieldInvSlots+uint16(slot)*2))
++	}
++	for bag := uint8(19); bag < 23; bag++ {
++		c := w.GetObject(guidAt(me, fieldInvSlots+uint16(bag)*2))
++		if c == nil {
++			continue
++		}
++		for slot := uint8(0); uint32(slot) < c.Value(fieldContainerSize) && slot < 36; slot++ {
++			add(bag, slot, guidAt(c, fieldContainerSlot+uint16(slot)*2))
++		}
++	}
++	return out
++}
++
++// --- Spell.dbc (copied to <data-dir>/dbc by the setup) ---
++
++type spellRec struct {
++	Name             string `json:"name"`
++	Rank             string `json:"rank"`
++	Category         uint32 `json:"category"`
++	Cooldown         uint32 `json:"cooldown_ms"`
++	CategoryCooldown uint32 `json:"category_cooldown_ms"`
++	GCDCategory      uint32 `json:"gcd_category"`
++	GCD              uint32 `json:"gcd_ms"`
++	PowerType        uint32 `json:"power_type"`
++	Cost             uint32 `json:"cost"` // rage/runic are x10, as in get_power()
++}
++
++var (
++	spellsDir  string
++	spellsOnce sync.Once
++	spells     map[uint32]*spellRec
++)
++
++func loadSpells() {
++	spellsOnce.Do(func() {
++		spells = map[uint32]*spellRec{}
++		b, err := os.ReadFile(filepath.Join(spellsDir, "dbc", "Spell.dbc"))
++		if err != nil || len(b) < 20 || string(b[:4]) != "WDBC" {
++			fmt.Fprintf(os.Stderr, "Spell.dbc not loaded (cooldowns/spell_info unavailable): %v\n", err)
++			return
++		}
++		le := binary.LittleEndian
++		n, recSize := le.Uint32(b[4:]), le.Uint32(b[12:])
++		strs := b[20+n*recSize:]
++		str := func(off uint32) string {
++			if off >= uint32(len(strs)) {
++				return ""
++			}
++			end := bytes.IndexByte(strs[off:], 0)
++			return string(strs[off : off+uint32(end)])
++		}
++		for i := uint32(0); i < n; i++ {
++			rec := b[20+i*recSize:]
++			f := func(idx int) uint32 { return le.Uint32(rec[idx*4:]) }
++			// field indices per AzerothCore DBCStructure.h SpellEntry
++			spells[f(0)] = &spellRec{Name: str(f(136)), Rank: str(f(153)), Category: f(1), Cooldown: f(29),
++				CategoryCooldown: f(30), GCDCategory: f(205), GCD: f(206), PowerType: f(41), Cost: f(42)}
++		}
++	})
++}
++
++func spellInfo(id uint32) *spellRec {
++	loadSpells() // waits for the background load; no-op if it already ran
++	return spells[id]
++}
 diff --git i/bot/bot.go w/bot/bot.go
-index a749726..a201f17 100644
+index a749726..8e38694 100644
 --- i/bot/bot.go
 +++ w/bot/bot.go
-@@ -244,6 +244,7 @@ func NewHeadlessBot(wc *client.WorldClient, cfg Config) *Bot {
+@@ -76,11 +76,12 @@ type BotEvent struct {
+ 
+ // Bot implements the WoW client bot logic with behavior tree AI.
+ type Bot struct {
+-	id     string
+-	config Config
+-	status BotStatus
+-	err    error
+-	mu     sync.Mutex
++	lastMoveNoPath bool // last move_to found no navmesh path (move_to returns false)
++	id             string
++	config         Config
++	status         BotStatus
++	err            error
++	mu             sync.Mutex
+ 
+ 	world *client.WorldClient
+ 	nav   navigation.Navigator
+@@ -244,6 +245,7 @@ func NewHeadlessBot(wc *client.WorldClient, cfg Config) *Bot {
  
  	// Lua engine + AIBundle/LuaCode loading (same rules as full Run path)
  	b.lua = luaengine.NewEngine(b)
@@ -235,7 +808,7 @@ index a749726..a201f17 100644
  	if !cfg.AIBundle.IsEmpty() {
  		if cfg.AIBundle.Main != "" {
  			_ = b.lua.DoString(cfg.AIBundle.Main)
-@@ -521,6 +522,7 @@ func (b *Bot) Run() BotResult {
+@@ -521,6 +523,7 @@ func (b *Bot) Run() BotResult {
  	for _, ch := range chars {
  		if strings.EqualFold(ch.Name, b.config.CharacterName) {
  			charGUID = ch.GUID
@@ -243,7 +816,7 @@ index a749726..a201f17 100644
  			found = true
  			b.log("Found character %s (GUID: %d, Level: %d)", ch.Name, ch.GUID, ch.Level)
  			break
-@@ -581,6 +583,7 @@ func (b *Bot) Run() BotResult {
+@@ -581,6 +584,7 @@ func (b *Bot) Run() BotResult {
  		for _, ch := range chars {
  			if strings.EqualFold(ch.Name, b.config.CharacterName) {
  				charGUID = ch.GUID
@@ -251,7 +824,7 @@ index a749726..a201f17 100644
  				found = true
  				break
  			}
-@@ -662,6 +665,7 @@ func (b *Bot) Run() BotResult {
+@@ -662,6 +666,7 @@ func (b *Bot) Run() BotResult {
  
  	// Step 8: Initialize Lua engine
  	b.lua = luaengine.NewEngine(b)
@@ -259,7 +832,107 @@ index a749726..a201f17 100644
  
  	// AIBundle / LuaCode / LuaScript loading (precedence: AIBundle.Main > LuaCode > LuaScript file).
  	// This enables scenario-driven custom AI as specified in the design.
-@@ -3110,7 +3114,7 @@ func (b *Bot) worldObjToUnitInfo(obj *client.WorldObject) luaengine.UnitInfo {
+@@ -1092,8 +1097,9 @@ func (b *Bot) runAILoop(worldErrCh chan error) {
+ 				// 	b.log("[DEBUG-POS] tick pos: map=%d (%.1f,%.1f,%.1f) o=%.2f", pmid, px, py, pz, po)
+ 				// }
+ 			}
+-			// Lua tick gets priority
+-			if b.lua != nil && b.lua.CallTick() {
++			// Lua tick gets priority. In lua mode it's the only AI: with no on_tick loaded the built-in
++			// tree used to take over (target pursuit, combat rotation, auto release/reclaim, looting).
++			if b.lua != nil && (b.lua.CallTick() || b.config.Mode == "lua") {
+ 				elapsed := time.Since(tickStart)
+ 				if elapsed > 300*time.Millisecond {
+ 					ms := elapsed.Milliseconds()
+@@ -2425,6 +2431,10 @@ func (b *Bot) moveToPoint(x, y, z float32) {
+ 	var pts []navigation.Point3D
+ 	if b.nav != nil {
+ 		result, err := b.nav.FindPath(mapID, current, navigation.Point3D{X: x, Y: y, Z: z})
++		b.lastMoveNoPath = !(err == nil && result != nil && result.Found)
++		if err != nil {
++			b.log("pathfinding error: %v", err) // e.g. mmaps version mismatch; was silent
++		}
+ 		if err == nil && result != nil && result.Found && len(result.Points) > 1 {
+ 			pts = simplifyAndDensifyPath(result.Points, 3.0, 1.0)
+ 			// detect crazy path (common in Durotar bad navmesh)
+@@ -2435,7 +2445,9 @@ func (b *Bot) moveToPoint(x, y, z float32) {
+ 			}
+ 			// Reject huge detours (navmesh artifacts): more than 2× straight line
+ 			// or absurdly long paths send the bot running across the zone.
+-			if straight > 1.0 && (plen > straight*2.0 || plen > straight+40 || len(pts) > 60) {
++			// (Was also plen > straight+40 || len(pts) > 60, which straight-lined every trip over ~180yd
++			// through hills and buildings, so long move_to calls silently stalled.)
++			if straight > 1.0 && plen > straight*2.0 && plen > straight+60 {
+ 				b.log("crazy path rejected (straight=%.1f path=%.1f n=%d) — direct line",
+ 					straight, plen, len(pts))
+ 				pts = simplifyAndDensifyPath([]navigation.Point3D{current, {X: x, Y: y, Z: z}}, 3.0, 1.0)
+@@ -2827,6 +2839,9 @@ func (b *Bot) SetSheathed(state uint32) error {
+ 
+ func (b *Bot) MoveTo(x, y, z float32) error {
+ 	b.moveToPoint(x, y, z)
++	if b.lastMoveNoPath {
++		return fmt.Errorf("no navmesh path; walking a straight line")
++	}
+ 	return nil
+ }
+ 
+@@ -2974,6 +2989,11 @@ func (b *Bot) GetHealth() (current, max uint32) {
+ }
+ 
+ func (b *Bot) GetPower() (current, max uint32) {
++	// world.Power() only tracks mana; read UNIT_FIELD_(MAX)POWER1+type for rage/energy/runic too.
++	if o := b.world.GetObject(b.world.CharGUID()); o != nil {
++		t := uint16(b.GetPowerType())
++		return o.Value(client.UnitFieldPower1 + t), o.Value(client.UnitFieldMaxPower1 + t)
++	}
+ 	return b.world.Power()
+ }
+ 
+@@ -3003,6 +3023,9 @@ func (b *Bot) GetRace() uint8 {
+ }
+ 
+ func (b *Bot) GetPowerType() uint8 {
++	if o := b.world.GetObject(b.world.CharGUID()); o != nil && o.Value(client.UnitFieldMaxHealth) != 0 {
++		return uint8(o.Value(client.UnitFieldBytes0) >> 24) // UNIT_FIELD_BYTES_0 byte 3 = power type
++	}
+ 	// Common power types: 0=mana, 1=rage, 2=focus, 3=energy, 6=runic power
+ 	// For simplicity, derive from class. Can be improved by reading UnitFieldBytes0.
+ 	switch b.config.Class {
+@@ -3032,9 +3055,19 @@ func (b *Bot) GetPowerType() uint8 {
+ }
+ 
+ func (b *Bot) InCombat() bool {
++	// The server's UNIT_FLAG_IN_COMBAT; the client-side flag went stale after fights.
++	if o := b.world.GetObject(b.world.CharGUID()); o != nil && o.Value(client.UnitFieldMaxHealth) != 0 {
++		return o.Value(client.UnitFieldFlags)&0x80000 != 0
++	}
+ 	return b.world.InCombat()
+ }
+ 
++// IsGhost: PLAYER_FLAGS & PLAYER_FLAGS_GHOST (released spirit; health reads 1, not 0).
++func (b *Bot) IsGhost() bool {
++	o := b.world.GetObject(b.world.CharGUID())
++	return o != nil && o.Value(0x96)&0x10 != 0
++}
++
+ func (b *Bot) IsAlive() bool {
+ 	h := b.world.Health()
+ 	mh := b.world.MaxHealth()
+@@ -3042,7 +3075,7 @@ func (b *Bot) IsAlive() bool {
+ 	if h == 0 && mh == 0 {
+ 		return true
+ 	}
+-	if h == 0 {
++	if h == 0 || b.IsGhost() {
+ 		return false
+ 	}
+ 	// Also check death count - if deaths > 0 and health is still 0, we're dead
+@@ -3106,11 +3139,12 @@ func (b *Bot) worldObjToUnitInfo(obj *client.WorldObject) luaengine.UnitInfo {
+ 		Flags:     obj.Value(client.UnitFieldFlags),
+ 		DynFlags:  dyn,
+ 		Lootable:  dyn&client.UnitDynflagLootable != 0,
++		Target:    uint64(obj.Value(client.UnitFieldTarget)) | uint64(obj.Value(client.UnitFieldTarget+1))<<32,
+ 	}
  }
  
  func (b *Bot) SendChat(message string) error {
@@ -268,12 +941,226 @@ index a749726..a201f17 100644
  }
  
  func (b *Bot) SendCommand(command string) error {
+@@ -3147,10 +3181,9 @@ func (b *Bot) LootAll(guid uint64) error {
+ 	b.lastLootAttemptAt = now
+ 	b.lootMu.Unlock()
+ 
+-	_ = b.world.Loot(guid)
+-	_ = b.world.LootMoney()
+-	_ = b.world.LootRelease(guid)
+-	return nil
++	// Items, money and release happen in handleLootOpened once SMSG_LOOT_RESPONSE arrives; releasing
++	// here (before the response) closed the window first, so items were never taken.
++	return b.world.Loot(guid)
+ }
+ 
+ func (b *Bot) Log(format string, args ...interface{}) {
+diff --git i/bot/castresults.go w/bot/castresults.go
+new file mode 100644
+index 0000000..5ce7d41
+--- /dev/null
++++ w/bot/castresults.go
+@@ -0,0 +1,194 @@
++// Code generated from AzerothCore SharedDefines.h (enum SpellCastResult). DO NOT EDIT.
++
++package bot
++
++var castResultNames = map[uint8]string{
++	0:   "success",
++	1:   "affecting_combat",
++	2:   "already_at_full_health",
++	3:   "already_at_full_mana",
++	4:   "already_at_full_power",
++	5:   "already_being_tamed",
++	6:   "already_have_charm",
++	7:   "already_have_summon",
++	8:   "already_open",
++	9:   "aura_bounced",
++	10:  "autotrack_interrupted",
++	11:  "bad_implicit_targets",
++	12:  "bad_targets",
++	13:  "cant_be_charmed",
++	14:  "cant_be_disenchanted",
++	15:  "cant_be_disenchanted_skill",
++	16:  "cant_be_milled",
++	17:  "cant_be_prospected",
++	18:  "cant_cast_on_tapped",
++	19:  "cant_duel_while_invisible",
++	20:  "cant_duel_while_stealthed",
++	21:  "cant_stealth",
++	22:  "caster_aurastate",
++	23:  "caster_dead",
++	24:  "charmed",
++	25:  "chest_in_use",
++	26:  "confused",
++	27:  "dont_report",
++	28:  "equipped_item",
++	29:  "equipped_item_class",
++	30:  "equipped_item_class_mainhand",
++	31:  "equipped_item_class_offhand",
++	32:  "error",
++	33:  "fizzle",
++	34:  "fleeing",
++	35:  "food_lowlevel",
++	36:  "highlevel",
++	37:  "hunger_satiated",
++	38:  "immune",
++	39:  "incorrect_area",
++	40:  "interrupted",
++	41:  "interrupted_combat",
++	42:  "item_already_enchanted",
++	43:  "item_gone",
++	44:  "item_not_found",
++	45:  "item_not_ready",
++	46:  "level_requirement",
++	47:  "line_of_sight",
++	48:  "lowlevel",
++	49:  "low_castlevel",
++	50:  "mainhand_empty",
++	51:  "moving",
++	52:  "need_ammo",
++	53:  "need_ammo_pouch",
++	54:  "need_exotic_ammo",
++	55:  "need_more_items",
++	56:  "nopath",
++	57:  "not_behind",
++	58:  "not_fishable",
++	59:  "not_flying",
++	60:  "not_here",
++	61:  "not_infront",
++	62:  "not_in_control",
++	63:  "not_known",
++	64:  "not_mounted",
++	65:  "not_on_taxi",
++	66:  "not_on_transport",
++	67:  "not_ready",
++	68:  "not_shapeshift",
++	69:  "not_standing",
++	70:  "not_tradeable",
++	71:  "not_trading",
++	72:  "not_unsheathed",
++	73:  "not_while_ghost",
++	74:  "not_while_looting",
++	75:  "no_ammo",
++	76:  "no_charges_remain",
++	77:  "no_champion",
++	78:  "no_combo_points",
++	79:  "no_dueling",
++	80:  "no_endurance",
++	81:  "no_fish",
++	82:  "no_items_while_shapeshifted",
++	83:  "no_mounts_allowed",
++	84:  "no_pet",
++	85:  "no_power",
++	86:  "nothing_to_dispel",
++	87:  "nothing_to_steal",
++	88:  "only_abovewater",
++	89:  "only_daytime",
++	90:  "only_indoors",
++	91:  "only_mounted",
++	92:  "only_nighttime",
++	93:  "only_outdoors",
++	94:  "only_shapeshift",
++	95:  "only_stealthed",
++	96:  "only_underwater",
++	97:  "out_of_range",
++	98:  "pacified",
++	99:  "possessed",
++	100: "reagents",
++	101: "requires_area",
++	102: "requires_spell_focus",
++	103: "rooted",
++	104: "silenced",
++	105: "spell_in_progress",
++	106: "spell_learned",
++	107: "spell_unavailable",
++	108: "stunned",
++	109: "targets_dead",
++	110: "target_affecting_combat",
++	111: "target_aurastate",
++	112: "target_dueling",
++	113: "target_enemy",
++	114: "target_enraged",
++	115: "target_friendly",
++	116: "target_in_combat",
++	117: "target_is_player",
++	118: "target_is_player_controlled",
++	119: "target_not_dead",
++	120: "target_not_in_party",
++	121: "target_not_looted",
++	122: "target_not_player",
++	123: "target_no_pockets",
++	124: "target_no_weapons",
++	125: "target_no_ranged_weapons",
++	126: "target_unskinnable",
++	127: "thirst_satiated",
++	128: "too_close",
++	129: "too_many_of_item",
++	130: "totem_category",
++	131: "totems",
++	132: "try_again",
++	133: "unit_not_behind",
++	134: "unit_not_infront",
++	135: "wrong_pet_food",
++	136: "not_while_fatigued",
++	137: "target_not_in_instance",
++	138: "not_while_trading",
++	139: "target_not_in_raid",
++	140: "target_freeforall",
++	141: "no_edible_corpses",
++	142: "only_battlegrounds",
++	143: "target_not_ghost",
++	144: "transform_unusable",
++	145: "wrong_weather",
++	146: "damage_immune",
++	147: "prevented_by_mechanic",
++	148: "play_time",
++	149: "reputation",
++	150: "min_skill",
++	151: "not_in_arena",
++	152: "not_on_shapeshift",
++	153: "not_on_stealthed",
++	154: "not_on_damage_immune",
++	155: "not_on_mounted",
++	156: "too_shallow",
++	157: "target_not_in_sanctuary",
++	158: "target_is_trivial",
++	159: "bm_or_invisgod",
++	160: "expert_riding_requirement",
++	161: "artisan_riding_requirement",
++	162: "not_idle",
++	163: "not_inactive",
++	164: "partial_playtime",
++	165: "no_playtime",
++	166: "not_in_battleground",
++	167: "not_in_raid_instance",
++	168: "only_in_arena",
++	169: "target_locked_to_raid_instance",
++	170: "on_use_enchant",
++	171: "not_on_ground",
++	172: "custom_error",
++	173: "cant_do_that_right_now",
++	174: "too_many_sockets",
++	175: "invalid_glyph",
++	176: "unique_glyph",
++	177: "glyph_socket_locked",
++	178: "no_valid_targets",
++	179: "item_at_max_charges",
++	180: "not_in_barbershop",
++	181: "fishing_too_low",
++	182: "item_enchant_trade_window",
++	183: "summon_pending",
++	184: "max_sockets",
++	185: "pet_can_rename",
++	186: "target_cannot_be_resurrected",
++	187: "unknown",
++}
 diff --git i/bot/control.go w/bot/control.go
 new file mode 100644
-index 0000000..45135f9
+index 0000000..0085ecb
 --- /dev/null
 +++ w/bot/control.go
-@@ -0,0 +1,245 @@
+@@ -0,0 +1,262 @@
 +package bot
 +
 +// Agent control surface: extra Lua bindings (chat inbox, raw packets, events, reflective
@@ -324,6 +1211,7 @@ index 0000000..45135f9
 +	packets []RawPacket
 +	watched map[uint16]bool
 +	names   map[uint64]string
++	unread  int // player chat from others since the last read_chat (wakes `wow -c`)
 +}
 +
 +func capAppend[T any](s []T, v T) []T {
@@ -338,13 +1226,14 @@ index 0000000..45135f9
 +	w := b.world
 +	w.AddPacketHook(func(op uint16, data []byte) { c.onPacket(w, op, data) })
 +
++	b.setupAgentAPI()
 +	e := b.lua
 +	e.RegisterCall("call", w) // bot.call("QuestgiverHello", guid) etc. — any exported WorldClient method
 +	e.RegisterFunc("read_chat", func() []ChatMessage {
 +		c.mu.Lock()
 +		defer c.mu.Unlock()
-+		out := c.chat
-+		c.chat = nil
++		out := append([]ChatMessage{}, c.chat...) // [] not nil when empty, so Lua gets a table
++		c.chat, c.unread = nil, 0
 +		for i := range out {
 +			if out[i].From == "" {
 +				var g uint64
@@ -354,6 +1243,11 @@ index 0000000..45135f9
 +		}
 +		return out
 +	})
++	e.RegisterFunc("chat_pending", func() int {
++		c.mu.Lock()
++		defer c.mu.Unlock()
++		return c.unread
++	})
 +	e.RegisterFunc("watch", func(op uint16, on bool) {
 +		c.mu.Lock()
 +		defer c.mu.Unlock()
@@ -362,7 +1256,7 @@ index 0000000..45135f9
 +	e.RegisterFunc("read_packets", func() []RawPacket {
 +		c.mu.Lock()
 +		defer c.mu.Unlock()
-+		out := c.packets
++		out := append([]RawPacket{}, c.packets...)
 +		c.packets = nil
 +		return out
 +	})
@@ -438,6 +1332,9 @@ index 0000000..45135f9
 +				}
 +			}
 +			c.chat = capAppend(c.chat, m)
++			if m.Type != 0 && m.Type != 9 && !monsterChat(m.Type) && guid != w.CharGUID() { // not system, echo, NPC or self
++				c.unread++
++			}
 +		}
 +	}
 +}
@@ -473,7 +1370,7 @@ index 0000000..45135f9
 +	binary.Read(r, binary.LittleEndian, &lang)
 +	binary.Read(r, binary.LittleEndian, &sender)
 +	binary.Read(r, binary.LittleEndian, &flags)
-+	monster := (m.Type >= 0x0C && m.Type <= 0x10) || m.Type == 0x29 || m.Type == 0x2A || m.Type == 0x2F
++	monster := monsterChat(m.Type)
 +	if monster || op == smsgGMMessageChat {
 +		m.From = readSized(r)
 +	}
@@ -485,8 +1382,15 @@ index 0000000..45135f9
 +		readSized(r) // non-player receiver name
 +	}
 +	m.Text = readSized(r)
++	if monster {
++		m.Text = strings.ReplaceAll(m.Text, "%s", m.From) // emotes: "%s attempts to run away in fear!"
++	}
 +	m.GUID = fmt.Sprint(sender)
 +	return m, sender, true
++}
++
++func monsterChat(t uint8) bool {
++	return (t >= 0x0C && t <= 0x10) || t == 0x29 || t == 0x2A || t == 0x2F
 +}
 +
 +func readSized(r *bytes.Reader) string {
@@ -519,3 +1423,86 @@ index 0000000..45135f9
 +	}
 +	return g
 +}
+diff --git i/client/world.go w/client/world.go
+index 4d8bab6..202b951 100644
+--- i/client/world.go
++++ w/client/world.go
+@@ -4224,6 +4224,9 @@ func (w *WorldClient) handlePowerUpdate(data []byte) {
+ 		w.power = value
+ 		w.statsMu.Unlock()
+ 	}
++	if o := w.GetObject(guid); o != nil && powerType < 7 {
++		o.setValue(UnitFieldPower1+uint16(powerType), value)
++	}
+ }
+ 
+ // ============================================================
+diff --git i/go.mod w/go.mod
+index 3f28a87..8fcfbb3 100644
+--- i/go.mod
++++ w/go.mod
+@@ -11,4 +11,7 @@ require (
+ 	github.com/go-sql-driver/mysql v1.10.0
+ )
+ 
+-require filippo.io/edwards25519 v1.2.0 // indirect
++require (
++	filippo.io/edwards25519 v1.2.0 // indirect
++	github.com/yuin/gopher-lua v1.1.2 // indirect
++)
+diff --git i/go.sum w/go.sum
+index df59d4b..1d749cf 100644
+--- i/go.sum
++++ w/go.sum
+@@ -6,3 +6,5 @@ github.com/go-sql-driver/mysql v1.10.0 h1:Q+1LV8DkHJvSYAdR83XzuhDaTykuDx0l6fkXxo
+ github.com/go-sql-driver/mysql v1.10.0/go.mod h1:M+cqaI7+xxXGG9swrdeUIoPG3Y3KCkF0pZej+SK+nWk=
+ github.com/walkline/detour-go v0.0.0-20260624174442-8056537019f8 h1:NoCKTeCeGgnl0oUTOL2f6EQPdnmpywj9DpwTJY0T3g0=
+ github.com/walkline/detour-go v0.0.0-20260624174442-8056537019f8/go.mod h1:YGfXAROQikN28jKfghmSU2iZL+KS1moeI71y8WK1lhs=
++github.com/yuin/gopher-lua v1.1.2 h1:yF/FjE3hD65tBbt0VXLE13HWS9h34fdzJmrWRXwobGA=
++github.com/yuin/gopher-lua v1.1.2/go.mod h1:7aRmXIWl37SqRf0koeyylBEzJ+aPt8A+mmkQ4f1ntR8=
+diff --git i/pathfinding/mmap_loader.go w/pathfinding/mmap_loader.go
+index 14943bd..7266317 100644
+--- i/pathfinding/mmap_loader.go
++++ w/pathfinding/mmap_loader.go
+@@ -14,7 +14,7 @@ import (
+ 
+ const (
+ 	mmapMagic   = 0x4d4d4150 // 'MMAP'
+-	mmapVersion = 19
++	mmapVersion = 20         // AzerothCore bumped 19 -> 20 with an unchanged 56-byte header; current server data is 20
+ 
+ 	// mmapTileHeaderSize is the binary size of the MmapTileHeader struct (C++ layout).
+ 	// uint32 mmapMagic + uint32 dtVersion + uint32 mmapVersion + uint32 size + int8 usesLiquids + 3 padding + 36 bytes recastConfig = 56
+@@ -109,7 +109,7 @@ func (m *MMapManager) CreateQuery(mapID uint32) (*detour.DtNavMeshQuery, error)
+ 	defer md.mu.RUnlock()
+ 
+ 	query := detour.DtAllocNavMeshQuery()
+-	if status := query.Init(md.navMesh, 1024); detour.DtStatusFailed(status) {
++	if status := query.Init(md.navMesh, 8192); detour.DtStatusFailed(status) {
+ 		return nil, fmt.Errorf("failed to init NavMeshQuery for map %d, status: %d", mapID, status)
+ 	}
+ 	return query, nil
+diff --git i/pathfinding/pathfinding.go w/pathfinding/pathfinding.go
+index 5839e3f..9ca9d5f 100644
+--- i/pathfinding/pathfinding.go
++++ w/pathfinding/pathfinding.go
+@@ -12,8 +12,8 @@ import (
+ )
+ 
+ const (
+-	maxPathLength      = 74
+-	maxPointPathLength = 74
++	maxPathLength      = 1024 // was 74 (the server's creature limit): ~300yd, so longer trips fell back to a straight line
++	maxPointPathLength = 2048
+ 	smoothPathStepSize = float32(4.0)
+ 	smoothPathSlop     = float32(0.3)
+ 	vertexSize         = 3
+@@ -95,7 +95,7 @@ func NewPathFinder(mmapMgr *MMapManager, terrainMgr *TerrainManager, vmapMgr *VM
+ 
+ 	md.mu.RLock()
+ 	query := detour.DtAllocNavMeshQuery()
+-	if status := query.Init(md.navMesh, 1024); detour.DtStatusFailed(status) {
++	if status := query.Init(md.navMesh, 8192); detour.DtStatusFailed(status) {
+ 		md.mu.RUnlock()
+ 		return nil, fmt.Errorf("failed to init NavMeshQuery for map %d, status: %d", mapID, status)
+ 	}

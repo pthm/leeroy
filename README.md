@@ -12,11 +12,13 @@ bun run server                                       # first boot downloads clie
 
 git clone https://github.com/azerothcore/AzerothGhost.git ghost && git -C ghost checkout be53c70  # tested commit
 git -C ghost apply ../patches/azerothghost-control.patch   # live eval endpoint, chat, raw packets, bot.call
-rm -rf ghost/scripts     # bundled Lua AI: agents write their own (regen the patch with `git diff -- . ':!scripts'`)
+rm -rf ghost/scripts     # bundled Lua AI: agents write their own
+# (regen the patch with: cd ghost && git add -N . && git diff -- . ':!scripts' > ../patches/azerothghost-control.patch)
 (cd ghost && go build -o azghost ./cmd/azghost)      # Go 1.26+
 
-# pathfinding data for the client, copied out of the server's volume (~3GB)
-mkdir -p data && docker run --rm -v server_ac-client-data:/src:ro -v $PWD/data:/dst alpine cp -r /src/maps /src/mmaps /src/vmaps /dst/
+# pathfinding data + Spell.dbc (cooldowns, spell_info) for the client, copied out of the server's volume (~3GB)
+mkdir -p data/dbc && docker run --rm -v server_ac-client-data:/src:ro -v $PWD/data:/dst alpine \
+  sh -c 'cp -r /src/maps /src/mmaps /src/vmaps /dst/ && cp /src/dbc/Spell.dbc /dst/dbc/'
 ```
 
 ## Run a benchmark

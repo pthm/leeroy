@@ -3,12 +3,19 @@
 # wow < snippet.lua                   same, from stdin
 # wow -f grind.lua                    (re)load a script file, e.g. to replace on_tick
 # wow -w 60 'return bot.get_xp()'     wait 60s first (max 600), then evaluate — use this to poll progress
+# wow -c 60 'return bot.read_chat()'  same, but returns early as soon as another player messages you
 # Session port: $WOW_PORT (default 8090).
-if [ "$1" = "-w" ]; then
-  case "$2" in ''|*[!0-9]*) echo "usage: wow -w <seconds> <lua>"; exit 1 ;; esac
-  sleep "$(( $2 > 600 ? 600 : $2 ))"; shift 2
+eval_() { curl -sS "localhost:${WOW_PORT:-8090}/eval" --data-binary "$1"; echo; }
+if [ "$1" = "-w" ] || [ "$1" = "-c" ]; then
+  case "$2" in ''|*[!0-9]*) echo "usage: wow $1 <seconds> <lua>"; exit 1 ;; esac
+  t=$(( $2 > 600 ? 600 : $2 ))
+  if [ "$1" = "-w" ]; then sleep "$t"; else
+    end=$(( $(date +%s) + t ))
+    while [ "$(date +%s)" -lt "$end" ] && ! eval_ 'return bot.chat_pending() > 0' | grep -q true; do sleep 1; done
+  fi
+  shift 2
 fi
 if [ "$1" = "-f" ]; then
   code="return dofile(\"$(cd "$(dirname "$2")" && pwd)/$(basename "$2")\")"
 elif [ -n "$1" ]; then code="$1"; else code="$(cat)"; fi
-curl -sS "localhost:${WOW_PORT:-8090}/eval" --data-binary "$code"; echo
+eval_ "$code"
