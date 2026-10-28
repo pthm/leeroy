@@ -4,6 +4,7 @@
 # wow -f grind.lua                    (re)load a script file, e.g. to replace on_tick
 # wow -w 60 'return bot.get_xp()'     wait 60s first (max 600), then evaluate — use this to poll progress
 # wow -c 60 'return bot.read_chat()'  same, but returns early as soon as another player messages you
+# wow status                          one-call snapshot: level, xp, hp, position, state, bags, quests, group, nearby, act
 # Session: the azsdk daemon on port $WOW_PORT (default 8090); prints {"result": ...} (+ "script_errors"
 # when the running script failed since the last call) or {"error": "..."}.
 eval_() {
@@ -20,7 +21,9 @@ if [ "$1" = "-w" ] || [ "$1" = "-c" ]; then
   fi
   shift 2
 fi
-if [ "$1" = "-f" ]; then
+if [ "$1" = "status" ]; then
+  code="return bot.status()"
+elif [ "$1" = "-f" ]; then
   code="return dofile(\"$(cd "$(dirname "$2")" && pwd)/$(basename "$2")\")"
 elif [ -n "$1" ]; then code="$1"; else code="$(cat)"; fi
 out=$(eval_ "$code")

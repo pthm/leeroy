@@ -93,6 +93,33 @@ whisper echoed, 17 channel, 0x0C+ NPC speech. You start in your zone's General c
 not rejoined automatically when you change zone. Custom channels use id 0 and any name, and work
 across zones.
 
+**Status:** `bot.status()` (or `wow status` from the shell) → level, xp, hp, power, money, position, alive/ghost/
+combat/resting/casting, free bag slots, broken gear, quest progress, target, attackers, group, nearby players,
+corpse, the last cast error, unread chat and what `act` is doing.
+
+## `act`: built-in utilities
+
+Jobs are tables with `tick(self)` returning `"running"`, `"done"` or `"failed", message`. `act.run{job, ...}` runs
+them in order from `on_tick` (failed steps are logged and skipped unless `{on_fail = "stop"}`; pass a function
+returning the plan and `{loop = true}` to repeat it); `act.status()` says where it is; `act.stop()` stops. Put your
+own logic in steps with `act.fn(function(self) ... return true when done end)`, or call `act.tick()` from your own
+`on_tick`. The runner does nothing about combat or death on its own.
+
+| Kind | Calls |
+|---|---|
+| Movement | `go_to(x, y [, z], {tolerance})` · `travel({{x, y [, z]}, ...})` · `approach(guid, range)` · `follow{name, distance, ["until"] = fn}` |
+| NPCs | `accept{npc, quest [, x, y, z]}` · `turn_in{npc, quest [, reward, x, y, z]}` · `vendor{npc [, x, y, z, buy = {{entry, count}}]}` (sells greys, repairs if it can) · `train{npc, spells}` · `talk{npc, fn = function(npc) end}`. `npc` is the creature entry; with x, y, z it walks there first |
+| Objects | `use_object{entry [, count, quest, x, y, z, radius]}` (crates, chests, quest objects) |
+| Recovery | `rest{hp, mana, max_s}` (eats/drinks if you carry food/water) · `release()` · `corpse_run()` · `spirit_res()` |
+| Flow | `seq(jobs)` · `wait(seconds)` · `fn(f)` · `try(job)` |
+| Helpers (plain functions) | `cast(id [, target])` (faces, checks ready) · `ready(id [, target])` · `buff(id [, target])` (unless it has the aura) · `best({rank1, rank2, ...})` (highest known) · `knows(id)` · `in_range(id, guid)` · `attackers(dist)` · `npc(entry [, dist])` · `player(name)` · `tapped_by_other(unit)` · `loot_nearby(dist)` · `consume("Food" \| "Drink")` · `make_room()` · `hp()` · `mana()` · `dist(x, y [, z])` |
+
+```lua
+act.run{ act.go_to(-9464, 62), act.accept{ npc = 240, quest = 62 },
+         act.fn(function() return my_combat_step() end, "kill kobolds"),
+         act.vendor{ npc = 2046 }, act.turn_in{ npc = 240, quest = 62 } }
+```
+
 **Everything else the client can do:** `bot.call("Method", args...)` calls any method of the underlying
 client and returns its results (an `error` comes back as a string, or nil on success). Useful ones:
 

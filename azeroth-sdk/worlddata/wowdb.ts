@@ -272,7 +272,7 @@ const commands: Record<string, { usage: string; run: (a: string[], f: Record<str
       return q(`SELECT c.entry, c.name, c.subname, c.minlevel, c.maxlevel, r.${side} reaction, ROUND(s.x) x, ROUND(s.y) y, ROUND(s.z) z,
           a.name area, ${dist} distance FROM wowbench.creature_spawn s JOIN creature_template c ON c.entry = s.id
           LEFT JOIN wowbench.reaction r ON r.faction_template = c.faction LEFT JOIN wowbench.area a ON a.id = s.area
-          WHERE ${box} AND ${where}${lv ? ` AND c.maxlevel >= ${lv[0]} AND c.minlevel <= ${lv[1] ?? lv[0]}` : ""}
+          WHERE ${box} AND ${where} AND s.guid NOT IN (SELECT guid FROM game_event_creature)${lv ? ` AND c.maxlevel >= ${lv[0]} AND c.minlevel <= ${lv[1] ?? lv[0]}` : ""}
           ORDER BY distance LIMIT ${limit}`);
     },
   },

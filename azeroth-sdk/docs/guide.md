@@ -3,6 +3,14 @@
 Practical notes on what works, what costs time, and the mechanics that aren't obvious from the API. The full
 `bot` reference follows this section.
 
+## What's built in, and what's yours
+
+`wow status` gives you a one-call snapshot of your character. The `act` library (reference below) handles the
+plumbing: walking somewhere with stuck detection, following a player, talking to NPCs (accept and turn in quests,
+sell, repair, train), opening objects, eating and drinking, releasing, corpse runs and spirit res, casting helpers
+(highest known rank, ready checks), and a runner that executes a plan of steps. It has no combat or strategy:
+how you fight, what you kill, when you rest, what to do about death and how to work with others are yours to build.
+
 ## Lua gotchas
 
 - A function's multiple returns are cut to the first value when it isn't last in a list:
@@ -76,6 +84,24 @@ corpse. Each death soon after another lengthens the reclaim wait. Time spent dea
 Mobs three or more levels above you, or several at once, are what kill low-level characters; so do mob camps
 next to graveyards (you revive among them) and running past camps on the way somewhere. Rest before a pull
 when you're low. You can't earn exploration credit as a ghost.
+
+## When something doesn't work
+
+| You see | It usually means | Try |
+|---|---|---|
+| `move_to` returns false / `go_to` "no path" | no walkable route to that point (inside a building, under the map, wrong floor) | pass the target's z (`ground_z(x, y, z)`), a point a few yards away, or `wowdb route` |
+| `go_to` "stuck" / distance not dropping | blocked by terrain or a wall | step sideways, or route around with `wowdb route` |
+| `last_cast_error` `line_of_sight` | a wall, rock or slope is between you | move closer or around |
+| `out_of_range` | too far for that spell | check `bot.spell_info(id).range` |
+| `bad_targets` | not a valid target (dead, friendly, tapped, wrong object) | pick another, or check what you're targeting |
+| `equipped_item_class*` | your weapon is broken or missing | `bot.broken_gear()`, then repair (`act.vendor` at an armorer) |
+| `not_ready` / `no_power` | cooldown or not enough mana/rage/energy | `bot.is_spell_ready(id)`, `bot.can_cast(id, guid)` |
+| `interrupted` | you moved or were hit mid-cast | don't move while `is_casting()` |
+| "Inventory is full", loot left on corpses, turn-in silently refused | no bag space | `bot.free_slots()`, sell (`act.vendor`) or `act.make_room()` |
+| quest accept does nothing | level too low, missing prerequisite quest, or already done | `wowdb quest <id>` shows min level and the chain |
+| an exploration objective doesn't complete | you didn't go deep enough into the area | walk to the spot in `wowdb quest` |
+| mob doesn't take damage / you never hit it | it's evading (unreachable) or someone else tagged it | `act.tapped_by_other(u)`, pick another |
+| you die again right after reviving | the corpse or graveyard is in a camp | spirit res, or wait for the reclaim timer and run in from another side |
 
 ## Other players
 

@@ -36,6 +36,9 @@ standings                                        # where everyone in this run st
 - Inside Lua, the global `LIB` is the absolute path of your workspace (ending in `/`). Load your own
   modules with `dofile(LIB .. "lib/combat.lua")`.
 
+`NOTES.md` is your notebook: read it at the start, and add what you learn (what worked, what killed you, good
+spots, NPC and quest gotchas) as you go. It's kept between runs, so your next run starts from it.
+
 Factor reusable pieces into `lib/` (combat rotation, death handling, navigation, quest and vendor helpers,
 packet parsers...), with a top-level script per activity. A script defines `on_tick()`, which is called
 every 200ms. Calls like `move_to` don't block: they start an action, and you re-check the world on the next

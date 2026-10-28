@@ -14,9 +14,11 @@
 //   rate         value per hour since the start (the first 10 minutes count as 10)
 //   recent_rate  value per hour over the last 10 minutes
 //   pace         the time-average of value so far (area under the curve / time)
-//   score        = rate: the headline for score goals. Sustained progress is what counts; deaths and stalls cost
-//                through the time they lose. For score goals, quests are valued by difficulty (quest_points in
-//                score.json).
+//   best_window  the best rate over any 15-minute window
+//   score        (rate + best_window) / 2: the headline for score goals. Sustained progress counts, and so does
+//                finding a better strategy: time spent trying one lowers the rate but not the best window. Deaths
+//                and stalls cost through the time they lose. Quests and elite kills are valued by difficulty
+//                (quest_points, kill_points in score.json).
 // --board <dir> writes <dir>/<character>.json with the latest result each poll (the agents' `standings` tool reads them).
 // --resume <samples.jsonl> continues a paused run from its samples.
 import { appendFileSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, openSync, readSync, closeSync } from "node:fs";
@@ -75,6 +77,19 @@ const start = Date.now() - (prior.at(-1)?.elapsed_s ?? 0) * 1000;
 const curve: [number, number][] = prior.map((p) => [p.elapsed_s / 3600, p.value]); // [elapsed h, value]
 let area = 0; // integral of value dt, in value-hours
 for (let i = 1; i < curve.length; i++) area += ((curve[i - 1][1] + curve[i][1]) / 2) * (curve[i][0] - curve[i - 1][0]);
+// best_window: the best rate over any WINDOW of the run (value gained in the window / its length). Trying a new
+// strategy costs some average rate but not the best window, so the score rewards finding something better as well
+// as sustaining it.
+const WINDOW = 0.25; // hours
+const windowRate = (k: number) => {
+  const [hk, vk] = curve[k];
+  if (hk < WINDOW) return vk / Math.max(hk, 1 / 6);
+  let j = k;
+  while (j > 0 && curve[j - 1][0] >= hk - WINDOW) j--;
+  return (vk - curve[j][1]) / Math.max(hk - curve[j][0], 1 / 60);
+};
+let bestWindow = 0;
+for (let k = 0; k < curve.length; k++) bestWindow = Math.max(bestWindow, windowRate(k));
 for (;;) {
   const sig = signals(char);
   if (qcfg) {
@@ -94,11 +109,12 @@ for (;;) {
   const ago = curve.find(([t]) => t >= h - 1 / 6) ?? curve[0]; // ~10 minutes back
   const round = (v: number) => Math.round(v * 10) / 10;
   const pace = h > 0 ? area / h : value;
-  // score = rate: progress points per hour over the run so far (the first 10 minutes count as 10, so a quick
-  // early quest doesn't read as a huge rate)
+  // rate: progress points per hour over the run so far (the first 10 minutes count as 10, so a quick early quest
+  // doesn't read as a huge rate). score = (rate + best 15-minute window rate) / 2
   const rate = value / Math.max(h, 1 / 6);
+  bestWindow = Math.max(bestWindow, windowRate(curve.length - 1));
   const rates = { rate: round(rate), recent_rate: round(h - ago[0] > 0 ? (value - ago[1]) / (h - ago[0]) : 0),
-    pace: round(pace), score: round(rate) };
+    best_window: round(bestWindow), pace: round(pace), score: round((rate + bestWindow) / 2) };
   const sample = { elapsed_s, level, xp, money, value, ...rates, signals: sig };
   if (samples) appendFileSync(samples, JSON.stringify(sample) + "\n");
   if (board) writeFileSync(`${board}/${char}.json`, JSON.stringify({ char, level: round(sig.level), progress: value, ...rates, elapsed_s }));

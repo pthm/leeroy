@@ -391,15 +391,17 @@ func bagItems(w *client.WorldClient) []map[string]any {
 // --- Spell.dbc (copied to <data-dir>/dbc by the setup) ---
 
 type spellRec struct {
-	Name             string `json:"name"`
-	Rank             string `json:"rank"`
-	Category         uint32 `json:"category"`
-	Cooldown         uint32 `json:"cooldown_ms"`
-	CategoryCooldown uint32 `json:"category_cooldown_ms"`
-	GCDCategory      uint32 `json:"gcd_category"`
-	GCD              uint32 `json:"gcd_ms"`
-	PowerType        uint32 `json:"power_type"`
-	Cost             uint32 `json:"cost"` // rage/runic are x10, as in get_power()
+	Name             string  `json:"name"`
+	Rank             string  `json:"rank"`
+	Category         uint32  `json:"category"`
+	Cooldown         uint32  `json:"cooldown_ms"`
+	CategoryCooldown uint32  `json:"category_cooldown_ms"`
+	GCDCategory      uint32  `json:"gcd_category"`
+	GCD              uint32  `json:"gcd_ms"`
+	PowerType        uint32  `json:"power_type"`
+	Cost             uint32  `json:"cost"`    // rage/runic are x10, as in get_power()
+	CastMS           uint32  `json:"cast_ms"` // base cast time (0 = instant)
+	Range            float32 `json:"range"`   // max range against hostile targets, yards (melee spells ~5)
 }
 
 var (
@@ -426,12 +428,14 @@ func loadSpells() {
 			end := bytes.IndexByte(strs[off:], 0)
 			return string(strs[off : off+uint32(end)])
 		}
+		ranges, castTimes := dbcFloats("SpellRange.dbc", 3), dbcU32s("SpellCastTimes.dbc", 1)
 		for i := uint32(0); i < n; i++ {
 			rec := b[20+i*recSize:]
 			f := func(idx int) uint32 { return le.Uint32(rec[idx*4:]) }
 			// field indices per AzerothCore DBCStructure.h SpellEntry
 			spells[f(0)] = &spellRec{Name: str(f(136)), Rank: str(f(153)), Category: f(1), Cooldown: f(29),
-				CategoryCooldown: f(30), GCDCategory: f(205), GCD: f(206), PowerType: f(41), Cost: f(42)}
+				CategoryCooldown: f(30), GCDCategory: f(205), GCD: f(206), PowerType: f(41), Cost: f(42),
+				Range: ranges[f(46)], CastMS: castTimes[f(28)]}
 		}
 	})
 }
@@ -439,4 +443,30 @@ func loadSpells() {
 func spellInfo(id uint32) *spellRec {
 	loadSpells() // waits for the background load; no-op if it already ran
 	return spells[id]
+}
+
+// dbcFloats / dbcU32s: id -> one column of a small DBC (SpellRange max hostile range, SpellCastTimes base time)
+func dbcFloats(name string, col int) map[uint32]float32 {
+	out := map[uint32]float32{}
+	for id, v := range dbcColumn(name, col) {
+		out[id] = math.Float32frombits(v)
+	}
+	return out
+}
+
+func dbcU32s(name string, col int) map[uint32]uint32 { return dbcColumn(name, col) }
+
+func dbcColumn(name string, col int) map[uint32]uint32 {
+	out := map[uint32]uint32{}
+	b, err := os.ReadFile(filepath.Join(spellsDir, "dbc", name))
+	if err != nil || len(b) < 20 || string(b[:4]) != "WDBC" {
+		return out
+	}
+	le := binary.LittleEndian
+	n, rs := le.Uint32(b[4:]), le.Uint32(b[12:])
+	for i := uint32(0); i < n; i++ {
+		rec := b[20+i*rs:]
+		out[le.Uint32(rec)] = le.Uint32(rec[col*4:])
+	}
+	return out
 }

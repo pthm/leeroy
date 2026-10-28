@@ -5,6 +5,7 @@ package session
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -58,6 +59,9 @@ func capAppend[T any](s []T, v T) []T {
 	}
 	return append(s, v)
 }
+
+//go:embed act.lua
+var actLua string // the built-in `act` routines and bot.status() (Lua, on top of the bindings below)
 
 func (b *Bot) setupControl() {
 	c := &controlState{watched: map[uint16]bool{}, names: map[uint64]string{}}
@@ -193,7 +197,9 @@ func (b *Bot) setupControl() {
 		}
 		return 0, 0
 	})
-
+	if err := e.DoString(actLua); err != nil {
+		b.log("act.lua: %v", err)
+	}
 }
 
 func (c *controlState) onPacket(w *client.WorldClient, op uint16, data []byte) {

@@ -1,7 +1,8 @@
 #!/bin/sh
-# standings: where everyone in this run stands, best score first (score = progress points per hour), updated every
+# standings: where everyone in this run stands, best score first (score = (overall rate + best 15-min rate) / 2,
+# in progress points per hour), updated every
 # 15s by the judges. "you": true marks your character.
 b=${WOWBENCH_BOARD:?standings: not available in this run}
 cat "$b"/*.json 2>/dev/null | jq -s -c --arg me "$WOWBENCH_CHAR" 'sort_by(-.score) | to_entries | map({rank: (.key + 1), char: .value.char,
-  you: (.value.char == $me), score: .value.score, recent_rate: .value.recent_rate, progress: .value.progress, level: .value.level,
+  you: (.value.char == $me), score: .value.score, rate: .value.rate, best_window: .value.best_window, recent_rate: .value.recent_rate, progress: .value.progress, level: .value.level,
   minutes: (.value.elapsed_s / 60 | floor)}) | .[]'

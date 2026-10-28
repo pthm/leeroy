@@ -26,6 +26,7 @@ mkdir -p "$dir" "$ws"
 # refreshed each run: bench task docs, the playing guide, the SDK reference, and an example script
 cat agent/AGENTS.md ../azeroth-sdk/docs/guide.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/world-data.md > "$ws/AGENTS.md"
 cp ../azeroth-sdk/examples/lua/grind.lua "$ws/example.lua"
+[ -f "$ws/NOTES.md" ] || printf '# Notes\n\nYour own notes: what worked, what killed you, where things are. Kept between runs.\n' > "$ws/NOTES.md"
 acct=$(printf %s "$name" | tr -cd 'a-zA-Z0-9' | cut -c1-16)
 n=${goal#*:}
 case "$goal" in
@@ -57,8 +58,10 @@ $(jq -r '.quest_points | "\(.base) x its difficulty colour against your level ("
 x 4 for group quests and x 3 for dungeon quests. Trivial (grey) quests are worth nothing.
 kill_points: elite, rare and boss kills (normal mobs count only through XP): elite 5, rare 8, rare elite 12, boss 20,
 x the same difficulty colour. Every party member who gets XP from the kill gets the points.
-YOUR SCORE IS YOUR RATE: progress points per hour over the whole $mins minutes. Sustained progress is what counts:
-deaths, stalls and time spent stuck cost you through the time they lose. There is no finish line.
+YOUR SCORE is the average of two rates, in progress points per hour: your rate over the whole $mins minutes, and
+your best rate over any 15-minute stretch. Sustained progress counts, and so does finding a better way to play:
+time spent trying a new strategy lowers your overall rate but not your best stretch. Deaths, stalls and time spent
+stuck cost you through the time they lose. There is no finish line.
 The standings command shows where every player in this run stands right now (rank, score, recent rate, level)."
   stop_text="Do not stop early: keep improving your score until the time runs out." ;;
 esac
@@ -126,8 +129,9 @@ HOW TO WORK
 - $stop_text
 
 YOUR LIBRARY: your working directory is yours and persists across runs. It may be empty (apart from
-AGENTS.md and example.lua) or hold scripts from your earlier runs: check with ls, reuse what's there, and
-save anything reusable (combat, death handling, navigation, questing helpers) as you go.
+AGENTS.md, example.lua and NOTES.md) or hold scripts from your earlier runs: check with ls, reuse what's there, and
+save anything reusable as you go. Read NOTES.md first and keep it up to date: what worked, what didn't, what
+killed you, good spots and routes. It's how your next run starts ahead of this one.
 
 RULES: Progress through legitimate gameplay only. You have no GM access; don't try to modify the server,
 the database, the judge or the harness. Your session log is session.log in your working directory.
