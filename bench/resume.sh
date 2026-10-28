@@ -21,6 +21,7 @@ resume_one() { # <agent> <port>
   left=$(( mins - $(tail -1 "$dir/samples.jsonl" | jq .elapsed_s) / 60 ))
   export WOW_PORT=$port
   cp "$team/AGENTS.md" "$ws/AGENTS.md"
+  [ -f "$ws/NOTES.md" ] || printf '# Notes\n\nYour own notes: what worked, what killed you, where things are. Kept between runs.\n' > "$ws/NOTES.md"
   until [ "$(sql "SELECT online FROM characters WHERE name = '$char'")" = 0 ]; do sleep 2; done
   for try in 1 2 3; do
     ACCOUNT=$acct RECORD="$record" client/play.sh "$char" >> "$ws/session.log" 2>&1 &
@@ -55,5 +56,5 @@ for r in "$team"/a??.record.jsonl; do
 done
 wait
 n=$(ls "$team"/a??.record.jsonl | wc -l)
-for f in "$team"/a??.out; do grep '^{' "$f" | tail -n 1; done | jq -s --argjson n $n '{agents: sort_by(-(.score // .value)), team_s: (if length == $n and all(.met) then map(.elapsed_s) | max else null end)}' | tee "$team/team.json"
+for f in "$team"/a??.out; do grep '^{' "$f" | tail -n 1; done | jq -s --argjson n $n '{agents: sort_by(-(.score // .value)), faction_score: (map(.score // 0) | add), team_s: (if length == $n and all(.met) then map(.elapsed_s) | max else null end)}' | tee "$team/team.json"
 bun ../server/recorder/replay.ts "$team" || true

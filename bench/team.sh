@@ -22,5 +22,5 @@ done
 i=0; until [ "$(ls "$dir"/go.*.ready 2>/dev/null | wc -l)" -ge $# ] || [ $i -ge 300 ]; do sleep 1; i=$((i + 1)); done
 date +%s > "$dir/go"; echo "go: $(ls "$dir"/go.*.ready | wc -l)/$# sessions up"
 wait
-for f in "$dir"/*.out; do grep '^{' "$f" | tail -n 1; done | jq -s --argjson n $# '{agents: sort_by(-(.score // .value)), team_s: (if length == $n and all(.met) then map(.elapsed_s) | max else null end)}' | tee "$dir/team.json"
+for f in "$dir"/*.out; do grep '^{' "$f" | tail -n 1; done | jq -s --argjson n $# '{agents: sort_by(-(.score // .value)), faction_score: (map(.score // 0) | add), team_s: (if length == $n and all(.met) then map(.elapsed_s) | max else null end)}' | tee "$dir/team.json"
 bun ../server/recorder/replay.ts "$dir" || echo "no replay (is mod-recorder installed? see README)"

@@ -379,6 +379,7 @@ function renderPane() {
     const rows = P.map((p) => ({ p, s: scoreAt(p.name, t) })).sort((a, b) => (b.s?.[metric] ?? -1e9) - (a.s?.[metric] ?? -1e9));
     html = `<label class="muted">Plot <select id="metric">${Object.entries(METRICS).map(([k, v]) => `<option value="${k}"${k === metric ? " selected" : ""}>${v}</option>`).join("")}</select></label>
       <canvas id="chart"></canvas>
+      ${(() => { const tot = rows.reduce((n, r) => n + (r.s?.[metric] ?? 0), 0); return rows.some((r) => r.s) ? `<p><b>Faction total</b> <span class="muted">(${esc(METRICS[metric])}, all players)</span>: <b>${Math.round(tot * 10) / 10}</b></p>` : ""; })()}
       <table class="board">${rows.map(({ p, s }, i) => `<tr><td>${i + 1}</td><td><span class="dot" style="background:${p.color};display:inline-block"></span> ${who(p.name)} <span class="muted">${esc(p.cls)}</span></td>
         <td class="num">${s ? `L${s.level}` : ""}</td><td class="num"><b>${s ? s[metric] : "–"}</b></td></tr>`).join("")}</table>
       <p class="muted">score = (overall rate + best 15-minute rate) / 2, in progress points per hour; progress = XP earned + 800 per average item level + 2 per copper of wealth (judge v4; older runs scored differently).</p>`;

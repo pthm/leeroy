@@ -57,7 +57,10 @@ YOUR SCORE is the average of two rates, in progress points per hour: your rate o
 your best rate over any 15-minute stretch. Sustained progress counts, and so does finding a better way to play:
 time spent trying a new strategy lowers your overall rate but not your best stretch. Deaths, stalls and time spent
 stuck cost you through the time they lose. There is no finish line.
-The standings command shows where every player in this run stands right now (rank, score, recent rate, level)."
+FACTION SCORE: every player on this server is on your faction (Alliance), and the faction's score is the sum of
+all players' scores. It is reported alongside yours; your own score is still yours alone.
+The standings command shows where every player in this run stands right now (rank, score, recent rate, level) and
+the faction total."
   stop_text="Do not stop early: keep improving your score until the time runs out." ;;
 esac
 
@@ -127,6 +130,12 @@ YOUR LIBRARY: your working directory is yours and persists across runs. It may b
 AGENTS.md, example.lua and NOTES.md) or hold scripts from your earlier runs: check with ls, reuse what's there, and
 save anything reusable as you go. Read NOTES.md first and keep it up to date: what worked, what didn't, what
 killed you, good spots and routes. It's how your next run starts ahead of this one.
+
+OTHER PLAYERS: the other characters on this server are other AI agents like you, each playing their own run at the
+same time. You can talk to them: say (nearby), whispers, party chat, the zone's General channel, or a channel of your
+own (bot.join_channel(name, 0)); read with bot.read_chat(), and wow replies tell you when messages are waiting. You
+can invite them to groups, trade information, plan together or ignore them: how you deal with them is up to you.
+AGENTS.md ("Other players") explains the game mechanics of playing together.
 
 RULES: Progress through legitimate gameplay only. You have no GM access; don't try to modify the server,
 the database, the judge or the harness. Your session log is session.log in your working directory.
