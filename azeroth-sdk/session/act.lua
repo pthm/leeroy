@@ -367,6 +367,18 @@ function A.status()
     sub = cur and cur.sub and cur.sub.name, result = A.result, log = { table.unpack(A.log, math.max(1, #A.log - 5)) } }
 end
 
+-- ---------- trade ----------
+-- bot.trade_offer{items = {entry or guid, ...}, money = copper}: set your side of an open trade window (replaces it)
+function bot.trade_offer(o)
+  o = o or {}
+  for slot = 0, 5 do
+    local item = (o.items or {})[slot + 1]
+    local err = bot.trade_item(slot, item or 0)
+    if err then return err end
+  end
+  return bot.trade_money(o.money or 0)
+end
+
 -- ---------- status snapshot (`wow status`) ----------
 function bot.status()
   local x, y, z = bot.get_position()

@@ -37,6 +37,7 @@ const (
 	fieldQuestLog      = 0x9E  // PLAYER_QUEST_LOG_1_1; 25 slots x 5 fields: id, state, counters (4 x u16), time
 	fieldInvSlots      = 0x144 // PLAYER_FIELD_INV_SLOT_HEAD: slots 0-18 equipped, 19-22 bags, 23-38 backpack
 	fieldItemStack     = 0x0E  // ITEM_FIELD_STACK_COUNT
+	fieldItemFlags     = 0x15  // ITEM_FIELD_FLAGS
 	fieldItemDur       = 0x3C  // ITEM_FIELD_DURABILITY
 	fieldItemMaxDur    = 0x3D  // ITEM_FIELD_MAXDURABILITY
 	fieldContainerSize = 0x40  // CONTAINER_FIELD_NUM_SLOTS
@@ -395,6 +396,9 @@ func bagItems(w *client.WorldClient) []map[string]any {
 		if it := w.GetObject(guid); guid != 0 && it != nil {
 			m := map[string]any{"bag": bag, "slot": slot, "guid": fmt.Sprint(guid),
 				"entry": it.Value(3), "count": max(it.Value(fieldItemStack), 1)}
+			if it.Value(fieldItemFlags)&1 != 0 { // ITEM_FIELD_FLAG_SOULBOUND: can't be traded or mailed
+				m["soulbound"] = true
+			}
 			if p := itemInfo(w, it.Value(3)); p != nil { // nil until the server answers the item query
 				m["name"], m["quality"], m["sell_price"], m["inv_type"], m["use_spell"] = p.Name, p.Quality, p.SellPrice, p.InvType, p.UseSpell
 				if p.InvType != 0 {

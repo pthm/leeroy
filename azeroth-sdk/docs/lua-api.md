@@ -111,6 +111,13 @@ unit over the window: `damage, healing, taken, healed, dps, hps, active_s, kills
 class, race, level, health, gear = {{slot, entry, name, item_level}}, avg_item_level` (item names fill in a moment
 after the first call).
 
+**Trade** (with a player within ~10 yards): `trade(name_or_guid)` opens a trade with them; they get a system
+message in `read_chat` and open the window with `trade_open()` · `trade_offer{items = {entry or guid, ...}, money =
+copper}` sets your side (up to 6 items; soulbound items can't be traded: `bag_items` marks them `soulbound`) ·
+`trade_status()` → `{state, with, mine = {money, items}, theirs = {money, items}, they_accepted}` · `trade_accept()`
+(the trade happens when both accept; any change un-accepts both) · `trade_cancel()`. Lower level: `trade_item(slot,
+item)`, `trade_money(copper)`.
+
 ## `act`: built-in utilities
 
 Jobs are tables with `tick(self)` returning `"running"`, `"done"` or `"failed", message`. `act.run{job, ...}` runs

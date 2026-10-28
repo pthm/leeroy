@@ -142,6 +142,9 @@ same time and often with the same goal. The rules that shape how you interact:
 - **Talking.** `send_chat` (say, ~25 yards), `whisper(name, msg)`, `party(msg)`, and zone or custom channels
   reach other players. `wow -c <seconds> '<lua>'` waits until someone messages you. `get_nearby_players(dist)`
   shows who's around, with their level and position.
+- **Trading.** Players can hand each other items and money directly: `bot.trade(name)`, both put things in the
+  window (`bot.trade_offer{...}`), both `bot.trade_accept()`. Items you picked up as quest rewards or that are
+  "soulbound" can't be traded.
 - **Inviting.** `bot.invite(name)`, and the other player gets a system message in `read_chat` and accepts with
   `bot.accept_invite()`. `bot.group()` shows your party, `bot.leave_group()` leaves it. Everyone uses the same
   SDK, so they have the same calls.
