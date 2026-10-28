@@ -6,6 +6,10 @@
 # the client/server source); tools come from bin/ on PATH so it can't edit them.
 # Results land in runs/<id>/: judge.json (score), samples.jsonl (progress every 15s), agent.jsonl
 # (transcript), session.log, prompt.md. $WOW_PORT (default 8090) for parallel runs, $MODEL to pick a model.
+# Starting conditions (applied in the DB before the agent's session): $LEVEL, $MONEY (copper),
+# $START="x y z map zone" (e.g. Goldshire: "-9460 70 56.6 0 12"). $CHANNEL: zone channel auto-joined
+# (default "General - Elwynn Forest"; real clients join their zone's General automatically).
+# $HINT: extra line appended to the task prompt.
 set -e
 name=$1 char=$2 race=$3 class=$4 goal=$5 mins=${6:-60}
 [ -n "$goal" ] || { sed -n 2,7p "$0"; exit 1; }
@@ -22,16 +26,29 @@ case "$goal" in
   money:*) goal_text="hold $n copper" ;;
   item:*) goal_text="own item $n (item_template entry)" ;;
   quality:*) goal_text="own any item of quality $n or better (3 = rare)" ;;
+  quest:*) goal_text="complete the quest \"$(bin/worlddb "SELECT LogTitle FROM quest_template WHERE ID = $n" | tail -1)\" (quest $n): accept it, do its objectives, and turn it in" ;;
 esac
 
 bun account.ts "$acct" "$acct" # non-GM
 docker exec ac-database mysql -uroot -ppassword -e "CREATE USER IF NOT EXISTS 'worldreader'@'%' IDENTIFIED BY 'worldreader';
   GRANT SELECT ON acore_world.* TO 'worldreader'@'%';" 2>/dev/null # for worlddb
+sql() { docker exec ac-database mysql -uroot -ppassword -N acore_characters -e "$1" 2>/dev/null; }
+if [ -n "$LEVEL$MONEY$START" ]; then
+  # create the character with a short login, then edit it while offline
+  ACCOUNT=$acct ./play.sh "$char" --race "$race" --class "$class" --duration 8s > "$ws/session.log" 2>&1
+  until [ "$(sql "SELECT online FROM characters WHERE name = '$char'")" = 0 ]; do sleep 1; done
+  set -- $START
+  sql "UPDATE characters SET health = 100000
+    ${LEVEL:+, level = $LEVEL, xp = 0} ${MONEY:+, money = $MONEY}
+    ${START:+, position_x = $1, position_y = $2, position_z = $3, map = $4, zone = $5}
+    WHERE name = '$char'"
+fi
 ACCOUNT=$acct ./play.sh "$char" --race "$race" --class "$class" > "$ws/session.log" 2>&1 &
 session=$!
 trap 'kill $agent $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM
 until bin/wow 'return 1' 2>/dev/null | grep -q result; do sleep 1; done
-bin/wow "LIB = '$ws/'" >/dev/null
+bin/wow "LIB = '$ws/'; bot.join_channel('${CHANNEL:-General - Elwynn Forest}', 1)" >/dev/null
+# ponytail: one zone channel joined at start; no auto-rejoin on zone change (agents can join_channel)
 
 bun judge.ts "$char" "$goal" --timeout "${mins}m" --samples "$dir/samples.jsonl" > "$dir/judge.json" &
 judge=$!
@@ -41,7 +58,8 @@ You are playing World of Warcraft (3.3.5a) on a local private server set up for 
 character $char is already logged in and waiting.
 
 GOAL: $goal_text. You are scored on wall-clock time until an external judge sees the goal met; if time
-runs out ($mins minutes), your progress toward it is the score.
+runs out ($mins minutes), your progress toward it is the score.${HINT:+
+$HINT}
 
 Read AGENTS.md first. It documents your session (wow), the bot API, and worlddb, a read-only SQL view
 of the game's world database: mob spawns and levels, quest givers, vendors, loot tables.

@@ -270,10 +270,10 @@ index a749726..a201f17 100644
  func (b *Bot) SendCommand(command string) error {
 diff --git i/bot/control.go w/bot/control.go
 new file mode 100644
-index 0000000..9f188ae
+index 0000000..45135f9
 --- /dev/null
 +++ w/bot/control.go
-@@ -0,0 +1,234 @@
+@@ -0,0 +1,245 @@
 +package bot
 +
 +// Agent control surface: extra Lua bindings (chat inbox, raw packets, events, reflective
@@ -299,6 +299,7 @@ index 0000000..9f188ae
 +	smsgNameQueryResp = 0x0051
 +	smsgNotification  = 0x01CB
 +	cmsgMessageChat   = 0x0095
++	cmsgJoinChannel   = 0x0097
 +	inboxCap          = 1000 // ponytail: drop-oldest cap; agents that don't drain lose old messages
 +)
 +
@@ -375,6 +376,16 @@ index 0000000..9f188ae
 +	})
 +	e.RegisterFunc("whisper", func(to, msg string) { b.sendChat(7, to, msg) })
 +	e.RegisterFunc("party", func(msg string) { b.sendChat(2, "", msg) })
++	// bot.join_channel("General - Elwynn Forest", 1): built-in zone channels need their DBC id
++	// (1 General, 2 Trade, 22 LocalDefense); custom channels use id 0 and any name.
++	e.RegisterFunc("join_channel", func(name string, id uint32) {
++		var buf bytes.Buffer
++		binary.Write(&buf, binary.LittleEndian, id)
++		buf.Write([]byte{0, 0})
++		buf.WriteString(name + "\x00\x00") // name, empty password
++		w.SendPacketRaw(cmsgJoinChannel, buf.Bytes())
++	})
++	e.RegisterFunc("channel", func(name, msg string) { b.sendChat(0x11, name, msg) })
 +	if !b.config.ValidationMode {
 +		// set_level only overwrites the client's cached level (for GM test setup); for an agent it
 +		// just makes get_level() lie, e.g. bundled grind.lua's ".level 6" prep on a non-GM account.
@@ -440,12 +451,12 @@ index 0000000..9f188ae
 +	return client.LangCommon
 +}
 +
-+// sendChat sends CMSG_MESSAGECHAT; `to` is only used for whispers (type 7).
++// sendChat sends CMSG_MESSAGECHAT; `to` is the whisper target (type 7) or channel name (type 0x11).
 +func (b *Bot) sendChat(typ uint32, to, msg string) {
 +	var buf bytes.Buffer
 +	binary.Write(&buf, binary.LittleEndian, typ)
 +	binary.Write(&buf, binary.LittleEndian, b.chatLang())
-+	if typ == 7 {
++	if typ == 7 || typ == 0x11 {
 +		buf.WriteString(to + "\x00")
 +	}
 +	buf.WriteString(msg + "\x00")

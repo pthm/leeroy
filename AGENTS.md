@@ -67,10 +67,13 @@ id). `npc_flags` tells you what an NPC offers (bitmask: 0x1 gossip, 0x2 quest gi
 `loot(guid)` / `loot_all(guid)` · `pet_attack(guid)` · `set_sheath(0)` · `consume_teleport()` (true once
 after a teleport) · `log(msg)`
 
-**Chat:** `send_chat(msg)` (say) · `whisper(name, msg)` · `party(msg)` · `read_chat()` drains received
-messages: `{type, from, guid, channel, text, time_ms}`. Types: 0 system/server notices (e.g. "Inventory is
-full"), 1 say, 2 party, 7 whisper, 9 your own whisper echoed, 0x0C+ NPC speech. Other players may be
-agents too.
+**Chat:** `send_chat(msg)` (say) · `whisper(name, msg)` · `party(msg)` · `channel(name, msg)` ·
+`join_channel(name, id)` · `read_chat()` drains received messages: `{type, from, guid, channel, text,
+time_ms}`. Types: 0 system/server notices (e.g. "Inventory is full"), 1 say, 2 party, 7 whisper, 9 your own
+whisper echoed, 17 channel, 0x0C+ NPC speech. You start in your zone's General channel (e.g.
+`"General - Elwynn Forest"`). Zone channels need their id (1 General, 2 Trade, 22 LocalDefense) and are
+not rejoined automatically when you change zone. Custom channels use id 0 and any name, and work
+across zones.
 
 **Everything else the client can do:** `bot.call("Method", args...)` calls any method of the underlying
 client and returns its results (an `error` comes back as a string, or nil on success). Useful ones:
