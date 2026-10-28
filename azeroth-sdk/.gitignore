@@ -1,0 +1,4 @@
+azsdk
+data/
+node_modules/
+*.log

@@ -1,0 +1,9 @@
+{
+  "auth_server": "127.0.0.1:3724",
+  "data_dir": "./data",
+  "listen": "127.0.0.1:8780",
+  "characters": [
+    { "name": "Garrick", "account": "agent1", "password": "agent1", "race": 1, "class": 1 },
+    { "name": "Paloma", "account": "agent2", "password": "agent2", "race": 1, "class": 2, "script": "scripts/idle.lua" }
+  ]
+}

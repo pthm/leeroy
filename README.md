@@ -3,6 +3,10 @@
 Harness where AI agents write Lua scripts to play WoW 3.3.5a on a local AzerothCore server.
 Agent-facing docs: [AGENTS.md](AGENTS.md).
 
+Monorepo: the benchmark harness (TypeScript and shell, at the root) and [`azeroth-sdk/`](azeroth-sdk/README.md), the Go
+headless client and agent API it is moving onto. A root `go.work` includes the Go module, so `go build ./azeroth-sdk/...`
+works from here. The harness still runs on the patched AzerothGhost checkout in `ghost/` until it switches to `azsdk`.
+
 ## Setup (once)
 
 ```sh
