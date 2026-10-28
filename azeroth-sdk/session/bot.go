@@ -65,6 +65,7 @@ type Bot struct {
 	world *client.WorldClient
 	nav   navigation.Navigator
 	agent *agentState // Lua agent API state (cast tracking); nil outside sessions
+	playerName func(guid uint64) string // name from the session's name-query cache ("" until the server answers)
 	lua   *script.Engine
 
 	// Stats
@@ -1456,7 +1457,11 @@ func (b *Bot) GetNearbyUnits(maxDist float32) []script.UnitInfo {
 	objects := b.world.GetNearbyUnits(maxDist)
 	result := make([]script.UnitInfo, 0, len(objects))
 	for _, obj := range objects {
-		result = append(result, b.worldObjToUnitInfo(obj))
+		u := b.worldObjToUnitInfo(obj)
+		if u.Name == "" && u.IsPlayer && b.playerName != nil {
+			u.Name = b.playerName(obj.GUID)
+		}
+		result = append(result, u)
 	}
 	return result
 }
@@ -1465,7 +1470,11 @@ func (b *Bot) GetNearbyPlayers(maxDist float32) []script.UnitInfo {
 	objects := b.world.GetNearbyPlayers(maxDist)
 	result := make([]script.UnitInfo, 0, len(objects))
 	for _, obj := range objects {
-		result = append(result, b.worldObjToUnitInfo(obj))
+		u := b.worldObjToUnitInfo(obj)
+		if u.Name == "" && b.playerName != nil {
+			u.Name = b.playerName(obj.GUID)
+		}
+		result = append(result, u)
 	}
 	return result
 }
@@ -1476,6 +1485,9 @@ func (b *Bot) GetUnitInfo(guid uint64) *script.UnitInfo {
 		return nil
 	}
 	info := b.worldObjToUnitInfo(obj)
+	if info.Name == "" && info.IsPlayer && b.playerName != nil {
+		info.Name = b.playerName(guid)
+	}
 	return &info
 }
 

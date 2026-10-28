@@ -64,6 +64,20 @@ func (b *Bot) setupControl() {
 	w := b.world
 	w.AddPacketHook(func(op uint16, data []byte) { c.onPacket(w, op, data) })
 
+	// player names for get_nearby_players/get_unit: the client only knows names it asked for
+	asked := map[uint64]time.Time{}
+	b.playerName = func(g uint64) string {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if n := c.names[g]; n != "" {
+			return n
+		}
+		if time.Since(asked[g]) > 3*time.Second { // SMSG_NAME_QUERY_RESPONSE fills c.names
+			asked[g] = time.Now()
+			go w.NameQuery(g)
+		}
+		return ""
+	}
 	b.setupAgentAPI()
 	b.setupItems()
 	b.startRecording()
