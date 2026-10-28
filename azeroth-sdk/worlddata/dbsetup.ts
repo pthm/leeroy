@@ -1,4 +1,4 @@
-// bun server/dbsetup.ts
+// bun azeroth-sdk/worlddata/dbsetup.ts
 // Builds the `wowbench` schema that worlddb and wowdb read: client DBC data the world DB lacks, plus
 // precomputed joins (aowow-style). Needs data/dbc/*.dbc and data/maps (see README). Tables:
 //  achievement, achievement_criteria, achievement_category, criteria_type: the achievement catalogue
@@ -10,7 +10,7 @@
 //  spell: names, ranks, descriptions, cast time, range, cooldowns, cost, item created
 import { readFileSync, readdirSync } from "node:fs";
 
-const REPO = new URL("../", import.meta.url).pathname;
+const REPO = new URL("../../", import.meta.url).pathname;
 import { execFileSync } from "node:child_process";
 
 function dbc(file: string) {

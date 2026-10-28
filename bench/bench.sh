@@ -2,8 +2,8 @@
 # bench/bench.sh <agent-name> <Character> <race> <class> <goal> [timeout-min]
 #   e.g. bench/bench.sh claude1 Humanwar 1 1 level:5 60
 # Fresh account + character, a persistent session, the judge, and a headless Claude Code agent.
-# The agent runs inside agents/<name>/ (its persistent library, the only place it can read or write besides
-# the client/server source); tools come from bin/ on PATH so it can't edit them.
+# The agent runs inside workspaces/<name>/ (its persistent library, the only place it can read or write besides
+# the client/server source); tools come from agent/bin/ on PATH so it can't edit them.
 # Results land in runs/<id>/: judge.json (score), samples.jsonl (progress every 15s), agent.jsonl
 # (transcript), session.log, prompt.md. $WOW_PORT (default 8090) for parallel runs, $MODEL to pick a model.
 # Starting conditions (applied in the DB before the agent's session): $LEVEL, $MONEY (copper),
@@ -18,9 +18,11 @@ name=$1 char=$2 race=$3 class=$4 goal=$5 mins=${6:-60}
 [ -n "$goal" ] || { sed -n 2,7p "$0"; exit 1; }
 export WOW_PORT=${WOW_PORT:-8090}
 id="$(date +%Y%m%d-%H%M%S)-$name"; dir="runs/$id"
-root=$(pwd); repo=$(dirname "$root"); ws="$root/agents/$name"
+root=$(pwd); repo=$(dirname "$root"); ws="$root/workspaces/$name"
 mkdir -p "$dir" "$ws"
-cp AGENTS.md agents/example.lua "$ws/" # refreshed each run
+# refreshed each run: bench task docs + the SDK reference, and an example script
+cat agent/AGENTS.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/world-data.md > "$ws/AGENTS.md"
+cp ../azeroth-sdk/examples/lua/grind.lua "$ws/example.lua"
 acct=$(printf %s "$name" | tr -cd 'a-zA-Z0-9' | cut -c1-16)
 n=${goal#*:}
 case "$goal" in
@@ -31,7 +33,7 @@ case "$goal" in
   quality:*) goal_text="own any item of quality $n or better (3 = rare)" ;;
   score:*) goal_text="make as much overall progress with your character as you can" ;;
   achpoints:*) goal_text="earn as many achievement points as you can" ;;
-  quest:*) goal_text="complete the quest \"$(bin/worlddb "SELECT LogTitle FROM quest_template WHERE ID = $n" | tail -1)\" (quest $n): accept it, do its objectives, and turn it in" ;;
+  quest:*) goal_text="complete the quest \"$(agent/bin/worlddb "SELECT LogTitle FROM quest_template WHERE ID = $n" | tail -1)\" (quest $n): accept it, do its objectives, and turn it in" ;;
 esac
 score_text="You are scored on wall-clock time until an external judge sees the goal met; if time
 runs out ($mins minutes), your progress toward it is the score."
@@ -43,7 +45,7 @@ names, points and criteria are in worlddb (see AGENTS.md); bot.achievements() sh
   stop_text="Do not stop early: keep earning points until the time runs out." ;;
 score:*)
   score_text="Your score is a weighted sum of how much these grow during the next $mins minutes (weight per unit):
-$(jq -r '.weights | to_entries[] | "  \(.key): \(.value)"' "$root/score.json")
+$(jq -r '.weights | to_entries[] | "  \(.key): \(.value)"' "$root/judge/score.json")
 Fractional level counts (10.5 = halfway to 11); avg_item_level is over your 17 gear slots; wealth_copper is money
 plus the vendor value of what you own; deaths subtract. There is no finish line."
   stop_text="Do not stop early: keep improving your score until the time runs out." ;;
@@ -56,7 +58,7 @@ sql() { docker exec ac-database mysql -uroot -ppassword -N acore_characters -e "
 if [ -n "$LEVEL$MONEY$START" ]; then
   # create the character with a short login, then edit it while offline
   for try in 1 2 3; do # concurrent logins can time out on the auth server
-    ACCOUNT=$acct ./play.sh "$char" --race "$race" --class "$class" --duration 8s > "$ws/session.log" 2>&1 || true
+    ACCOUNT=$acct client/play.sh "$char" --race "$race" --class "$class" --duration 8s > "$ws/session.log" 2>&1 || true
     [ -n "$(sql "SELECT 1 FROM characters WHERE name = '$char'")" ] && break
     sleep $((try * 5))
   done
@@ -71,19 +73,19 @@ fi
 trap 'kill $agent $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM
 [ -n "$LEVEL$MONEY$START" ] || : > "$ws/session.log" # the workspace (and old log) persists
 for try in 1 2 3; do # the auth server sometimes times out the logon proof
-  ACCOUNT=$acct ./play.sh "$char" --race "$race" --class "$class" >> "$ws/session.log" 2>&1 &
+  ACCOUNT=$acct client/play.sh "$char" --race "$race" --class "$class" >> "$ws/session.log" 2>&1 &
   session=$!
-  until bin/wow 'return 1' 2>/dev/null | grep -q result || ! kill -0 $session 2>/dev/null; do sleep 1; done
+  until agent/bin/wow 'return 1' 2>/dev/null | grep -q result || ! kill -0 $session 2>/dev/null; do sleep 1; done
   kill -0 $session 2>/dev/null && break
   echo "$name: session login failed (try $try), see $ws/session.log" >&2
   [ $try = 3 ] && exit 1
   sleep $((try * 5))
 done
-bin/wow "LIB = '$ws/'; bot.join_channel('${CHANNEL:-General - Elwynn Forest}', 1)" >/dev/null
+agent/bin/wow "LIB = '$ws/'; bot.join_channel('${CHANNEL:-General - Elwynn Forest}', 1)" >/dev/null
 # ponytail: one zone channel joined at start; no auto-rejoin on zone change (agents can join_channel)
 
 [ -z "$GO" ] || { touch "$GO.$name.ready"; until [ -e "$GO" ]; do sleep 1; done; }
-bun judge.ts "$char" "$goal" --timeout "${mins}m" --samples "$dir/samples.jsonl" > "$dir/judge.json" &
+bun judge/judge.ts "$char" "$goal" --timeout "${mins}m" --samples "$dir/samples.jsonl" > "$dir/judge.json" &
 judge=$!
 
 cat > "$dir/prompt.md" <<PROMPT
@@ -95,7 +97,7 @@ $HINT}
 
 Read AGENTS.md first. It documents your session (wow), the bot API, and worlddb, a read-only SQL view
 of the game's world database: mob spawns and levels, quest givers, vendors, loot tables.
-Reference source (read-only): game client $root/ghost/client, server $repo/server/azerothcore/src/server/game and
+Reference source (read-only): game client $root/client/ghost/client, server $repo/server/azerothcore/src/server/game and
 $repo/server/azerothcore/src/server/shared.
 
 HOW TO WORK
@@ -115,9 +117,9 @@ RULES: Progress through legitimate gameplay only. You have no GM access; don't t
 the database, the judge or the harness. Your session log is session.log in your working directory.
 PROMPT
 
-(cd "$ws" && PATH="$root/bin:$PATH" exec timeout "${mins}m" claude -p "$(cat "$root/$dir/prompt.md")" \
+(cd "$ws" && PATH="$root/agent/bin:$PATH" exec timeout "${mins}m" claude -p "$(cat "$root/$dir/prompt.md")" \
   --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
-  --add-dir "$root/ghost/client" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
+  --add-dir "$root/client/ghost/client" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
   --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(wowdb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
     "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Edit(/**)" \
   > "$root/$dir/agent.jsonl" 2>&1) &
@@ -125,6 +127,6 @@ agent=$!
 
 wait $judge || true
 cat "$dir/judge.json"
-[ -n "$GO" ] || bun replay.ts "$dir" >/dev/null 2>&1 || true # team.sh builds one replay for the whole team
+[ -n "$GO" ] || bun ../server/recorder/replay.ts "$dir" >/dev/null 2>&1 || true # team.sh builds one replay for the whole team
 exit
 }

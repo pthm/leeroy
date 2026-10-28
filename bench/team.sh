@@ -23,4 +23,4 @@ i=0; until [ "$(ls "$dir"/go.*.ready 2>/dev/null | wc -l)" -ge $# ] || [ $i -ge 
 date +%s > "$dir/go"; echo "go: $(ls "$dir"/go.*.ready | wc -l)/$# sessions up"
 wait
 for f in "$dir"/*.out; do grep '^{' "$f" | tail -n 1; done | jq -s --argjson n $# '{agents: ., team_s: (if length == $n and all(.met) then map(.elapsed_s) | max else null end)}' | tee "$dir/team.json"
-bun replay.ts "$dir" || echo "no replay (is mod-recorder installed? see README)"
+bun ../server/recorder/replay.ts "$dir" || echo "no replay (is mod-recorder installed? see README)"

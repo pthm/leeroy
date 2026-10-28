@@ -1,11 +1,11 @@
 #!/bin/sh
-# bench/play.sh <character> [startup.lua] [azghost flags, e.g. --race 2 --class 1 --duration 2h]
+# bench/client/play.sh <character> [startup.lua] [azghost flags, e.g. --race 2 --class 1 --duration 2h]
 # Starts a persistent session (runs until killed or --duration) with a control endpoint on
 # localhost:$WOW_PORT (default 8090). Account: $ACCOUNT (default agent1, password = account name).
 set -e
 [ -n "$1" ] || { echo "usage: $0 <character> [startup.lua] [azghost flags...]"; exit 1; }
 char="$1"; shift
-script="$(dirname "$0")/agents/idle.lua"
+script="$(dirname "$0")/idle.lua"
 case "$1" in *.lua) script="$1"; shift ;; esac
 script="$(cd "$(dirname "$script")" && pwd)/$(basename "$script")"
 acct="${ACCOUNT:-agent1}"

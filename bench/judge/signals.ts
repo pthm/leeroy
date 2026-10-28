@@ -1,5 +1,5 @@
 // Progress signals for one character, read from the character DB (the server's record, not the client's).
-// `bun bench/signals.ts <character>` prints them; judge.ts samples them every poll and scores `score:<n>` goals
+// `bun bench/judge/signals.ts <character>` prints them; judge.ts samples them every poll and scores `score:<n>` goals
 // as the weighted sum of each signal's change since the judge started (weights: score.json).
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";

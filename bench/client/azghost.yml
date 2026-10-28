@@ -1,4 +1,4 @@
 auth-server: "127.0.0.1:3724"
-data-dir: "../../data"
+data-dir: "../../../data"
 username: "agent1"
 password: "agent1"

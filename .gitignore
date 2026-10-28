@@ -1,8 +1,7 @@
 server/azerothcore/
-bench/ghost/
+bench/client/ghost/
 bench/runs/
-bench/sessions/
-bench/agents/*/
+bench/workspaces/*/
 data/
 node_modules/
 *.log

@@ -40,6 +40,9 @@ await me.eval("function on_tick() ... end");      // in-daemon script for tight 
 | `script` | the Lua runtime for agent scripts (go-lua 5.2 + Lua patterns) |
 | `api`, `cmd/azsdk` | JSON-RPC API and daemon |
 | `sdk/ts` | TypeScript client |
+| `docs/` | `lua-api.md` (the `bot` API scripts use), `world-data.md` (`wowdb`, `worlddb`) |
+| `worlddata/` | `dbsetup.ts` builds the `wowbench` schema (achievements, areas, spawn zones, hostility, spells); `wowdb.ts` answers structured lookups. TypeScript for now; becomes the daemon's `db.*` methods |
+| `examples/lua/` | example in-daemon scripts |
 
 Status and plan: phase 0 of the azeroth-sdk design. Methods are thin wrappers over the session's Lua
 bindings; verified action results, an event stream (WebSocket) and vendor/trainer/gossip support come next.
