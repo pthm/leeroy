@@ -698,10 +698,11 @@ func movementGroundHeightWithSource(nav navigation.Navigator, mapID uint32, x, y
 	return 0, false, false
 }
 
-// FloorAware returns the walkable floor near hintZ when it is clearly above the terrain (inside a building, on a
-// bridge), otherwise ground: terrain heights lie under building floors, and the client's vmap reader doesn't
-// find them, so snapping to "ground" put bots under inn floors and Stormwind. The navmesh floor comes from the
-// server's own geometry. ponytail: 2.5 yd separates floors from terrain noise; stairs near ground level snap to terrain.
+// FloorAware returns the walkable navmesh floor near hintZ when it's a different surface from the terrain (inside a
+// building or on a bridge above it, in a cave or mine under it) and nearer hintZ than ground; otherwise ground. The
+// client's vmap reader doesn't find building or cave floors, so snapping to "ground" put bots under inn floors and
+// Stormwind, and on the hill above mines. The navmesh floor comes from the server's own geometry.
+// ponytail: 2.5 yd separates surfaces from terrain noise; stairs near ground level snap to terrain.
 func FloorAware(nav navigation.Navigator, mapID uint32, x, y, hintZ, ground float32) float32 {
 	fn, ok := nav.(interface {
 		FloorHeight(mapID uint32, x, y, hint float32) (float32, bool)
@@ -714,7 +715,9 @@ func FloorAware(nav navigation.Navigator, mapID uint32, x, y, hintZ, ground floa
 	if !ok {
 		return ground
 	}
-	if terrain, ok := fn.GetTerrainHeight(mapID, x, y); ok && floor > terrain+2.5 {
+	// two different surfaces (an upper floor or bridge above the terrain, or a cave/mine floor under it): take the one
+	// nearest the height we're at. Snapping to the terrain lifted characters in mines onto the hill above.
+	if terrain, ok := fn.GetTerrainHeight(mapID, x, y); ok && abs32(floor-terrain) > 2.5 && abs32(floor-hintZ) < abs32(ground-hintZ) {
 		return floor
 	}
 	return ground
@@ -869,4 +872,11 @@ func simplifyAndDensifyPath(pts []navigation.Point3D, maxStep, collinearTol floa
 	}
 	simp = append(simp, dense[len(dense)-1])
 	return simp
+}
+
+func abs32(v float32) float32 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
