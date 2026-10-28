@@ -1,5 +1,4 @@
 server/azerothcore/
-bench/client/ghost/
 bench/runs/
 bench/workspaces/*/
 data/

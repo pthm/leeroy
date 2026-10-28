@@ -97,8 +97,8 @@ $HINT}
 
 Read AGENTS.md first. It documents your session (wow), the bot API, and worlddb, a read-only SQL view
 of the game's world database: mob spawns and levels, quest givers, vendors, loot tables.
-Reference source (read-only): game client $root/client/ghost/client, server $repo/server/azerothcore/src/server/game and
-$repo/server/azerothcore/src/server/shared.
+Reference source (read-only): the client and its Lua bindings in $repo/azeroth-sdk (client/, session/,
+script/), the server in $repo/server/azerothcore/src/server/game and $repo/server/azerothcore/src/server/shared.
 
 HOW TO WORK
 - Start earning progress within your first few minutes, then improve. Don't plan at length before you have
@@ -119,7 +119,7 @@ PROMPT
 
 (cd "$ws" && PATH="$root/agent/bin:$PATH" exec timeout "${mins}m" claude -p "$(cat "$root/$dir/prompt.md")" \
   --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
-  --add-dir "$root/client/ghost/client" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
+  --add-dir "$repo/azeroth-sdk/client" "$repo/azeroth-sdk/session" "$repo/azeroth-sdk/script" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
   --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(wowdb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
     "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Edit(/**)" \
   > "$root/$dir/agent.jsonl" 2>&1) &

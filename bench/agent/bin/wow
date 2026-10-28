@@ -4,8 +4,13 @@
 # wow -f grind.lua                    (re)load a script file, e.g. to replace on_tick
 # wow -w 60 'return bot.get_xp()'     wait 60s first (max 600), then evaluate — use this to poll progress
 # wow -c 60 'return bot.read_chat()'  same, but returns early as soon as another player messages you
-# Session port: $WOW_PORT (default 8090).
-eval_() { curl -sS "localhost:${WOW_PORT:-8090}/eval" --data-binary "$1"; echo; }
+# Session: the azsdk daemon on port $WOW_PORT (default 8090); prints {"result": ...} (+ "script_errors"
+# when the running script failed since the last call) or {"error": "..."}.
+eval_() {
+  jq -n --arg code "$1" '{jsonrpc: "2.0", id: 1, method: "script.eval", params: {code: $code}}' |
+    curl -sS "127.0.0.1:${WOW_PORT:-8090}/rpc" --data-binary @- |
+    jq -c 'if .error then {error: .error.message} else .result end'
+}
 if [ "$1" = "-w" ] || [ "$1" = "-c" ]; then
   case "$2" in ''|*[!0-9]*) echo "usage: wow $1 <seconds> <lua>"; exit 1 ;; esac
   t=$(( $2 > 600 ? 600 : $2 ))

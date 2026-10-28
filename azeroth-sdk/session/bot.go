@@ -1367,7 +1367,12 @@ func (b *Bot) GetLevel() uint32 {
 	return b.world.PlayerLevel()
 }
 
+// GetClass and GetRace read UNIT_FIELD_BYTES_0 (race, class, gender, power type); the config values are only
+// used to create a missing character, so they're the fallback before the first update arrives.
 func (b *Bot) GetClass() uint8 {
+	if o := b.world.GetObject(b.world.CharGUID()); o != nil && o.Value(client.UnitFieldBytes0) != 0 {
+		return uint8(o.Value(client.UnitFieldBytes0) >> 8)
+	}
 	return b.config.Class
 }
 
@@ -1379,6 +1384,9 @@ func (b *Bot) GetOwnGUID() uint64 {
 }
 
 func (b *Bot) GetRace() uint8 {
+	if o := b.world.GetObject(b.world.CharGUID()); o != nil && o.Value(client.UnitFieldBytes0) != 0 {
+		return uint8(o.Value(client.UnitFieldBytes0))
+	}
 	return b.config.Race
 }
 
@@ -1562,25 +1570,6 @@ func (b *Bot) HasAuraOn(guid uint64, spellID uint32) bool {
 	return obj.HasAura(spellID)
 }
 
-// warriorRageCost is a minimal 3.3.5 base-cost map so CanCast rejects
-// NO_POWER spam when IsSpellReady is still true with 0 rage.
-var warriorRageCost = map[uint32]uint32{
-	6673:  10, // Battle Shout
-	772:   10, // Rend
-	78:    15, // Heroic Strike
-	7386:  15, // Sunder
-	5308:  15, // Execute
-	6343:  20, // Thunder Clap
-	845:   20, // Cleave
-	1680:  25, // Whirlwind
-	12294: 30, // Mortal Strike
-	23881: 20, // Bloodthirst
-	23922: 20, // Shield Slam
-	6572:  5,  // Revenge
-	7384:  5,  // Overpower
-	1715:  10, // Hamstring
-	1160:  10, // Demoralizing Shout
-}
 
 func (b *Bot) CanCast(spellID uint32, targetGUID uint64) bool {
 	if b.world == nil {
@@ -1591,13 +1580,11 @@ func (b *Bot) CanCast(spellID uint32, targetGUID uint64) bool {
 	if !b.IsSpellReady(spellID) {
 		return false
 	}
-	// Power precheck for rage users (warrior). Mana/energy classes skip this map.
-	if b.config.Class == 1 { // warrior
-		if need, ok := warriorRageCost[spellID]; ok && need > 0 {
-			cur, _ := b.world.Power()
-			if cur < need {
-				return false
-			}
+	// Enough power? Base cost from Spell.dbc, in the same units as GetPower (rage/runic x10). It used to be
+	// a warrior-only table checked against the mana-only world.Power(), so rage abilities never passed.
+	if sp := spellInfo(spellID); sp != nil && sp.Cost > 0 && sp.PowerType == uint32(b.GetPowerType()) {
+		if cur, _ := b.GetPower(); cur < sp.Cost {
+			return false
 		}
 	}
 	return true

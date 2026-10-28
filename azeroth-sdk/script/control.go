@@ -7,8 +7,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
@@ -44,25 +42,17 @@ func (e *Engine) Eval(code string) (any, error) {
 	return out, nil
 }
 
-// EvalHandler serves POST /eval (body = Lua source) -> {"result":...} or {"error":"..."}.
-func (e *Engine) EvalHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		code, _ := io.ReadAll(r.Body)
-		res, err := e.Eval(string(code))
-		out := map[string]any{"result": res}
-		w.Header().Set("Content-Type", "application/json")
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			out = map[string]any{"error": err.Error()}
-		}
-		e.mu.Lock()
-		if e.tickErrs > 0 { // surface on_tick failures that would otherwise only reach session.log
-			out["script_errors"] = map[string]any{"count": e.tickErrs, "last": e.tickErr}
-			e.tickErrs = 0
-		}
-		e.mu.Unlock()
-		json.NewEncoder(w).Encode(out)
-	})
+// TakeScriptErrors returns the on_tick errors since the last call ({count, last}), or nil if there were none.
+// Script failures otherwise only reach the log, so the API reports them with the next eval.
+func (e *Engine) TakeScriptErrors() map[string]any {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.tickErrs == 0 {
+		return nil
+	}
+	out := map[string]any{"count": e.tickErrs, "last": e.tickErr}
+	e.tickErrs = 0
+	return out
 }
 
 // noteTickError is called from CallTick with e.mu held.

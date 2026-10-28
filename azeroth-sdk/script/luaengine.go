@@ -12,7 +12,6 @@ import (
 	"time"
 
 	lua "github.com/Shopify/go-lua"
-
 )
 
 // BotAPI is the interface that the Lua engine uses to interact with the bot.
@@ -58,7 +57,7 @@ type BotAPI interface {
 	GetPetGUID() uint64
 	PetAttack(target uint64)
 	GetStance() int
-	GetOwnGUID() uint64    // own character GUID for faction/self checks
+	GetOwnGUID() uint64 // own character GUID for faction/self checks
 
 	GetPowerType() uint8
 	IsBehindTarget(targetGUID uint64) bool
@@ -104,9 +103,9 @@ type UnitInfo struct {
 
 // Engine wraps a Lua state and provides methods to load/run scripts.
 type Engine struct {
-	mu      sync.Mutex
-	state   *lua.State
-	bot     BotAPI
+	mu    sync.Mutex
+	state *lua.State
+	bot   BotAPI
 
 	// Script-defined tick function name
 	tickFunc string
@@ -273,7 +272,6 @@ func (e *Engine) registerBotFunctions() {
 		l.PushNumber(float64(e.bot.GetLevel()))
 		return 1
 	})
-
 
 	// bot.in_combat() -> bool
 	e.setFunc("in_combat", func(l *lua.State) int {

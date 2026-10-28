@@ -1,14 +1,15 @@
 #!/bin/sh
-# bench/client/play.sh <character> [startup.lua] [azghost flags, e.g. --race 2 --class 1 --duration 2h]
-# Starts a persistent session (runs until killed or --duration) with a control endpoint on
-# localhost:$WOW_PORT (default 8090). Account: $ACCOUNT (default agent1, password = account name).
+# bench/client/play.sh <character> [startup.lua] [azsdk flags, e.g. --race 2 --class 1 --duration 8s]
+# Runs one character in its own azsdk daemon (until killed or --duration), serving the agent API on
+# 127.0.0.1:$WOW_PORT (default 8090). Account: $ACCOUNT (default agent1, password = account name).
 set -e
-[ -n "$1" ] || { echo "usage: $0 <character> [startup.lua] [azghost flags...]"; exit 1; }
+[ -n "$1" ] || { echo "usage: $0 <character> [startup.lua] [azsdk flags...]"; exit 1; }
 char="$1"; shift
-script="$(dirname "$0")/idle.lua"
-case "$1" in *.lua) script="$1"; shift ;; esac
-script="$(cd "$(dirname "$script")" && pwd)/$(basename "$script")"
+repo=$(cd "$(dirname "$0")/../.." && pwd)
+script=""
+case "$1" in *.lua) script="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"; shift ;; esac
+bin="$repo/azeroth-sdk/azsdk"
+[ -x "$bin" ] || (cd "$repo" && go build -o "$bin" ./azeroth-sdk/cmd/azsdk)
 acct="${ACCOUNT:-agent1}"
-cd "$(dirname "$0")/ghost" # Lua dofile() paths are relative to here
-AZGHOST_CONTROL="127.0.0.1:${WOW_PORT:-8090}" exec ./azghost --config ../azghost.yml cli \
-  --username "$acct" --password "$acct" --char-name "$char" --bot-mode lua --lua-script "$script" "$@"
+exec "$bin" -char "$char" -account "$acct" -listen "127.0.0.1:${WOW_PORT:-8090}" -data "$repo/data" \
+  ${script:+-script "$script"} "$@"

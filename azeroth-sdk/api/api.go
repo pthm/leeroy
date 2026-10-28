@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pthm/wowbench/azeroth-sdk/script"
 	"github.com/pthm/wowbench/azeroth-sdk/session"
 )
 
@@ -49,8 +50,13 @@ type charParams struct {
 	Char string `json:"char"`
 }
 
-// eval runs Lua in a character's session (the same environment as its scripts).
-func eval(s Sessions, char, code string) (any, error) {
+// engine finds a character's Lua engine. char may be empty when the daemon runs a single character.
+func engine(s Sessions, char string) (*script.Engine, error) {
+	if char == "" && len(s) == 1 {
+		for name := range s {
+			char = name
+		}
+	}
 	b, ok := s[char]
 	if !ok {
 		return nil, fmt.Errorf("no session for character %q", char)
@@ -58,6 +64,15 @@ func eval(s Sessions, char, code string) (any, error) {
 	e := b.Engine()
 	if e == nil {
 		return nil, fmt.Errorf("%s is not in the world yet (status %s)", char, b.Status().Status)
+	}
+	return e, nil
+}
+
+// eval runs Lua in a character's session (the same environment as its scripts).
+func eval(s Sessions, char, code string) (any, error) {
+	e, err := engine(s, char)
+	if err != nil {
+		return nil, err
 	}
 	return e.Eval(code)
 }
@@ -104,11 +119,24 @@ var methods = map[string]method{
 		}
 		return eval(s, p.Char, fmt.Sprintf(stateLua, p.Radius))
 	}),
+	// script.eval -> {result, script_errors?}: script_errors = on_tick failures since the last eval
 	"script.eval": typed(func(s Sessions, p struct {
 		Char string `json:"char"`
 		Code string `json:"code"`
 	}) (any, error) {
-		return eval(s, p.Char, p.Code)
+		e, err := engine(s, p.Char)
+		if err != nil {
+			return nil, err
+		}
+		res, err := e.Eval(p.Code)
+		if err != nil {
+			return nil, err
+		}
+		out := map[string]any{"result": res}
+		if se := e.TakeScriptErrors(); se != nil {
+			out["script_errors"] = se
+		}
+		return out, nil
 	}),
 	"move.to": typed(func(s Sessions, p struct {
 		Char string   `json:"char"`

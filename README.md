@@ -6,11 +6,10 @@ achieve.
 | Folder | What's in it |
 |---|---|
 | [`server/`](server) | The AzerothCore server: upstream checkout (`azerothcore/`, gitignored), config overrides (`override.yml`), account creation (`account.ts`), and `recorder/`: the `mod-recorder` module plus the tools that read its log (`replay.ts` run replays, `movecheck.ts` movement audit) |
-| [`bench/`](bench/README.md) | The benchmark: launchers (`bench.sh`, `team.sh`), scoring (`judge/`), what agents get (`agent/`: task docs and the `wow`, `worlddb`, `wowdb` tools), the session runner (`client/`, AzerothGhost until the switch to `azsdk`), agent `workspaces/` and `runs/` |
+| [`bench/`](bench/README.md) | The benchmark: launchers (`bench.sh`, `team.sh`), scoring (`judge/`), what agents get (`agent/`: task docs and the `wow`, `worlddb`, `wowdb` tools), the session runner (`client/play.sh`, one `azsdk` per agent), agent `workspaces/` and `runs/` |
 | [`azeroth-sdk/`](azeroth-sdk/README.md) | The Go headless client, `azsdk` daemon and TypeScript SDK, plus the Lua API docs, world data API (`worlddata/`: `wowdb`, `dbsetup`) and example scripts (a root `go.work` includes it: `go build ./azeroth-sdk/...`) |
 | `data/` | Client data copied out of the server (maps, navmesh, DBC files), shared by all of the above (gitignored) |
 
-Until the bench switches to `azsdk`, sessions run on a patched AzerothGhost checkout in `bench/client/ghost/`.
 All commands below run from the repo root.
 
 ## Setup (once)
@@ -29,11 +28,8 @@ mkdir -p data/dbc && docker run --rm -v server_ac-client-data:/src:ro -v $PWD/da
    SpellRange.dbc /dst/dbc/'
 bun azeroth-sdk/worlddata/dbsetup.ts   # wowbench schema: achievements, areas, spawn zones, faction hostility, spells
 
-# bench client (until the switch to azeroth-sdk)
-git clone https://github.com/azerothcore/AzerothGhost.git bench/client/ghost && git -C bench/client/ghost checkout be53c70
-git -C bench/client/ghost apply ../patches/azerothghost-control.patch && rm -rf bench/client/ghost/scripts
-(cd bench/client/ghost && go build -o azghost ./cmd/azghost)
-# regen the patch: cd bench/client/ghost && git add -N . && git diff -- . ':!scripts' > ../patches/azerothghost-control.patch
+# the client (bench/client/play.sh also builds it on first use)
+go build -o azeroth-sdk/azsdk ./azeroth-sdk/cmd/azsdk
 ```
 
 The compose project is pinned to `server` (`server/override.yml`), so the volumes are `server_ac-database` and
