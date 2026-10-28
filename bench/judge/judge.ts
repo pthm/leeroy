@@ -16,7 +16,7 @@
 //   pace         the time-average of value so far (area under the curve / time): reaching 50 at minute 10 beats
 //                reaching it at minute 55
 //   score        (value + pace) / 2: final progress and speed count equally. This is the headline for score goals.
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { sql, signals, weights, composite } from "./signals.ts";
 
 const [char, goal, ...rest] = process.argv.slice(2);
@@ -41,13 +41,17 @@ const query = {
     WHERE ca.guid = (SELECT guid FROM characters WHERE name = '${char}')`,
   score: "",
 }[kind]!;
-const baseline = kind === "achpoints" ? Number(sql(query) || 0) : 0; // only count what's earned during the run
-const base = signals(char), w = kind === "score" ? weights() : {};
+// --resume <samples.jsonl>: continue a paused run from its samples: same baseline, same curve, and the clock
+// picks up at the last sample (the pause doesn't count)
+const prior = flag("resume", "") ? readFileSync(flag("resume", ""), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
+const baseline = kind === "achpoints" ? (prior.length ? Number(sql(query) || 0) - prior.at(-1).value : Number(sql(query) || 0)) : 0; // only count what's earned during the run
+const base = prior[0]?.signals ?? signals(char), w = kind === "score" ? weights() : {};
 const need = kind === "item" || kind === "quality" || kind === "quest" ? 1 : +n;
 
-const start = Date.now();
-const curve: [number, number][] = []; // [elapsed h, value]
+const start = Date.now() - (prior.at(-1)?.elapsed_s ?? 0) * 1000;
+const curve: [number, number][] = prior.map((p) => [p.elapsed_s / 3600, p.value]); // [elapsed h, value]
 let area = 0; // integral of value dt, in value-hours
+for (let i = 1; i < curve.length; i++) area += ((curve[i - 1][1] + curve[i][1]) / 2) * (curve[i][0] - curve[i - 1][0]);
 for (;;) {
   const sig = signals(char);
   const value = kind === "score" ? composite(sig, base, w) : Number(sql(query) || 0) - baseline;
