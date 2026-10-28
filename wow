@@ -1,9 +1,0 @@
-#!/bin/sh
-# ./wow 'return bot.get_level()'      evaluate Lua in the live session, print JSON result
-# ./wow < snippet.lua                 same, from stdin
-# ./wow -f agents/me/grind.lua        (re)load a script file, e.g. to replace on_tick
-# Session port: $WOW_PORT (default 8090).
-if [ "$1" = "-f" ]; then
-  code="return dofile(\"$(cd "$(dirname "$2")" && pwd)/$(basename "$2")\")"
-elif [ -n "$1" ]; then code="$1"; else code="$(cat)"; fi
-curl -sS "localhost:${WOW_PORT:-8090}/eval" --data-binary "$code"; echo

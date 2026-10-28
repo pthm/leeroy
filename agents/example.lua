@@ -1,14 +1,24 @@
--- Minimal hand-written agent: fight the nearest hostile mob, loot it, repeat.
--- on_tick() runs every 200ms. Paths in dofile() are relative to ghost/ (the runner's cwd).
-local targeting = dofile("scripts/lib/targeting.lua")
-
+-- Minimal hand-written agent: fight the nearest attackable mob, loot it, repeat.
+-- on_tick() runs every 200ms. Load with: wow -f example.lua
 local target, kills = nil, 0
 
+local function attackable(u)
+  -- ponytail: naive filter; doesn't know guards/critters/factions — a real agent should refine this
+  return u.is_alive and not u.is_player and u.npc_flags == 0 and u.level > 0
+end
+
+local function nearest_mob(max_dist)
+  local best
+  for _, u in ipairs(bot.get_nearby_units(max_dist)) do
+    if attackable(u) and (not best or u.distance < best.distance) then best = u end
+  end
+  return best
+end
+
 function on_tick()
-  if not bot.is_alive() then return end
+  if not bot.is_alive() then return end -- death handling is left to you
   if bot.consume_teleport() then target = nil end
 
-  -- Loot anything lootable nearby once out of combat.
   if not bot.in_combat() then
     for _, u in ipairs(bot.get_nearby_units(5)) do
       if u.lootable then bot.loot_all(u.guid) end
@@ -23,15 +33,14 @@ function on_tick()
   end
 
   if not t then
-    local best = targeting.find_best_hostile({ max_dist = 80 })
-    if not best then return end
-    target = best.guid
-    t = best
-    bot.log(string.format("engaging entry %d (lvl %d) at %.0fy", best.entry, best.level, best.distance))
+    t = nearest_mob(80)
+    if not t then return end
+    target = t.guid
+    bot.log(string.format("engaging entry %d (lvl %d) at %.0fy", t.entry, t.level, t.distance))
   end
 
   if t.distance > 4 then
-    bot.move_to(t.x, t.y, t.z) -- pathfinds via mmaps
+    bot.move_to(t.x, t.y, t.z) -- pathfinds via navmesh
   else
     if bot.is_moving() then bot.stop_moving() end
     bot.face_target(target)

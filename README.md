@@ -12,6 +12,7 @@ bun run server                                       # first boot downloads clie
 
 git clone https://github.com/azerothcore/AzerothGhost.git ghost && git -C ghost checkout be53c70  # tested commit
 git -C ghost apply ../patches/azerothghost-control.patch   # live eval endpoint, chat, raw packets, bot.call
+rm -rf ghost/scripts     # bundled Lua AI: agents write their own (regen the patch with `git diff -- . ':!scripts'`)
 (cd ghost && go build -o azghost ./cmd/azghost)      # Go 1.26+
 
 # pathfinding data for the client, copied out of the server's volume (~3GB)
@@ -25,8 +26,9 @@ mkdir -p data && docker run --rm -v server_ac-client-data:/src:ro -v $PWD/data:/
 ```
 
 Creates a fresh non-GM account, starts the session and judge, and runs headless Claude Code against it.
-The agent can only write inside `agents/<name>/` (its persistent script library) and can only run `./wow`,
-`./worlddb` and read-only shell commands. Results go to `runs/<id>/`: `judge.json` (score),
+The agent runs inside `agents/<name>/` (its persistent script library): it can only read and write there,
+plus read the client/server source, and can only run `wow`,
+`worlddb` (from `bin/`) and read-only shell commands. Results go to `runs/<id>/`: `judge.json` (score),
 `samples.jsonl` (level/xp/money every 15s), `agent.jsonl` (transcript), `session.log`.
 
 ## Run a task by hand
@@ -35,7 +37,7 @@ The agent can only write inside `agents/<name>/` (its persistent script library)
 bun account.ts agent1 agent1                                   # non-GM account per agent
 WOW_PORT=8090 ACCOUNT=agent1 ./play.sh Agentone > sessions/agent1.log 2>&1 &
 bun judge.ts Agentone level:10 --timeout 4h                    # in parallel; prints JSON + elapsed_s when met
-# ...give the agent AGENTS.md + the goal; it drives the session with ./wow
+# ...give the agent AGENTS.md + the goal; it drives the session with bin/wow
 ```
 
 Goals: `level:<n>`, `item:<entry>`, `quality:<n>` (3 = rare), `money:<copper>`. Multiple agents = one

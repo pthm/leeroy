@@ -1,0 +1,14 @@
+#!/bin/sh
+# wow 'return bot.get_level()'        evaluate Lua in the live session, print JSON result
+# wow < snippet.lua                   same, from stdin
+# wow -f grind.lua                    (re)load a script file, e.g. to replace on_tick
+# wow -w 60 'return bot.get_xp()'     wait 60s first (max 600), then evaluate — use this to poll progress
+# Session port: $WOW_PORT (default 8090).
+if [ "$1" = "-w" ]; then
+  case "$2" in ''|*[!0-9]*) echo "usage: wow -w <seconds> <lua>"; exit 1 ;; esac
+  sleep "$(( $2 > 600 ? 600 : $2 ))"; shift 2
+fi
+if [ "$1" = "-f" ]; then
+  code="return dofile(\"$(cd "$(dirname "$2")" && pwd)/$(basename "$2")\")"
+elif [ -n "$1" ]; then code="$1"; else code="$(cat)"; fi
+curl -sS "localhost:${WOW_PORT:-8090}/eval" --data-binary "$code"; echo

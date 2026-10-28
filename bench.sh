@@ -2,23 +2,36 @@
 # ./bench.sh <agent-name> <Character> <race> <class> <goal> [timeout-min]
 #   e.g. ./bench.sh claude1 Humanwar 1 1 level:5 60
 # Fresh account + character, a persistent session, the judge, and a headless Claude Code agent.
+# The agent runs inside agents/<name>/ (its persistent library, the only place it can read or write besides
+# the client/server source); tools come from bin/ on PATH so it can't edit them.
 # Results land in runs/<id>/: judge.json (score), samples.jsonl (progress every 15s), agent.jsonl
-# (transcript), session.log, prompt.md. $WOW_PORT (default 8090) for parallel runs.
+# (transcript), session.log, prompt.md. $WOW_PORT (default 8090) for parallel runs, $MODEL to pick a model.
 set -e
 name=$1 char=$2 race=$3 class=$4 goal=$5 mins=${6:-60}
 [ -n "$goal" ] || { sed -n 2,7p "$0"; exit 1; }
 export WOW_PORT=${WOW_PORT:-8090}
 id="$(date +%Y%m%d-%H%M%S)-$name"; dir="runs/$id"
-mkdir -p "$dir" "agents/$name"
+root=$(pwd); ws="$root/agents/$name"
+mkdir -p "$dir" "$ws"
+cp AGENTS.md agents/example.lua "$ws/" # refreshed each run
 acct=$(printf %s "$name" | tr -cd 'a-zA-Z0-9' | cut -c1-16)
+n=${goal#*:}
+case "$goal" in
+  level:*) goal_text="reach character level $n" ;;
+  quests:*) goal_text="complete $n quests (accepted, objectives done, and turned in to the quest ender)" ;;
+  money:*) goal_text="hold $n copper" ;;
+  item:*) goal_text="own item $n (item_template entry)" ;;
+  quality:*) goal_text="own any item of quality $n or better (3 = rare)" ;;
+esac
 
 bun account.ts "$acct" "$acct" # non-GM
 docker exec ac-database mysql -uroot -ppassword -e "CREATE USER IF NOT EXISTS 'worldreader'@'%' IDENTIFIED BY 'worldreader';
-  GRANT SELECT ON acore_world.* TO 'worldreader'@'%';" 2>/dev/null # for ./worlddb
-ACCOUNT=$acct ./play.sh "$char" --race "$race" --class "$class" > "$dir/session.log" 2>&1 &
+  GRANT SELECT ON acore_world.* TO 'worldreader'@'%';" 2>/dev/null # for worlddb
+ACCOUNT=$acct ./play.sh "$char" --race "$race" --class "$class" > "$ws/session.log" 2>&1 &
 session=$!
-trap 'kill $agent $judge $session 2>/dev/null' EXIT INT TERM
-until ./wow 'return 1' 2>/dev/null | grep -q result; do sleep 1; done
+trap 'kill $agent $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM
+until bin/wow 'return 1' 2>/dev/null | grep -q result; do sleep 1; done
+bin/wow "LIB = '$ws/'" >/dev/null
 
 bun judge.ts "$char" "$goal" --timeout "${mins}m" --samples "$dir/samples.jsonl" > "$dir/judge.json" &
 judge=$!
@@ -27,33 +40,36 @@ cat > "$dir/prompt.md" <<PROMPT
 You are playing World of Warcraft (3.3.5a) on a local private server set up for AI benchmarking. Your
 character $char is already logged in and waiting.
 
-GOAL: $goal (level:N = reach character level N). You are scored on wall-clock time until an external judge
-sees the goal met; if time runs out ($mins minutes), your progress (level, then XP) is the score.
+GOAL: $goal_text. You are scored on wall-clock time until an external judge sees the goal met; if time
+runs out ($mins minutes), your progress toward it is the score.
 
-Read AGENTS.md first. It documents your session (./wow), the bot API, and ./worlddb, a read-only SQL view
+Read AGENTS.md first. It documents your session (wow), the bot API, and worlddb, a read-only SQL view
 of the game's world database: mob spawns and levels, quest givers, vendors, loot tables.
+Reference source (read-only): game client $root/ghost/client, server $root/server/src/server/game.
 
 HOW TO WORK
 - Start earning progress within your first few minutes, then improve. Don't plan at length before you have
   a working baseline.
-- Iterate in small steps: try one action with ./wow, check it worked, then build it into a script.
-- Measure, don't guess: ./wow 'return bot.get_level(), bot.get_xp()' gives level, xp, xp for next level.
+- Iterate in small steps: try one action with wow, check it worked, then build it into a script.
+- Measure, don't guess: wow 'return bot.get_level(), bot.get_xp()' gives level, xp, xp for next level.
   Track your XP/min and change strategy when it drops (e.g. mobs becoming too low level, frequent deaths).
-- While a script runs, poll progress periodically (sleep, then query). Don't end your session.
-- Do not stop until the goal is met: confirm it yourself with ./wow before finishing.
+- While a script runs, poll progress with wow -w <seconds> '<lua>' (waits, then queries). Don't end your
+  session.
+- Do not stop until the goal is met: confirm it yourself with wow before finishing.
 
-YOUR LIBRARY: agents/$name/ is yours and persists across runs. Reuse what's there, and save anything
-reusable (combat, death handling, navigation, packet parsers) as you go. It is the only place you can write.
+YOUR LIBRARY: your working directory is yours and persists across runs. Reuse what's there, and save
+anything reusable (combat, death handling, navigation, packet parsers) as you go.
 
 RULES: Progress through legitimate gameplay only. You have no GM access; don't try to modify the server,
-the database, the judge or the harness. The session log is $dir/session.log.
+the database, the judge or the harness. Your session log is session.log in your working directory.
 PROMPT
 
-timeout "${mins}m" claude -p "$(cat "$dir/prompt.md")" \
-  --setting-sources project --strict-mcp-config --output-format stream-json --verbose \
-  --allowedTools "Bash(./wow:*)" "Bash(./worlddb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
-    "Bash(ls:*)" "Bash(grep:*)" "Read" "Glob" "Grep" "Edit(/agents/$name/**)" \
-  > "$dir/agent.jsonl" 2>&1 &
+(cd "$ws" && PATH="$root/bin:$PATH" exec timeout "${mins}m" claude -p "$(cat "$root/$dir/prompt.md")" \
+  --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
+  --add-dir "$root/ghost/client" "$root/server/src/server/game" \
+  --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
+    "Bash(ls:*)" "Bash(grep:*)" "Edit(/**)" \
+  > "$root/$dir/agent.jsonl" 2>&1) &
 agent=$!
 
 wait $judge || true

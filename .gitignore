@@ -5,3 +5,4 @@ sessions/
 node_modules/
 *.log
 runs/
+agents/*/
