@@ -327,6 +327,22 @@ func (b *Bot) setupItems() {
 		w.SendPacketRaw(cmsgCastSpellOp, buf.Bytes())
 		return nil
 	})
+	// repair(npc): repair everything you wear and carry at an NPC with npc_flags 0x1000 (armorers, weaponsmiths)
+	e.RegisterFunc("repair", func(npc uint64) {
+		body := binary.LittleEndian.AppendUint64(nil, npc)
+		body = binary.LittleEndian.AppendUint64(body, 0) // 0 = all items
+		w.SendPacketRaw(0x2A8, append(body, 0))          // CMSG_REPAIR_ITEM; no guild bank
+	})
+	// broken_gear() -> equipped items at 0 durability (they give no stats; a broken weapon means no weapon skills)
+	e.RegisterFunc("broken_gear", func() []map[string]any {
+		out := []map[string]any{}
+		for _, it := range bagItems(w) {
+			if it["bag"] == uint8(255) && it["slot"].(uint8) < 19 && it["max_durability"] != nil && it["durability"] == uint32(0) {
+				out = append(out, it)
+			}
+		}
+		return out
+	})
 	// train(trainer, spell): learn a spell from a trainer (costs money; ids from `wowdb npc <trainer>`)
 	e.RegisterFunc("train", func(trainer uint64, spell uint32) {
 		body := binary.LittleEndian.AppendUint64(nil, trainer)

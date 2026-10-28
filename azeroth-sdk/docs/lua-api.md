@@ -20,7 +20,7 @@ GUIDs are 64-bit and are returned as strings. Pass them back unchanged.
 **State:** `get_position()` → x,y,z,o · `get_health()`/`get_power()` → cur,max (rage and runic power are
 x10: 0-1000) · `get_xp()` → xp, xp needed for next level · `get_power_type()` (0 mana, 1 rage, 3 energy,
 6 runic) · `get_level()` · `get_class()` · `get_faction()` · `get_own_guid()` · `get_stance()` ·
-`in_combat()` (the server's combat flag) · `is_alive()` (false while dead or a ghost) · `is_ghost()` ·
+`in_combat()` (the server's combat flag) · `is_alive()` (false while dead or a ghost) · `is_ghost()` · `is_resting()` (in an inn or city) ·
 `money()` (copper) · `get_target()` · `now_ms()`
 
 **Spells:** `is_spell_ready(id)` → ready, ms until ready (cooldown, category cooldown and global cooldown) ·
@@ -41,12 +41,13 @@ backpack; bag 19-22 = inside that bag; the item fields appear once the item's in
 you first see it) · `has_item(entry)` → count · `free_slots()` → empty bag slots · `item_info(entry)` →
 `{name, quality, class, inv_type, item_level, required_level, sell_price, buy_price, armor, dps, use_spell,
 start_quest, max_stack}` (nil the first time: it asks the server; call again a moment later) ·
+`broken_gear()` → equipped items at 0 durability (`bag_items` has `durability`, `max_durability`) ·
 `use_item(item[, target])` uses food, drink, potions, quest items (`item` = entry or guid) · `destroy(item[, count])`.
 In these and the vendor calls, `item` is an item entry or an item guid from `bag_items`.
 
 **Vendors and trainers:** `vendor_items(vendor)` → `{slot, entry, name, price, stock, buy_count}` (nil on
 the first call: it asks the vendor) · `buy(vendor, entry[, count])` · `sell(vendor, item[, count])` ·
-`sell_junk(vendor)` → stacks sold (all grey items) · `train(trainer, spell)` learns a spell. Failures
+`sell_junk(vendor)` → stacks sold (all grey items) · `train(trainer, spell)` learns a spell · `repair(npc)` repairs all your gear at an armorer/weaponsmith. Failures
 (not enough money, bags full, too far) arrive as system messages in `read_chat`. Stand within ~5 yards of the NPC.
 
 **Quests and objects:** `quest_log()` → `{id, complete, failed, counts}` per quest you have (`counts` =

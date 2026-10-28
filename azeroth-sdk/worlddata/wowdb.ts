@@ -2,6 +2,7 @@
 // each entity comes back with its relations resolved (where an item drops, where a quest giver stands...).
 // Usage: wowdb <command> [args] [--flags]; prints JSON. `wowdb help` lists commands.
 import { execFileSync } from "node:child_process";
+import { roads, route, mapImage } from "./nav.ts";
 
 type Row = Record<string, string | number | null>;
 const LIMIT = 15;
@@ -305,6 +306,28 @@ const commands: Record<string, { usage: string; run: (a: string[], f: Record<str
     },
   },
 
+  roads: {
+    usage: "roads <x> <y> [--radius 500] [--map 0]  road polylines near a point (from guard/patroller routes)",
+    run: ([x, y], f) => {
+      const cx = num(x, "x"), cy = num(y, "y"), r = Number(f.radius ?? 500), m = Number(f.map ?? 0);
+      return roads(q, m, cx - r, cx + r, cy - r, cy + r).map((p) => p.filter((_, i) => i % 3 === 0 || i === p.length - 1));
+    },
+  },
+  route: {
+    usage: "route <x1> <y1> <x2> <y2> --level <your level> [--map 0] [--horde]  walking waypoints that prefer roads and avoid hostile mobs near or above your level",
+    run: ([a, b, c, d], f) => route(q, Number(f.map ?? 0), [num(a, "x1"), num(b, "y1")], [num(c, "x2"), num(d, "y2")], num(f.level, "--level"), "horde" in f),
+  },
+  map: {
+    usage: "map <x> <y> --level <your level> [--radius 300] [--to <x2>,<y2>] [--out map.png] [--map 0]  PNG of terrain, roads and hostile mobs (open it with your Read tool)",
+    run: ([x, y], f) => {
+      const cx = num(x, "x"), cy = num(y, "y"), lvl = num(f.level, "--level"), m = Number(f.map ?? 0);
+      const to = f.to?.split(",").map(Number);
+      const r = to ? route(q, m, [cx, cy], [to[0], to[1]], lvl) : undefined;
+      const radius = Number(f.radius ?? (to ? Math.max(200, Math.hypot(to[0] - cx, to[1] - cy) * 0.7) : 300));
+      const img = mapImage(q, m, cx, cy, radius, lvl, f.out || "map.png", r && "waypoints" in r ? r.waypoints : undefined);
+      return r ? { ...img, route: r } : img;
+    },
+  },
   sql: {
     usage: "sql <query>  raw read-only SQL (acore_world; wowbench.* for the derived tables)",
     run: ([s]) => q(s ?? ""),

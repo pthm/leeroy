@@ -15,6 +15,9 @@ wowdb near -9460 70 --kind trainer             # nearest trainer|vendor|questgiv
 wowdb near -9460 70 --kind mob --hostile --level 9-11   # nearest mobs that attack on sight, levels 9-11
 wowdb quests --level 10 --race 1 --class 1 --near -9460,70   # quests you can pick up, nearest givers first
 wowdb area -9460 70                            # which area/zone a point is in
+wowdb route -9460 70 -9660 690 --level 7       # walking waypoints: prefers roads, avoids hostile mobs near/above level 7
+wowdb map -9460 70 --level 7 [--to -9660,690]  # writes map.png (terrain, roads, hostile mobs, route): view it with Read
+wowdb roads -9460 70                           # road polylines near a point
 ```
 
 `reaction` is relative to a new character of each side (`hostile` attacks on sight; `neutral` only fights

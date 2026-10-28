@@ -80,6 +80,7 @@ func (b *Bot) setupControl() {
 	}
 	b.setupAgentAPI()
 	b.setupItems()
+	b.watchAreaTriggers()
 	b.startRecording()
 	e := b.lua
 	e.RegisterCall("call", w) // bot.call("QuestgiverHello", guid) etc. — any exported WorldClient method

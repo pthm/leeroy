@@ -131,12 +131,13 @@ RULES: Progress through legitimate gameplay only. You have no GM access; don't t
 the database, the judge or the harness. Your session log is session.log in your working directory.
 PROMPT
 
-# no auto-memory: it's keyed by the git root, so agents would share notes with each other (and with us)
+# no auto-memory: it's keyed by the git root, so agents would share notes with each other (and with us). The env var
+# turns it off, but Claude Code still lets sessions write the memory folder, so ~/.claude is denied outright.
 (cd "$ws" && PATH="$root/agent/bin:$PATH" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 WOWBENCH_BOARD="$board" WOWBENCH_CHAR="$char" exec timeout "${mins}m" claude -p "$(cat "$root/$dir/prompt.md")" \
   --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
   --add-dir "$repo/azeroth-sdk/client" "$repo/azeroth-sdk/session" "$repo/azeroth-sdk/script" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
   --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(wowdb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
-    "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Bash(standings:*)" "Edit(/**)" \
+    "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Bash(standings:*)" "Edit(./**)" --disallowedTools "Edit(~/.claude/**)" "Read(~/.claude/**)" \
   > "$root/$dir/agent.jsonl" 2>&1) &
 agent=$!
 

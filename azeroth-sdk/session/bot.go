@@ -62,11 +62,11 @@ type Bot struct {
 	err              error
 	mu               sync.Mutex
 
-	world *client.WorldClient
-	nav   navigation.Navigator
-	agent *agentState // Lua agent API state (cast tracking); nil outside sessions
+	world      *client.WorldClient
+	nav        navigation.Navigator
+	agent      *agentState              // Lua agent API state (cast tracking); nil outside sessions
 	playerName func(guid uint64) string // name from the session's name-query cache ("" until the server answers)
-	lua   *script.Engine
+	lua        *script.Engine
 
 	// Stats
 	kills  int

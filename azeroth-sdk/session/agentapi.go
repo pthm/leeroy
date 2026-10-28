@@ -37,6 +37,8 @@ const (
 	fieldQuestLog      = 0x9E  // PLAYER_QUEST_LOG_1_1; 25 slots x 5 fields: id, state, counters (4 x u16), time
 	fieldInvSlots      = 0x144 // PLAYER_FIELD_INV_SLOT_HEAD: slots 0-18 equipped, 19-22 bags, 23-38 backpack
 	fieldItemStack     = 0x0E  // ITEM_FIELD_STACK_COUNT
+	fieldItemDur       = 0x3C  // ITEM_FIELD_DURABILITY
+	fieldItemMaxDur    = 0x3D  // ITEM_FIELD_MAXDURABILITY
 	fieldContainerSize = 0x40  // CONTAINER_FIELD_NUM_SLOTS
 	fieldContainerSlot = 0x42  // CONTAINER_FIELD_SLOT_1
 )
@@ -68,6 +70,11 @@ func (b *Bot) setupAgentAPI() {
 	e := b.lua
 
 	e.RegisterFunc("is_ghost", b.IsGhost)
+	// is_resting() -> true in an inn or city (rested XP builds up; set by the area trigger you walked into)
+	e.RegisterFunc("is_resting", func() bool {
+		o := w.GetObject(w.CharGUID())
+		return o != nil && o.Value(fieldPlayerFlags)&0x20 != 0
+	})
 	e.RegisterFunc("is_casting", func() (any, float64) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -281,6 +288,9 @@ func (s *agentState) onPacket(me uint64, op uint16, data []byte) {
 		code, _ := r.ReadByte()
 		s.castSpell = 0
 		s.castErr = map[string]any{"spell": spell, "code": code, "reason": castResultNames[code], "time_ms": now.UnixMilli()}
+		if code >= 28 && code <= 30 { // equipped_item*: usually a weapon broken by deaths, or none equipped
+			s.castErr["hint"] = "needs a working weapon: check bot.broken_gear() and repair at an armorer (bot.repair)"
+		}
 	case msgChannelStart:
 		if readPackedGUID(r) == me {
 			s.castSpell = u32()
@@ -356,6 +366,9 @@ func bagItems(w *client.WorldClient) []map[string]any {
 				"entry": it.Value(3), "count": max(it.Value(fieldItemStack), 1)}
 			if p := itemInfo(w, it.Value(3)); p != nil { // nil until the server answers the item query
 				m["name"], m["quality"], m["sell_price"], m["inv_type"], m["use_spell"] = p.Name, p.Quality, p.SellPrice, p.InvType, p.UseSpell
+			}
+			if maxDur := it.Value(fieldItemMaxDur); maxDur > 0 { // gear wears down with each death; 0 = broken, does nothing
+				m["durability"], m["max_durability"] = it.Value(fieldItemDur), maxDur
 			}
 			out = append(out, m)
 		}

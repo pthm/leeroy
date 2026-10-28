@@ -25,7 +25,7 @@ bun run server                                       # first boot downloads clie
 mkdir -p data/dbc && docker run --rm -v server_ac-client-data:/src:ro -v $PWD/data:/dst alpine sh -c \
   'cp -r /src/maps /src/mmaps /src/vmaps /dst/ && cd /src/dbc && cp Spell.dbc Achievement.dbc Achievement_Criteria.dbc \
    Achievement_Category.dbc AreaTable.dbc WorldMapOverlay.dbc Faction.dbc FactionTemplate.dbc SpellCastTimes.dbc \
-   SpellRange.dbc /dst/dbc/'
+   SpellRange.dbc AreaTrigger.dbc /dst/dbc/'
 bun azeroth-sdk/worlddata/dbsetup.ts   # wowbench schema: achievements, areas, spawn zones, faction hostility, spells
 
 # the client (bench/client/play.sh also builds it on first use)

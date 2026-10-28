@@ -103,7 +103,7 @@ const tint = (u: number) => {
 // Shaded-relief PNG of the box x in [xMin, xMax], y in [yMin, yMax] at `res` yards per pixel; north (+x) up, west
 // (+y) left. heightRange fixes the colour scale (tiles must agree); by default it fits the box.
 export function renderMap(mapId: number, xMin: number, xMax: number, yMin: number, yMax: number, res: number,
-  heightRange?: [number, number]) {
+  heightRange?: [number, number], overlay?: (px: (wx: number, wy: number, rgb: number[]) => void) => void) {
   const W = Math.ceil((yMax - yMin) / res), H = Math.ceil((xMax - xMin) / res);
   const { zoneOf } = areas(mapId);
   const heights = new Float32Array(W * H), water = new Float32Array(W * H), zone = new Uint16Array(W * H);
@@ -133,6 +133,12 @@ export function renderMap(mapId: number, xMin: number, xMax: number, yMin: numbe
       rgb[o] = Math.min(255, col[0]); rgb[o + 1] = Math.min(255, col[1]); rgb[o + 2] = Math.min(255, col[2]);
     }
   }
+  overlay?.((wx, wy, col) => { // draw at a world position (wowdb map)
+    const r = Math.round((xMax - wx) / res), c = Math.round((yMax - wy) / res);
+    if (r < 0 || r >= H || c < 0 || c >= W) return;
+    const o = r * (W * 3 + 1) + 1 + c * 3;
+    rgb[o] = col[0]; rgb[o + 1] = col[1]; rgb[o + 2] = col[2];
+  });
   return { png: png(W, H, rgb), w: W, h: H };
 }
 

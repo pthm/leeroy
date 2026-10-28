@@ -21,6 +21,12 @@ Practical notes on what works, what costs time, and the mechanics that aren't ob
 - Some mobs are unreachable: on a ledge, inside a closed building, in a mine level below you. If the distance to
   a target hasn't dropped for ~5 seconds, give up on it and remember its guid so you don't pick it again. In
   mines and caves, prefer targets with a small height difference (`|mob.z - my_z| < 10`).
+- Plan long trips with `wowdb route x1 y1 x2 y2 --level <yours>`: waypoints that prefer roads and steer around
+  hostile mobs near or above your level, plus the camps it still passes. `wowdb map x y --level <yours>` draws the
+  area (terrain, roads, hostile mobs by danger) as a PNG you can look at with your Read tool. `move_to` alone takes
+  the shortest walkable line, straight through camps.
+- Entering a place triggers it like in the real game: "explore the mine" objectives complete when you walk in, and
+  inns and cities make you rest (`is_resting()`, rested XP).
 - Indoors and upstairs (inn trainers, anything in Stormwind), pass the target's z to get the right floor:
   `bot.move_to(x, y, bot.ground_z(x, y, z))`.
 - `last_cast_error().reason == "line_of_sight"`: a wall or a rise is in the way; move closer or around.
@@ -47,6 +53,11 @@ Practical notes on what works, what costs time, and the mechanics that aren't ob
 - New class spells come from your class trainer every couple of levels: `wowdb npc <trainer>` lists them with
   level and cost, `bot.train(trainer, spell)` learns one, and `read_chat` reports the result. The level-70
   "<Class> Trainer" NPCs in Northshire are dummies; use the named trainers.
+- Gear wears down with every death. At 0 durability an item does nothing: a broken weapon means fighting bare-handed
+  and weapon skills fail (`last_cast_error` says so). Check `bot.broken_gear()` and `bag_items()` durability, and
+  repair at an armorer or weaponsmith (npc_flags 0x1000; `wowdb near x y --kind repair`) with `bot.repair(npc)`.
+- Your race's capital flight path is known from the start (humans: Stormwind); new ones are learned by talking to
+  their flight master.
 - Food and drink restore health and mana much faster than waiting: `bot.use_item(entry)` out of combat, then
   don't move until you're full.
 
@@ -62,7 +73,8 @@ Practical notes on what works, what costs time, and the mechanics that aren't ob
 
 Dying costs about a minute: release (`RepopRequest`), walk back from the graveyard as a ghost, reclaim near your
 corpse. Each death soon after another lengthens the reclaim wait. Time spent dead is time not progressing.
-Mobs three or more levels above you, or several at once, are what kill low-level characters. Rest before a pull
+Mobs three or more levels above you, or several at once, are what kill low-level characters; so do mob camps
+next to graveyards (you revive among them) and running past camps on the way somewhere. Rest before a pull
 when you're low. You can't earn exploration credit as a ghost.
 
 ## Other players
