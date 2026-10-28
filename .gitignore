@@ -1,0 +1,6 @@
+server/
+ghost/
+data/
+sessions/
+node_modules/
+*.log

@@ -1,0 +1,10 @@
+{
+  "name": "wowbench",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "server": "docker compose -f server/docker-compose.yml -f server.override.yml up -d",
+    "server:down": "docker compose -f server/docker-compose.yml -f server.override.yml down",
+    "server:logs": "docker logs -f ac-worldserver"
+  }
+}
