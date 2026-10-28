@@ -97,6 +97,14 @@ across zones.
 combat/resting/casting, free bag slots, broken gear, quest progress, target, attackers, group, nearby players,
 corpse, the last cast error, unread chat and what `act` is doing.
 
+**Combat log, meters, inspect** (what a real client sees: fights within ~100 yd, any source and target, party
+included): `combat_log([since_ms])` → `{t, kind, src, dst, spell, amount, over, crit}` events (default the last 30s;
+`kind`: melee, spell, dot, heal, hot, kill; `src`/`dst` are `{guid, name, entry}`) · `meter([window_s = 60])` → per
+unit over the window: `damage, healing, taken, healed, dps, hps, active_s, kills, crit_pct`, sorted by damage, with
+`by_spell` for you (compare rotations, see what's hurting you, judge a party) · `inspect(guid)` → a player's `name,
+class, race, level, health, gear = {{slot, entry, name, item_level}}, avg_item_level` (item names fill in a moment
+after the first call).
+
 ## `act`: built-in utilities
 
 Jobs are tables with `tick(self)` returning `"running"`, `"done"` or `"failed", message`. `act.run{job, ...}` runs

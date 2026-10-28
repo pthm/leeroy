@@ -84,6 +84,7 @@ func (b *Bot) setupControl() {
 	}
 	b.setupAgentAPI()
 	b.setupItems()
+	b.setupCombatLog()
 	b.watchAreaTriggers()
 	b.startRecording()
 	e := b.lua
