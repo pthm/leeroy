@@ -366,6 +366,9 @@ func bagItems(w *client.WorldClient) []map[string]any {
 				"entry": it.Value(3), "count": max(it.Value(fieldItemStack), 1)}
 			if p := itemInfo(w, it.Value(3)); p != nil { // nil until the server answers the item query
 				m["name"], m["quality"], m["sell_price"], m["inv_type"], m["use_spell"] = p.Name, p.Quality, p.SellPrice, p.InvType, p.UseSpell
+				if p.InvType != 0 {
+					m["slot_name"], m["item_level"], m["usable"] = p.Slot, p.ItemLevel, usable(w, p) == ""
+				}
 			}
 			if maxDur := it.Value(fieldItemMaxDur); maxDur > 0 { // gear wears down with each death; 0 = broken, does nothing
 				m["durability"], m["max_durability"] = it.Value(fieldItemDur), maxDur

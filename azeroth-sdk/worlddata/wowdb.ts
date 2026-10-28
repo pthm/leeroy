@@ -3,6 +3,7 @@
 // Usage: wowdb <command> [args] [--flags]; prints JSON. `wowdb help` lists commands.
 import { execFileSync } from "node:child_process";
 import { roads, route, mapImage } from "./nav.ts";
+import { upgrades, CLASSES } from "./gear.ts";
 
 type Row = Record<string, string | number | null>;
 const LIMIT = 15;
@@ -306,6 +307,16 @@ const commands: Record<string, { usage: string; run: (a: string[], f: Record<str
     },
   },
 
+  upgrades: {
+    usage: "upgrades --class <name|id> --level <n> [--slot chest] [--near x,y [--radius 3000]] [--min-ilvl n]  gear you can use and where to get it (quest rewards, vendors, drops), best first",
+    run: (_, f) => {
+      const cls = CLASSES[String(f.class ?? "").toLowerCase()] ?? num(f.class, "--class");
+      const near = f.near?.split(",").map(Number) as [number, number] | undefined;
+      return upgrades(q, spawns, { cls, level: num(f.level, "--level"), slot: f.slot, near, map: Number(f.map ?? 0), radius: f.radius ? Number(f.radius) : undefined,
+        minIlvl: f["min-ilvl"] ? Number(f["min-ilvl"]) : undefined,
+        limit: f.limit ? Number(f.limit) : undefined });
+    },
+  },
   roads: {
     usage: "roads <x> <y> [--radius 500] [--map 0]  road polylines near a point (from guard/patroller routes)",
     run: ([x, y], f) => {

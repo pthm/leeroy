@@ -39,8 +39,10 @@ asks the server, so call it again a moment later) · `spirit_res(npc_guid)` resu
 use_spell}` for everything you carry and wear (bag 255 = your own slots: 0-18 equipped, 19-22 bags, 23-38
 backpack; bag 19-22 = inside that bag; the item fields appear once the item's info has loaded, a moment after
 you first see it) · `has_item(entry)` → count · `free_slots()` → empty bag slots · `item_info(entry)` →
-`{name, quality, class, inv_type, item_level, required_level, sell_price, buy_price, armor, dps, use_spell,
-start_quest, max_stack}` (nil the first time: it asks the server; call again a moment later) ·
+`{name, quality, class, subclass, slot, inv_type, item_level, required_level, sell_price, buy_price, armor, dps,
+stats = {strength = 3, ...}, usable, why_not, use_spell, start_quest, max_stack}` (nil the first time: it asks the server; call again a moment later) ·
+`compare(item)` → the change if you swapped this item (entry or bag guid) for what you wear in its slot:
+`{usable, why_not, slot, item_level, stats, armor, dps, replaces}` (nil until item info has loaded; call again) ·
 `broken_gear()` → equipped items at 0 durability (`bag_items` has `durability`, `max_durability`) ·
 `use_item(item[, target])` uses food, drink, potions, quest items (`item` = entry or guid) · `destroy(item[, count])`.
 In these and the vendor calls, `item` is an item entry or an item guid from `bag_items`.

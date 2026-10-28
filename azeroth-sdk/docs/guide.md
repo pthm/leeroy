@@ -69,6 +69,24 @@ how you fight, what you kill, when you rest, what to do about death and how to w
 - Food and drink restore health and mana much faster than waiting: `bot.use_item(entry)` out of combat, then
   don't move until you're full.
 
+## Gear
+
+- Item level is a rough guide to how strong an item is; its stats and armor (or a weapon's damage per second) are what
+  it actually does. `bot.compare(item)` shows the change if you swapped an item for what you wear in that slot
+  (item level, each stat, armor, dps) and whether you can use it; `bot.item_info(entry)` has the details.
+- What the stats do: **stamina** adds health · **strength** adds melee attack power (and block for shields) ·
+  **agility** adds attack power for some classes, crit, dodge and armor · **intellect** adds mana and spell crit ·
+  **spirit** speeds up health and mana regeneration out of combat · **armor** reduces physical damage taken.
+- Not everything is wearable: each class can wear certain armor types (cloth, leather, mail, plate, shields) and use
+  certain weapons, and some weapon skills must be learned from a trainer first. `compare` and `item_info` say
+  `usable = false` with the reason; equipping an unusable item fails.
+- Quest rewards: many quests let you choose one of several items. `wowdb quest <id>` lists the choices (`choose_one`,
+  in order); pass the index (0 = first) to `bot.turn_in(npc, quest, index)` or `act.turn_in{..., reward = index}`.
+  The first choice is often not one you can use.
+- Finding gear: `wowdb upgrades --class <yours> --level <yours> --near x,y [--slot chest]` lists items you can use,
+  best first, with where to get them (quest rewards, vendors, and mob drops with their drop chance, including
+  uncommon/rare drops from named mobs). `wowdb item <id>` has every source of one item.
+
 ## Quests and objects
 
 - `wowdb quest <id>` gives the giver, objectives with spawn locations, the turn-in NPC and the next quest in

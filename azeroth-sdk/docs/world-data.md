@@ -18,6 +18,7 @@ wowdb area -9460 70                            # which area/zone a point is in
 wowdb route -9460 70 -9660 690 --level 7       # walking waypoints: prefers roads, avoids hostile mobs near/above level 7
 wowdb map -9460 70 --level 7 [--to -9660,690]  # writes map.png (terrain, roads, hostile mobs, route): view it with Read
 wowdb roads -9460 70                           # road polylines near a point
+wowdb upgrades --class priest --level 7 --near -9460,70 [--slot chest]   # gear you can use, best first, and where to get it
 ```
 
 `reaction` is relative to a new character of each side (`hostile` attacks on sight; `neutral` only fights

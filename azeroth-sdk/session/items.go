@@ -35,21 +35,68 @@ const (
 )
 
 type itemProto struct {
-	Entry      uint32  `json:"entry"`
-	Name       string  `json:"name"`
-	Quality    uint32  `json:"quality"` // 0 poor (grey, junk) 1 common 2 uncommon 3 rare 4 epic
-	Class      uint32  `json:"class"`   // 0 consumable 2 weapon 4 armor 12 quest 15 misc
-	SubClass   uint32  `json:"subclass"`
-	InvType    uint32  `json:"inv_type"` // equip slot type; 0 = not equippable
-	BuyPrice   uint32  `json:"buy_price"`
-	SellPrice  uint32  `json:"sell_price"` // copper; 0 = vendors won't buy it
-	ItemLevel  uint32  `json:"item_level"`
-	ReqLevel   uint32  `json:"required_level"`
-	Stack      int32   `json:"max_stack"`
-	Armor      uint32  `json:"armor"`
-	DPS        float64 `json:"dps"`
-	UseSpell   uint32  `json:"use_spell"` // spell cast by use_item (food, drink, potions...); 0 = none
-	StartQuest uint32  `json:"start_quest"`
+	Entry      uint32           `json:"entry"`
+	Name       string           `json:"name"`
+	Quality    uint32           `json:"quality"` // 0 poor (grey, junk) 1 common 2 uncommon 3 rare 4 epic
+	Class      uint32           `json:"class"`   // 0 consumable 2 weapon 4 armor 12 quest 15 misc
+	SubClass   uint32           `json:"subclass"`
+	InvType    uint32           `json:"inv_type"` // equip slot type; 0 = not equippable
+	BuyPrice   uint32           `json:"buy_price"`
+	SellPrice  uint32           `json:"sell_price"` // copper; 0 = vendors won't buy it
+	ItemLevel  uint32           `json:"item_level"`
+	ReqLevel   uint32           `json:"required_level"`
+	Stack      int32            `json:"max_stack"`
+	Armor      uint32           `json:"armor"`
+	DPS        float64          `json:"dps"`
+	UseSpell   uint32           `json:"use_spell"` // spell cast by use_item (food, drink, potions...); 0 = none
+	StartQuest uint32           `json:"start_quest"`
+	Stats      map[string]int32 `json:"stats,omitempty"` // e.g. {strength = 3, stamina = 2}
+	Slot       string           `json:"slot,omitempty"`  // where it's worn ("" = not equippable)
+	allowClass int32            // class bitmask, -1 = any
+}
+
+var statNames = map[uint32]string{0: "mana", 1: "health", 3: "agility", 4: "strength", 5: "intellect", 6: "spirit", 7: "stamina",
+	12: "defense", 13: "dodge", 14: "parry", 15: "block", 16: "melee_hit", 17: "ranged_hit", 18: "spell_hit", 19: "melee_crit",
+	20: "ranged_crit", 21: "spell_crit", 28: "melee_haste", 31: "hit", 32: "crit", 35: "resilience", 36: "haste", 37: "expertise",
+	38: "attack_power", 39: "ranged_attack_power", 41: "healing", 42: "spell_damage", 43: "mana_per_5s", 44: "armor_penetration",
+	45: "spell_power", 46: "health_per_5s", 47: "spell_penetration", 48: "block_value"}
+
+// inventory type -> slot name and the equipment slots (0-18) it can go in
+var invSlots = map[uint32]struct {
+	name  string
+	slots []uint8
+}{1: {"head", []uint8{0}}, 2: {"neck", []uint8{1}}, 3: {"shoulder", []uint8{2}}, 4: {"shirt", []uint8{3}}, 5: {"chest", []uint8{4}},
+	20: {"chest", []uint8{4}}, 6: {"waist", []uint8{5}}, 7: {"legs", []uint8{6}}, 8: {"feet", []uint8{7}}, 9: {"wrists", []uint8{8}},
+	10: {"hands", []uint8{9}}, 11: {"finger", []uint8{10, 11}}, 12: {"trinket", []uint8{12, 13}}, 13: {"one-hand", []uint8{15, 16}},
+	14: {"shield", []uint8{16}}, 15: {"ranged", []uint8{17}}, 16: {"back", []uint8{14}}, 17: {"two-hand", []uint8{15}},
+	19: {"tabard", []uint8{18}}, 21: {"main hand", []uint8{15}}, 22: {"off hand", []uint8{16}}, 23: {"held in off-hand", []uint8{16}},
+	25: {"thrown", []uint8{17}}, 26: {"ranged", []uint8{17}}, 28: {"relic", []uint8{17}}}
+
+// proficiency spells: item class (2 weapon, 4 armor) -> subclass -> the skill spell you need to know
+var proficiency = map[uint32]map[uint32]uint32{
+	2: {0: 196, 1: 197, 2: 264, 3: 266, 4: 198, 5: 199, 6: 200, 7: 201, 8: 202, 10: 227, 13: 15590, 15: 1180, 16: 2567, 18: 5011, 19: 5009},
+	4: {1: 9078, 2: 9077, 3: 8737, 4: 750, 6: 9116},
+}
+
+// usable: can this character equip and use the item? ("" = yes, else why not)
+func usable(w *client.WorldClient, p *itemProto) string {
+	if p.InvType == 0 {
+		return "not equippable"
+	}
+	cls := uint32(0)
+	if me := w.GetObject(w.CharGUID()); me != nil {
+		cls = me.Value(client.UnitFieldBytes0) >> 8 & 0xFF
+	}
+	if p.allowClass != -1 && p.allowClass != 0 && cls > 0 && p.allowClass&(1<<(cls-1)) == 0 {
+		return "not for your class"
+	}
+	if p.ReqLevel > w.PlayerLevel() {
+		return fmt.Sprintf("requires level %d", p.ReqLevel)
+	}
+	if sp, ok := proficiency[p.Class][p.SubClass]; ok && !w.KnowsSpell(sp) {
+		return "you lack the proficiency (armor type or weapon skill; trainers teach some weapon skills)"
+	}
+	return ""
 }
 
 var items = struct {
@@ -94,14 +141,24 @@ func parseItemQuery(data []byte) {
 	u32()
 	u32() // flags
 	p.BuyPrice, p.SellPrice, p.InvType = u32(), u32(), u32()
-	u32()
-	u32() // allowable class/race
+	p.allowClass = int32(u32())
+	u32() // allowable race
 	p.ItemLevel, p.ReqLevel = u32(), u32()
 	r.Seek(4*8, io.SeekCurrent) // skill, skill rank, spell, honor, city, rep faction, rep rank, max count
 	p.Stack = int32(u32())
-	u32()                                  // container slots
-	r.Seek(int64(u32())*8, io.SeekCurrent) // stats
-	r.Seek(8, io.SeekCurrent)              // scaling stats
+	u32() // container slots
+	for n := u32(); n > 0 && n <= 10; n-- {
+		t, v := u32(), int32(u32())
+		if p.Stats == nil {
+			p.Stats = map[string]int32{}
+		}
+		if name, ok := statNames[t]; ok {
+			p.Stats[name] += v
+		} else {
+			p.Stats[fmt.Sprintf("stat%d", t)] += v
+		}
+	}
+	r.Seek(8, io.SeekCurrent) // scaling stats
 	var dmg float32
 	for i := 0; i < 2; i++ {
 		lo, hi := f32(), f32()
@@ -125,6 +182,7 @@ func parseItemQuery(data []byte) {
 	readCString(r)
 	r.Seek(16, io.SeekCurrent) // page text, language, page material
 	p.StartQuest = u32()
+	p.Slot = invSlots[p.InvType].name
 	items.proto[entry] = p
 }
 
@@ -195,7 +253,96 @@ func (b *Bot) setupItems() {
 		}
 		return nil
 	})
-	e.RegisterFunc("item_info", func(entry uint32) *itemProto { return itemInfo(w, entry) })
+	e.RegisterFunc("item_info", func(entry uint32) any {
+		p := itemInfo(w, entry)
+		if p == nil {
+			return nil
+		}
+		m := map[string]any{"entry": p.Entry, "name": p.Name, "quality": p.Quality, "class": p.Class, "subclass": p.SubClass,
+			"inv_type": p.InvType, "slot": p.Slot, "item_level": p.ItemLevel, "required_level": p.ReqLevel, "buy_price": p.BuyPrice,
+			"sell_price": p.SellPrice, "max_stack": p.Stack, "armor": p.Armor, "dps": p.DPS, "use_spell": p.UseSpell,
+			"start_quest": p.StartQuest, "stats": p.Stats}
+		if p.InvType != 0 {
+			why := usable(w, p)
+			m["usable"] = why == ""
+			if why != "" {
+				m["why_not"] = why
+			}
+		}
+		return m
+	})
+	// compare(item): an item (entry, or guid from bag_items) against what you wear in that slot (the weaker one for
+	// rings, trinkets and one-handers): changes in item_level, stats, armor and dps if you swapped, whether you can
+	// use it, and what it would replace. nil until the items' info has loaded (call again a moment later).
+	e.RegisterFunc("compare", func(item uint64) any {
+		entry := uint32(item)
+		if item >= 1<<32 {
+			it := w.GetObject(item)
+			if it == nil {
+				return nil
+			}
+			entry = it.Value(3)
+		}
+		p := itemInfo(w, entry)
+		if p == nil {
+			return nil
+		}
+		slots := invSlots[p.InvType].slots
+		if len(slots) == 0 {
+			return map[string]any{"usable": false, "why_not": "not equippable"}
+		}
+		if p.InvType == 13 && !w.KnowsSpell(674) { // one-hand: off hand only with Dual Wield
+			slots = slots[:1]
+		}
+		me := w.GetObject(w.CharGUID())
+		if me == nil {
+			return nil
+		}
+		// the slot it would replace: an empty one, else the lowest item level
+		var cur *itemProto
+		curSlot, curEntry, found := slots[0], uint32(0), false
+		for _, sl := range slots {
+			o := w.GetObject(guidAt(me, fieldInvSlots+uint16(sl)*2))
+			if o == nil {
+				cur, curSlot, curEntry, found = nil, sl, 0, true
+				break
+			}
+			cp := itemInfo(w, o.Value(3))
+			if cp == nil {
+				return nil
+			}
+			if !found || cp.ItemLevel < cur.ItemLevel {
+				cur, curSlot, curEntry, found = cp, sl, o.Value(3), true
+			}
+		}
+		why := usable(w, p)
+		d := map[string]any{"slot": p.Slot, "equip_slot": curSlot, "usable": why == ""}
+		if why != "" {
+			d["why_not"] = why
+		}
+		stats := map[string]int32{}
+		for k, v := range p.Stats {
+			stats[k] = v
+		}
+		base := &itemProto{}
+		if cur != nil {
+			base = cur
+			d["replaces"] = map[string]any{"entry": curEntry, "name": cur.Name, "item_level": cur.ItemLevel}
+			for k, v := range cur.Stats {
+				stats[k] -= v
+			}
+		} else {
+			d["replaces"] = "nothing (empty slot)"
+		}
+		for k, v := range stats {
+			if v == 0 {
+				delete(stats, k)
+			}
+		}
+		d["item_level"], d["armor"] = int(p.ItemLevel)-int(base.ItemLevel), int(p.Armor)-int(base.Armor)
+		d["dps"], d["stats"] = math.Round((p.DPS-base.DPS)*10)/10, stats
+		return d
+	})
 	// free_slots() -> empty slots in the backpack and equipped bags. At 0, loot and quest rewards are refused.
 	e.RegisterFunc("free_slots", func() int { return freeSlots(w) })
 	// sell(vendor, item [, count]): item = guid or entry; count defaults to the whole stack
