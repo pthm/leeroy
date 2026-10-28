@@ -49,7 +49,10 @@ end
 ```
 
 There's no bundled AI: you write the targeting, combat rotation, resting, looting and death handling
-yourself. With no `on_tick` loaded the character does nothing at all, not even fight back.
+yourself. With no `on_tick` loaded the character does nothing at all, not even fight back. Nothing moves
+or turns for you either: when a melee swing fails, `bot.last_attack_error()` → `{reason, guid, time_ms}`
+says why (`NOT_IN_RANGE`: move closer; `BAD_FACING`: `face_target`). Opening loot (`loot_all`, or
+`bot.call("Loot", guid)`) takes everything and closes the window.
 
 The Lua is **5.2** (`_VERSION`): numbers are doubles (no 64-bit integers, so keep GUIDs as strings; no
 `//` operator; use `bit32` for bit operations), and `table.unpack` instead of `unpack`. String patterns

@@ -48,11 +48,16 @@ if [ -n "$LEVEL$MONEY$START" ]; then
     ${START:+, position_x = $1, position_y = $2, position_z = $3, map = $4, zone = $5}
     WHERE name = '$char'"
 fi
-ACCOUNT=$acct ./play.sh "$char" --race "$race" --class "$class" > "$ws/session.log" 2>&1 &
-session=$!
 trap 'kill $agent $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM
-until bin/wow 'return 1' 2>/dev/null | grep -q result; do
-  kill -0 $session 2>/dev/null || { echo "$name: session died, see $ws/session.log"; exit 1; }; sleep 1
+[ -n "$LEVEL$MONEY$START" ] || : > "$ws/session.log" # the workspace (and old log) persists
+for try in 1 2 3; do # the auth server sometimes times out the logon proof
+  ACCOUNT=$acct ./play.sh "$char" --race "$race" --class "$class" >> "$ws/session.log" 2>&1 &
+  session=$!
+  until bin/wow 'return 1' 2>/dev/null | grep -q result || ! kill -0 $session 2>/dev/null; do sleep 1; done
+  kill -0 $session 2>/dev/null && break
+  echo "$name: session login failed (try $try), see $ws/session.log" >&2
+  [ $try = 3 ] && exit 1
+  sleep $((try * 5))
 done
 bin/wow "LIB = '$ws/'; bot.join_channel('${CHANNEL:-General - Elwynn Forest}', 1)" >/dev/null
 # ponytail: one zone channel joined at start; no auto-rejoin on zone change (agents can join_channel)

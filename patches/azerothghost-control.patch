@@ -460,10 +460,10 @@ index 0000000..9e18a95
 +}
 diff --git i/bot/agentapi.go w/bot/agentapi.go
 new file mode 100644
-index 0000000..26a25b7
+index 0000000..2e96bf5
 --- /dev/null
 +++ w/bot/agentapi.go
-@@ -0,0 +1,314 @@
+@@ -0,0 +1,328 @@
 +package bot
 +
 +// Agent API: game state the client doesn't track itself (casting, cooldowns, corpse, bags, quest log),
@@ -557,6 +557,15 @@ index 0000000..26a25b7
 +		}
 +		left := time.Until(at)
 +		return left <= 0, math.Max(0, float64(left.Milliseconds()))
++	})
++	// last_attack_error() -> {reason, guid, time_ms} for the latest rejected melee swing: NOT_IN_RANGE,
++	// BAD_FACING (face_target), DEAD_TARGET, CANT_ATTACK
++	e.RegisterFunc("last_attack_error", func() map[string]any {
++		r := b.lastAttackReject.Load()
++		if r == nil {
++			return nil
++		}
++		return map[string]any{"reason": r.Reason, "guid": fmt.Sprint(r.GUID), "time_ms": r.at.UnixMilli()}
 +	})
 +	e.RegisterFunc("spell_info", func(id uint32) *spellRec { return spellInfo(id) })
 +
@@ -693,6 +702,11 @@ index 0000000..26a25b7
 +	}
 +}
 +
++type attackReject struct {
++	client.AttackReject
++	at time.Time
++}
++
 +func guidAt(o *client.WorldObject, f uint16) uint64 {
 +	return uint64(o.Value(f)) | uint64(o.Value(f+1))<<32
 +}
@@ -779,10 +793,18 @@ index 0000000..26a25b7
 +	return spells[id]
 +}
 diff --git i/bot/bot.go w/bot/bot.go
-index a749726..8e38694 100644
+index a749726..d6585cb 100644
 --- i/bot/bot.go
 +++ w/bot/bot.go
-@@ -76,11 +76,12 @@ type BotEvent struct {
+@@ -11,6 +11,7 @@ import (
+ 	"sort"
+ 	"strings"
+ 	"sync"
++	"sync/atomic"
+ 	"time"
+ 
+ 	_ "github.com/go-sql-driver/mysql"
+@@ -76,11 +77,13 @@ type BotEvent struct {
  
  // Bot implements the WoW client bot logic with behavior tree AI.
  type Bot struct {
@@ -791,16 +813,17 @@ index a749726..8e38694 100644
 -	status BotStatus
 -	err    error
 -	mu     sync.Mutex
-+	lastMoveNoPath bool // last move_to found no navmesh path (move_to returns false)
-+	id             string
-+	config         Config
-+	status         BotStatus
-+	err            error
-+	mu             sync.Mutex
++	lastMoveNoPath   bool
++	lastAttackReject atomic.Pointer[attackReject] // for bot.last_attack_error() // last move_to found no navmesh path (move_to returns false)
++	id               string
++	config           Config
++	status           BotStatus
++	err              error
++	mu               sync.Mutex
  
  	world *client.WorldClient
  	nav   navigation.Navigator
-@@ -244,6 +245,7 @@ func NewHeadlessBot(wc *client.WorldClient, cfg Config) *Bot {
+@@ -244,6 +247,7 @@ func NewHeadlessBot(wc *client.WorldClient, cfg Config) *Bot {
  
  	// Lua engine + AIBundle/LuaCode loading (same rules as full Run path)
  	b.lua = luaengine.NewEngine(b)
@@ -808,7 +831,33 @@ index a749726..8e38694 100644
  	if !cfg.AIBundle.IsEmpty() {
  		if cfg.AIBundle.Main != "" {
  			_ = b.lua.DoString(cfg.AIBundle.Main)
-@@ -521,6 +523,7 @@ func (b *Bot) Run() BotResult {
+@@ -393,7 +397,9 @@ func (b *Bot) Run() BotResult {
+ 			b.world.ClearTarget()
+ 			b.world.ClearCombat()
+ 			b.world.AttackStop()
+-			b.stopCurrentMove()
++			if b.config.Mode != "lua" { // lua scripts own movement
++				b.stopCurrentMove()
++			}
+ 			b.currentTargetSetAt = time.Time{}
+ 			b.lastEngagedGUID = 0
+ 			// cleared log removed from console (chat will show via decisions)
+@@ -416,6 +422,14 @@ func (b *Bot) Run() BotResult {
+ 	// OnAttackReject is the preferred path: classifies AC swing feedback so we
+ 	// never invent "dead" from BAD_FACING / NOT_IN_RANGE (protocol preconditions).
+ 	b.world.OnAttackReject = func(r client.AttackReject) {
++		b.lastAttackReject.Store(&attackReject{r, time.Now()})
++		if b.config.Mode == "lua" {
++			// No auto-face / auto-chase / stop for lua scripts: they see it via bot.last_attack_error().
++			if r.Class == client.RejectTerminal && r.GUID != 0 {
++				b.markKnownDead(r.GUID)
++			}
++			return
++		}
+ 		switch r.Class {
+ 		case client.RejectTerminal:
+ 			if r.GUID != 0 {
+@@ -521,6 +535,7 @@ func (b *Bot) Run() BotResult {
  	for _, ch := range chars {
  		if strings.EqualFold(ch.Name, b.config.CharacterName) {
  			charGUID = ch.GUID
@@ -816,7 +865,7 @@ index a749726..8e38694 100644
  			found = true
  			b.log("Found character %s (GUID: %d, Level: %d)", ch.Name, ch.GUID, ch.Level)
  			break
-@@ -581,6 +584,7 @@ func (b *Bot) Run() BotResult {
+@@ -581,6 +596,7 @@ func (b *Bot) Run() BotResult {
  		for _, ch := range chars {
  			if strings.EqualFold(ch.Name, b.config.CharacterName) {
  				charGUID = ch.GUID
@@ -824,7 +873,7 @@ index a749726..8e38694 100644
  				found = true
  				break
  			}
-@@ -662,6 +666,7 @@ func (b *Bot) Run() BotResult {
+@@ -662,6 +678,7 @@ func (b *Bot) Run() BotResult {
  
  	// Step 8: Initialize Lua engine
  	b.lua = luaengine.NewEngine(b)
@@ -832,7 +881,7 @@ index a749726..8e38694 100644
  
  	// AIBundle / LuaCode / LuaScript loading (precedence: AIBundle.Main > LuaCode > LuaScript file).
  	// This enables scenario-driven custom AI as specified in the design.
-@@ -1092,8 +1097,9 @@ func (b *Bot) runAILoop(worldErrCh chan error) {
+@@ -1092,8 +1109,9 @@ func (b *Bot) runAILoop(worldErrCh chan error) {
  				// 	b.log("[DEBUG-POS] tick pos: map=%d (%.1f,%.1f,%.1f) o=%.2f", pmid, px, py, pz, po)
  				// }
  			}
@@ -844,7 +893,7 @@ index a749726..8e38694 100644
  				elapsed := time.Since(tickStart)
  				if elapsed > 300*time.Millisecond {
  					ms := elapsed.Milliseconds()
-@@ -2425,6 +2431,10 @@ func (b *Bot) moveToPoint(x, y, z float32) {
+@@ -2425,6 +2443,10 @@ func (b *Bot) moveToPoint(x, y, z float32) {
  	var pts []navigation.Point3D
  	if b.nav != nil {
  		result, err := b.nav.FindPath(mapID, current, navigation.Point3D{X: x, Y: y, Z: z})
@@ -855,7 +904,7 @@ index a749726..8e38694 100644
  		if err == nil && result != nil && result.Found && len(result.Points) > 1 {
  			pts = simplifyAndDensifyPath(result.Points, 3.0, 1.0)
  			// detect crazy path (common in Durotar bad navmesh)
-@@ -2435,7 +2445,9 @@ func (b *Bot) moveToPoint(x, y, z float32) {
+@@ -2435,7 +2457,9 @@ func (b *Bot) moveToPoint(x, y, z float32) {
  			}
  			// Reject huge detours (navmesh artifacts): more than 2× straight line
  			// or absurdly long paths send the bot running across the zone.
@@ -866,7 +915,7 @@ index a749726..8e38694 100644
  				b.log("crazy path rejected (straight=%.1f path=%.1f n=%d) — direct line",
  					straight, plen, len(pts))
  				pts = simplifyAndDensifyPath([]navigation.Point3D{current, {X: x, Y: y, Z: z}}, 3.0, 1.0)
-@@ -2827,6 +2839,9 @@ func (b *Bot) SetSheathed(state uint32) error {
+@@ -2827,6 +2851,9 @@ func (b *Bot) SetSheathed(state uint32) error {
  
  func (b *Bot) MoveTo(x, y, z float32) error {
  	b.moveToPoint(x, y, z)
@@ -876,7 +925,7 @@ index a749726..8e38694 100644
  	return nil
  }
  
-@@ -2974,6 +2989,11 @@ func (b *Bot) GetHealth() (current, max uint32) {
+@@ -2974,6 +3001,11 @@ func (b *Bot) GetHealth() (current, max uint32) {
  }
  
  func (b *Bot) GetPower() (current, max uint32) {
@@ -888,7 +937,7 @@ index a749726..8e38694 100644
  	return b.world.Power()
  }
  
-@@ -3003,6 +3023,9 @@ func (b *Bot) GetRace() uint8 {
+@@ -3003,6 +3035,9 @@ func (b *Bot) GetRace() uint8 {
  }
  
  func (b *Bot) GetPowerType() uint8 {
@@ -898,7 +947,7 @@ index a749726..8e38694 100644
  	// Common power types: 0=mana, 1=rage, 2=focus, 3=energy, 6=runic power
  	// For simplicity, derive from class. Can be improved by reading UnitFieldBytes0.
  	switch b.config.Class {
-@@ -3032,9 +3055,19 @@ func (b *Bot) GetPowerType() uint8 {
+@@ -3032,9 +3067,19 @@ func (b *Bot) GetPowerType() uint8 {
  }
  
  func (b *Bot) InCombat() bool {
@@ -918,7 +967,7 @@ index a749726..8e38694 100644
  func (b *Bot) IsAlive() bool {
  	h := b.world.Health()
  	mh := b.world.MaxHealth()
-@@ -3042,7 +3075,7 @@ func (b *Bot) IsAlive() bool {
+@@ -3042,7 +3087,7 @@ func (b *Bot) IsAlive() bool {
  	if h == 0 && mh == 0 {
  		return true
  	}
@@ -927,7 +976,7 @@ index a749726..8e38694 100644
  		return false
  	}
  	// Also check death count - if deaths > 0 and health is still 0, we're dead
-@@ -3106,11 +3139,12 @@ func (b *Bot) worldObjToUnitInfo(obj *client.WorldObject) luaengine.UnitInfo {
+@@ -3106,11 +3151,12 @@ func (b *Bot) worldObjToUnitInfo(obj *client.WorldObject) luaengine.UnitInfo {
  		Flags:     obj.Value(client.UnitFieldFlags),
  		DynFlags:  dyn,
  		Lootable:  dyn&client.UnitDynflagLootable != 0,
@@ -941,7 +990,7 @@ index a749726..8e38694 100644
  }
  
  func (b *Bot) SendCommand(command string) error {
-@@ -3147,10 +3181,9 @@ func (b *Bot) LootAll(guid uint64) error {
+@@ -3147,10 +3193,9 @@ func (b *Bot) LootAll(guid uint64) error {
  	b.lastLootAttemptAt = now
  	b.lootMu.Unlock()
  
