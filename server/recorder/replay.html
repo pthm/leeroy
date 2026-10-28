@@ -381,7 +381,7 @@ function renderPane() {
       <canvas id="chart"></canvas>
       <table class="board">${rows.map(({ p, s }, i) => `<tr><td>${i + 1}</td><td><span class="dot" style="background:${p.color};display:inline-block"></span> ${who(p.name)} <span class="muted">${esc(p.cls)}</span></td>
         <td class="num">${s ? `L${s.level}` : ""}</td><td class="num"><b>${s ? s[metric] : "–"}</b></td></tr>`).join("")}</table>
-      <p class="muted">score = progress points per hour over the run (judge v2; older runs: (progress + pace) / 2). Quests count by difficulty for the character's level.</p>`;
+      <p class="muted">score = (overall rate + best 15-minute rate) / 2, in progress points per hour; progress = XP earned + 800 per average item level + 2 per copper of wealth (judge v4; older runs scored differently).</p>`;
   } else {
     const end = evIdx(t), kinds = tab === "agent" ? KINDS.agent.filter((k) => agentShow[k]) : KINDS[tab], rows = [];
     for (let i = end - 1; i >= 0 && rows.length < 200; i--) if (kinds.includes(D.events[i].ev)) rows.push(D.events[i]);

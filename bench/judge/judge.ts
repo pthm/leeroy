@@ -17,12 +17,12 @@
 //   best_window  the best rate over any 15-minute window
 //   score        (rate + best_window) / 2: the headline for score goals. Sustained progress counts, and so does
 //                finding a better strategy: time spent trying one lowers the rate but not the best window. Deaths
-//                and stalls cost through the time they lose. Quests and elite kills are valued by difficulty
-//                (quest_points, kill_points in score.json).
+//                and stalls cost through the time they lose. For score goals, progress is the game's own rewards:
+//                XP earned, gear (average item level) and wealth, weighted in score.json.
 // --board <dir> writes <dir>/<character>.json with the latest result each poll (the agents' `standings` tool reads them).
 // --resume <samples.jsonl> continues a paused run from its samples.
-import { appendFileSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, openSync, readSync, closeSync } from "node:fs";
-import { sql, signals, weights, composite, rewarded, questPoints, questScoring, killPoints, SERVER_LOG } from "./signals.ts";
+import { appendFileSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { sql, signals, weights, composite } from "./signals.ts";
 
 const [char, goal, ...rest] = process.argv.slice(2);
 if (!char || !/^[A-Za-z]+$/.test(char) || !/^(level|item|quality|money|quests|quest|achpoints|score):\d+$/.test(goal ?? ""))
@@ -53,24 +53,6 @@ const query = {
 const prior = flag("resume", "") ? readFileSync(flag("resume", ""), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
 const baseline = kind === "achpoints" ? (prior.length ? Number(sql(query) || 0) - prior.at(-1).value : Number(sql(query) || 0)) : 0; // only count what's earned during the run
 const base = prior[0]?.signals ?? signals(char), w = kind === "score" ? weights() : {};
-// quest_points is the judge's own tally: quests seen turned in since the start, valued at your level at the time
-const qcfg = kind === "score" ? questScoring() : undefined, seen = rewarded(char);
-let questPts = prior.at(-1)?.signals?.quest_points ?? 0;
-// kill_points: new "xp" events for this character in the server's recorder log since the judge started
-const killCfg = kind === "score" ? JSON.parse(readFileSync(new URL("score.json", import.meta.url), "utf8")).kill_points : undefined;
-let killPts = prior.at(-1)?.signals?.kill_points ?? 0, logOff = existsSync(SERVER_LOG) ? statSync(SERVER_LOG).size : 0, logRest = "";
-function newKills() {
-  if (!existsSync(SERVER_LOG)) return [];
-  const size = statSync(SERVER_LOG).size;
-  if (size < logOff) logOff = 0; // rotated
-  if (size === logOff) return [];
-  const fd = openSync(SERVER_LOG, "r"), buf = Buffer.alloc(size - logOff);
-  readSync(fd, buf, 0, buf.length, logOff); closeSync(fd); logOff = size;
-  const text = logRest + buf.toString("utf8"), cut = text.lastIndexOf("\n") + 1;
-  logRest = text.slice(cut);
-  return text.slice(0, cut).split("\n").filter((l) => l.includes('"ev":"xp"') && l.includes(`"n":"${char}"`) && l.includes('"victim"'))
-    .map((l) => JSON.parse(l)).filter((e) => e.n === char && e.victim && !e.victim.pl).map((e) => ({ id: e.victim.id, lvl: e.victim.lvl }));
-}
 const need = kind === "item" || kind === "quality" || kind === "quest" ? 1 : +n;
 
 const start = Date.now() - (prior.at(-1)?.elapsed_s ?? 0) * 1000;
@@ -92,14 +74,6 @@ let bestWindow = 0;
 for (let k = 0; k < curve.length; k++) bestWindow = Math.max(bestWindow, windowRate(k));
 for (;;) {
   const sig = signals(char);
-  if (qcfg) {
-    const fresh = [...rewarded(char)].filter((q) => !seen.has(q));
-    fresh.forEach((q) => seen.add(q));
-    questPts += questPoints(fresh, Math.floor(sig.level), qcfg);
-    sig.quest_points = questPts;
-    killPts += killPoints(newKills(), Math.floor(sig.level), killCfg, qcfg.colour);
-    sig.kill_points = killPts;
-  }
   const value = kind === "score" ? composite(sig, base, w) : Number(sql(query) || 0) - baseline;
   const [level, xp, money] = sql(`SELECT level, xp, money FROM characters WHERE name = '${char}'`).split("\t").map(Number);
   const elapsed_s = Math.round((Date.now() - start) / 1000), h = elapsed_s / 3600;

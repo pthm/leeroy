@@ -36,13 +36,15 @@ export function signals(char: string): Signals {
       (SELECT COALESCE(SUM(it.SellPrice * ii.count), 0) FROM character_inventory ci JOIN item_instance ii ON ii.guid = ci.item
          JOIN acore_world.item_template it ON it.entry = ii.itemEntry WHERE ci.guid = c.guid),
       ${crit(String(STAT_DEATHS))},
-      ${crit(`SELECT id FROM wowbench.achievement_criteria WHERE achievement = ${STAT_KILLS}`)}
+      ${crit(`SELECT id FROM wowbench.achievement_criteria WHERE achievement = ${STAT_KILLS}`)},
+      (SELECT COALESCE(SUM(Experience), 0) FROM acore_world.player_xp_for_level WHERE Level < c.level)
     FROM characters c LEFT JOIN acore_world.player_xp_for_level x ON x.Level = c.level WHERE c.name = '${char}'`);
   if (!row) throw new Error(`no character ${char}`);
   const f = row.split("\t");
   const n = (i: number) => Number(f[i]) || 0;
   return {
     level: n(0) + (n(2) ? n(1) / n(2) : 0), // fractional: 10.5 = halfway to 11
+    xp_earned: n(18) + n(1), // total XP to reach your level, plus XP into it
     achievement_points: n(10),
     // ponytail: mean over the 17 gear slots (shirt and tabard excluded), empty = 0; no two-hander/off-hand adjustment
     avg_item_level: Math.round((n(14) / 17) * 10) / 10,
@@ -62,43 +64,6 @@ export function signals(char: string): Signals {
   };
 }
 
-// --- quest difficulty: a quest is worth more the harder it was for you when you turned it in ---
-
-// WoW's difficulty colour of content at level `lvl` for a player at `pl` (AzerothCore Formulas.h GetColorCode)
-export function colour(pl: number, lvl: number) {
-  const grey = pl <= 5 ? 0 : pl <= 39 ? pl - 5 - Math.floor(pl / 10) : pl <= 59 ? pl - 1 - Math.floor(pl / 5) : pl - 9;
-  return lvl >= pl + 5 ? "red" : lvl >= pl + 3 ? "orange" : lvl >= pl - 2 ? "yellow" : lvl > grey ? "green" : "grey";
-}
-
-export type QuestScoring = { base: number; colour: Record<string, number>; type: Record<string, number> };
-export const questScoring = (file = new URL("score.json", import.meta.url).pathname): QuestScoring =>
-  JSON.parse(readFileSync(file, "utf8")).quest_points;
-
-export const rewarded = (char: string) => new Set(sql(`SELECT quest FROM character_queststatus_rewarded
-  WHERE guid = (SELECT guid FROM characters WHERE name = '${char}')`).split("\n").filter(Boolean).map(Number));
-
-// Points for quests just turned in at player level `pl`: base x colour x type (QuestInfoID: 1 group, 81 dungeon...).
-// QuestLevel -1 means "your level".
-export function questPoints(ids: number[], pl: number, cfg: QuestScoring) {
-  if (!ids.length) return 0;
-  return sql(`SELECT QuestLevel, QuestInfoID FROM acore_world.quest_template WHERE ID IN (${ids.join(",")})`)
-    .split("\n").filter(Boolean).map((l) => l.split("\t").map(Number))
-    .reduce((s, [ql, info]) => s + cfg.base * (cfg.colour[colour(pl, ql < 0 ? pl : ql)] ?? 0) * (cfg.type[info] ?? 1), 0);
-}
-
-// --- hard kills: elite/rare/boss kills from the server's recorder log (mod-recorder "xp" events with a victim; each party
-// member who gets XP from a kill gets one), valued by rank x colour at the player's level ---
-export const SERVER_LOG = new URL("../../server/azerothcore/env/dist/logs/recorder.jsonl", import.meta.url).pathname;
-const ranks = new Map<number, number>();
-export function killPoints(kills: { id: number; lvl: number }[], pl: number, cfg: { rank: Record<string, number> }, colours: Record<string, number>) {
-  const missing = [...new Set(kills.map((k) => k.id))].filter((id) => !ranks.has(id));
-  if (missing.length) for (const l of sql(`SELECT entry, \`rank\` FROM acore_world.creature_template WHERE entry IN (${missing.join(",")})`).split("\n").filter(Boolean)) {
-    const [id, rk] = l.split("\t").map(Number);
-    ranks.set(id, rk);
-  }
-  return kills.reduce((s, k) => s + (cfg.rank[ranks.get(k.id) ?? 0] ?? 0) * (colours[colour(pl, k.lvl)] ?? 0), 0);
-}
-
 export function weights(file = new URL("score.json", import.meta.url).pathname): Record<string, number> {
   return JSON.parse(readFileSync(file, "utf8")).weights;
 }
@@ -108,9 +73,4 @@ export function composite(now: Signals, base: Signals, w: Record<string, number>
   return Math.round(Object.entries(w).reduce((s, [k, wt]) => s + wt * ((now[k] ?? 0) - (base[k] ?? 0)), 0) * 10) / 10;
 }
 
-if (import.meta.main && process.argv[2] === "--check") { // self-check of the colour bands at level 6 and 20
-  const want: [number, number, string][] = [[6, 1, "grey"], [6, 2, "green"], [6, 4, "yellow"], [6, 9, "orange"], [6, 11, "red"],
-    [5, 1, "green"], [20, 13, "grey"], [20, 14, "green"], [20, 18, "yellow"]];
-  for (const [pl, l, c] of want) if (colour(pl, l) !== c) throw new Error(`colour(${pl}, ${l}) = ${colour(pl, l)}, want ${c}`);
-  console.log("ok");
-} else if (import.meta.main) console.log(JSON.stringify(signals(process.argv[2] ?? ""), null, 1));
+if (import.meta.main) console.log(JSON.stringify(signals(process.argv[2] ?? ""), null, 1));

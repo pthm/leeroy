@@ -1,42 +1,9 @@
 {
-  "version": 3,
-  "about": "Composite progress for `score:<n>` goals: sum of weight x (signal now - signal when the judge started). Points anchored on 1 achievement point; a typical achievement is 10. The run's score is the rate: progress points per hour. Quests score by difficulty (quest_points): base x colour of the quest's level against yours at turn-in x quest type (QuestInfoID). kill_points: elite/rare/boss kills by rank x colour, credited to every party member who gets XP from the kill. Signals with no weight (quests, deaths, money_copper, arena_points, creatures_killed, played_s) are reported but not scored; deaths cost through lost time.",
+  "version": 4,
+  "about": "Composite progress for `score:<n>` goals: the game's own rewards. Sum of weight x (signal now - signal when the judge started): XP earned (1 per XP), gear (800 per +1 average item level over the 17 slots) and wealth (2 per copper of money plus vendor value of everything owned). The run's score is (overall rate + best 15-minute window rate) / 2 in progress points per hour. Other signals are reported but not scored.",
   "weights": {
-    "achievement_points": 1,
-    "level": 10,
-    "avg_item_level": 2,
-    "wealth_copper": 0.001,
-    "honor": 0.1,
-    "honorable_kills": 1,
-    "reputation": 0.002,
-    "profession_skill": 0.1,
-    "explored_areas": 0.5,
-    "flight_paths": 2,
-    "quest_points": 1,
-    "kill_points": 1
-  },
-  "quest_points": {
-    "base": 4,
-    "colour": {
-      "grey": 0,
-      "green": 0.5,
-      "yellow": 1,
-      "orange": 2,
-      "red": 3
-    },
-    "type": {
-      "1": 4,
-      "81": 3,
-      "62": 3
-    }
-  },
-  "kill_points": {
-    "about": "elite/rare/boss kills you got XP from (every party member who shares the kill), x the same colour table as quests, from the server's recorder log",
-    "rank": {
-      "1": 5,
-      "2": 12,
-      "3": 20,
-      "4": 8
-    }
+    "xp_earned": 1,
+    "avg_item_level": 800,
+    "wealth_copper": 2
   }
 }

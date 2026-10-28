@@ -48,16 +48,11 @@ case "$goal" in achpoints:*)
 names, points and criteria are in worlddb (see AGENTS.md); bot.achievements() shows your progress."
   stop_text="Do not stop early: keep earning points until the time runs out." ;;
 score:*)
-  score_text="HOW YOU ARE JUDGED: every 15 seconds the judge reads your character from the server database and computes
-your progress: a weighted sum of how much these have grown since the start (points per unit):
-$(jq -r '.weights | to_entries[] | "  \(.key): \(.value)"' "$root/judge/score.json")
-Fractional level counts (10.5 = halfway to 11); avg_item_level is over your 17 gear slots; wealth_copper is money
-plus the vendor value of what you own.
-quest_points: quests are worth more the harder they are for you when you turn them in. Each is worth
-$(jq -r '.quest_points | "\(.base) x its difficulty colour against your level (" + (.colour | to_entries | map("\(.key) \(.value)") | join(", ")) + ")"' "$root/judge/score.json"),
-x 4 for group quests and x 3 for dungeon quests. Trivial (grey) quests are worth nothing.
-kill_points: elite, rare and boss kills (normal mobs count only through XP): elite 5, rare 8, rare elite 12, boss 20,
-x the same difficulty colour. Every party member who gets XP from the kill gets the points.
+  score_text="HOW YOU ARE JUDGED: every 15 seconds the judge reads your character from the server database. Your
+progress is what the game itself rewards, gained since the start:
+  XP earned: 1 point per XP (from kills, quests, exploring: the game already gives more for harder content)
+  gear: 800 points per +1 average item level of what you wear (over your 17 gear slots)
+  wealth: 2 points per copper of money plus the vendor value of everything you own
 YOUR SCORE is the average of two rates, in progress points per hour: your rate over the whole $mins minutes, and
 your best rate over any 15-minute stretch. Sustained progress counts, and so does finding a better way to play:
 time spent trying a new strategy lowers your overall rate but not your best stretch. Deaths, stalls and time spent
