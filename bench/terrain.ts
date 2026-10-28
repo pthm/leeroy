@@ -3,13 +3,15 @@
 // ponytail: terrain only; buildings and other WMO floors live in vmaps and aren't modelled.
 import { existsSync, readFileSync } from "node:fs";
 
+const MAPS = new URL("../data/maps/", import.meta.url).pathname;
+
 const S = 1600 / 3;
 type Grid = { h: Float32Array; area: Uint16Array; liquid?: { lvl: Float32Array | null; level: number; ox: number; oy: number; w: number; hh: number; cell: Uint8Array | null; global: number } } | null;
 const grids = new Map<string, Grid>();
 function grid(mapId: number, gx: number, gy: number): Grid {
   const key = `${mapId},${gx},${gy}`;
   if (grids.has(key)) return grids.get(key)!;
-  const f = `data/maps/${String(mapId).padStart(3, "0")}${String(gx).padStart(2, "0")}${String(gy).padStart(2, "0")}.map`;
+  const f = `${MAPS}${String(mapId).padStart(3, "0")}${String(gx).padStart(2, "0")}${String(gy).padStart(2, "0")}.map`;
   let g: Grid = null;
   if (existsSync(f)) {
     const b = readFileSync(f);

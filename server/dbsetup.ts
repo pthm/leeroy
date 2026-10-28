@@ -1,4 +1,4 @@
-// bun dbsetup.ts
+// bun server/dbsetup.ts
 // Builds the `wowbench` schema that worlddb and wowdb read: client DBC data the world DB lacks, plus
 // precomputed joins (aowow-style). Needs data/dbc/*.dbc and data/maps (see README). Tables:
 //  achievement, achievement_criteria, achievement_category, criteria_type: the achievement catalogue
@@ -9,10 +9,12 @@
 //    to Alliance and Horde players
 //  spell: names, ranks, descriptions, cast time, range, cooldowns, cost, item created
 import { readFileSync, readdirSync } from "node:fs";
+
+const REPO = new URL("../", import.meta.url).pathname;
 import { execFileSync } from "node:child_process";
 
 function dbc(file: string) {
-  const b = readFileSync(`data/dbc/${file}`);
+  const b = readFileSync(`${REPO}data/dbc/${file}`);
   if (b.toString("latin1", 0, 4) !== "WDBC") throw new Error(`${file}: not a DBC`);
   const [n, fields, size] = [b.readUInt32LE(4), b.readUInt32LE(8), b.readUInt32LE(12)];
   const strs = 20 + n * size;
@@ -82,10 +84,10 @@ const spell = dbc("Spell.dbc").map((r) => {
 const S = 1600 / 3;
 const cells = new Map<string, { map: number; id: number; pts: [number, number][] }>();
 const grid: number[][] = []; // map, ix, iy, area: ix = floor(16 * (32 - x / S)), as GridTerrainData::getArea
-for (const f of readdirSync("data/maps")) {
+for (const f of readdirSync(`${REPO}data/maps`)) {
   const m = f.match(/^(\d{3})(\d{2})(\d{2})\.map$/);
   if (!m || +m[1] > 1) continue;
-  const b = readFileSync(`data/maps/${f}`);
+  const b = readFileSync(`${REPO}data/maps/${f}`);
   const off = b.readUInt32LE(12), flags = b.readUInt16LE(off + 4), whole = b.readUInt16LE(off + 6);
   for (let lx = 0; lx < 16; lx++) for (let ly = 0; ly < 16; ly++) {
     const id = flags & 1 ? whole : b.readUInt16LE(off + 8 + (lx * 16 + ly) * 2);
@@ -105,7 +107,7 @@ const loc = [...cells.values()].map(({ map, id, pts }) => {
     Math.round(Math.min(...ys)), Math.round(Math.max(...ys)), pts.length];
 });
 
-const enumSrc = readFileSync("server/src/server/shared/DataStores/DBCEnums.h", "utf8");
+const enumSrc = readFileSync(`${REPO}server/azerothcore/src/server/shared/DataStores/DBCEnums.h`, "utf8");
 const body = enumSrc.slice(enumSrc.indexOf("enum AchievementCriteriaTypes"));
 const types = [...body.slice(0, body.indexOf("};")).matchAll(/ACHIEVEMENT_CRITERIA_TYPE_(\w+)\s*=\s*(\d+)/g)]
   .map((m) => [+m[2], m[1].toLowerCase()]);

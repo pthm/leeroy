@@ -1,9 +1,9 @@
-server/
-ghost/
+server/azerothcore/
+bench/ghost/
+bench/runs/
+bench/sessions/
+bench/agents/*/
 data/
-sessions/
 node_modules/
 *.log
-runs/
-agents/*/
 .playwright-mcp/

@@ -1,4 +1,4 @@
-// bun replay.ts <run-dir | team-dir> [--out replay.html] [--log server/env/dist/logs/recorder.jsonl]
+// bun bench/replay.ts <run-dir | team-dir> [--out replay.html] [--log server/azerothcore/env/dist/logs/recorder.jsonl]
 //                [--chars A,B] [--from <ms|ISO>] [--to <ms|ISO>]
 // Builds a self-contained HTML replay of a run from the mod-recorder log: a terrain map rendered from the
 // server's own map files (data/maps: heights, water, zone borders) with every player's route, a seek bar,
@@ -28,7 +28,7 @@ if (dirArg && existsSync(dirArg)) {
   from ??= existsSync(join(dirArg, "go")) ? Number(readFileSync(join(dirArg, "go"), "utf8")) * 1000
     : judges.length ? Math.min(...judges.map((j: { at: string; elapsed_s: number }) => Date.parse(j.at) - j.elapsed_s * 1000)) : undefined;
 }
-const logFile = flag("log") ?? "server/env/dist/logs/recorder.jsonl";
+const logFile = flag("log") ?? new URL("../server/azerothcore/env/dist/logs/recorder.jsonl", import.meta.url).pathname;
 type Ev = { t: number; ev: string; n?: string; [k: string]: unknown };
 const all: Ev[] = readFileSync(logFile, "utf8").split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } })
   .filter((e: Ev | null): e is Ev => !!e);

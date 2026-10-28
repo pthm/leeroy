@@ -1,6 +1,6 @@
 #!/bin/sh
-# ./bench.sh <agent-name> <Character> <race> <class> <goal> [timeout-min]
-#   e.g. ./bench.sh claude1 Humanwar 1 1 level:5 60
+# bench/bench.sh <agent-name> <Character> <race> <class> <goal> [timeout-min]
+#   e.g. bench/bench.sh claude1 Humanwar 1 1 level:5 60
 # Fresh account + character, a persistent session, the judge, and a headless Claude Code agent.
 # The agent runs inside agents/<name>/ (its persistent library, the only place it can read or write besides
 # the client/server source); tools come from bin/ on PATH so it can't edit them.
@@ -13,11 +13,12 @@
 # (team.sh uses it to start every clock together; touches $GO.<name>.ready once the session is up).
 set -e
 { # parsed whole before running, so editing this file can't break runs in progress
+cd "$(dirname "$0")" # everything below is relative to bench/
 name=$1 char=$2 race=$3 class=$4 goal=$5 mins=${6:-60}
 [ -n "$goal" ] || { sed -n 2,7p "$0"; exit 1; }
 export WOW_PORT=${WOW_PORT:-8090}
 id="$(date +%Y%m%d-%H%M%S)-$name"; dir="runs/$id"
-root=$(pwd); ws="$root/agents/$name"
+root=$(pwd); repo=$(dirname "$root"); ws="$root/agents/$name"
 mkdir -p "$dir" "$ws"
 cp AGENTS.md agents/example.lua "$ws/" # refreshed each run
 acct=$(printf %s "$name" | tr -cd 'a-zA-Z0-9' | cut -c1-16)
@@ -48,7 +49,7 @@ plus the vendor value of what you own; deaths subtract. There is no finish line.
   stop_text="Do not stop early: keep improving your score until the time runs out." ;;
 esac
 
-bun account.ts "$acct" "$acct" # non-GM
+bun ../server/account.ts "$acct" "$acct" # non-GM
 docker exec ac-database mysql -uroot -ppassword -e "CREATE USER IF NOT EXISTS 'worldreader'@'%' IDENTIFIED BY 'worldreader';
   GRANT SELECT ON acore_world.* TO 'worldreader'@'%';" 2>/dev/null # for worlddb
 sql() { docker exec ac-database mysql -uroot -ppassword -N acore_characters -e "$1" 2>/dev/null; }
@@ -94,8 +95,8 @@ $HINT}
 
 Read AGENTS.md first. It documents your session (wow), the bot API, and worlddb, a read-only SQL view
 of the game's world database: mob spawns and levels, quest givers, vendors, loot tables.
-Reference source (read-only): game client $root/ghost/client, server $root/server/src/server/game and
-$root/server/src/server/shared.
+Reference source (read-only): game client $root/ghost/client, server $repo/server/azerothcore/src/server/game and
+$repo/server/azerothcore/src/server/shared.
 
 HOW TO WORK
 - Start earning progress within your first few minutes, then improve. Don't plan at length before you have
@@ -116,7 +117,7 @@ PROMPT
 
 (cd "$ws" && PATH="$root/bin:$PATH" exec timeout "${mins}m" claude -p "$(cat "$root/$dir/prompt.md")" \
   --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
-  --add-dir "$root/ghost/client" "$root/server/src/server/game" "$root/server/src/server/shared" \
+  --add-dir "$root/ghost/client" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
   --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(wowdb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
     "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Edit(/**)" \
   > "$root/$dir/agent.jsonl" 2>&1) &

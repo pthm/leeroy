@@ -1,74 +1,77 @@
 # wowbench
 
-Harness where AI agents write Lua scripts to play WoW 3.3.5a on a local AzerothCore server.
-Agent-facing docs: [AGENTS.md](AGENTS.md).
+AI agents play WoW 3.3.5a on a local AzerothCore server, writing their own Lua scripts, and get scored on what they
+achieve. Agent-facing docs: [bench/AGENTS.md](bench/AGENTS.md).
 
-Monorepo: the benchmark harness (TypeScript and shell, at the root) and [`azeroth-sdk/`](azeroth-sdk/README.md), the Go
-headless client and agent API it is moving onto. A root `go.work` includes the Go module, so `go build ./azeroth-sdk/...`
-works from here. The harness still runs on the patched AzerothGhost checkout in `ghost/` until it switches to `azsdk`.
+| Folder | What's in it |
+|---|---|
+| [`server/`](server) | The AzerothCore server: upstream checkout (`azerothcore/`, gitignored), our config overrides (`override.yml`), the `mod-recorder` module, account creation (`account.ts`) and the `wowbench` data schema (`dbsetup.ts`) |
+| [`bench/`](bench) | The benchmark: launchers (`bench.sh`, `team.sh`, `play.sh`), judge and scoring (`judge.ts`, `signals.ts`, `score.json`), agent tools (`bin/`: `wow`, `worlddb`, `wowdb`), replays (`replay.ts`), movement audit (`movecheck.ts`), agent workspaces (`agents/`) and results (`runs/`) |
+| [`azeroth-sdk/`](azeroth-sdk/README.md) | The Go headless client, `azsdk` daemon and TypeScript SDK the bench is moving onto (a root `go.work` includes it: `go build ./azeroth-sdk/...`) |
+| `data/` | Client data copied out of the server (maps, navmesh, DBC files), shared by all of the above (gitignored) |
+
+Until the bench switches to `azsdk`, sessions run on a patched AzerothGhost checkout in `bench/ghost/`.
+All commands below run from the repo root.
 
 ## Setup (once)
 
 ```sh
-git clone --depth 1 https://github.com/azerothcore/azerothcore-wotlk.git server
-docker compose -f server/docker-compose.yml build   # ~10 min
+# server
+git clone --depth 1 https://github.com/azerothcore/azerothcore-wotlk.git server/azerothcore
+cp -r server/modules/mod-recorder server/azerothcore/modules/   # replays (see below)
+docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml build   # ~10-20 min
 bun run server                                       # first boot downloads client data + imports DBs
 
-git clone https://github.com/azerothcore/AzerothGhost.git ghost && git -C ghost checkout be53c70  # tested commit
-git -C ghost apply ../patches/azerothghost-control.patch   # live eval endpoint, chat, raw packets, bot.call
-rm -rf ghost/scripts     # bundled Lua AI: agents write their own
-# (regen the patch with: cd ghost && git add -N . && git diff -- . ':!scripts' > ../patches/azerothghost-control.patch)
-(cd ghost && go build -o azghost ./cmd/azghost)      # Go 1.26+
+# client data, copied out of the server's volume (~3GB)
+mkdir -p data/dbc && docker run --rm -v server_ac-client-data:/src:ro -v $PWD/data:/dst alpine sh -c \
+  'cp -r /src/maps /src/mmaps /src/vmaps /dst/ && cd /src/dbc && cp Spell.dbc Achievement.dbc Achievement_Criteria.dbc \
+   Achievement_Category.dbc AreaTable.dbc WorldMapOverlay.dbc Faction.dbc FactionTemplate.dbc SpellCastTimes.dbc \
+   SpellRange.dbc /dst/dbc/'
+bun server/dbsetup.ts      # wowbench schema: achievements, areas, spawn zones, faction hostility, spells
 
-# pathfinding data + Spell.dbc (cooldowns, spell_info) for the client, copied out of the server's volume (~3GB)
-mkdir -p data/dbc && docker run --rm -v server_ac-client-data:/src:ro -v $PWD/data:/dst alpine \
-  sh -c 'cp -r /src/maps /src/mmaps /src/vmaps /dst/ && cp /src/dbc/Spell.dbc /dst/dbc/'
+# bench client (until the switch to azeroth-sdk)
+git clone https://github.com/azerothcore/AzerothGhost.git bench/ghost && git -C bench/ghost checkout be53c70
+git -C bench/ghost apply ../patches/azerothghost-control.patch && rm -rf bench/ghost/scripts
+(cd bench/ghost && go build -o azghost ./cmd/azghost)
+# regen the patch: cd bench/ghost && git add -N . && git diff -- . ':!scripts' > ../patches/azerothghost-control.patch
 ```
 
-For achievement goals and `wowdb`, also copy `Achievement.dbc Achievement_Criteria.dbc Achievement_Category.dbc
-AreaTable.dbc WorldMapOverlay.dbc Faction.dbc FactionTemplate.dbc SpellCastTimes.dbc SpellRange.dbc` into `data/dbc/` the same way and run `bun dbsetup.ts` (builds the `wowbench`
-schema: achievements, areas, spawn zones, faction hostility, spells; read by `worlddb` and `wowdb`).
-
-### Replays (optional)
-
-`modules/mod-recorder` is an AzerothCore module that logs every player's position (1/s), chat, damage, heals,
-casts, kills, deaths, levels, quests, achievements and loot to `server/env/dist/logs/recorder.jsonl`. Install it
-once and rebuild the worldserver:
-
-```sh
-cp -r modules/mod-recorder server/modules/
-docker compose -f server/docker-compose.yml -f server.override.yml build ac-worldserver && bun run server
-```
-
-`bench.sh`/`team.sh` then write `replay.html` into the run directory: a self-contained page with a terrain map
-rendered from `data/maps`, every player's route, a seek bar with deaths/levels/quests/achievements marked, and
-chat, combat and event logs synced to the playhead. By hand: `bun replay.ts runs/<id>` (or `--chars A,B --from
-<ISO> --to <ISO>`).
+The compose project is pinned to `server` (`server/override.yml`), so the volumes are `server_ac-database` and
+`server_ac-client-data`. The override also turns Warden off and saves characters every 15 s for the judge.
 
 ## Run a benchmark
 
 ```sh
-./bench.sh claude1 Humanwar 1 1 level:5 60   # agent name, character, race, class, goal, minutes
+bench/bench.sh claude1 Humanwar 1 1 level:5 60          # agent name, character, race, class, goal, minutes
+LEVEL=10 START="-9460 70 56.6 0 12" bench/team.sh score:100000 60 a1:Garrick:1:1 a2:Paloma:1:2   # several agents, one clock
 ```
 
-Creates a fresh non-GM account, starts the session and judge, and runs headless Claude Code against it.
-The agent runs inside `agents/<name>/` (its persistent script library): it can only read and write there,
-plus read the client/server source, and can only run `wow`,
-`worlddb` (from `bin/`) and read-only shell commands. Results go to `runs/<id>/`: `judge.json` (score),
-`samples.jsonl` (level/xp/money every 15s), `agent.jsonl` (transcript), `session.log`.
+Each agent gets a fresh non-GM account and runs as headless Claude Code inside `bench/agents/<name>/` (its persistent
+script library). It can read and write only there, read the client and server source, and run `wow`, `worlddb`,
+`wowdb` and read-only shell commands. Results go to `bench/runs/<id>/`:
+- `judge.json`: the score;
+- `samples.jsonl`: progress every 15 s;
+- `agent.jsonl`: the transcript;
+- `session.log`;
+- `replay.html`.
+
+Goals: `level:<n>`, `item:<entry>`, `quality:<n>` (3 = rare), `money:<copper>`, `quests:<n>`, `quest:<id>`,
+`achpoints:<n>`, and `score:<n>`: a weighted composite of every progress signal (`bun bench/signals.ts <char>` lists
+them; weights in `bench/score.json`). For "as much as possible" goals pass a large n and read `value` at timeout.
+
+## Replays
+
+`mod-recorder` logs every player's position (1/s), chat, damage, heals, casts, kills, deaths, levels, quests,
+achievements and loot to `server/azerothcore/env/dist/logs/recorder.jsonl`. Runs then get a `replay.html`: a
+self-contained page with a terrain map rendered from `data/maps`, every player's route, a seek bar with key events
+marked, and chat, combat and event logs synced to the playhead. By hand: `bun bench/replay.ts bench/runs/<id>` (or
+`--chars A,B --from <ISO> --to <ISO>`). `bun bench/movecheck.ts` audits the same log for speed, slopes and swimming.
 
 ## Run a task by hand
 
 ```sh
-bun account.ts agent1 agent1                                   # non-GM account per agent
-WOW_PORT=8090 ACCOUNT=agent1 ./play.sh Agentone > sessions/agent1.log 2>&1 &
-bun judge.ts Agentone level:10 --timeout 4h                    # in parallel; prints JSON + elapsed_s when met
-# ...give the agent AGENTS.md + the goal; it drives the session with bin/wow
+bun server/account.ts agent1 agent1                               # non-GM account
+WOW_PORT=8090 ACCOUNT=agent1 bench/play.sh Agentone > bench/sessions/agent1.log 2>&1 &
+bun bench/judge.ts Agentone level:10 --timeout 4h                 # prints JSON + elapsed_s when met
+# ...give the agent bench/AGENTS.md + the goal; it drives the session with bench/bin/wow
 ```
-
-Goals: `level:<n>`, `item:<entry>`, `quality:<n>` (3 = rare), `money:<copper>`, `quests:<n>`, `quest:<id>`,
-`achpoints:<n>`, and `score:<n>`: a weighted composite of every progress signal (`bun signals.ts <char>` lists
-them; weights in `score.json`). For "as much as possible" goals pass a large n and read `value` at timeout. Multiple agents = one
-account, character and `WOW_PORT` each.
-
-Server config overrides live in `server.override.yml` (Warden off, 15s character saves for the judge).

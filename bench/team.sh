@@ -1,11 +1,12 @@
 #!/bin/sh
-# ./team.sh <goal> <minutes> <name:Character:race:class>...
+# bench/team.sh <goal> <minutes> <name:Character:race:class>...
 #   e.g. LEVEL=10 MONEY=2000 START="-9460 70 56.6 0 12" HINT="..." \
-#        ./team.sh quest:176 60 hogger1:Garrick:1:1 hogger2:Paloma:1:2
+#        bench/team.sh quest:176 60 hogger1:Garrick:1:1 hogger2:Paloma:1:2
 # One bench.sh per agent (WOW_PORT 8090, 8091, ...), logins staggered. Every judge and agent starts at
 # the same moment once all sessions are up, so times are comparable. Writes runs/<id>/team.json:
 # per-agent judge results plus team_s = time until the last agent met the goal (null if any didn't).
 set -e
+cd "$(dirname "$0")" # relative to bench/
 goal=$1 mins=$2; shift 2
 [ $# -gt 0 ] || { sed -n 2,7p "$0"; exit 1; }
 id="$(date +%Y%m%d-%H%M%S)-team"; dir="$PWD/runs/$id"; mkdir -p "$dir"

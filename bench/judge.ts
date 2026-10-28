@@ -1,11 +1,11 @@
-// bun judge.ts <character> <goal> [--timeout 4h] [--every 15s] [--samples file.jsonl]
+// bun bench/judge.ts <character> <goal> [--timeout 4h] [--every 15s] [--samples file.jsonl]
 // Goals: level:<n> | item:<entry> | quality:<0-5> (any owned item of that quality or better; 3 = rare)
 //        | money:<copper> | quests:<n> (quests turned in) | quest:<id> (that quest turned in)
-//        | achpoints:<n> (achievement points earned since the judge started; needs `bun dbsetup.ts`.
+//        | achpoints:<n> (achievement points earned since the judge started; needs `bun server/dbsetup.ts`.
 //          Use a large n to score "as many as possible" by the value at timeout)
 //        | score:<n> (composite: weighted change in every signal since the judge started; weights in score.json,
 //          signals in signals.ts. Same "large n" convention)
-// Reads the character DB (saved every 15s, see server.override.yml), so it can't be gamed from the client.
+// Reads the character DB (saved every 15s, see server/override.yml), so it can't be gamed from the client.
 // Prints one JSON line when the goal is met or the timeout hits; exit 0 = met, 1 = timed out.
 // --samples appends {elapsed_s, level, xp, money, value, signals} each poll, for partial credit and progress curves.
 import { appendFileSync } from "node:fs";
@@ -13,7 +13,7 @@ import { sql, signals, weights, composite } from "./signals.ts";
 
 const [char, goal, ...rest] = process.argv.slice(2);
 if (!char || !/^[A-Za-z]+$/.test(char) || !/^(level|item|quality|money|quests|quest|achpoints|score):\d+$/.test(goal ?? ""))
-  throw new Error("usage: bun judge.ts <character> <level|item|quality|money|quests|quest|achpoints|score>:<n> [--timeout 4h] [--every 15s]");
+  throw new Error("usage: bun bench/judge.ts <character> <level|item|quality|money|quests|quest|achpoints|score>:<n> [--timeout 4h] [--every 15s]");
 const flag = (name: string, def: string) => { const i = rest.indexOf(`--${name}`); return i >= 0 ? rest[i + 1] : def; };
 const dur = (s: string) => { const [, n, u] = s.match(/^(\d+)(s|m|h)$/)!; return +n * { s: 1e3, m: 6e4, h: 36e5 }[u]!; };
 const timeout = dur(flag("timeout", "4h")), every = dur(flag("every", "15s")), samples = flag("samples", "");

@@ -1,4 +1,6 @@
-# Layered on server/docker-compose.yml (see package.json "server" script).
+# Layered on server/azerothcore/docker-compose.yml (see package.json "server" script).
+# Keeps the compose project (and so the volumes: database, client data) named "server".
+name: server
 # Any worldserver.conf key works as AC_<KEY> (dots -> _, camelCase -> SNAKE).
 services:
   ac-worldserver:

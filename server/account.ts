@@ -1,4 +1,4 @@
-// bun account.ts <user> <pass> [gmLevel]  — create/reset an account in the auth DB (via the ac-database container).
+// bun server/account.ts <user> <pass> [gmLevel]  — create/reset an account in the auth DB (via the ac-database container).
 // gmLevel 3 lets the bot use GM dot-commands (.levelup, .additem, .tele) — handy for scenario setup, unfair in a benchmark.
 import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -10,7 +10,7 @@ const modPow = (b: bigint, e: bigint, m: bigint) => { let r = 1n; for (b %= m; e
 const sha1 = (...p: Uint8Array[]) => createHash("sha1").update(Buffer.concat(p)).digest();
 
 const [userArg, pass, gm = "0"] = process.argv.slice(2);
-if (!userArg || !pass) throw new Error("usage: bun account.ts <user> <pass> [gmLevel]");
+if (!userArg || !pass) throw new Error("usage: bun server/account.ts <user> <pass> [gmLevel]");
 const user = userArg.toUpperCase();
 if (!/^[A-Z0-9]{1,16}$/.test(user) || !/^\d$/.test(gm)) throw new Error("account must be alphanumeric <= 16 chars; gmLevel 0-9");
 

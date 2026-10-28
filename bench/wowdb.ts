@@ -1,4 +1,4 @@
-// wowdb: structured, read-only lookups over the world DB + the wowbench schema (bun dbsetup.ts), aowow-style:
+// wowdb: structured, read-only lookups over the world DB + the wowbench schema (bun server/dbsetup.ts), aowow-style:
 // each entity comes back with its relations resolved (where an item drops, where a quest giver stands...).
 // Usage: wowdb <command> [args] [--flags]; prints JSON. `wowdb help` lists commands.
 import { execFileSync } from "node:child_process";

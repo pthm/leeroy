@@ -1,4 +1,4 @@
-// bun movecheck.ts [recorder.jsonl] [--chars A,B] [--from ms]
+// bun bench/movecheck.ts [recorder.jsonl] [--chars A,B] [--from ms]
 // Checks recorded movement against the terrain: speed (median per 1 s sample; sustained over 5 s), the steepest slope
 // crossed on each step, and whether the player was under water (a real client swims at the surface).
 import { readFileSync } from "node:fs";
@@ -6,7 +6,7 @@ import { sample } from "./terrain.ts";
 
 const args = process.argv.slice(2);
 const flag = (k: string) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : undefined; };
-const file = args[0] && !args[0].startsWith("--") ? args[0] : "server/env/dist/logs/recorder.jsonl";
+const file = args[0] && !args[0].startsWith("--") ? args[0] : new URL("../server/azerothcore/env/dist/logs/recorder.jsonl", import.meta.url).pathname;
 const chars = flag("chars")?.split(","), from = Number(flag("from") ?? 0);
 const MAX_SLOPE = Math.tan((50 * Math.PI) / 180); // AzerothCore navmesh walkable slope (MmapTileRecastConfig)
 
