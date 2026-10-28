@@ -4,3 +4,4 @@ data/
 sessions/
 node_modules/
 *.log
+runs/

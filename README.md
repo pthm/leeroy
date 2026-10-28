@@ -18,7 +18,18 @@ git -C ghost apply ../patches/azerothghost-control.patch   # live eval endpoint,
 mkdir -p data && docker run --rm -v server_ac-client-data:/src:ro -v $PWD/data:/dst alpine cp -r /src/maps /src/mmaps /src/vmaps /dst/
 ```
 
-## Run a task
+## Run a benchmark
+
+```sh
+./bench.sh claude1 Humanwar 1 1 level:5 60   # agent name, character, race, class, goal, minutes
+```
+
+Creates a fresh non-GM account, starts the session and judge, and runs headless Claude Code against it.
+The agent can only write inside `agents/<name>/` (its persistent script library) and can only run `./wow`,
+`./worlddb` and read-only shell commands. Results go to `runs/<id>/`: `judge.json` (score),
+`samples.jsonl` (level/xp/money every 15s), `agent.jsonl` (transcript), `session.log`.
+
+## Run a task by hand
 
 ```sh
 bun account.ts agent1 agent1                                   # non-GM account per agent

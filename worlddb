@@ -1,0 +1,5 @@
+#!/bin/sh
+# ./worlddb "SELECT ..."   read-only SQL against the game's world database (acore_world): creature spawns,
+# NPCs, quests, loot tables, items, vendors. Output is tab-separated with a header row, capped at 300 rows.
+q="${1:-$(cat)}"
+docker exec -i ac-database mysql -uworldreader -pworldreader -B acore_world -e "$q" 2>&1 | grep -v "Using a password" | head -n 301

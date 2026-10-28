@@ -50,7 +50,8 @@ end
 
 GUIDs are 64-bit and are returned as strings. Pass them back unchanged.
 
-**State:** `get_position()` → x,y,z,o · `get_health()`/`get_power()` → cur,max · `get_power_type()`
+**State:** `get_position()` → x,y,z,o · `get_health()`/`get_power()` → cur,max · `get_xp()` → xp, xp needed
+for next level · `get_power_type()`
 (0 mana, 1 rage, 3 energy, 6 runic) · `get_level()` · `get_class()` · `get_faction()` · `get_own_guid()` ·
 `get_stance()` · `in_combat()` · `is_alive()` · `money()` (copper) · `get_target()` · `now_ms()`
 
@@ -78,7 +79,7 @@ client and returns its results (an `error` comes back as a string, or nil on suc
 |---|---|
 | Talk to a quest giver | `QuestgiverHello(npc)`, `QuestgiverAcceptQuest(npc, questId)`, `QuestgiverCompleteQuest(npc, questId)`, `QuestgiverChooseReward(npc, questId, rewardIdx)` |
 | Use an object (chest, herb, door) | `FindGameObjectByEntry(entry, dist)`, `ListGameObjectEntries(limit)`, `GameObjectUse(guid)` |
-| Death | `RepopRequest()` (release spirit), walk to your corpse, `ReclaimCorpse()` |
+| Death | `RepopRequest()` (release spirit; you respawn as a ghost at a graveyard), `move_to` your corpse, then `ReclaimCorpse()` within ~30 yards. Remember where you died first, because the client doesn't. The bundled AI's revive uses GM commands, so it won't work for you |
 | Items | `AutoEquipItem(bag, slot)` (bag 255 = backpack, slots 23-38), `EquippedSlot(entry)`, `LootItem(slot)`, `LootMoney()`, `LootRelease(guid)` |
 | Group | `GroupInvite(name)`, `GroupAccept()`, `GroupLeave()`, `GroupMembers()` |
 | Spells | `KnowsSpell(id)`, `CancelAura(id)`, `CastSpellAtPosition(id, x, y, z)` |
@@ -101,6 +102,33 @@ vendor guid as u64 LE), reply `SMSG_LIST_INVENTORY` (0x19F), buy with `CMSG_BUY_
 numbers are little-endian. Write parsers once and keep them in your lib.
 
 **GM commands:** `send_command(".cmd")` works only on GM accounts. Scored runs use non-GM accounts.
+
+## World database: `./worlddb`
+
+`./worlddb "SELECT ..."` runs read-only SQL against the game's static world data (MySQL; TSV output, max
+300 rows). Use it to plan: where to go, what to kill, who gives which quest, what drops an item.
+
+| Table | Useful columns |
+|---|---|
+| `creature` (spawns) | `guid, id` (= template entry), `map, position_x, position_y, position_z` |
+| `creature_template` | `entry, name, subname, minlevel, maxlevel, faction, npcflag, rank` |
+| `creature_loot_template` | `Entry` (= creature entry), `Item, Chance` |
+| `item_template` | `entry, name, Quality` (0 grey … 3 rare, 4 epic), `ItemLevel, RequiredLevel, InventoryType, SellPrice` |
+| `quest_template` | `ID, LogTitle, QuestLevel, MinLevel, AllowableRaces, ObjectiveText1, RequiredNpcOrGo1, RequiredNpcOrGoCount1, RequiredItemId1, RequiredItemCount1, RewardItem1` |
+| `creature_queststarter` / `creature_questender` | `id` (creature entry), `quest` |
+| `npc_vendor` | `entry` (vendor creature), `item` |
+| `gameobject`, `gameobject_template`, `gameobject_loot_template` | spawns, names and loot of chests, herbs, ore |
+
+```sh
+# level 3-5 mobs near Northshire (map 0 = Eastern Kingdoms), by spawn count
+./worlddb "SELECT t.entry, t.name, t.minlevel, t.maxlevel, COUNT(*) n, ROUND(AVG(c.position_x)) x, ROUND(AVG(c.position_y)) y
+  FROM creature c JOIN creature_template t ON t.entry = c.id
+  WHERE c.map = 0 AND t.maxlevel BETWEEN 3 AND 5 AND t.npcflag = 0
+    AND c.position_x BETWEEN -9500 AND -8500 AND c.position_y BETWEEN -800 AND 200
+  GROUP BY t.entry ORDER BY n DESC LIMIT 10"
+```
+
+Coordinates match `bot.get_position()`. Monster kill XP drops sharply for mobs well below your level.
 
 ## Bundled libraries (`ghost/scripts/`)
 
