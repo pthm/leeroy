@@ -863,7 +863,7 @@ index 0000000..8bfe9b5
 +	return spells[id]
 +}
 diff --git i/bot/bot.go w/bot/bot.go
-index a749726..45ecb03 100644
+index a749726..6c4bead 100644
 --- i/bot/bot.go
 +++ w/bot/bot.go
 @@ -11,6 +11,7 @@ import (
@@ -962,7 +962,39 @@ index a749726..45ecb03 100644
  
  	// AIBundle / LuaCode / LuaScript loading (precedence: AIBundle.Main > LuaCode > LuaScript file).
  	// This enables scenario-driven custom AI as specified in the design.
-@@ -1092,8 +1113,9 @@ func (b *Bot) runAILoop(worldErrCh chan error) {
+@@ -1038,6 +1059,31 @@ func (b *Bot) ensureMovementControllerLocked() {
+ 		speed = 7.0
+ 	}
+ 	b.moveController = movement.NewMovementController(sender, speed, b.nav, cfg)
++	w := b.world
++	b.moveController.SpeedFunc = func(swimming bool) float32 {
++		switch {
++		case w.Rooted():
++			return 0
++		case swimming:
++			return w.SwimSpeed()
++		}
++		return w.MoveSpeed()
++	}
++	b.moveController.WaterFunc = func(x, y float32) (float32, bool) {
++		// resolved per call: b.nav may be attached after the controller is created
++		wn, ok := b.nav.(interface {
++			GetWaterLevel(mapID uint32, x, y float32) (float32, bool)
++		})
++		if !ok {
++			return 0, false
++		}
++		_, _, _, _, m := w.Position()
++		return wn.GetWaterLevel(m, x, y)
++	}
++	b.moveController.OnSwimChange = func(on bool) {
++		w.SetSwimming(on)
++		b.log("swimming=%v", on)
++	}
+ 	// Seed the controller with the real position we just got from the server so we don't start at (0,0,0)
+ 	cx, cy, cz, co, _ := b.world.Position()
+ 	b.moveController.InitPositionFromWorld(cx, cy, cz, co)
+@@ -1092,8 +1138,9 @@ func (b *Bot) runAILoop(worldErrCh chan error) {
  				// 	b.log("[DEBUG-POS] tick pos: map=%d (%.1f,%.1f,%.1f) o=%.2f", pmid, px, py, pz, po)
  				// }
  			}
@@ -974,7 +1006,7 @@ index a749726..45ecb03 100644
  				elapsed := time.Since(tickStart)
  				if elapsed > 300*time.Millisecond {
  					ms := elapsed.Milliseconds()
-@@ -2425,6 +2447,10 @@ func (b *Bot) moveToPoint(x, y, z float32) {
+@@ -2425,31 +2472,26 @@ func (b *Bot) moveToPoint(x, y, z float32) {
  	var pts []navigation.Point3D
  	if b.nav != nil {
  		result, err := b.nav.FindPath(mapID, current, navigation.Point3D{X: x, Y: y, Z: z})
@@ -984,19 +1016,40 @@ index a749726..45ecb03 100644
 +		}
  		if err == nil && result != nil && result.Found && len(result.Points) > 1 {
  			pts = simplifyAndDensifyPath(result.Points, 3.0, 1.0)
- 			// detect crazy path (common in Durotar bad navmesh)
-@@ -2435,7 +2461,9 @@ func (b *Bot) moveToPoint(x, y, z float32) {
- 			}
- 			// Reject huge detours (navmesh artifacts): more than 2× straight line
- 			// or absurdly long paths send the bot running across the zone.
+-			// detect crazy path (common in Durotar bad navmesh)
+-			straight := current.DistanceTo2D(navigation.Point3D{X: x, Y: y, Z: z})
+-			plen := float32(0)
+-			for j := 1; j < len(pts); j++ {
+-				plen += pts[j-1].DistanceTo2D(pts[j])
+-			}
+-			// Reject huge detours (navmesh artifacts): more than 2× straight line
+-			// or absurdly long paths send the bot running across the zone.
 -			if straight > 1.0 && (plen > straight*2.0 || plen > straight+40 || len(pts) > 60) {
-+			// (Was also plen > straight+40 || len(pts) > 60, which straight-lined every trip over ~180yd
-+			// through hills and buildings, so long move_to calls silently stalled.)
-+			if straight > 1.0 && plen > straight*2.0 && plen > straight+60 {
- 				b.log("crazy path rejected (straight=%.1f path=%.1f n=%d) — direct line",
- 					straight, plen, len(pts))
- 				pts = simplifyAndDensifyPath([]navigation.Point3D{current, {X: x, Y: y, Z: z}}, 3.0, 1.0)
-@@ -2827,6 +2855,9 @@ func (b *Bot) SetSheathed(state uint32) error {
+-				b.log("crazy path rejected (straight=%.1f path=%.1f n=%d) — direct line",
+-					straight, plen, len(pts))
+-				pts = simplifyAndDensifyPath([]navigation.Point3D{current, {X: x, Y: y, Z: z}}, 3.0, 1.0)
+-			}
++			// The navmesh path is used as is: it already excludes slopes over the walkable angle and
++			// obstacles. (A "crazy path" check here used to swap long paths for a straight line, which
++			// walked bots up cliffs and through buildings.)
+ 		} else {
+ 			b.logDecision("No path found to target")
+ 		}
+ 	}
+ 
+ 	if len(pts) == 0 {
+-		if b.nav != nil {
+-			b.logDecision("Nav present but no valid path to target - falling back to direct line (may clip trees/obstacles!)")
++		// No navmesh path: only short hops (melee positioning) go straight; anything longer would climb
++		// unwalkable slopes, so don't move and let move_to report false.
++		if b.nav != nil && current.DistanceTo2D(navigation.Point3D{X: x, Y: y, Z: z}) > 5 {
++			return
+ 		}
+-		// Direct fallback
+ 		pts = simplifyAndDensifyPath([]navigation.Point3D{current, {X: x, Y: y, Z: z}}, 3.0, 1.0)
+ 	}
+ 
+@@ -2827,6 +2869,9 @@ func (b *Bot) SetSheathed(state uint32) error {
  
  func (b *Bot) MoveTo(x, y, z float32) error {
  	b.moveToPoint(x, y, z)
@@ -1006,7 +1059,7 @@ index a749726..45ecb03 100644
  	return nil
  }
  
-@@ -2974,6 +3005,11 @@ func (b *Bot) GetHealth() (current, max uint32) {
+@@ -2974,6 +3019,11 @@ func (b *Bot) GetHealth() (current, max uint32) {
  }
  
  func (b *Bot) GetPower() (current, max uint32) {
@@ -1018,7 +1071,7 @@ index a749726..45ecb03 100644
  	return b.world.Power()
  }
  
-@@ -3003,6 +3039,9 @@ func (b *Bot) GetRace() uint8 {
+@@ -3003,6 +3053,9 @@ func (b *Bot) GetRace() uint8 {
  }
  
  func (b *Bot) GetPowerType() uint8 {
@@ -1028,7 +1081,7 @@ index a749726..45ecb03 100644
  	// Common power types: 0=mana, 1=rage, 2=focus, 3=energy, 6=runic power
  	// For simplicity, derive from class. Can be improved by reading UnitFieldBytes0.
  	switch b.config.Class {
-@@ -3032,9 +3071,19 @@ func (b *Bot) GetPowerType() uint8 {
+@@ -3032,9 +3085,19 @@ func (b *Bot) GetPowerType() uint8 {
  }
  
  func (b *Bot) InCombat() bool {
@@ -1048,7 +1101,7 @@ index a749726..45ecb03 100644
  func (b *Bot) IsAlive() bool {
  	h := b.world.Health()
  	mh := b.world.MaxHealth()
-@@ -3042,7 +3091,7 @@ func (b *Bot) IsAlive() bool {
+@@ -3042,7 +3105,7 @@ func (b *Bot) IsAlive() bool {
  	if h == 0 && mh == 0 {
  		return true
  	}
@@ -1057,7 +1110,7 @@ index a749726..45ecb03 100644
  		return false
  	}
  	// Also check death count - if deaths > 0 and health is still 0, we're dead
-@@ -3106,11 +3155,12 @@ func (b *Bot) worldObjToUnitInfo(obj *client.WorldObject) luaengine.UnitInfo {
+@@ -3106,11 +3169,12 @@ func (b *Bot) worldObjToUnitInfo(obj *client.WorldObject) luaengine.UnitInfo {
  		Flags:     obj.Value(client.UnitFieldFlags),
  		DynFlags:  dyn,
  		Lootable:  dyn&client.UnitDynflagLootable != 0,
@@ -1071,7 +1124,7 @@ index a749726..45ecb03 100644
  }
  
  func (b *Bot) SendCommand(command string) error {
-@@ -3147,10 +3197,9 @@ func (b *Bot) LootAll(guid uint64) error {
+@@ -3147,10 +3211,9 @@ func (b *Bot) LootAll(guid uint64) error {
  	b.lastLootAttemptAt = now
  	b.lootMu.Unlock()
  
@@ -1554,10 +1607,133 @@ index 0000000..0085ecb
 +	return g
 +}
 diff --git i/client/world.go w/client/world.go
-index 4d8bab6..202b951 100644
+index 4d8bab6..a7b8265 100644
 --- i/client/world.go
 +++ w/client/world.go
-@@ -4224,6 +4224,9 @@ func (w *WorldClient) handlePowerUpdate(data []byte) {
+@@ -203,8 +203,14 @@ const (
+ 	SmsgPowerUpdate     uint16 = 0x0480
+ 
+ 	// Speed change
+-	SmsgForceRunSpeedChange    uint16 = 0x00E2
+-	CmsgForceRunSpeedChangeAck uint16 = 0x00E3
++	SmsgForceRunSpeedChange     uint16 = 0x00E2
++	CmsgForceRunSpeedChangeAck  uint16 = 0x00E3
++	SmsgForceSwimSpeedChange    uint16 = 0x00E6
++	CmsgForceSwimSpeedChangeAck uint16 = 0x00E7
++	SmsgForceMoveRoot           uint16 = 0x00E8
++	CmsgForceMoveRootAck        uint16 = 0x00E9
++	SmsgForceMoveUnroot         uint16 = 0x00EA
++	CmsgForceMoveUnrootAck      uint16 = 0x00EB
+ 
+ 	// Name query
+ 	CmsgNameQuery             uint16 = 0x0050
+@@ -930,7 +936,10 @@ type WorldClient struct {
+ 	posX, posY, posZ, orientation float32
+ 	mapID                         uint32
+ 	moveSpeed                     float32
+-	currentMoveFlags              uint32 // last used for movement (to use in acks etc)
++	swimSpeed                     float32 // from the server (create block / SMSG_FORCE_SWIM_SPEED_CHANGE)
++	rooted                        bool    // SMSG_FORCE_MOVE_ROOT (roots, stuns): no movement until unrooted
++	swimming                      bool    // set by the movement controller; adds MOVEMENTFLAG_SWIMMING + pitch
++	currentMoveFlags              uint32  // last used for movement (to use in acks etc)
+ 
+ 	// Cached packed GUID to avoid repeated allocation in hot send path
+ 	packedGUID []byte
+@@ -1154,6 +1163,7 @@ func NewWorldClient(username string, sessionKey []byte, logFunc func(string, ...
+ 		knownSpells: make(map[uint32]*KnownSpell),
+ 		cooldowns:   make(map[uint32]*SpellCooldown),
+ 		moveSpeed:   BaseSpeedRun,
++		swimSpeed:   BaseSpeedSwim,
+ 		lastMovDebug: make(map[uint64]struct {
+ 			ts      uint32
+ 			x, y, z float32
+@@ -1692,6 +1702,10 @@ func (w *WorldClient) handlePacket(opcode uint16, data []byte) {
+ 	// Speed
+ 	case SmsgForceRunSpeedChange:
+ 		w.handleForceSpeedChange(data)
++	case SmsgForceSwimSpeedChange:
++		w.handleForceSwimSpeedChange(data)
++	case SmsgForceMoveRoot, SmsgForceMoveUnroot:
++		w.handleForceRoot(data, opcode == SmsgForceMoveRoot)
+ 
+ 	// Vehicle / control
+ 	case SmsgClientControlUpdate:
+@@ -2157,6 +2171,12 @@ func (w *WorldClient) sendMovementHeartbeatWithJumpLockedAt(ts uint32, fallTime
+ // writeMovementBody writes the movement info body (flags + pos etc) without leading packed GUID.
+ // Used for ACK packets which have their own prefix (guid + counter).
+ func (w *WorldClient) writeMovementBody(buf *bytes.Buffer, moveFlags uint32) {
++	if w.swimming {
++		moveFlags = moveFlags&^MoveFlagFalling | MoveFlagSwimming
++	}
++	if w.rooted {
++		moveFlags = moveFlags&^MoveFlagForward | 0x00000800 // MOVEMENTFLAG_ROOT
++	}
+ 	binary.Write(buf, binary.LittleEndian, moveFlags)
+ 	binary.Write(buf, binary.LittleEndian, uint16(0)) // flags2
+ 	binary.Write(buf, binary.LittleEndian, uint32(getMSTime()))
+@@ -2164,6 +2184,9 @@ func (w *WorldClient) writeMovementBody(buf *bytes.Buffer, moveFlags uint32) {
+ 	binary.Write(buf, binary.LittleEndian, w.posY)
+ 	binary.Write(buf, binary.LittleEndian, w.posZ)
+ 	binary.Write(buf, binary.LittleEndian, w.orientation)
++	if moveFlags&MoveFlagSwimming != 0 {
++		binary.Write(buf, binary.LittleEndian, float32(0)) // pitch (present for swimming/flying)
++	}
+ 	binary.Write(buf, binary.LittleEndian, uint32(0)) // fallTime
+ 	// For basic ground movement we omit transport/pitch/jump/spline extras.
+ }
+@@ -2180,6 +2203,51 @@ func (w *WorldClient) sendForceSpeedAck(ackOpcode uint16, counter uint32, speed
+ 	w.sendPacket(ackOpcode, buf.Bytes())
+ }
+ 
++// handleForceSwimSpeedChange: packed guid, counter, speed (no extra byte, unlike run).
++func (w *WorldClient) handleForceSwimSpeedChange(data []byte) {
++	r := bytes.NewReader(data)
++	guid, err := readPackedGUID(r)
++	if err != nil || guid != w.charGUID {
++		return
++	}
++	var counter uint32
++	var speed float32
++	binary.Read(r, binary.LittleEndian, &counter)
++	if binary.Read(r, binary.LittleEndian, &speed) != nil {
++		return
++	}
++	w.swimSpeed = speed
++	w.sendForceSpeedAck(CmsgForceSwimSpeedChangeAck, counter, speed)
++}
++
++// handleForceRoot: packed guid, counter. Roots and stuns arrive this way; the client must stop and ack.
++func (w *WorldClient) handleForceRoot(data []byte, root bool) {
++	r := bytes.NewReader(data)
++	guid, err := readPackedGUID(r)
++	if err != nil || guid != w.charGUID {
++		return
++	}
++	var counter uint32
++	binary.Read(r, binary.LittleEndian, &counter)
++	w.rooted = root
++	w.moveMu.Lock()
++	defer w.moveMu.Unlock()
++	buf := new(bytes.Buffer)
++	writePackedGUID(buf, w.charGUID)
++	binary.Write(buf, binary.LittleEndian, counter)
++	w.writeMovementBody(buf, 0)
++	ack := CmsgForceMoveUnrootAck
++	if root {
++		ack = CmsgForceMoveRootAck
++	}
++	w.sendPacket(ack, buf.Bytes())
++}
++
++// SwimSpeed, Rooted, SetSwimming: movement state for the movement controller.
++func (w *WorldClient) SwimSpeed() float32  { return w.swimSpeed }
++func (w *WorldClient) Rooted() bool        { return w.rooted }
++func (w *WorldClient) SetSwimming(on bool) { w.swimming = on }
++
+ func (w *WorldClient) handleForceSpeedChange(data []byte) {
+ 	if len(data) < 10 {
+ 		return
+@@ -4224,6 +4292,9 @@ func (w *WorldClient) handlePowerUpdate(data []byte) {
  		w.power = value
  		w.statsMu.Unlock()
  	}
@@ -1567,6 +1743,14 @@ index 4d8bab6..202b951 100644
  }
  
  // ============================================================
+@@ -4456,6 +4527,7 @@ func (w *WorldClient) readMovementUpdate(r *bytes.Reader, obj *WorldObject) {
+ 				binary.Read(r, binary.LittleEndian, &speeds[si])
+ 			}
+ 			w.moveSpeed = speeds[1] // run speed
++			w.swimSpeed = speeds[3]
+ 		} else {
+ 			r.Seek(36, io.SeekCurrent)
+ 		}
 diff --git i/go.mod w/go.mod
 index 3f28a87..8fcfbb3 100644
 --- i/go.mod
@@ -1590,6 +1774,86 @@ index df59d4b..1d749cf 100644
  github.com/walkline/detour-go v0.0.0-20260624174442-8056537019f8/go.mod h1:YGfXAROQikN28jKfghmSU2iZL+KS1moeI71y8WK1lhs=
 +github.com/yuin/gopher-lua v1.1.2 h1:yF/FjE3hD65tBbt0VXLE13HWS9h34fdzJmrWRXwobGA=
 +github.com/yuin/gopher-lua v1.1.2/go.mod h1:7aRmXIWl37SqRf0koeyylBEzJ+aPt8A+mmkQ4f1ntR8=
+diff --git i/movement/movement.go w/movement/movement.go
+index 52b43b5..6908b71 100644
+--- i/movement/movement.go
++++ w/movement/movement.go
+@@ -104,8 +104,20 @@ type MovementController struct {
+ 	// For first-move special case (jump/fall like in log)
+ 	firstMoveSent       bool
+ 	firstHBWithJumpSent bool
++
++	// Live movement state, optional. SpeedFunc gives the current speed (swim speed when swimming,
++	// 0 while rooted/stunned); WaterFunc the liquid surface at a point; OnSwimChange is told when the
++	// controller starts or stops swimming. Without them the controller keeps its creation speed.
++	SpeedFunc    func(swimming bool) float32
++	WaterFunc    func(x, y float32) (float32, bool)
++	OnSwimChange func(swimming bool)
++	swimming     bool
+ }
+ 
++// swimDepth: water deeper than this over the ground means swimming; swimZBelowSurface keeps the body
++// in the water but the head out (Map::getLiquidStatus: under water when the surface is > 2 yd above z).
++const swimDepth, swimZBelowSurface = 1.6, 1.4
++
+ // NewMovementController creates a movement controller.
+ func NewMovementController(sender MovementSender, speed float32, nav navigation.Navigator, cfg MovementConfig) *MovementController {
+ 	if cfg.HeartbeatInterval <= 0 {
+@@ -210,6 +222,19 @@ func (m *MovementController) Update(now time.Time) {
+ 		return
+ 	}
+ 
++	// Follow the server's current speed; rebase startTime so the distance already covered is kept.
++	if m.SpeedFunc != nil {
++		s := m.SpeedFunc(m.swimming)
++		if s <= 0 { // rooted or stunned: hold position (the world client already acked the root)
++			m.startTime = now.Add(-time.Duration((m.travelDist / m.speed) * float32(time.Second)))
++			return
++		}
++		if s != m.speed {
++			m.speed = s
++			m.startTime = now.Add(-time.Duration((m.travelDist / m.speed) * float32(time.Second)))
++		}
++	}
++
+ 	// Compute how far we should have traveled by wall/sim time.
+ 	elapsed := now.Sub(m.startTime).Seconds()
+ 	targetDist := m.speed * float32(elapsed)
+@@ -581,6 +606,19 @@ func (m *MovementController) clampCurrentZToGround() {
+ 	if !ok || math.IsNaN(float64(gh)) || math.IsInf(float64(gh), 0) {
+ 		return
+ 	}
++	swim := false
++	if m.WaterFunc != nil {
++		if wl, ok := m.WaterFunc(m.curX, m.curY); ok && wl-gh > swimDepth {
++			swim = true
++			gh = wl - swimZBelowSurface // swim at the surface, not along the bottom
++		}
++	}
++	if swim != m.swimming {
++		m.swimming = swim
++		if m.OnSwimChange != nil {
++			m.OnSwimChange(swim)
++		}
++	}
+ 	m.curZ = gh
+ }
+ 
+diff --git i/navigation/navigator.go w/navigation/navigator.go
+index 37cc64e..fe3c4c4 100644
+--- i/navigation/navigator.go
++++ w/navigation/navigator.go
+@@ -125,6 +125,10 @@ func (n *embeddedNavigator) GetTerrainHeight(mapID uint32, x, y float32) (float3
+ 	return n.svc.GetTerrainHeight(mapID, x, y)
+ }
+ 
++func (n *embeddedNavigator) GetWaterLevel(mapID uint32, x, y float32) (float32, bool) {
++	return n.svc.GetWaterLevel(mapID, x, y)
++}
++
+ func (n *embeddedNavigator) Close() {}
+ 
+ func convertResult(r *pathfinding.PathResult) *PathResult {
 diff --git i/pathfinding/mmap_loader.go w/pathfinding/mmap_loader.go
 index 14943bd..7266317 100644
 --- i/pathfinding/mmap_loader.go
@@ -1613,7 +1877,7 @@ index 14943bd..7266317 100644
  	}
  	return query, nil
 diff --git i/pathfinding/pathfinding.go w/pathfinding/pathfinding.go
-index 5839e3f..9ca9d5f 100644
+index 5839e3f..bdaa566 100644
 --- i/pathfinding/pathfinding.go
 +++ w/pathfinding/pathfinding.go
 @@ -12,8 +12,8 @@ import (
@@ -1636,3 +1900,121 @@ index 5839e3f..9ca9d5f 100644
  		md.mu.RUnlock()
  		return nil, fmt.Errorf("failed to init NavMeshQuery for map %d, status: %d", mapID, status)
  	}
+@@ -795,6 +795,14 @@ func (s *PathFindingService) GetTerrainHeight(mapID uint32, x, y float32) (float
+ 	return s.terrainMgr.GetGridHeight(mapID, x, y)
+ }
+ 
++// GetWaterLevel returns the liquid surface height at (x, y) from the map files, if there is liquid there.
++func (s *PathFindingService) GetWaterLevel(mapID uint32, x, y float32) (float32, bool) {
++	if s.terrainMgr == nil {
++		return 0, false
++	}
++	return s.terrainMgr.GetWaterLevel(mapID, x, y)
++}
++
+ // getMapHeight replicates Map::GetHeight + WorldObject::GetMapHeight bump exactly for path normalization.
+ // It does NOT prefer navmesh poly height (unlike GetHeight which optimizes to avoid vmap loads).
+ // This produces the Z values that AC writes in NormalizePath via UpdateAllowedPositionZ/GetMap*Level.
+diff --git i/pathfinding/terrain_loader.go w/pathfinding/terrain_loader.go
+index b2190bd..c71756f 100644
+--- i/pathfinding/terrain_loader.go
++++ w/pathfinding/terrain_loader.go
+@@ -60,6 +60,19 @@ type gridTerrain struct {
+ 	u8Mul float32
+ 
+ 	flags uint32 // height header flags
++
++	water *gridWater // nil when the grid has no liquid
++}
++
++// gridWater mirrors GridTerrainData's liquid data: a surface level per 129-grid vertex inside an offset
++// window, and per 8x8-vertex cell flags saying whether any liquid is there.
++type gridWater struct {
++	level       float32 // used when there is no per-vertex map
++	cellFlags   []uint8 // 16*16, nil = globalFlags everywhere
++	globalFlags uint8
++	offX, offY  int
++	w, h        int
++	levels      []float32 // w*h, nil = level everywhere
+ }
+ 
+ func packGridKey(mapID uint32, gx, gy int) uint64 {
+@@ -124,6 +137,78 @@ func (tm *TerrainManager) getOrLoadGrid(mapID uint32, gx, gy int) (*gridTerrain,
+ }
+ 
+ func (tm *TerrainManager) loadGrid(mapID uint32, gx, gy int) (*gridTerrain, error) {
++	gt, err := tm.loadGridHeights(mapID, gx, gy)
++	if err == nil && gt != nil {
++		gt.water = loadWater(fmt.Sprintf("%s/%03d%02d%02d.map", tm.mapsDir, mapID, gx, gy))
++	}
++	return gt, err
++}
++
++// loadWater reads the MLIQ section (GridTerrainData::LoadLiquidData); nil if absent or unreadable.
++func loadWater(fileName string) *gridWater {
++	b, err := os.ReadFile(fileName)
++	if err != nil || len(b) < 40 {
++		return nil
++	}
++	off := int(binary.LittleEndian.Uint32(b[28:]))
++	if off == 0 || off+16 > len(b) || binary.LittleEndian.Uint32(b[off:]) != mapLiquidMagic {
++		return nil
++	}
++	flags := b[off+4]
++	g := &gridWater{globalFlags: b[off+5], offX: int(b[off+8]), offY: int(b[off+9]), w: int(b[off+10]), h: int(b[off+11]),
++		level: math.Float32frombits(binary.LittleEndian.Uint32(b[off+12:]))}
++	d := off + 16
++	if flags&0x1 == 0 { // MAP_LIQUID_NO_TYPE unset: 16x16 uint16 entries, then 16x16 uint8 flags
++		if d+768 > len(b) {
++			return nil
++		}
++		g.cellFlags = b[d+512 : d+768]
++		d += 768
++	}
++	if flags&0x2 == 0 { // MAP_LIQUID_NO_HEIGHT unset
++		if d+4*g.w*g.h > len(b) {
++			return nil
++		}
++		g.levels = make([]float32, g.w*g.h)
++		for i := range g.levels {
++			g.levels[i] = math.Float32frombits(binary.LittleEndian.Uint32(b[d+4*i:]))
++		}
++	}
++	return g
++}
++
++// GetWaterLevel returns the liquid surface height at (x, y), as GridTerrainData::getLiquidLevel.
++func (tm *TerrainManager) GetWaterLevel(mapID uint32, x, y float32) (float32, bool) {
++	gx, gy := gameToGridCoords(x, y)
++	if gx < 0 || gy < 0 || gx >= 64 || gy >= 64 {
++		return 0, false
++	}
++	gt, err := tm.getOrLoadGrid(mapID, gx, gy)
++	if err != nil || gt == nil || gt.water == nil {
++		return 0, false
++	}
++	wt := gt.water
++	fx := 128 * (32 - x/sizeOfGrids)
++	fy := 128 * (32 - y/sizeOfGrids)
++	i, j := int(fx)&127, int(fy)&127
++	present := wt.globalFlags
++	if wt.cellFlags != nil {
++		present = wt.cellFlags[(i>>3)*16+(j>>3)]
++	}
++	if present == 0 {
++		return 0, false
++	}
++	if wt.levels == nil {
++		return wt.level, true
++	}
++	cx, cy := i-wt.offY, j-wt.offX
++	if cx < 0 || cx >= wt.h || cy < 0 || cy >= wt.w {
++		return 0, false
++	}
++	return wt.levels[cx*wt.w+cy], true
++}
++
++func (tm *TerrainManager) loadGridHeights(mapID uint32, gx, gy int) (*gridTerrain, error) {
+ 	fileName := fmt.Sprintf("%s/%03d%02d%02d.map", tm.mapsDir, mapID, gx, gy)
+ 	f, err := os.Open(fileName)
+ 	if err != nil {

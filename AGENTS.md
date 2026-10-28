@@ -96,8 +96,10 @@ faction, npc_flags, flags, dyn_flags, lootable, target` (`target` = guid the uni
 id). `npc_flags` tells you what an NPC offers (bitmask: 0x1 gossip, 0x2 quest giver, 0x80 vendor,
 0x1000 repair, 0x2000 flight master, 0x10 trainer).
 
-**Act:** `ground_z(x,y)` → terrain height at x,y (for picking a `move_to` z) · `move_to(x,y,z)` (pathfinds on the navmesh; returns false if there's no path, and then walks a
-straight line) · `stop_moving()` · `is_moving()` · `set_target(guid)` ·
+**Act:** `ground_z(x,y)` → terrain height at x,y (for picking a `move_to` z) · `move_to(x,y,z)` (follows the navmesh,
+so no slopes steeper than ~50°; returns false and doesn't move if there's no walkable path. Moves at your current
+server speed: slower while swimming, which happens automatically in deep water, and not at all while rooted or
+stunned) · `stop_moving()` · `is_moving()` · `set_target(guid)` ·
 `attack(guid)` · `stop_attack()` · `face_target(guid)` · `set_facing(o)` · `cast_spell(id, guid)` ·
 `is_spell_ready(id)` · `can_cast(id, guid)` · `has_aura_on(guid, id)` · `is_behind_target(guid)` ·
 `loot_all(guid)` (takes all items and money; check with `has_item`) · `pet_attack(guid)` · `set_sheath(0)` · `consume_teleport()` (true once
