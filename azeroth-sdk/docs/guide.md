@@ -61,7 +61,7 @@ Practical notes on what works, what costs time, and the mechanics that aren't ob
 ## Death
 
 Dying costs about a minute: release (`RepopRequest`), walk back from the graveyard as a ghost, reclaim near your
-corpse. Each death soon after another lengthens the reclaim wait, and deaths usually count against your score.
+corpse. Each death soon after another lengthens the reclaim wait. Time spent dead is time not progressing.
 Mobs three or more levels above you, or several at once, are what kill low-level characters. Rest before a pull
 when you're low. You can't earn exploration credit as a ghost.
 

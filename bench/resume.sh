@@ -33,14 +33,14 @@ resume_one() { # <agent> <port>
   agent/bin/wow "LIB = '$ws/'; bot.join_channel('${CHANNEL:-General - Elwynn Forest}', 1)" >/dev/null
   trap 'kill $agent $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM
   bun judge/judge.ts "$char" score:100000 --timeout "${mins}m" --resume "$dir/samples.jsonl" --samples "$dir/samples.jsonl" \
-    --record "$record" > "$dir/judge.json" &
+    --record "$record" --board "$team/board" > "$dir/judge.json" &
   judge=$!
-  (cd "$ws" && PATH="$root/agent/bin:$PATH" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 exec timeout "${left}m" claude \
+  (cd "$ws" && PATH="$root/agent/bin:$PATH" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 WOWBENCH_BOARD="$team/board" WOWBENCH_CHAR="$char" exec timeout "${left}m" claude \
     -p "$(LEFT=$left envsubst '$LEFT' < "$msg")" --resume "$sid" \
     --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
     --add-dir "$repo/azeroth-sdk/client" "$repo/azeroth-sdk/session" "$repo/azeroth-sdk/script" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
     --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(wowdb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
-      "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Edit(/**)" \
+      "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Bash(standings:*)" "Edit(/**)" \
     >> "$dir/agent.jsonl" 2>&1) &
   agent=$!
   wait $judge || true

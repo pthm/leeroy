@@ -11,13 +11,16 @@
 // --record also appends each sample as a {"ev":"score"} event to a recorder log, so the replay/live viewers chart it.
 //
 // Rate of progress (all goals, from the value curve):
-//   rate         value per hour since the start
+//   rate         value per hour since the start (the first 10 minutes count as 10)
 //   recent_rate  value per hour over the last 10 minutes
-//   pace         the time-average of value so far (area under the curve / time): reaching 50 at minute 10 beats
-//                reaching it at minute 55
-//   score        (value + pace) / 2: final progress and speed count equally. This is the headline for score goals.
-import { appendFileSync, readFileSync } from "node:fs";
-import { sql, signals, weights, composite } from "./signals.ts";
+//   pace         the time-average of value so far (area under the curve / time)
+//   score        = rate: the headline for score goals. Sustained progress is what counts; deaths and stalls cost
+//                through the time they lose. For score goals, quests are valued by difficulty (quest_points in
+//                score.json).
+// --board <dir> writes <dir>/<character>.json with the latest result each poll (the agents' `standings` tool reads them).
+// --resume <samples.jsonl> continues a paused run from its samples.
+import { appendFileSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { sql, signals, weights, composite, rewarded, questPoints, questScoring } from "./signals.ts";
 
 const [char, goal, ...rest] = process.argv.slice(2);
 if (!char || !/^[A-Za-z]+$/.test(char) || !/^(level|item|quality|money|quests|quest|achpoints|score):\d+$/.test(goal ?? ""))
@@ -25,6 +28,8 @@ if (!char || !/^[A-Za-z]+$/.test(char) || !/^(level|item|quality|money|quests|qu
 const flag = (name: string, def: string) => { const i = rest.indexOf(`--${name}`); return i >= 0 ? rest[i + 1] : def; };
 const dur = (s: string) => { const [, n, u] = s.match(/^(\d+)(s|m|h)$/)!; return +n * { s: 1e3, m: 6e4, h: 36e5 }[u]!; };
 const timeout = dur(flag("timeout", "4h")), every = dur(flag("every", "15s")), samples = flag("samples", ""), record = flag("record", "");
+const board = flag("board", ""); // dir: the latest result per character, for the agents' `standings`
+if (board) mkdirSync(board, { recursive: true });
 
 const [kind, n] = goal.split(":");
 const owned = `FROM character_inventory ci JOIN item_instance ii ON ii.guid = ci.item
@@ -46,6 +51,9 @@ const query = {
 const prior = flag("resume", "") ? readFileSync(flag("resume", ""), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
 const baseline = kind === "achpoints" ? (prior.length ? Number(sql(query) || 0) - prior.at(-1).value : Number(sql(query) || 0)) : 0; // only count what's earned during the run
 const base = prior[0]?.signals ?? signals(char), w = kind === "score" ? weights() : {};
+// quest_points is the judge's own tally: quests seen turned in since the start, valued at your level at the time
+const qcfg = kind === "score" ? questScoring() : undefined, seen = rewarded(char);
+let questPts = prior.at(-1)?.signals?.quest_points ?? 0;
 const need = kind === "item" || kind === "quality" || kind === "quest" ? 1 : +n;
 
 const start = Date.now() - (prior.at(-1)?.elapsed_s ?? 0) * 1000;
@@ -54,6 +62,12 @@ let area = 0; // integral of value dt, in value-hours
 for (let i = 1; i < curve.length; i++) area += ((curve[i - 1][1] + curve[i][1]) / 2) * (curve[i][0] - curve[i - 1][0]);
 for (;;) {
   const sig = signals(char);
+  if (qcfg) {
+    const fresh = [...rewarded(char)].filter((q) => !seen.has(q));
+    fresh.forEach((q) => seen.add(q));
+    questPts += questPoints(fresh, Math.floor(sig.level), qcfg);
+    sig.quest_points = questPts;
+  }
   const value = kind === "score" ? composite(sig, base, w) : Number(sql(query) || 0) - baseline;
   const [level, xp, money] = sql(`SELECT level, xp, money FROM characters WHERE name = '${char}'`).split("\t").map(Number);
   const elapsed_s = Math.round((Date.now() - start) / 1000), h = elapsed_s / 3600;
@@ -63,10 +77,14 @@ for (;;) {
   const ago = curve.find(([t]) => t >= h - 1 / 6) ?? curve[0]; // ~10 minutes back
   const round = (v: number) => Math.round(v * 10) / 10;
   const pace = h > 0 ? area / h : value;
-  const rates = { rate: round(h > 0 ? value / h : 0), recent_rate: round(h - ago[0] > 0 ? (value - ago[1]) / (h - ago[0]) : 0),
-    pace: round(pace), score: round((value + pace) / 2) };
+  // score = rate: progress points per hour over the run so far (the first 10 minutes count as 10, so a quick
+  // early quest doesn't read as a huge rate)
+  const rate = value / Math.max(h, 1 / 6);
+  const rates = { rate: round(rate), recent_rate: round(h - ago[0] > 0 ? (value - ago[1]) / (h - ago[0]) : 0),
+    pace: round(pace), score: round(rate) };
   const sample = { elapsed_s, level, xp, money, value, ...rates, signals: sig };
   if (samples) appendFileSync(samples, JSON.stringify(sample) + "\n");
+  if (board) writeFileSync(`${board}/${char}.json`, JSON.stringify({ char, level: round(sig.level), progress: value, ...rates, elapsed_s }));
   if (record) appendFileSync(record, JSON.stringify({ t: Date.now(), ev: "score", n: char, value, level, ...rates }) + "\n");
   if (value >= need || Date.now() - start > timeout) {
     console.log(JSON.stringify({ char, goal, met: value >= need, ...sample, at: new Date().toISOString() }));

@@ -338,7 +338,7 @@ function renderPane() {
         <div class="bar" title="health ${r[3]}/${r[4]}"><div style="width:${(100 * r[3]) / Math.max(1, r[4])}%;background:var(--hp)"></div></div>
         <div class="bar" title="${pname} ${r[5]}/${r[6]}"><div style="width:${(100 * r[5]) / Math.max(1, r[6])}%;background:var(${pvar})"></div></div>
         <div class="stats"><span>${r[3]}/${r[4]} hp</span><span>${r[9]} xp</span><span>${(r[10] / 100).toFixed(2)}s</span><span>${esc(D.zones[r[14]] ?? "")}</span></div>
-        ${(() => { const s = scoreAt(p.name, t); return s ? `<div class="stats"><span><b>score ${s.score}</b></span><span>progress ${s.value}</span><span>pace ${s.pace}</span><span>${Math.round(s.recent_rate)}/h now</span></div>` : ""; })()}</div>`;
+        ${(() => { const s = scoreAt(p.name, t); return s ? `<div class="stats"><span><b>score ${s.score}/h</b></span><span>progress ${s.value}</span><span>pace ${s.pace}</span><span>${Math.round(s.recent_rate)}/h now</span></div>` : ""; })()}</div>`;
     }
   } else if (tab === "groups") {
     const { groups, solo } = groupsAt(t);
@@ -357,7 +357,7 @@ function renderPane() {
       <canvas id="chart"></canvas>
       <table class="board">${rows.map(({ p, s }, i) => `<tr><td>${i + 1}</td><td><span class="dot" style="background:${p.color};display:inline-block"></span> ${who(p.name)} <span class="muted">${esc(p.cls)}</span></td>
         <td class="num">${s ? `L${s.level}` : ""}</td><td class="num"><b>${s ? s[metric] : "–"}</b></td></tr>`).join("")}</table>
-      <p class="muted">score = (progress + pace) / 2; pace = average progress so far, so earlier gains count for more.</p>`;
+      <p class="muted">score = progress points per hour over the run (judge v2; older runs: (progress + pace) / 2). Quests count by difficulty for the character's level.</p>`;
   } else {
     const end = evIdx(t), kinds = KINDS[tab], rows = [];
     for (let i = end - 1; i >= 0 && rows.length < 200; i--) if (kinds.includes(D.events[i].ev)) rows.push(D.events[i]);

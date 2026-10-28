@@ -62,6 +62,30 @@ export function signals(char: string): Signals {
   };
 }
 
+// --- quest difficulty: a quest is worth more the harder it was for you when you turned it in ---
+
+// WoW's difficulty colour of content at level `lvl` for a player at `pl` (AzerothCore Formulas.h GetColorCode)
+export function colour(pl: number, lvl: number) {
+  const grey = pl <= 5 ? 0 : pl <= 39 ? pl - 5 - Math.floor(pl / 10) : pl <= 59 ? pl - 1 - Math.floor(pl / 5) : pl - 9;
+  return lvl >= pl + 5 ? "red" : lvl >= pl + 3 ? "orange" : lvl >= pl - 2 ? "yellow" : lvl > grey ? "green" : "grey";
+}
+
+export type QuestScoring = { base: number; colour: Record<string, number>; type: Record<string, number> };
+export const questScoring = (file = new URL("score.json", import.meta.url).pathname): QuestScoring =>
+  JSON.parse(readFileSync(file, "utf8")).quest_points;
+
+export const rewarded = (char: string) => new Set(sql(`SELECT quest FROM character_queststatus_rewarded
+  WHERE guid = (SELECT guid FROM characters WHERE name = '${char}')`).split("\n").filter(Boolean).map(Number));
+
+// Points for quests just turned in at player level `pl`: base x colour x type (QuestInfoID: 1 group, 81 dungeon...).
+// QuestLevel -1 means "your level".
+export function questPoints(ids: number[], pl: number, cfg: QuestScoring) {
+  if (!ids.length) return 0;
+  return sql(`SELECT QuestLevel, QuestInfoID FROM acore_world.quest_template WHERE ID IN (${ids.join(",")})`)
+    .split("\n").filter(Boolean).map((l) => l.split("\t").map(Number))
+    .reduce((s, [ql, info]) => s + cfg.base * (cfg.colour[colour(pl, ql < 0 ? pl : ql)] ?? 0) * (cfg.type[info] ?? 1), 0);
+}
+
 export function weights(file = new URL("score.json", import.meta.url).pathname): Record<string, number> {
   return JSON.parse(readFileSync(file, "utf8")).weights;
 }
@@ -71,4 +95,9 @@ export function composite(now: Signals, base: Signals, w: Record<string, number>
   return Math.round(Object.entries(w).reduce((s, [k, wt]) => s + wt * ((now[k] ?? 0) - (base[k] ?? 0)), 0) * 10) / 10;
 }
 
-if (import.meta.main) console.log(JSON.stringify(signals(process.argv[2] ?? ""), null, 1));
+if (import.meta.main && process.argv[2] === "--check") { // self-check of the colour bands at level 6 and 20
+  const want: [number, number, string][] = [[6, 1, "grey"], [6, 2, "green"], [6, 4, "yellow"], [6, 9, "orange"], [6, 11, "red"],
+    [5, 1, "green"], [20, 13, "grey"], [20, 14, "green"], [20, 18, "yellow"]];
+  for (const [pl, l, c] of want) if (colour(pl, l) !== c) throw new Error(`colour(${pl}, ${l}) = ${colour(pl, l)}, want ${c}`);
+  console.log("ok");
+} else if (import.meta.main) console.log(JSON.stringify(signals(process.argv[2] ?? ""), null, 1));

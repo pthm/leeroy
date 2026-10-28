@@ -21,6 +21,7 @@ wow 'on_tick = nil'                              # stop the running script
 wow -w 60 'return bot.get_level(), bot.get_xp()' # wait 60s (max 600), then query: use this to poll
 wow -c 60 'return bot.read_chat()'               # same, but returns as soon as another player messages you
 tail -20 session.log
+standings                                        # where everyone in this run stands (rank, score, recent rate)
 ```
 
 - `wow` runs Lua in the session and prints the returned values as JSON (`{"error": ...}` on failure).

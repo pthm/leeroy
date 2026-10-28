@@ -21,6 +21,7 @@ id="$(date +%Y%m%d-%H%M%S)-$name"; dir="runs/$id"
 root=$(pwd); repo=$(dirname "$root"); ws="$root/workspaces/$name"
 # client-side event log for replays: in the team dir when run by team.sh (one replay for everyone)
 record="$root/$dir/record.jsonl"; [ -z "$GO" ] || record="$(dirname "$GO")/$name.record.jsonl"
+board="$root/$dir/board"; [ -z "$GO" ] || board="$(dirname "$GO")/board" # judges' latest results, for `standings`
 mkdir -p "$dir" "$ws"
 # refreshed each run: bench task docs, the playing guide, the SDK reference, and an example script
 cat agent/AGENTS.md ../azeroth-sdk/docs/guide.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/world-data.md > "$ws/AGENTS.md"
@@ -50,10 +51,13 @@ score:*)
 your progress: a weighted sum of how much these have grown since the start (points per unit):
 $(jq -r '.weights | to_entries[] | "  \(.key): \(.value)"' "$root/judge/score.json")
 Fractional level counts (10.5 = halfway to 11); avg_item_level is over your 17 gear slots; wealth_copper is money
-plus the vendor value of what you own; deaths subtract.
-Your final score is (progress at the end + pace) / 2, where pace is your average progress over the whole
-$mins minutes. Speed matters as much as where you end up: gaining 50 points in the first 10 minutes is worth
-far more than gaining them in the last 10. There is no finish line."
+plus the vendor value of what you own.
+quest_points: quests are worth more the harder they are for you when you turn them in. Each is worth
+$(jq -r '.quest_points | "\(.base) x its difficulty colour against your level (" + (.colour | to_entries | map("\(.key) \(.value)") | join(", ")) + ")"' "$root/judge/score.json"),
+x 2.5 for group quests and x 3 for dungeon quests. Trivial (grey) quests are worth nothing.
+YOUR SCORE IS YOUR RATE: progress points per hour over the whole $mins minutes. Sustained progress is what counts:
+deaths, stalls and time spent stuck cost you through the time they lose. There is no finish line.
+The standings command shows where every player in this run stands right now (rank, score, recent rate, level)."
   stop_text="Do not stop early: keep improving your score until the time runs out." ;;
 esac
 
@@ -91,7 +95,7 @@ agent/bin/wow "LIB = '$ws/'; bot.join_channel('${CHANNEL:-General - Elwynn Fores
 # ponytail: one zone channel joined at start; no auto-rejoin on zone change (agents can join_channel)
 
 [ -z "$GO" ] || { touch "$GO.$name.ready"; until [ -e "$GO" ]; do sleep 1; done; }
-bun judge/judge.ts "$char" "$goal" --timeout "${mins}m" --samples "$dir/samples.jsonl" --record "$record" > "$dir/judge.json" &
+bun judge/judge.ts "$char" "$goal" --timeout "${mins}m" --samples "$dir/samples.jsonl" --record "$record" --board "$board" > "$dir/judge.json" &
 judge=$!
 
 cat > "$dir/prompt.md" <<PROMPT
@@ -128,11 +132,11 @@ the database, the judge or the harness. Your session log is session.log in your 
 PROMPT
 
 # no auto-memory: it's keyed by the git root, so agents would share notes with each other (and with us)
-(cd "$ws" && PATH="$root/agent/bin:$PATH" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 exec timeout "${mins}m" claude -p "$(cat "$root/$dir/prompt.md")" \
+(cd "$ws" && PATH="$root/agent/bin:$PATH" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 WOWBENCH_BOARD="$board" WOWBENCH_CHAR="$char" exec timeout "${mins}m" claude -p "$(cat "$root/$dir/prompt.md")" \
   --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
   --add-dir "$repo/azeroth-sdk/client" "$repo/azeroth-sdk/session" "$repo/azeroth-sdk/script" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
   --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(wowdb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
-    "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Edit(/**)" \
+    "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Bash(standings:*)" "Edit(/**)" \
   > "$root/$dir/agent.jsonl" 2>&1) &
 agent=$!
 
