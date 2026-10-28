@@ -20,6 +20,8 @@ const (
 	smsgGMMessageChat = 0x03B3
 	smsgNameQueryResp = 0x0051
 	smsgNotification  = 0x01CB
+	smsgInvChangeFail = 0x0112
+	smsgPartyResult   = 0x007F
 	cmsgMessageChat   = 0x0095
 	cmsgJoinChannel   = 0x0097
 	inboxCap          = 1000 // ponytail: drop-oldest cap; agents that don't drain lose old messages
@@ -41,12 +43,13 @@ type RawPacket struct {
 }
 
 type controlState struct {
-	mu      sync.Mutex
-	chat    []ChatMessage
-	packets []RawPacket
-	watched map[uint16]bool
-	names   map[uint64]string
-	unread  int // player chat from others since the last read_chat (wakes `wow -c`)
+	mu        sync.Mutex
+	chat      []ChatMessage
+	packets   []RawPacket
+	watched   map[uint16]bool
+	names     map[uint64]string
+	unread    int    // player chat from others since the last read_chat (wakes `wow -c`)
+	invitedBy string // pending group invite
 }
 
 func capAppend[T any](s []T, v T) []T {
@@ -62,6 +65,7 @@ func (b *Bot) setupControl() {
 	w.AddPacketHook(func(op uint16, data []byte) { c.onPacket(w, op, data) })
 
 	b.setupAgentAPI()
+	b.setupItems()
 	b.startRecording()
 	e := b.lua
 	e.RegisterCall("call", w) // bot.call("QuestgiverHello", guid) etc. — any exported WorldClient method
@@ -121,6 +125,50 @@ func (b *Bot) setupControl() {
 		// just makes get_level() lie, e.g. bundled grind.lua's ".level 6" prep on a non-GM account.
 		e.RegisterFunc("set_level", func(uint32) {})
 	}
+	// Groups. An invite arrives in read_chat as a system message (and wakes `wow -c`).
+	w.AddGroupInviteHook(func(name string, _ bool) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.invitedBy = name
+		c.chat = capAppend(c.chat, ChatMessage{Time: time.Now().UnixMilli(), From: name, GUID: "0",
+			Text: name + " invites you to a group: bot.accept_invite() or bot.decline_invite()"})
+		c.unread++
+	})
+	e.RegisterFunc("invite", func(name string) error { return w.GroupInvite(name) })
+	e.RegisterFunc("accept_invite", func() error { return w.GroupAccept() })
+	e.RegisterFunc("decline_invite", func() error {
+		c.mu.Lock()
+		c.invitedBy = ""
+		c.mu.Unlock()
+		return w.GroupDecline()
+	})
+	e.RegisterFunc("leave_group", func() error { return w.GroupLeave() })
+	e.RegisterFunc("pending_invite", func() any { // inviter name, or nil
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.invitedBy == "" {
+			return nil
+		}
+		return c.invitedBy
+	})
+	// group() -> nil when solo, else {leader = name, members = {{name, guid, online}...}} (others, not you)
+	e.RegisterFunc("group", func() any {
+		st := w.GroupState()
+		if !st.InGroup {
+			return nil
+		}
+		leader, members := "", []map[string]any{}
+		if st.LeaderGUID == w.CharGUID() {
+			leader = b.config.CharacterName
+		}
+		for _, m := range st.Members {
+			members = append(members, map[string]any{"name": m.Name, "guid": fmt.Sprint(m.GUID), "online": m.Online != 0})
+			if m.GUID == st.LeaderGUID {
+				leader = m.Name
+			}
+		}
+		return map[string]any{"leader": leader, "members": members}
+	})
 	e.RegisterFunc("events", func() []BotEvent { return b.Events() })
 	e.RegisterFunc("money", func() uint32 { return w.Money() })
 	// bot.get_xp() -> xp, xp needed for next level (PLAYER_XP / PLAYER_NEXT_LEVEL_XP update fields)
@@ -140,7 +188,49 @@ func (c *controlState) onPacket(w *client.WorldClient, op uint16, data []byte) {
 	if c.watched[op] {
 		c.packets = capAppend(c.packets, RawPacket{now, op, hex.EncodeToString(data)})
 	}
+	sys := func(text string) { c.chat = capAppend(c.chat, ChatMessage{Time: now, GUID: "0", Text: text}) }
 	switch op {
+	case smsgInvChangeFail: // bag errors, e.g. a loot or quest reward that doesn't fit
+		if len(data) > 0 && data[0] != 0 {
+			if msg, ok := equipErrors[data[0]]; ok {
+				sys(msg)
+			} else {
+				sys(fmt.Sprintf("inventory error %d", data[0]))
+			}
+		}
+	case 0x1A5: // SMSG_BUY_FAILED: vendor, item, reason
+		if len(data) >= 13 {
+			sys("buy failed: " + map[byte]string{0: "vendor doesn't have that item", 2: "not enough money", 5: "too far from the vendor",
+				7: "sold out", 8: "you can't carry more of that"}[data[12]])
+		}
+	case 0x1A1: // SMSG_SELL_ITEM: vendor, item, error (0 = sold)
+		if len(data) >= 17 && data[16] != 0 {
+			sys("sell failed: " + map[byte]string{1: "item not found", 2: "the vendor won't buy that", 3: "vendor not found",
+				4: "you don't own that"}[data[16]])
+		}
+	case 0x1B4: // SMSG_TRAINER_BUY_FAILED: trainer, spell, reason
+		if len(data) >= 16 {
+			spell := binary.LittleEndian.Uint32(data[8:])
+			sys(fmt.Sprintf("can't learn spell %d: %s", spell, map[uint32]string{0: "not available to you (level, class or already known)",
+				1: "not enough money", 2: "skill too low"}[binary.LittleEndian.Uint32(data[12:])]))
+		}
+	case 0x1B3: // SMSG_TRAINER_BUY_SUCCEEDED: trainer, spell
+		if len(data) >= 12 {
+			sys(fmt.Sprintf("learned spell %d", binary.LittleEndian.Uint32(data[8:])))
+		}
+	case smsgPartyResult: // operation, member name, result
+		r := bytes.NewReader(data)
+		var op uint32
+		binary.Read(r, binary.LittleEndian, &op)
+		name := readCString(r)
+		var res uint32
+		binary.Read(r, binary.LittleEndian, &res)
+		if res != 0 {
+			sys(fmt.Sprintf("group command failed for %q: %s (%d)", name, partyErrors[res], res))
+			c.unread++
+		}
+	case 0x0077, 0x007D: // SMSG_GROUP_UNINVITE, SMSG_GROUP_LIST: no invite pending any more
+		c.invitedBy = ""
 	case smsgNotification: // server feedback like "Inventory is full" -> system chat
 		c.chat = capAppend(c.chat, ChatMessage{Time: now, Type: 0, From: "", GUID: "0", Text: readCString(bytes.NewReader(data))})
 	case smsgNameQueryResp:
@@ -251,3 +341,10 @@ func readPackedGUID(r *bytes.Reader) uint64 {
 	}
 	return g
 }
+
+var equipErrors = map[byte]string{4: "Bag is full", 17: "You can't carry any more of those", 22: "Slot is empty",
+	23: "Item not found", 25: "Out of range", 29: "Not enough money", 38: "You are dead", 39: "You can't do that right now",
+	49: "Already looted", 50: "Inventory is full", 52: "Item is sold out", 53: "Bag is full", 56: "Bag is full", 57: "Item is sold out"}
+
+var partyErrors = map[uint32]string{1: "no player by that name online", 2: "not in your group", 4: "group is full",
+	5: "already in a group", 6: "you aren't in a group", 7: "you aren't the leader", 8: "wrong faction", 9: "they're ignoring you"}

@@ -64,6 +64,7 @@ type Bot struct {
 
 	world *client.WorldClient
 	nav   navigation.Navigator
+	agent *agentState // Lua agent API state (cast tracking); nil outside sessions
 	lua   *script.Engine
 
 	// Stats
@@ -1309,6 +1310,9 @@ func (b *Bot) CastSpell(spellID uint32, targetGUID uint64) error {
 	// (stance/range/path); aborting here froze bots mid-pull so they only
 	// swung NOT_IN_RANGE. Path is dropped on SPELL_GO success (relocate spells)
 	// and on self MONSTER_MOVE (OnServerRelocate).
+	if b.agent != nil {
+		b.agent.castSent(spellID)
+	}
 	return b.world.CastSpell(spellID, targetGUID)
 }
 

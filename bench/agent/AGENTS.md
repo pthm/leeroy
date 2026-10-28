@@ -48,5 +48,6 @@ function on_tick()
 end
 ```
 
-The rest of this file is the SDK reference: the Lua runtime and `bot` API your scripts use, then the world
-data tools (`wowdb`, `worlddb`).
+The rest of this file: a guide to playing well with the SDK (bags, vendors, trainers, death, unreachable
+targets, other players), then the reference for the Lua runtime and `bot` API, then the world data tools
+(`wowdb`, `worlddb`).

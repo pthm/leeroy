@@ -22,8 +22,8 @@ root=$(pwd); repo=$(dirname "$root"); ws="$root/workspaces/$name"
 # client-side event log for replays: in the team dir when run by team.sh (one replay for everyone)
 record="$root/$dir/record.jsonl"; [ -z "$GO" ] || record="$(dirname "$GO")/$name.record.jsonl"
 mkdir -p "$dir" "$ws"
-# refreshed each run: bench task docs + the SDK reference, and an example script
-cat agent/AGENTS.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/world-data.md > "$ws/AGENTS.md"
+# refreshed each run: bench task docs, the playing guide, the SDK reference, and an example script
+cat agent/AGENTS.md ../azeroth-sdk/docs/guide.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/world-data.md > "$ws/AGENTS.md"
 cp ../azeroth-sdk/examples/lua/grind.lua "$ws/example.lua"
 acct=$(printf %s "$name" | tr -cd 'a-zA-Z0-9' | cut -c1-16)
 n=${goal#*:}
@@ -46,7 +46,7 @@ case "$goal" in achpoints:*)
 names, points and criteria are in worlddb (see AGENTS.md); bot.achievements() shows your progress."
   stop_text="Do not stop early: keep earning points until the time runs out." ;;
 score:*)
-  score_text="How you are judged. Every 15 seconds the judge reads your character from the server database and computes
+  score_text="HOW YOU ARE JUDGED: every 15 seconds the judge reads your character from the server database and computes
 your progress: a weighted sum of how much these have grown since the start (points per unit):
 $(jq -r '.weights | to_entries[] | "  \(.key): \(.value)"' "$root/judge/score.json")
 Fractional level counts (10.5 = halfway to 11); avg_item_level is over your 17 gear slots; wealth_copper is money
@@ -98,11 +98,13 @@ cat > "$dir/prompt.md" <<PROMPT
 You are playing World of Warcraft (3.3.5a) on a local private server set up for AI benchmarking. Your
 character $char is already logged in and waiting.
 
-GOAL: $goal_text. $score_text${HINT:+
-$HINT}
+GOAL: $goal_text.${HINT:+ $HINT}
 
-Read AGENTS.md first. It documents your session (wow), the bot API, and worlddb, a read-only SQL view
-of the game's world database: mob spawns and levels, quest givers, vendors, loot tables.
+$score_text
+
+Read AGENTS.md first. It documents your session (wow), how to play well with the SDK (bags, vendors,
+trainers, death, other players), the bot API, and the world data tools: wowdb (where a quest's targets are,
+what drops an item, the nearest trainer) and worlddb (read-only SQL over the game's world database).
 Reference source (read-only): the client and its Lua bindings in $repo/azeroth-sdk (client/, session/,
 script/), the server in $repo/server/azerothcore/src/server/game and $repo/server/azerothcore/src/server/shared.
 
@@ -110,20 +112,23 @@ HOW TO WORK
 - Start earning progress within your first few minutes, then improve. Don't plan at length before you have
   a working baseline.
 - Iterate in small steps: try one action with wow, check it worked, then build it into a script.
-- Measure, don't guess: wow 'return bot.get_level(), bot.get_xp()' gives level, xp, xp for next level.
-  Track your XP/min and change strategy when it drops (e.g. mobs becoming too low level, frequent deaths).
+- Measure, don't guess: check what your script is achieving (wow 'return bot.get_level(), {bot.get_xp()}',
+  quest_log(), money()) and change strategy when progress stalls (mobs too low level, frequent deaths,
+  full bags, a target you can't reach).
 - While a script runs, poll progress with wow -w <seconds> '<lua>' (waits, then queries). Don't end your
   session.
 - $stop_text
 
-YOUR LIBRARY: your working directory is yours and persists across runs. Reuse what's there, and save
-anything reusable (combat, death handling, navigation, packet parsers) as you go.
+YOUR LIBRARY: your working directory is yours and persists across runs. It may be empty (apart from
+AGENTS.md and example.lua) or hold scripts from your earlier runs: check with ls, reuse what's there, and
+save anything reusable (combat, death handling, navigation, questing helpers) as you go.
 
 RULES: Progress through legitimate gameplay only. You have no GM access; don't try to modify the server,
 the database, the judge or the harness. Your session log is session.log in your working directory.
 PROMPT
 
-(cd "$ws" && PATH="$root/agent/bin:$PATH" exec timeout "${mins}m" claude -p "$(cat "$root/$dir/prompt.md")" \
+# no auto-memory: it's keyed by the git root, so agents would share notes with each other (and with us)
+(cd "$ws" && PATH="$root/agent/bin:$PATH" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 exec timeout "${mins}m" claude -p "$(cat "$root/$dir/prompt.md")" \
   --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
   --add-dir "$repo/azeroth-sdk/client" "$repo/azeroth-sdk/session" "$repo/azeroth-sdk/script" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
   --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(wowdb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \

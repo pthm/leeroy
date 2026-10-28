@@ -61,6 +61,7 @@ func (b *Bot) setupAgentAPI() {
 	s := &agentState{cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, earned: map[uint32]bool{},
 		criteria: map[uint32]uint64{}}
 	w := b.world
+	b.agent = s
 	spellsDir = b.config.DataDir
 	go loadSpells() // ~50MB; don't stall the packet goroutine on first use
 	w.AddPacketHook(func(op uint16, data []byte) { s.onPacket(w.CharGUID(), op, data) })
@@ -213,13 +214,28 @@ func (b *Bot) setupAgentAPI() {
 		return out
 	})
 	// turn_in(npc, quest, reward_index): complete -> request reward -> choose reward in one go.
-	// Check quest_log()/has_item first; the server silently ignores an incomplete turn-in.
-	e.RegisterFunc("turn_in", func(npc uint64, quest, reward uint32) {
+	// Check quest_log()/has_item first; the server silently ignores an incomplete turn-in. Returns a warning when
+	// your bags are full: the server refuses quests with item rewards then ("Inventory is full" in read_chat).
+	e.RegisterFunc("turn_in", func(npc uint64, quest, reward uint32) any {
 		w.QuestgiverCompleteQuest(npc, quest)
 		body := binary.LittleEndian.AppendUint64(nil, npc)
 		w.SendPacketRaw(cmsgQuestRequestRew, binary.LittleEndian.AppendUint32(body, quest))
 		w.QuestgiverChooseReward(npc, quest, reward)
+		if freeSlots(w) == 0 {
+			return "bags full: item rewards will be refused; sell or destroy something first"
+		}
+		return nil
 	})
+}
+
+// castSent: is_casting covers the round trip between cast_spell and the server's SPELL_START, so a script that
+// checks it on the next tick doesn't move (which interrupts the cast) or recast before the server answers.
+func (s *agentState) castSent(spell uint32) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if time.Until(s.castUntil) <= 0 {
+		s.castSpell, s.castUntil = spell, time.Now().Add(400*time.Millisecond)
+	}
 }
 
 func (s *agentState) onPacket(me uint64, op uint16, data []byte) {
@@ -336,8 +352,12 @@ func bagItems(w *client.WorldClient) []map[string]any {
 	}
 	add := func(bag, slot uint8, guid uint64) {
 		if it := w.GetObject(guid); guid != 0 && it != nil {
-			out = append(out, map[string]any{"bag": bag, "slot": slot, "guid": fmt.Sprint(guid),
-				"entry": it.Value(3), "count": max(it.Value(fieldItemStack), 1)})
+			m := map[string]any{"bag": bag, "slot": slot, "guid": fmt.Sprint(guid),
+				"entry": it.Value(3), "count": max(it.Value(fieldItemStack), 1)}
+			if p := itemInfo(w, it.Value(3)); p != nil { // nil until the server answers the item query
+				m["name"], m["quality"], m["sell_price"], m["inv_type"], m["use_spell"] = p.Name, p.Quality, p.SellPrice, p.InvType, p.UseSpell
+			}
+			out = append(out, m)
 		}
 	}
 	for slot := uint8(0); slot < 39; slot++ {

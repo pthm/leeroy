@@ -86,8 +86,12 @@ func (b *Bot) startRecording() {
 
 	var lastAttacker uint64
 	prevKill, prevDeath, prevLevel := w.OnKill, w.OnDeath, w.OnLevelUp
+	var lastKill uint64 // OnKill only sees melee killing blows; spell kills come from the XP gain below
 	w.OnKill = func(victim uint64) {
-		b.Record("kill", map[string]any{"victim": b.unitRef(victim)})
+		if victim != lastKill {
+			lastKill = victim
+			b.Record("kill", map[string]any{"victim": b.unitRef(victim)})
+		}
 		if prevKill != nil {
 			prevKill(victim)
 		}
@@ -159,6 +163,10 @@ func (b *Bot) startRecording() {
 			var victim uint64
 			binary.Read(r, binary.LittleEndian, &victim)
 			b.Record("xp", map[string]any{"amount": u32()})
+			if typ, _ := r.ReadByte(); typ == 0 && victim != 0 && victim != lastKill { // 0 = kill XP
+				lastKill = victim
+				b.Record("kill", map[string]any{"victim": b.unitRef(victim)})
+			}
 		case 0x191: // SMSG_QUESTGIVER_QUEST_COMPLETE: quest id, xp, money
 			q := u32()
 			b.Record("quest", map[string]any{"id": q, "xp": u32(), "money": u32()})
