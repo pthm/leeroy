@@ -12,6 +12,7 @@
 # $HINT: extra line appended to the task prompt. $GO: file to wait for before the judge/agent start
 # (team.sh uses it to start every clock together; touches $GO.<name>.ready once the session is up).
 set -e
+{ # parsed whole before running, so editing this file can't break runs in progress
 name=$1 char=$2 race=$3 class=$4 goal=$5 mins=${6:-60}
 [ -n "$goal" ] || { sed -n 2,7p "$0"; exit 1; }
 export WOW_PORT=${WOW_PORT:-8090}
@@ -123,3 +124,5 @@ agent=$!
 
 wait $judge || true
 cat "$dir/judge.json"
+exit
+}
