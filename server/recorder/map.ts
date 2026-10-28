@@ -44,6 +44,25 @@ export function runSources(dir: string) {
   }
   return { records, transcripts };
 }
+// Chat: every agent's client log has its own copy of each message it received (and no sender name), so player chat
+// comes from the server's recorder log instead: one event per message, n = sender, to = channel/party/whisper target.
+export const SERVER_LOG = new URL("../azerothcore/env/dist/logs/recorder.jsonl", import.meta.url).pathname;
+export const serverChat = (text: string, chars: Set<string>): Ev[] =>
+  text.split("\n").filter((l) => l.includes('"ev":"chat"')).flatMap((l) => { try { return [JSON.parse(l) as Ev]; } catch { return []; } })
+    .filter((e) => chars.has(e.n ?? ""));
+// client chat minus player chat (server-side above); NPC speech once per (speaker, text, second), not once per listener
+const PLAYER_CHAT = new Set([1, 2, 3, 4, 6, 7, 9, 10, 17]);
+export function clientChatFilter() {
+  const seen = new Set<string>();
+  return (e: Ev) => {
+    if (e.ev !== "chat") return true;
+    if (PLAYER_CHAT.has(Number(e.type))) return false; // say, party, raid, guild, yell, whisper (+ echo), emote, channel
+    const k = `${e.from}|${e.msg}|${Math.floor(e.t / 2000)}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  };
+}
 export const parseLines = (text: string): Ev[] =>
   text.split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((e): e is Ev => !!e);
 

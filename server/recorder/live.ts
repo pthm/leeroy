@@ -5,7 +5,7 @@
 // follows the newest data until you seek back. --run <dir> takes a bench run (or team) dir: its record files plus
 // each agent's transcript, whose visible messages appear in the Agent tab.
 import { existsSync, openSync, readSync, statSync, closeSync, readFileSync } from "node:fs";
-import { S, areas, itemNames, labels, nameUnits, parseLines, renderMap, runSources, transcriptEvents, type Ev } from "./map.ts";
+import { S, SERVER_LOG, areas, clientChatFilter, itemNames, labels, nameUnits, parseLines, renderMap, runSources, serverChat, transcriptEvents, type Ev } from "./map.ts";
 
 const args = process.argv.slice(2);
 const flag = (k: string) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : undefined; };
@@ -16,6 +16,9 @@ if (!files.length) files.push(new URL("../azerothcore/env/dist/logs/recorder.jso
 // transcripts: path -> character name; parsed as "say" events instead of recorder lines
 const transcriptOf = new Map(run.transcripts.map((t) => [t.path, t.name]));
 files.push(...transcriptOf.keys());
+// with a run: player chat from the server log (once, with sender names), not each agent's received copy
+const runChars = new Set(run.transcripts.map((t) => t.name)), keepClient = clientChatFilter();
+if (runChars.size && existsSync(SERVER_LOG)) files.push(SERVER_LOG);
 const port = Number(flag("port") ?? 8800), chars = flag("chars")?.split(",") ?? [];
 const sinceMin = Number((flag("since") ?? "60m").replace(/m$/, ""));
 const start = Date.now() - sinceMin * 60_000;
@@ -39,7 +42,8 @@ function poll() {
     const text = (partial.get(f) ?? "") + buf.toString("utf8"), cut = text.lastIndexOf("\n") + 1;
     partial.set(f, text.slice(cut));
     const lines = text.slice(0, cut), name = transcriptOf.get(f);
-    fresh.push(...(name ? transcriptEvents(lines, name) : parseLines(lines))
+    fresh.push(...(name ? transcriptEvents(lines, name) : f === SERVER_LOG ? serverChat(lines, runChars)
+      : runChars.size ? parseLines(lines).filter(keepClient) : parseLines(lines))
       .filter((e) => e.t >= start && (!chars.length || chars.includes(e.n ?? ""))));
   }
   fresh.sort((a, b) => a.t - b.t);

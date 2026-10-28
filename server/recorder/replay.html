@@ -62,6 +62,8 @@ footer button, footer select { font: inherit; color: var(--ink); background: var
   #clock { grid-column: 3; }
   .tlwrap { grid-column: 1 / -1; }
 }
+.filters { position: sticky; top: 0; background: var(--panel, var(--bg)); padding: 4px 0 6px; display: flex; gap: 12px; z-index: 1; }
+.filters label { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -312,7 +314,8 @@ const unitName = (u) => (u ? (u.pl ? who(u.n) : esc(u.n) + (u.lvl ? ` <span clas
 function line(e) {
   switch (e.ev) {
     // server records name the speaker (n); client records are written by the listener, speaker in `from`
-    case "chat": return `${who(e.from ?? e.n)} <span style="color:${CHAT_COLOR[e.type] ?? "inherit"}">[${CHAT[e.type] ?? e.type}${e.to ? " → " + esc(e.to) : ""}] ${esc(e.msg)}</span>`;
+    case "chat": { const kind = CHAT[e.type] ?? (e.type >= 12 ? "npc" : e.type), to = e.to && e.to !== kind ? " → " + esc(e.to) : "";
+      return `${who(e.from ?? e.n)} <span style="color:${CHAT_COLOR[e.type] ?? "inherit"}">[${kind}${to}] ${esc(e.msg)}</span>`; }
     case "death": return `${who(e.n)} was killed by ${unitName(e.killer)}`;
     case "kill": return `${who(e.n)} killed ${unitName(e.victim)}`;
     case "pvp": return `${who(e.n)} killed player ${unitName(e.victim)}`;
@@ -344,6 +347,10 @@ function line(e) {
 const KINDS = { events: ["death", "kill", "pvp", "achievement", "level", "quest", "loot", "zone", "release", "resurrect", "login", "logout", "spell", "group"],
   chat: ["chat"], combat: ["dmg", "heal", "cast", "kill", "death", "xp"], agent: ["say", "api", "script_error"] };
 let lastPane = "";
+// Agent tab: which kinds to show (agent messages, the wow/eval calls, script errors); evals off by default
+const AGENT_KINDS = { say: "messages", api: "evals", script_error: "script errors" };
+let agentShow = { say: true, api: false, script_error: true };
+try { Object.assign(agentShow, JSON.parse(localStorage.getItem("replay-agent-show") || "{}")); } catch {}
 function renderPane() {
   let html = "";
   if (tab === "players") {
@@ -376,10 +383,12 @@ function renderPane() {
         <td class="num">${s ? `L${s.level}` : ""}</td><td class="num"><b>${s ? s[metric] : "–"}</b></td></tr>`).join("")}</table>
       <p class="muted">score = progress points per hour over the run (judge v2; older runs: (progress + pace) / 2). Quests count by difficulty for the character's level.</p>`;
   } else {
-    const end = evIdx(t), kinds = KINDS[tab], rows = [];
+    const end = evIdx(t), kinds = tab === "agent" ? KINDS.agent.filter((k) => agentShow[k]) : KINDS[tab], rows = [];
     for (let i = end - 1; i >= 0 && rows.length < 200; i--) if (kinds.includes(D.events[i].ev)) rows.push(D.events[i]);
-    html = rows.reverse().map((e) => `<div class="row" data-t="${e.t}"><span class="t">${fmt(e.t)}</span><span>${line(e)}</span></div>`).join("")
-      || `<div class="muted">Nothing yet.</div>`;
+    const bar = tab === "agent" ? `<div class="filters muted">Show ${Object.entries(AGENT_KINDS).map(([k, label]) =>
+      `<label><input type="checkbox" data-agent-kind="${k}"${agentShow[k] ? " checked" : ""}> ${label}</label>`).join(" ")}</div>` : "";
+    html = bar + (rows.reverse().map((e) => `<div class="row" data-t="${e.t}"><span class="t">${fmt(e.t)}</span><span>${line(e)}</span></div>`).join("")
+      || `<div class="muted">Nothing yet.</div>`);
   }
   if (html !== lastPane) {
     lastPane = html;
@@ -410,6 +419,11 @@ function drawChart() {
   g.strokeStyle = css("--ink"); g.lineWidth = 1; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(X(t), 6); g.lineTo(X(t), 6 + H); g.stroke(); g.setLineDash([]);
 }
 $("pane").addEventListener("change", (e) => { if (e.target.id === "metric") { metric = e.target.value; lastPane = ""; renderPane(); } });
+$("pane").addEventListener("change", (e) => {
+  const k = e.target.dataset?.agentKind; if (!k) return;
+  agentShow[k] = e.target.checked; try { localStorage.setItem("replay-agent-show", JSON.stringify(agentShow)); } catch {}
+  lastPane = ""; renderPane();
+});
 $("pane").addEventListener("click", (e) => { const r = e.target.closest(".row"); if (r) setT(Number(r.dataset.t)); });
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
   tab = b.dataset.tab; document.querySelectorAll(".tabs button").forEach((x) => x.setAttribute("aria-selected", x === b)); lastPane = ""; renderPane();
