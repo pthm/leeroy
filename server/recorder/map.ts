@@ -91,7 +91,8 @@ export function renderMap(mapId: number, xMin: number, xMax: number, yMin: numbe
       }
       const z = zone[k];
       if ((c + 1 < W && zone[k + 1] !== z) || (r + 1 < H && zone[k + W] !== z)) col = col.map((v) => v * 0.45);
-      rgb[o] = col[0]; rgb[o + 1] = col[1]; rgb[o + 2] = col[2];
+      // clamp: shaded snow goes past 255, which would wrap around in the byte buffer
+      rgb[o] = Math.min(255, col[0]); rgb[o + 1] = Math.min(255, col[1]); rgb[o + 2] = Math.min(255, col[2]);
     }
   }
   return { png: png(W, H, rgb), w: W, h: H };

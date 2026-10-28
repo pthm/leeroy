@@ -12,6 +12,6 @@
     "profession_skill": 0.1,
     "explored_areas": 0.5,
     "flight_paths": 2,
-    "deaths": -2
+    "deaths": -0.5
   }
 }

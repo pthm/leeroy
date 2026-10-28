@@ -7,7 +7,15 @@
 //          signals in signals.ts. Same "large n" convention)
 // Reads the character DB (saved every 15s, see server/override.yml), so it can't be gamed from the client.
 // Prints one JSON line when the goal is met or the timeout hits; exit 0 = met, 1 = timed out.
-// --samples appends {elapsed_s, level, xp, money, value, signals} each poll, for partial credit and progress curves.
+// --samples appends {elapsed_s, level, xp, money, value, rate, ..., signals} each poll, for partial credit and curves.
+// --record also appends each sample as a {"ev":"score"} event to a recorder log, so the replay/live viewers chart it.
+//
+// Rate of progress (all goals, from the value curve):
+//   rate         value per hour since the start
+//   recent_rate  value per hour over the last 10 minutes
+//   pace         the time-average of value so far (area under the curve / time): reaching 50 at minute 10 beats
+//                reaching it at minute 55
+//   score        (value + pace) / 2: final progress and speed count equally. This is the headline for score goals.
 import { appendFileSync } from "node:fs";
 import { sql, signals, weights, composite } from "./signals.ts";
 
@@ -16,7 +24,7 @@ if (!char || !/^[A-Za-z]+$/.test(char) || !/^(level|item|quality|money|quests|qu
   throw new Error("usage: bun bench/judge/judge.ts <character> <level|item|quality|money|quests|quest|achpoints|score>:<n> [--timeout 4h] [--every 15s]");
 const flag = (name: string, def: string) => { const i = rest.indexOf(`--${name}`); return i >= 0 ? rest[i + 1] : def; };
 const dur = (s: string) => { const [, n, u] = s.match(/^(\d+)(s|m|h)$/)!; return +n * { s: 1e3, m: 6e4, h: 36e5 }[u]!; };
-const timeout = dur(flag("timeout", "4h")), every = dur(flag("every", "15s")), samples = flag("samples", "");
+const timeout = dur(flag("timeout", "4h")), every = dur(flag("every", "15s")), samples = flag("samples", ""), record = flag("record", "");
 
 const [kind, n] = goal.split(":");
 const owned = `FROM character_inventory ci JOIN item_instance ii ON ii.guid = ci.item
@@ -38,13 +46,24 @@ const base = signals(char), w = kind === "score" ? weights() : {};
 const need = kind === "item" || kind === "quality" || kind === "quest" ? 1 : +n;
 
 const start = Date.now();
+const curve: [number, number][] = []; // [elapsed h, value]
+let area = 0; // integral of value dt, in value-hours
 for (;;) {
   const sig = signals(char);
   const value = kind === "score" ? composite(sig, base, w) : Number(sql(query) || 0) - baseline;
   const [level, xp, money] = sql(`SELECT level, xp, money FROM characters WHERE name = '${char}'`).split("\t").map(Number);
-  const elapsed_s = Math.round((Date.now() - start) / 1000);
-  const sample = { elapsed_s, level, xp, money, value, signals: sig };
+  const elapsed_s = Math.round((Date.now() - start) / 1000), h = elapsed_s / 3600;
+  const prev = curve.at(-1);
+  if (prev) area += ((prev[1] + value) / 2) * (h - prev[0]);
+  curve.push([h, value]);
+  const ago = curve.find(([t]) => t >= h - 1 / 6) ?? curve[0]; // ~10 minutes back
+  const round = (v: number) => Math.round(v * 10) / 10;
+  const pace = h > 0 ? area / h : value;
+  const rates = { rate: round(h > 0 ? value / h : 0), recent_rate: round(h - ago[0] > 0 ? (value - ago[1]) / (h - ago[0]) : 0),
+    pace: round(pace), score: round((value + pace) / 2) };
+  const sample = { elapsed_s, level, xp, money, value, ...rates, signals: sig };
   if (samples) appendFileSync(samples, JSON.stringify(sample) + "\n");
+  if (record) appendFileSync(record, JSON.stringify({ t: Date.now(), ev: "score", n: char, value, level, ...rates }) + "\n");
   if (value >= need || Date.now() - start > timeout) {
     console.log(JSON.stringify({ char, goal, met: value >= need, ...sample, at: new Date().toISOString() }));
     process.exit(value >= need ? 0 : 1);

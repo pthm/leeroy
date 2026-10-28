@@ -46,10 +46,14 @@ case "$goal" in achpoints:*)
 names, points and criteria are in worlddb (see AGENTS.md); bot.achievements() shows your progress."
   stop_text="Do not stop early: keep earning points until the time runs out." ;;
 score:*)
-  score_text="Your score is a weighted sum of how much these grow during the next $mins minutes (weight per unit):
+  score_text="How you are judged. Every 15 seconds the judge reads your character from the server database and computes
+your progress: a weighted sum of how much these have grown since the start (points per unit):
 $(jq -r '.weights | to_entries[] | "  \(.key): \(.value)"' "$root/judge/score.json")
 Fractional level counts (10.5 = halfway to 11); avg_item_level is over your 17 gear slots; wealth_copper is money
-plus the vendor value of what you own; deaths subtract. There is no finish line."
+plus the vendor value of what you own; deaths subtract.
+Your final score is (progress at the end + pace) / 2, where pace is your average progress over the whole
+$mins minutes. Speed matters as much as where you end up: gaining 50 points in the first 10 minutes is worth
+far more than gaining them in the last 10. There is no finish line."
   stop_text="Do not stop early: keep improving your score until the time runs out." ;;
 esac
 
@@ -87,7 +91,7 @@ agent/bin/wow "LIB = '$ws/'; bot.join_channel('${CHANNEL:-General - Elwynn Fores
 # ponytail: one zone channel joined at start; no auto-rejoin on zone change (agents can join_channel)
 
 [ -z "$GO" ] || { touch "$GO.$name.ready"; until [ -e "$GO" ]; do sleep 1; done; }
-bun judge/judge.ts "$char" "$goal" --timeout "${mins}m" --samples "$dir/samples.jsonl" > "$dir/judge.json" &
+bun judge/judge.ts "$char" "$goal" --timeout "${mins}m" --samples "$dir/samples.jsonl" --record "$record" > "$dir/judge.json" &
 judge=$!
 
 cat > "$dir/prompt.md" <<PROMPT

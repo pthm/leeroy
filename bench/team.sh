@@ -4,7 +4,7 @@
 #        bench/team.sh quest:176 60 hogger1:Garrick:1:1 hogger2:Paloma:1:2
 # One bench.sh per agent (WOW_PORT 8090, 8091, ...), logins staggered. Every judge and agent starts at
 # the same moment once all sessions are up, so times are comparable. Writes runs/<id>/team.json:
-# per-agent judge results plus team_s = time until the last agent met the goal (null if any didn't).
+# per-agent judge results ranked by score, plus team_s = time until the last agent met the goal (null if any didn't).
 set -e
 cd "$(dirname "$0")" # relative to bench/
 goal=$1 mins=$2; shift 2
@@ -22,5 +22,5 @@ done
 i=0; until [ "$(ls "$dir"/go.*.ready 2>/dev/null | wc -l)" -ge $# ] || [ $i -ge 300 ]; do sleep 1; i=$((i + 1)); done
 date +%s > "$dir/go"; echo "go: $(ls "$dir"/go.*.ready | wc -l)/$# sessions up"
 wait
-for f in "$dir"/*.out; do grep '^{' "$f" | tail -n 1; done | jq -s --argjson n $# '{agents: ., team_s: (if length == $n and all(.met) then map(.elapsed_s) | max else null end)}' | tee "$dir/team.json"
+for f in "$dir"/*.out; do grep '^{' "$f" | tail -n 1; done | jq -s --argjson n $# '{agents: sort_by(-(.score // .value)), team_s: (if length == $n and all(.met) then map(.elapsed_s) | max else null end)}' | tee "$dir/team.json"
 bun ../server/recorder/replay.ts "$dir" || echo "no replay (is mod-recorder installed? see README)"

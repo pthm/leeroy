@@ -43,10 +43,15 @@ aside { display: grid; grid-template-rows: auto 1fr; min-height: 0; border-left:
 .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; margin: 3px 0; }
 .bar > div { height: 100%; }
 .stats { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--quiet); font-size: 12px; }
+.board { width: 100%; border-collapse: collapse; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.board td { padding: 3px 4px; border-bottom: 1px solid var(--line); }
+.board td.num { text-align: right; }
+#chart { width: 100%; height: 220px; display: block; }
 #live[aria-pressed="true"] { color: var(--death); border-color: var(--death); }
 footer { display: grid; grid-template-columns: auto auto auto auto 1fr; align-items: center; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--panel); }
 footer button, footer select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
 #clock { font-variant-numeric: tabular-nums; min-width: 110px; }
+.tlwrap { grid-column: -2; }
 #timeline { width: 100%; height: 38px; cursor: pointer; display: block; }
 .legend { display: flex; gap: 10px; color: var(--quiet); font-size: 11.5px; }
 .legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; background: var(--c); }
@@ -74,6 +79,7 @@ footer button, footer select { font: inherit; color: var(--ink); background: var
       <button role="tab" data-tab="chat">Chat</button>
       <button role="tab" data-tab="combat">Combat</button>
       <button role="tab" data-tab="agent">Agent</button>
+      <button role="tab" data-tab="scores">Scores</button>
     </div>
     <div class="pane" id="pane"></div>
   </aside>
@@ -95,8 +101,18 @@ const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v
 const fmt = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const P = D.players, color = Object.fromEntries(P.map((p) => [p.name, p.color]));
+// a distinct colour per player (two agents of one class must not look alike); class is in the label
+const PALETTE = ["#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231", "#911eb4", "#46f0f0", "#f032e6", "#bcf60c", "#fabebe", "#008080", "#9a6324"];
+P.forEach((p, i) => { p.color = PALETTE[i % PALETTE.length]; color[p.name] = p.color; });
+// judge samples arrive as "score" events: {value (progress), rate, recent_rate, pace, score}
+const SCORES = {}; // name -> score events in time order
+const addScore = (e) => (SCORES[e.n] ??= []).push(e);
+D.events.filter((e) => e.ev === "score").forEach(addScore);
+const scores = (n) => SCORES[n] ?? [];
+const scoreAt = (n, t) => { const a = scores(n); let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m].t <= t) lo = m + 1; else hi = m; } return a[lo - 1] ?? null; };
+let metric = "score";
+const METRICS = { score: "score", value: "progress", pace: "pace", recent_rate: "rate /h (10 min)" };
 const CLASSES = ["", "Warrior", "Paladin", "Hunter", "Rogue", "Priest", "Death Knight", "Shaman", "Mage", "Warlock", "", "Druid"];
-const COLORS = ["#888", "#C79C6E", "#F58CBA", "#ABD473", "#FFF569", "#FFFFFF", "#C41F3B", "#0070DE", "#69CCF0", "#9482C9", "#888", "#FF7D0A"];
 const CHAT = { 1: "say", 2: "party", 3: "raid", 4: "guild", 6: "yell", 7: "whisper", 10: "emote", 17: "channel" };
 const POWER = { 0: ["mana", "--mana"], 1: ["rage", "--rage"], 3: ["energy", "--energy"], 6: ["runic", "--rage"] };
 let t = 0, playing = false, speed = 30, follow = null, tab = "players";
@@ -280,20 +296,51 @@ function renderPane() {
       html += `<div class="card"><h3><span class="dot" style="background:${p.color}"></span>${esc(p.name)} <span class="muted">${esc(p.cls)} · level ${r[8]}</span>${state ? ` <span style="color:var(--death)">${state}</span>` : ""}</h3>
         <div class="bar" title="health ${r[3]}/${r[4]}"><div style="width:${(100 * r[3]) / Math.max(1, r[4])}%;background:var(--hp)"></div></div>
         <div class="bar" title="${pname} ${r[5]}/${r[6]}"><div style="width:${(100 * r[5]) / Math.max(1, r[6])}%;background:var(${pvar})"></div></div>
-        <div class="stats"><span>${r[3]}/${r[4]} hp</span><span>${r[9]} xp</span><span>${(r[10] / 100).toFixed(2)}s</span><span>${esc(D.zones[r[14]] ?? "")}</span></div></div>`;
+        <div class="stats"><span>${r[3]}/${r[4]} hp</span><span>${r[9]} xp</span><span>${(r[10] / 100).toFixed(2)}s</span><span>${esc(D.zones[r[14]] ?? "")}</span></div>
+        ${(() => { const s = scoreAt(p.name, t); return s ? `<div class="stats"><span><b>score ${s.score}</b></span><span>progress ${s.value}</span><span>pace ${s.pace}</span><span>${Math.round(s.recent_rate)}/h now</span></div>` : ""; })()}</div>`;
     }
+  } else if (tab === "scores") {
+    const rows = P.map((p) => ({ p, s: scoreAt(p.name, t) })).sort((a, b) => (b.s?.[metric] ?? -1e9) - (a.s?.[metric] ?? -1e9));
+    html = `<label class="muted">Plot <select id="metric">${Object.entries(METRICS).map(([k, v]) => `<option value="${k}"${k === metric ? " selected" : ""}>${v}</option>`).join("")}</select></label>
+      <canvas id="chart"></canvas>
+      <table class="board">${rows.map(({ p, s }, i) => `<tr><td>${i + 1}</td><td><span class="dot" style="background:${p.color};display:inline-block"></span> ${who(p.name)} <span class="muted">${esc(p.cls)}</span></td>
+        <td class="num">${s ? `L${s.level}` : ""}</td><td class="num"><b>${s ? s[metric] : "–"}</b></td></tr>`).join("")}</table>
+      <p class="muted">score = (progress + pace) / 2; pace = average progress so far, so earlier gains count for more.</p>`;
   } else {
     const end = evIdx(t), kinds = KINDS[tab], rows = [];
     for (let i = end - 1; i >= 0 && rows.length < 200; i--) if (kinds.includes(D.events[i].ev)) rows.push(D.events[i]);
     html = rows.reverse().map((e) => `<div class="row" data-t="${e.t}"><span class="t">${fmt(e.t)}</span><span>${line(e)}</span></div>`).join("")
       || `<div class="muted">Nothing yet.</div>`;
   }
-  if (html === lastPane) return;
-  lastPane = html;
-  const pane = $("pane"), atBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 40;
-  pane.innerHTML = html;
-  if (tab !== "players" && atBottom) pane.scrollTop = pane.scrollHeight;
+  if (html !== lastPane) {
+    lastPane = html;
+    const pane = $("pane"), atBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 40;
+    pane.innerHTML = html;
+    if (tab !== "players" && tab !== "scores" && atBottom) pane.scrollTop = pane.scrollHeight;
+  }
+  if (tab === "scores") drawChart();
 }
+// each player's chosen metric over the whole run, with the playhead
+function drawChart() {
+  const c = $("chart"); if (!c) return;
+  const r = c.getBoundingClientRect(), g = c.getContext("2d");
+  c.width = r.width * devicePixelRatio; c.height = r.height * devicePixelRatio; g.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  const L = 36, B = 18, W = r.width - L - 6, H = r.height - B - 6;
+  const series = P.map((p) => ({ p, pts: scores(p.name).map((e) => [e.t, e[metric]]) }));
+  const vals = series.flatMap((s) => s.pts.map((q) => q[1]));
+  const lo = Math.min(0, ...vals), hi = Math.max(10, ...vals);
+  const X = (ms) => L + (ms / Math.max(1, D.duration)) * W, Y = (v) => 6 + H - ((v - lo) / (hi - lo)) * H;
+  g.font = "11px system-ui"; g.fillStyle = css("--quiet"); g.strokeStyle = css("--line"); g.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) { const v = lo + ((hi - lo) * k) / 4, y = Y(v); g.beginPath(); g.moveTo(L, y); g.lineTo(L + W, y); g.stroke(); g.textAlign = "right"; g.fillText(Math.round(v), L - 4, y + 4); }
+  g.textAlign = "center"; for (let k = 0; k <= 4; k++) g.fillText(fmt((D.duration * k) / 4), X((D.duration * k) / 4), r.height - 4);
+  for (const { p, pts } of series) {
+    if (!pts.length) continue;
+    g.beginPath(); pts.forEach(([ms, v], i) => (i ? g.lineTo(X(ms), Y(v)) : g.moveTo(X(ms), Y(v))));
+    g.strokeStyle = p.color; g.lineWidth = follow === p.name ? 3 : 1.6; g.stroke();
+  }
+  g.strokeStyle = css("--ink"); g.lineWidth = 1; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(X(t), 6); g.lineTo(X(t), 6 + H); g.stroke(); g.setLineDash([]);
+}
+$("pane").addEventListener("change", (e) => { if (e.target.id === "metric") { metric = e.target.value; lastPane = ""; renderPane(); } });
 $("pane").addEventListener("click", (e) => { const r = e.target.closest(".row"); if (r) setT(Number(r.dataset.t)); });
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
   tab = b.dataset.tab; document.querySelectorAll(".tabs button").forEach((x) => x.setAttribute("aria-selected", x === b)); lastPane = ""; renderPane();
@@ -334,7 +381,7 @@ else {
   // live: recorder events arrive over server-sent events, absolute times; the replay clock starts at D.start
   const player = (n) => {
     let p = P.find((q) => q.name === n);
-    if (!p) { p = { name: n, cls: "", color: "#888", track: [] }; P.push(p); color[n] = p.color; renderChips(); }
+    if (!p) { p = { name: n, cls: "", color: PALETTE[P.length % PALETTE.length], track: [] }; P.push(p); color[n] = p.color; renderChips(); }
     return p;
   };
   let fitted = false;
@@ -348,8 +395,9 @@ else {
       if (!fitted || (follow === e.n && e.m !== M.id)) { M.id = e.m; }
       if (!fitted) { fitted = true; fit(); }
     } else {
-      if (e.ev === "login") { const p = player(e.n); p.cls = CLASSES[e.cls] ?? ""; p.color = COLORS[e.cls] ?? "#888"; color[e.n] = p.color; renderChips(); }
+      if (e.ev === "login") { const p = player(e.n); p.cls = CLASSES[e.cls] ?? ""; renderChips(); }
       D.events.push({ ...e, t: rel });
+      if (e.ev === "score") addScore(D.events.at(-1));
     }
     D.duration = Math.max(D.duration, rel);
   };
