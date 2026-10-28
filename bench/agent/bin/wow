@@ -23,4 +23,10 @@ fi
 if [ "$1" = "-f" ]; then
   code="return dofile(\"$(cd "$(dirname "$2")" && pwd)/$(basename "$2")\")"
 elif [ -n "$1" ]; then code="$1"; else code="$(cat)"; fi
-eval_ "$code"
+out=$(eval_ "$code")
+# unread messages from other players (chat, whispers, party, invites) ride along on every reply until read
+n=$(eval_ 'return bot.chat_pending()' | jq -r '.result // 0' 2>/dev/null)
+if [ "${n:-0}" -gt 0 ] 2>/dev/null; then
+  printf '%s\n' "$out" | jq -c --argjson n "$n" --arg hint "$n unread message(s) from other players: wow 'return bot.read_chat()'" \
+    '. + {chat_pending: $n, chat: $hint}'
+else printf '%s\n' "$out"; fi

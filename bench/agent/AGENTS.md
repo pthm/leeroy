@@ -27,7 +27,8 @@ standings                                        # where everyone in this run st
 - `wow` runs Lua in the session and prints the returned values as JSON (`{"error": ...}` on failure).
   It shares a lock with `on_tick`, so don't block in it. Return data rather than printing it. If your
   running script raised errors since the last call, the reply also has
-  `"script_errors": {"count": n, "last": "..."}`.
+  `"script_errors": {"count": n, "last": "..."}`. When other players have messaged you (chat, whispers, party, invites) and you
+  haven't read it yet, every reply also carries `"chat_pending": n`: read it with `bot.read_chat()`.
 - `-w`/`-c` take whole seconds. Create and edit files with your Edit/Write tools: shell redirects,
   heredocs, `sed -i` and `python` are blocked.
 - A loaded script stays active until you replace it, and Lua globals persist across calls. Keep shared
