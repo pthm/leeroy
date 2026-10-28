@@ -124,5 +124,6 @@ agent=$!
 
 wait $judge || true
 cat "$dir/judge.json"
+[ -n "$GO" ] || bun replay.ts "$dir" >/dev/null 2>&1 || true # team.sh builds one replay for the whole team
 exit
 }

@@ -25,6 +25,22 @@ For achievement goals and `wowdb`, also copy `Achievement.dbc Achievement_Criter
 AreaTable.dbc WorldMapOverlay.dbc Faction.dbc FactionTemplate.dbc SpellCastTimes.dbc SpellRange.dbc` into `data/dbc/` the same way and run `bun dbsetup.ts` (builds the `wowbench`
 schema: achievements, areas, spawn zones, faction hostility, spells; read by `worlddb` and `wowdb`).
 
+### Replays (optional)
+
+`modules/mod-recorder` is an AzerothCore module that logs every player's position (1/s), chat, damage, heals,
+casts, kills, deaths, levels, quests, achievements and loot to `server/env/dist/logs/recorder.jsonl`. Install it
+once and rebuild the worldserver:
+
+```sh
+cp -r modules/mod-recorder server/modules/
+docker compose -f server/docker-compose.yml -f server.override.yml build ac-worldserver && bun run server
+```
+
+`bench.sh`/`team.sh` then write `replay.html` into the run directory: a self-contained page with a terrain map
+rendered from `data/maps`, every player's route, a seek bar with deaths/levels/quests/achievements marked, and
+chat, combat and event logs synced to the playhead. By hand: `bun replay.ts runs/<id>` (or `--chars A,B --from
+<ISO> --to <ISO>`).
+
 ## Run a benchmark
 
 ```sh
