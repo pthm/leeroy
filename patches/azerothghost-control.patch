@@ -863,7 +863,7 @@ index 0000000..8bfe9b5
 +	return spells[id]
 +}
 diff --git i/bot/bot.go w/bot/bot.go
-index a749726..d6585cb 100644
+index a749726..45ecb03 100644
 --- i/bot/bot.go
 +++ w/bot/bot.go
 @@ -11,6 +11,7 @@ import (
@@ -935,7 +935,18 @@ index a749726..d6585cb 100644
  			found = true
  			b.log("Found character %s (GUID: %d, Level: %d)", ch.Name, ch.GUID, ch.Level)
  			break
-@@ -581,6 +596,7 @@ func (b *Bot) Run() BotResult {
+@@ -533,6 +548,10 @@ func (b *Bot) Run() BotResult {
+ 		charName := b.config.CharacterName
+ 		var createResult uint8
+ 		for attempt := 0; attempt < 10; attempt++ {
++			if attempt > 0 && b.config.Mode == "lua" {
++				// The harness addresses characters by name (judge, chat); a random substitute breaks it.
++				return b.fail("could not create character %s (result %d; name taken?)", charName, createResult)
++			}
+ 			if attempt > 0 {
+ 				// Generate a completely fresh unique name instead of just appending.
+ 				// This lets the process (or orchestrator on relaunch) keep trying until success.
+@@ -581,6 +600,7 @@ func (b *Bot) Run() BotResult {
  		for _, ch := range chars {
  			if strings.EqualFold(ch.Name, b.config.CharacterName) {
  				charGUID = ch.GUID
@@ -943,7 +954,7 @@ index a749726..d6585cb 100644
  				found = true
  				break
  			}
-@@ -662,6 +678,7 @@ func (b *Bot) Run() BotResult {
+@@ -662,6 +682,7 @@ func (b *Bot) Run() BotResult {
  
  	// Step 8: Initialize Lua engine
  	b.lua = luaengine.NewEngine(b)
@@ -951,7 +962,7 @@ index a749726..d6585cb 100644
  
  	// AIBundle / LuaCode / LuaScript loading (precedence: AIBundle.Main > LuaCode > LuaScript file).
  	// This enables scenario-driven custom AI as specified in the design.
-@@ -1092,8 +1109,9 @@ func (b *Bot) runAILoop(worldErrCh chan error) {
+@@ -1092,8 +1113,9 @@ func (b *Bot) runAILoop(worldErrCh chan error) {
  				// 	b.log("[DEBUG-POS] tick pos: map=%d (%.1f,%.1f,%.1f) o=%.2f", pmid, px, py, pz, po)
  				// }
  			}
@@ -963,7 +974,7 @@ index a749726..d6585cb 100644
  				elapsed := time.Since(tickStart)
  				if elapsed > 300*time.Millisecond {
  					ms := elapsed.Milliseconds()
-@@ -2425,6 +2443,10 @@ func (b *Bot) moveToPoint(x, y, z float32) {
+@@ -2425,6 +2447,10 @@ func (b *Bot) moveToPoint(x, y, z float32) {
  	var pts []navigation.Point3D
  	if b.nav != nil {
  		result, err := b.nav.FindPath(mapID, current, navigation.Point3D{X: x, Y: y, Z: z})
@@ -974,7 +985,7 @@ index a749726..d6585cb 100644
  		if err == nil && result != nil && result.Found && len(result.Points) > 1 {
  			pts = simplifyAndDensifyPath(result.Points, 3.0, 1.0)
  			// detect crazy path (common in Durotar bad navmesh)
-@@ -2435,7 +2457,9 @@ func (b *Bot) moveToPoint(x, y, z float32) {
+@@ -2435,7 +2461,9 @@ func (b *Bot) moveToPoint(x, y, z float32) {
  			}
  			// Reject huge detours (navmesh artifacts): more than 2× straight line
  			// or absurdly long paths send the bot running across the zone.
@@ -985,7 +996,7 @@ index a749726..d6585cb 100644
  				b.log("crazy path rejected (straight=%.1f path=%.1f n=%d) — direct line",
  					straight, plen, len(pts))
  				pts = simplifyAndDensifyPath([]navigation.Point3D{current, {X: x, Y: y, Z: z}}, 3.0, 1.0)
-@@ -2827,6 +2851,9 @@ func (b *Bot) SetSheathed(state uint32) error {
+@@ -2827,6 +2855,9 @@ func (b *Bot) SetSheathed(state uint32) error {
  
  func (b *Bot) MoveTo(x, y, z float32) error {
  	b.moveToPoint(x, y, z)
@@ -995,7 +1006,7 @@ index a749726..d6585cb 100644
  	return nil
  }
  
-@@ -2974,6 +3001,11 @@ func (b *Bot) GetHealth() (current, max uint32) {
+@@ -2974,6 +3005,11 @@ func (b *Bot) GetHealth() (current, max uint32) {
  }
  
  func (b *Bot) GetPower() (current, max uint32) {
@@ -1007,7 +1018,7 @@ index a749726..d6585cb 100644
  	return b.world.Power()
  }
  
-@@ -3003,6 +3035,9 @@ func (b *Bot) GetRace() uint8 {
+@@ -3003,6 +3039,9 @@ func (b *Bot) GetRace() uint8 {
  }
  
  func (b *Bot) GetPowerType() uint8 {
@@ -1017,7 +1028,7 @@ index a749726..d6585cb 100644
  	// Common power types: 0=mana, 1=rage, 2=focus, 3=energy, 6=runic power
  	// For simplicity, derive from class. Can be improved by reading UnitFieldBytes0.
  	switch b.config.Class {
-@@ -3032,9 +3067,19 @@ func (b *Bot) GetPowerType() uint8 {
+@@ -3032,9 +3071,19 @@ func (b *Bot) GetPowerType() uint8 {
  }
  
  func (b *Bot) InCombat() bool {
@@ -1037,7 +1048,7 @@ index a749726..d6585cb 100644
  func (b *Bot) IsAlive() bool {
  	h := b.world.Health()
  	mh := b.world.MaxHealth()
-@@ -3042,7 +3087,7 @@ func (b *Bot) IsAlive() bool {
+@@ -3042,7 +3091,7 @@ func (b *Bot) IsAlive() bool {
  	if h == 0 && mh == 0 {
  		return true
  	}
@@ -1046,7 +1057,7 @@ index a749726..d6585cb 100644
  		return false
  	}
  	// Also check death count - if deaths > 0 and health is still 0, we're dead
-@@ -3106,11 +3151,12 @@ func (b *Bot) worldObjToUnitInfo(obj *client.WorldObject) luaengine.UnitInfo {
+@@ -3106,11 +3155,12 @@ func (b *Bot) worldObjToUnitInfo(obj *client.WorldObject) luaengine.UnitInfo {
  		Flags:     obj.Value(client.UnitFieldFlags),
  		DynFlags:  dyn,
  		Lootable:  dyn&client.UnitDynflagLootable != 0,
@@ -1060,7 +1071,7 @@ index a749726..d6585cb 100644
  }
  
  func (b *Bot) SendCommand(command string) error {
-@@ -3147,10 +3193,9 @@ func (b *Bot) LootAll(guid uint64) error {
+@@ -3147,10 +3197,9 @@ func (b *Bot) LootAll(guid uint64) error {
  	b.lastLootAttemptAt = now
  	b.lootMu.Unlock()
  

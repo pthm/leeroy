@@ -51,6 +51,7 @@ if [ -n "$LEVEL$MONEY$START" ]; then
     [ -n "$(sql "SELECT 1 FROM characters WHERE name = '$char'")" ] && break
     sleep $((try * 5))
   done
+  [ -n "$(sql "SELECT 1 FROM characters WHERE name = '$char'")" ] || { echo "$name: character $char not created, see $ws/session.log" >&2; exit 1; }
   until [ "$(sql "SELECT online FROM characters WHERE name = '$char'")" = 0 ]; do sleep 1; done
   set -- $START
   sql "UPDATE characters SET health = 100000
