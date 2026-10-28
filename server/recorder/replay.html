@@ -5,15 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Run replay</title>
 <style>
+/* Dark by default, like WoW's own UI: class colours (white Priest, yellow Rogue) and chat colours are made for it.
+   WoW conventions: health green, mana blue, rage red, energy yellow, runic cyan (PowerBarColor); chat types and
+   item qualities use the game's colours. */
 :root {
-  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --quiet: #6b6a66; --line: #e3e1dc; --accent: #2f6fdb;
-  --death: #d6453d; --ach: #c8941a; --level: #2e9a52; --quest: #2f6fdb; --chat: #8a8883; --hp: #3fa34d; --mana: #3d7fd9;
-  --rage: #c8453d; --energy: #d9b23d;
+  --bg: #121212; --panel: #1b1b1b; --ink: #ecebe7; --quiet: #9b9a95; --line: #333230; --accent: #ffd100;
+  --death: #ff4040; --ach: #ffd100; --level: #40ff40; --quest: #ffd100; --chat: #9b9a95;
+  --hp: #00cc00; --mana: #0066ff; --rage: #ff2020; --energy: #ffff00; --runic: #00d1ff;
 }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #151514; --panel: #1f1f1d; --ink: #ecebe7; --quiet: #9b9a95; --line: #33322f; --accent: #6b9cf0;
-} }
-:root[data-theme="dark"] { --bg: #151514; --panel: #1f1f1d; --ink: #ecebe7; --quiet: #9b9a95; --line: #33322f; --accent: #6b9cf0; }
+:root[data-theme="light"] { --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --quiet: #6b6a66; --line: #e3e1dc; --accent: #2f6fdb; }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 13px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; }
 body { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
@@ -23,7 +23,7 @@ header h1 { font-size: 15px; margin: 0; font-weight: 600; }
 .chip { display: flex; align-items: center; gap: 6px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; background: transparent; color: var(--ink); font: inherit; }
 .chip[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #0006; }
-main { display: grid; grid-template-columns: 1fr 360px; min-height: 0; }
+main { display: grid; grid-template-columns: 1fr clamp(420px, 34vw, 620px); min-height: 0; }
 #mapwrap { position: relative; overflow: hidden; background: #2a2a28; cursor: grab; }
 #mapwrap:active { cursor: grabbing; }
 #map { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -80,6 +80,7 @@ footer button, footer select { font: inherit; color: var(--ink); background: var
       <button role="tab" data-tab="combat">Combat</button>
       <button role="tab" data-tab="agent">Agent</button>
       <button role="tab" data-tab="scores">Scores</button>
+      <button role="tab" data-tab="groups">Groups</button>
     </div>
     <div class="pane" id="pane"></div>
   </aside>
@@ -102,19 +103,46 @@ const fmt = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Ma
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const P = D.players, color = Object.fromEntries(P.map((p) => [p.name, p.color]));
 // a distinct colour per player (two agents of one class must not look alike); class is in the label
-const PALETTE = ["#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231", "#911eb4", "#46f0f0", "#f032e6", "#bcf60c", "#fabebe", "#008080", "#9a6324"];
-P.forEach((p, i) => { p.color = PALETTE[i % PALETTE.length]; color[p.name] = p.color; });
+// RAID_CLASS_COLORS. Several agents can share a class: each gets a number within its class (#1, #2...),
+// and #2+ draw dashed routes and chart lines so they can be told apart.
+const CLASS_COLOR = { Warrior: "#C79C6E", Paladin: "#F58CBA", Hunter: "#ABD473", Rogue: "#FFF569", Priest: "#FFFFFF",
+  "Death Knight": "#C41F3B", Shaman: "#0070DE", Mage: "#69CCF0", Warlock: "#9482C9", Druid: "#FF7D0A" };
+function styleByClass() {
+  const seen = {};
+  for (const p of P) {
+    p.color = CLASS_COLOR[p.cls] ?? "#888888"; color[p.name] = p.color;
+    p.nth = (seen[p.cls] = (seen[p.cls] ?? 0) + 1);
+    p.dash = p.nth > 1 ? [6, 4] : [];
+  }
+}
+styleByClass();
 // judge samples arrive as "score" events: {value (progress), rate, recent_rate, pace, score}
 const SCORES = {}; // name -> score events in time order
 const addScore = (e) => (SCORES[e.n] ??= []).push(e);
 D.events.filter((e) => e.ev === "score").forEach(addScore);
 const scores = (n) => SCORES[n] ?? [];
 const scoreAt = (n, t) => { const a = scores(n); let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m].t <= t) lo = m + 1; else hi = m; } return a[lo - 1] ?? null; };
+// Groups at time t, from each player's latest position sample (group id) and the latest "group" event (leader).
+function groupsAt(t) {
+  const byId = new Map(), solo = [];
+  for (const p of P) {
+    const pp = at(p, t); if (!pp) continue;
+    const g = pp.r[16] ?? 0;
+    if (!g) { solo.push({ p, pp }); continue; }
+    if (!byId.has(g)) byId.set(g, { id: g, members: [], leader: "" });
+    byId.get(g).members.push({ p, pp });
+  }
+  for (const e of D.events) { if (e.t > t) break; if (e.ev === "group" && byId.has(e.grp) && e.leader) byId.get(e.grp).leader = e.leader; }
+  return { groups: [...byId.values()].sort((a, b) => b.members.length - a.members.length), solo };
+}
 let metric = "score";
 const METRICS = { score: "score", value: "progress", pace: "pace", recent_rate: "rate /h (10 min)" };
 const CLASSES = ["", "Warrior", "Paladin", "Hunter", "Rogue", "Priest", "Death Knight", "Shaman", "Mage", "Warlock", "", "Druid"];
 const CHAT = { 1: "say", 2: "party", 3: "raid", 4: "guild", 6: "yell", 7: "whisper", 10: "emote", 17: "channel" };
-const POWER = { 0: ["mana", "--mana"], 1: ["rage", "--rage"], 3: ["energy", "--energy"], 6: ["runic", "--rage"] };
+const POWER = { 0: ["mana", "--mana"], 1: ["rage", "--rage"], 3: ["energy", "--energy"], 6: ["runic", "--runic"] };
+// WoW chat colours by CHAT_MSG type, and item quality colours
+const CHAT_COLOR = { 0: "#ffff00", 1: "#ffffff", 2: "#aaaaff", 3: "#ff7f00", 4: "#40ff40", 6: "#ff4040", 7: "#ff80ff", 9: "#ff80ff", 10: "#ff8040", 17: "#ffc0c0" };
+const QUALITY = ["#9d9d9d", "#ffffff", "#1eff00", "#0070dd", "#a335ee", "#ff8000", "#e6cc80", "#e6cc80"];
 let t = 0, playing = false, speed = 30, follow = null, tab = "players";
 
 // ---------- interpolation ----------
@@ -193,8 +221,17 @@ function drawMap() {
       }
       if (alpha > 0.5) { const pp = at(p, t); if (pp) cx.lineTo(...scr(pp.x, pp.y)); }
       cx.globalAlpha = alpha; cx.lineWidth = 2.5; cx.strokeStyle = "#000"; cx.stroke();
-      cx.lineWidth = 1.6; cx.strokeStyle = p.color; cx.stroke(); cx.globalAlpha = 1;
+      cx.setLineDash(p.dash ?? []); cx.lineWidth = 1.6; cx.strokeStyle = p.color; cx.stroke(); cx.setLineDash([]); cx.globalAlpha = 1;
     }
+  }
+  // groups: dashed line from each member to its leader
+  for (const g of groupsAt(t).groups) {
+    const head = g.members.find((m) => m.p.name === g.leader) ?? g.members[0];
+    if (head.pp.r[15] !== M.id) continue;
+    const [hx, hy] = scr(head.pp.x, head.pp.y);
+    cx.setLineDash([4, 4]); cx.lineWidth = 1.5; cx.strokeStyle = "#fffc";
+    for (const m of g.members) { if (m === head || m.pp.r[15] !== M.id) continue; const [mx, my] = scr(m.pp.x, m.pp.y); cx.beginPath(); cx.moveTo(hx, hy); cx.lineTo(mx, my); cx.stroke(); }
+    cx.setLineDash([]);
   }
   // event markers up to now
   for (const e of D.events) {
@@ -258,14 +295,15 @@ const unitName = (u) => (u ? (u.pl ? who(u.n) : esc(u.n) + (u.lvl ? ` <span clas
 function line(e) {
   switch (e.ev) {
     // server records name the speaker (n); client records are written by the listener, speaker in `from`
-    case "chat": return `${who(e.from ?? e.n)} <span class="muted">[${CHAT[e.type] ?? e.type}${e.to ? " → " + esc(e.to) : ""}]</span> ${esc(e.msg)}`;
+    case "chat": return `${who(e.from ?? e.n)} <span style="color:${CHAT_COLOR[e.type] ?? "inherit"}">[${CHAT[e.type] ?? e.type}${e.to ? " → " + esc(e.to) : ""}] ${esc(e.msg)}</span>`;
     case "death": return `${who(e.n)} was killed by ${unitName(e.killer)}`;
     case "kill": return `${who(e.n)} killed ${unitName(e.victim)}`;
     case "pvp": return `${who(e.n)} killed player ${unitName(e.victim)}`;
     case "achievement": return `${who(e.n)} earned <b>${esc(e.title)}</b> (${e.points} pts)`;
     case "level": return `${who(e.n)} reached level <b>${e.to}</b>`;
     case "quest": return `${who(e.n)} completed <b>${esc(e.title)}</b>`;
-    case "loot": return `${who(e.n)} looted ${esc(D.items[e.item] ?? e.itemName ?? "item " + e.item)}${e.count > 1 ? " ×" + e.count : ""}`;
+    case "loot": { const it = D.items[e.item] ?? e.itemInfo ?? { name: "item " + e.item, q: 1 };
+      return `${who(e.n)} looted <span style="color:${QUALITY[it.q] ?? "inherit"}">[${esc(it.name)}]</span>${e.count > 1 ? " ×" + e.count : ""}`; }
     case "zone": return `${who(e.n)} entered ${esc(D.zones[e.area] ?? D.zones[e.zone] ?? "zone " + e.zone)}`;
     case "release": return `${who(e.n)} released spirit`;
     case "resurrect": return `${who(e.n)} resurrected${e.sickness ? " (sickness)" : ""}`;
@@ -279,11 +317,13 @@ function line(e) {
     case "api": { let p = {}; try { p = JSON.parse(e.params || "{}"); } catch {}
       return `${who(e.n)} <span class="muted">${esc(e.method)}</span> <code>${esc((p.code ?? JSON.stringify({ ...p, char: undefined })).slice(0, 160))}</code>`; }
     case "script_error": return `${who(e.n)} <span style="color:var(--death)">script error ×${e.count}</span> ${esc(e.last)}`;
+    case "group": return e.grp ? `${who(e.n)} is in a group: ${(e.members ?? []).map(who).join(", ")}${e.leader ? ` <span class="muted">(leader ${esc(e.leader)})</span>` : ""}`
+      : `${who(e.n)} left their group`;
     case "money": return `${who(e.n)} ${e.delta > 0 ? "+" : ""}${e.delta}c`;
     default: return `${who(e.n)} ${esc(e.ev)}`;
   }
 }
-const KINDS = { events: ["death", "kill", "pvp", "achievement", "level", "quest", "loot", "zone", "release", "resurrect", "login", "logout", "spell"],
+const KINDS = { events: ["death", "kill", "pvp", "achievement", "level", "quest", "loot", "zone", "release", "resurrect", "login", "logout", "spell", "group"],
   chat: ["chat"], combat: ["dmg", "heal", "cast", "kill", "death", "xp"], agent: ["api", "script_error"] };
 let lastPane = "";
 function renderPane() {
@@ -299,6 +339,17 @@ function renderPane() {
         <div class="stats"><span>${r[3]}/${r[4]} hp</span><span>${r[9]} xp</span><span>${(r[10] / 100).toFixed(2)}s</span><span>${esc(D.zones[r[14]] ?? "")}</span></div>
         ${(() => { const s = scoreAt(p.name, t); return s ? `<div class="stats"><span><b>score ${s.score}</b></span><span>progress ${s.value}</span><span>pace ${s.pace}</span><span>${Math.round(s.recent_rate)}/h now</span></div>` : ""; })()}</div>`;
     }
+  } else if (tab === "groups") {
+    const { groups, solo } = groupsAt(t);
+    const row = ({ p, pp }, leader) => { const r = pp.r, st = !r[11] ? (r[12] ? "ghost" : "dead") : r[13] ? "in combat" : "";
+      return `<tr><td>${leader ? "★" : ""}</td><td><span class="dot" style="background:${p.color};display:inline-block"></span> ${who(p.name)} <span class="muted">${esc(p.cls)}</span></td>
+        <td class="num">L${r[8]}</td><td style="width:30%"><div class="bar"><div style="width:${(100 * r[3]) / Math.max(1, r[4])}%;background:var(--hp)"></div></div></td>
+        <td class="muted">${st}</td></tr>`; };
+    const spread = (m) => Math.round(Math.max(0, ...m.flatMap((a) => m.map((b) => Math.hypot(a.pp.x - b.pp.x, a.pp.y - b.pp.y)))));
+    html = (groups.map((g) => `<div class="card"><h3>Group of ${g.members.length} <span class="muted">· ${spread(g.members)} yd apart</span></h3>
+        <table class="board">${g.members.map((m) => row(m, m.p.name === g.leader)).join("")}</table></div>`).join("")
+      || `<div class="muted">No groups yet.</div>`)
+      + (solo.length ? `<div class="card"><h3>Solo <span class="muted">· ${solo.length}</span></h3><table class="board">${solo.map((m) => row(m, false)).join("")}</table></div>` : "");
   } else if (tab === "scores") {
     const rows = P.map((p) => ({ p, s: scoreAt(p.name, t) })).sort((a, b) => (b.s?.[metric] ?? -1e9) - (a.s?.[metric] ?? -1e9));
     html = `<label class="muted">Plot <select id="metric">${Object.entries(METRICS).map(([k, v]) => `<option value="${k}"${k === metric ? " selected" : ""}>${v}</option>`).join("")}</select></label>
@@ -336,7 +387,7 @@ function drawChart() {
   for (const { p, pts } of series) {
     if (!pts.length) continue;
     g.beginPath(); pts.forEach(([ms, v], i) => (i ? g.lineTo(X(ms), Y(v)) : g.moveTo(X(ms), Y(v))));
-    g.strokeStyle = p.color; g.lineWidth = follow === p.name ? 3 : 1.6; g.stroke();
+    g.setLineDash(p.dash ?? []); g.strokeStyle = p.color; g.lineWidth = follow === p.name ? 3 : 1.6; g.stroke(); g.setLineDash([]);
   }
   g.strokeStyle = css("--ink"); g.lineWidth = 1; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(X(t), 6); g.lineTo(X(t), 6 + H); g.stroke(); g.setLineDash([]);
 }
@@ -349,7 +400,7 @@ document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("cli
 try { const saved = localStorage.getItem("replay-tab"); if (saved) document.querySelector(`.tabs [data-tab="${saved}"]`)?.click(); } catch {}
 
 function renderChips() {
-  $("chips").innerHTML = P.map((p) => `<button class="chip" aria-pressed="${follow === p.name}" data-n="${esc(p.name)}"><span class="dot" style="background:${p.color}"></span>${esc(p.name)} <span class="muted">${esc(p.cls)}</span></button>`).join("");
+  $("chips").innerHTML = P.map((p) => `<button class="chip" aria-pressed="${follow === p.name}" data-n="${esc(p.name)}"><span class="dot" style="background:${p.color}"></span>${esc(p.name)} <span class="muted">${esc(p.cls)}${p.nth > 1 || P.some((q) => q !== p && q.cls === p.cls) ? " #" + p.nth : ""}</span></button>`).join("");
 }
 $("chips").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; follow = follow === c.dataset.n ? null : c.dataset.n; if (follow) view.s = Math.max(view.s, 2.5); renderChips(); drawMap(); });
 
@@ -381,7 +432,7 @@ else {
   // live: recorder events arrive over server-sent events, absolute times; the replay clock starts at D.start
   const player = (n) => {
     let p = P.find((q) => q.name === n);
-    if (!p) { p = { name: n, cls: "", color: PALETTE[P.length % PALETTE.length], track: [] }; P.push(p); color[n] = p.color; renderChips(); }
+    if (!p) { p = { name: n, cls: "", color: "#888888", track: [] }; P.push(p); styleByClass(); renderChips(); }
     return p;
   };
   let fitted = false;
@@ -391,11 +442,11 @@ else {
     if (D.chars.length && !D.chars.includes(e.n)) return;
     if (e.ev === "pos") {
       const p = player(e.n);
-      p.track.push([rel, e.x, e.y, e.hp, e.hpmax, e.pw, e.pwmax, e.pt, e.lvl, e.xp, e.money, e.alive, e.ghost, e.combat, e.zone, e.m]);
+      p.track.push([rel, e.x, e.y, e.hp, e.hpmax, e.pw, e.pwmax, e.pt, e.lvl, e.xp, e.money, e.alive, e.ghost, e.combat, e.zone, e.m, e.grp ?? 0]);
       if (!fitted || (follow === e.n && e.m !== M.id)) { M.id = e.m; }
       if (!fitted) { fitted = true; fit(); }
     } else {
-      if (e.ev === "login") { const p = player(e.n); p.cls = CLASSES[e.cls] ?? ""; renderChips(); }
+      if (e.ev === "login") { const p = player(e.n); p.cls = CLASSES[e.cls] ?? ""; styleByClass(); renderChips(); }
       D.events.push({ ...e, t: rel });
       if (e.ev === "score") addScore(D.events.at(-1));
     }

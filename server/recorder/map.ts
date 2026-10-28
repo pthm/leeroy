@@ -12,9 +12,10 @@ export type Ev = { t: number; ev: string; n?: string; [k: string]: unknown };
 export const parseLines = (text: string): Ev[] =>
   text.split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((e): e is Ev => !!e);
 
-// One position sample as the viewer stores it: [t, x, y, hp, hpmax, pw, pwmax, pt, lvl, xp, money, alive, ghost, combat, zone, map]
+// One position sample as the viewer stores it:
+// [t, x, y, hp, hpmax, pw, pwmax, pt, lvl, xp, money, alive, ghost, combat, zone, map, group id (0 = none)]
 export const trackRow = (p: Ev, t0: number) => [p.t - t0, p.x, p.y, p.hp, p.hpmax, p.pw, p.pwmax, p.pt, p.lvl, p.xp, p.money,
-  p.alive, p.ghost, p.combat, p.zone, p.m];
+  p.alive, p.ghost, p.combat, p.zone, p.m, p.grp ?? 0];
 
 export const sql = (db: string, q: string) =>
   execFileSync("docker", ["exec", "ac-database", "mysql", "-uworldreader", "-pworldreader", "-N", "-B", db, "-e", q],
@@ -49,8 +50,10 @@ export function nameUnits(events: Ev[]) {
   for (const u of refs) u.n = creatureCache.get(u.id) ?? `#${u.id}`;
 }
 
+// item id -> {name, q (quality: 0 poor ... 5 legendary)}
 export const itemNames = (ids: number[]) => (ids.length
-  ? Object.fromEntries(sql("acore_world", `SELECT entry, name FROM item_template WHERE entry IN (${ids.join(",")})`)) : {}) as Record<string, string>;
+  ? Object.fromEntries(sql("acore_world", `SELECT entry, name, Quality FROM item_template WHERE entry IN (${ids.join(",")})`)
+    .map(([id, name, q]) => [id, { name, q: +q }])) : {}) as Record<string, { name: string; q: number }>;
 
 const ramp = [[0, [86, 125, 70]], [0.35, [120, 150, 84]], [0.6, [158, 150, 104]], [0.8, [140, 120, 96]], [1, [235, 232, 225]]] as const;
 const tint = (u: number) => {

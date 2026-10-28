@@ -17,7 +17,7 @@ const start = Date.now() - sinceMin * 60_000;
 // ---------- tail the logs ----------
 const events: Ev[] = []; // everything since `start`, in arrival order
 const clients = new Set<(e: Ev) => void>();
-const items = new Map<number, string>();
+const items = new Map<number, { name: string; q: number }>();
 const offsets = new Map<string, number>(), partial = new Map<string, string>();
 function poll() {
   const fresh: Ev[] = [];
@@ -37,9 +37,9 @@ function poll() {
   fresh.sort((a, b) => a.t - b.t);
   nameUnits(fresh);
   const loot = fresh.filter((e) => e.ev === "loot" && !items.has(Number(e.item))).map((e) => Number(e.item));
-  for (const [id, name] of Object.entries(itemNames([...new Set(loot)]))) items.set(Number(id), name);
+  for (const [id, info] of Object.entries(itemNames([...new Set(loot)]))) items.set(Number(id), info);
   for (const e of fresh) {
-    if (e.ev === "loot") e.itemName = items.get(Number(e.item));
+    if (e.ev === "loot") e.itemInfo = items.get(Number(e.item));
     events.push(e);
     for (const send of clients) send(e);
   }

@@ -12,6 +12,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/pthm/wowbench/azeroth-sdk/client"
 )
 
 // Recorder is shared by all sessions in a daemon (one file).
@@ -108,6 +110,29 @@ func (b *Bot) startRecording() {
 	}
 
 	me := w.CharGUID()
+	// party changes: {grp (the server's group id, 0 = none), leader, members (names, including self)}. The server
+	// sends the list at login, before recording starts, so the current state is recorded first.
+	onGroup := func(st client.GroupState) {
+		if !st.InGroup {
+			b.Record("group", map[string]any{"grp": 0, "members": []string{}})
+			return
+		}
+		members, leader := []string{b.config.CharacterName}, ""
+		if st.LeaderGUID == me {
+			leader = b.config.CharacterName
+		}
+		for _, m := range st.Members {
+			members = append(members, m.Name)
+			if m.GUID == st.LeaderGUID {
+				leader = m.Name
+			}
+		}
+		b.Record("group", map[string]any{"grp": st.GroupGUID & 0xFFFFFFFF, "leader": leader, "members": members})
+	}
+	if w.InGroup() {
+		onGroup(w.GroupState())
+	}
+	w.AddGroupListHook(onGroup)
 	w.AddPacketHook(func(op uint16, data []byte) {
 		r := bytes.NewReader(data)
 		u32 := func() (v uint32) { binary.Read(r, binary.LittleEndian, &v); return }
@@ -191,10 +216,18 @@ func (b *Bot) startRecording() {
 				}
 				b.Record("pos", map[string]any{"m": m, "x": x, "y": y, "z": z, "o": o, "hp": hp, "hpmax": hpmax,
 					"pt": b.GetPowerType(), "pw": pw, "pwmax": pwmax, "lvl": w.PlayerLevel(), "xp": xp, "money": w.Money(),
-					"zone": 0, "alive": b01(b.IsAlive()), "ghost": b01(b.IsGhost()), "combat": b01(b.InCombat())})
+					"zone": 0, "grp": groupID(w), "alive": b01(b.IsAlive()), "ghost": b01(b.IsGhost()), "combat": b01(b.InCombat())})
 			}
 		}
 	}()
+}
+
+// groupID is the server's group id (the low half of the group GUID), 0 when not in a group.
+func groupID(w *client.WorldClient) uint64 {
+	if st := w.GroupState(); st.InGroup {
+		return st.GroupGUID & 0xFFFFFFFF
+	}
+	return 0
 }
 
 func b01(v bool) int {

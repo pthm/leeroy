@@ -1,7 +1,7 @@
 // mod-recorder: writes one JSON line per player event to a file, for replaying runs (see replay.ts).
 //   pos     every RECORDER_INTERVAL_MS (default 1000) per online player: position, health, power, level, state
 //   chat, dmg, heal, cast, kill, death, pvp, release, resurrect, level, xp, money, quest, achievement, loot,
-//   zone, spell (learned), login, logout
+//   zone, spell (learned), login, logout, group (party changes: grp, leader, members; grp 0 = left)
 // File: $RECORDER_FILE (default /azerothcore/env/dist/logs/recorder.jsonl, the host's server/env/dist/logs).
 // Units are {"id": entry (creature) or guid counter (player), "n": name, "pl": 1 if a player}.
 
@@ -10,6 +10,7 @@
 #include "DBCStructure.h"
 #include "Group.h"
 #include "Item.h"
+#include "ObjectAccessor.h"
 #include "Player.h"
 #include "QuestDef.h"
 #include "ScriptMgr.h"
@@ -127,7 +128,8 @@ public:
           << ",\"lvl\":" << uint32(p->GetLevel()) << ",\"xp\":" << p->GetUInt32Value(PLAYER_XP)
           << ",\"money\":" << p->GetMoney() << ",\"zone\":" << p->GetZoneId() << ",\"area\":" << p->GetAreaId()
           << ",\"alive\":" << (p->IsAlive() ? 1 : 0) << ",\"ghost\":" << (p->HasPlayerFlag(PLAYER_FLAGS_GHOST) ? 1 : 0)
-          << ",\"combat\":" << (p->IsInCombat() ? 1 : 0);
+          << ",\"combat\":" << (p->IsInCombat() ? 1 : 0)
+          << ",\"grp\":" << (p->GetGroup() ? p->GetGroup()->GetGUID().GetCounter() : 0);
         if (Unit* t = p->GetVictim())
             o << ",\"tgt\":" << unit(t);
         write("pos", p, o.str());
@@ -204,6 +206,49 @@ public:
     }
 };
 
+// One "group" event per online member, the same shape the SDK recorder writes: {grp, leader, members}.
+static void groupChanged(Group* g)
+{
+    std::ostringstream members;
+    bool first = true;
+    for (Group::MemberSlot const& m : g->GetMemberSlots())
+    {
+        members << (first ? "" : ",") << "\"" << esc(m.name) << "\"";
+        first = false;
+    }
+    std::string body = "\"grp\":" + std::to_string(g->GetGUID().GetCounter()) + ",\"leader\":\"" + esc(g->GetLeaderName()) +
+        "\",\"members\":[" + members.str() + "]";
+    for (Group::MemberSlot const& m : g->GetMemberSlots())
+        if (Player* p = ObjectAccessor::FindConnectedPlayer(m.guid))
+            write("group", p, body);
+}
+
+static void leftGroup(ObjectGuid guid)
+{
+    if (Player* p = ObjectAccessor::FindConnectedPlayer(guid))
+        write("group", p, "\"grp\":0,\"members\":[]");
+}
+
+class RecorderGroupScript : public GroupScript
+{
+public:
+    RecorderGroupScript() : GroupScript("RecorderGroupScript", { GROUPHOOK_ON_ADD_MEMBER, GROUPHOOK_ON_REMOVE_MEMBER,
+        GROUPHOOK_ON_CHANGE_LEADER, GROUPHOOK_ON_DISBAND }) { }
+
+    void OnAddMember(Group* g, ObjectGuid) override { groupChanged(g); }
+    void OnRemoveMember(Group* g, ObjectGuid guid, RemoveMethod, ObjectGuid, char const*) override
+    {
+        leftGroup(guid);
+        groupChanged(g);
+    }
+    void OnChangeLeader(Group* g, ObjectGuid, ObjectGuid) override { groupChanged(g); }
+    void OnDisband(Group* g) override
+    {
+        for (Group::MemberSlot const& m : g->GetMemberSlots())
+            leftGroup(m.guid);
+    }
+};
+
 class RecorderUnitScript : public UnitScript
 {
 public:
@@ -226,4 +271,5 @@ void Addmod_recorderScripts()
 {
     new RecorderPlayerScript();
     new RecorderUnitScript();
+    new RecorderGroupScript();
 }

@@ -73,7 +73,9 @@ Viewers (`server/recorder/`):
 - `bun server/recorder/movecheck.ts [log]` audits recorded movement for speed, slopes and swimming.
 
 Both viewers show a terrain map rendered from `data/maps`, every player's route, a seek bar with key events marked,
-and chat, combat, event and agent (API calls) panels synced to the playhead.
+and panels synced to the playhead: players, events, chat, combat, agent (API calls), scores (chart + leaderboard)
+and groups (current parties, leader, how spread out they are; dashed lines on the map). Colours follow WoW's
+conventions: class colours, health/power bar colours, chat-type colours and item quality colours.
 
 ## Run a task by hand
 
