@@ -83,16 +83,17 @@ func (b *Bot) setupControl() {
 		}
 		return ""
 	}
-	b.setupAgentAPI()
-	b.setupItems()
-	b.setupCombatLog()
-	b.setupTalents()
-	b.setupTrade(func(text string) { // a system message in read_chat that also wakes `wow -c`
+	b.notify = func(text string) { // a system message in read_chat that also wakes `wow -c`
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		c.chat = capAppend(c.chat, ChatMessage{Time: time.Now().UnixMilli(), GUID: "0", Text: text})
 		c.unread++
-	})
+	}
+	b.setupAgentAPI()
+	b.setupItems()
+	b.setupCombatLog()
+	b.setupTalents()
+	b.setupTrade(b.notify)
 	b.watchAreaTriggers()
 	b.startRecording()
 	e := b.lua

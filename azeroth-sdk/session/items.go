@@ -475,10 +475,33 @@ func (b *Bot) setupItems() {
 		return nil
 	})
 	// repair(npc): repair everything you wear and carry at an NPC with npc_flags 0x1000 (armorers, weaponsmiths)
+	// The server says nothing when a repair fails, so the result is checked a moment later and reported in read_chat.
 	e.RegisterFunc("repair", func(npc uint64) {
+		damaged := func() int {
+			n := 0
+			for _, it := range bagItems(w) {
+				if mx, ok := it["max_durability"].(uint32); ok && it["durability"].(uint32) < mx {
+					n++
+				}
+			}
+			return n
+		}
+		before, money := damaged(), w.Money()
 		body := binary.LittleEndian.AppendUint64(nil, npc)
 		body = binary.LittleEndian.AppendUint64(body, 0) // 0 = all items
 		w.SendPacketRaw(0x2A8, append(body, 0))          // CMSG_REPAIR_ITEM; no guild bank
+		go func() {
+			time.Sleep(1500 * time.Millisecond)
+			after, spent := damaged(), int64(money)-int64(w.Money())
+			switch {
+			case before == 0:
+				b.notify("repair: nothing needed repairing")
+			case after < before:
+				b.notify(fmt.Sprintf("repair: fixed %d item(s) for %dc; %d still damaged", before-after, spent, after))
+			default:
+				b.notify(fmt.Sprintf("repair failed: %d item(s) still damaged (stand within ~5 yd of an NPC that repairs, npc_flags 0x1000, and have enough money: you have %dc)", after, w.Money()))
+			}
+		}()
 	})
 	// broken_gear() -> equipped items at 0 durability (they give no stats; a broken weapon means no weapon skills)
 	e.RegisterFunc("broken_gear", func() []map[string]any {

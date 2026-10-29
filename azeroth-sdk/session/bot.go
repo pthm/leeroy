@@ -66,6 +66,7 @@ type Bot struct {
 	nav        navigation.Navigator
 	agent      *agentState              // Lua agent API state (cast tracking); nil outside sessions
 	playerName func(guid uint64) string // name from the session's name-query cache ("" until the server answers)
+	notify     func(text string)        // post a system message to read_chat (set by setupControl)
 	lua        *script.Engine
 
 	// Stats

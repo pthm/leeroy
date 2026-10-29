@@ -1,13 +1,16 @@
 #!/bin/sh
 # The hogger-from-1 agents again, on their existing characters (levels 6-8, gear and libraries kept, fresh
-# conversations), all moved to Goldshire and revived. 120 minutes, judge v3 (rate; quests and elite kills by difficulty).
+# conversations), all moved to Goldshire, revived and repaired. 120 minutes, judge v6 (XP per hour).
 cd "$(dirname "$0")/.." || exit 1
 chars="'Alaric','Brannoc','Corwin','Delphine','Emrys','Faelan','Gisela','Halden','Iseult','Joren'"
 sql() { docker exec ac-database mysql -uroot -ppassword -N acore_characters -e "$1" 2>/dev/null; }
-# revive ghosts while they're offline: ghost flag, Ghost aura (8326), corpse
+# a clean start while they're offline: alive (health > 0, else the login makes a ghost), no ghost flag, aura or corpse,
+# and every item at full durability (deaths in the last run left gear broken)
 sql "DELETE FROM corpse WHERE guid IN (SELECT guid FROM characters WHERE name IN ($chars));
   DELETE FROM character_aura WHERE spell = 8326 AND guid IN (SELECT guid FROM characters WHERE name IN ($chars));
-  UPDATE characters SET playerFlags = playerFlags & ~16 WHERE name IN ($chars)"
+  UPDATE characters SET playerFlags = playerFlags & ~16, health = 100000 WHERE name IN ($chars);
+  UPDATE item_instance ii JOIN acore_world.item_template it ON it.entry = ii.itemEntry SET ii.durability = it.MaxDurability
+    WHERE it.MaxDurability > 0 AND ii.owner_guid IN (SELECT guid FROM characters WHERE name IN ($chars))"
 START="-9460 70 56.6 0 12" \
 HINT="Suggested target: complete \"Wanted: Hogger\" (quest 176) in Elwynn Forest. Other players are in the area." \
 exec ./team.sh score:100000 "${MINUTES:-120}" \
