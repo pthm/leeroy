@@ -36,25 +36,30 @@ resume_one() { # <agent> <port>
   bun judge/judge.ts "$char" score:100000 --timeout "${mins}m" --resume "$dir/samples.jsonl" --samples "$dir/samples.jsonl" \
     --record "$record" --board "$team/board" > "$dir/judge.json" &
   judge=$!
+  if [ "$(jq -r .runtime "$dir/meta.json" 2>/dev/null)" = codex ]; then
+    (PATH="$root/agent/bin:$PATH" WOWBENCH_BOARD="$team/board" WOWBENCH_CHAR="$char" exec "$root/agent/codex-resume.sh" "$dir" "$ws" "$left" \
+      "$(LEFT=$left envsubst '$LEFT' < "$msg")") &
+  else
   (cd "$ws" && PATH="$root/agent/bin:$PATH" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 WOWBENCH_BOARD="$team/board" WOWBENCH_CHAR="$char" exec timeout "${left}m" claude \
-    -p "$(LEFT=$left envsubst '$LEFT' < "$msg")" --resume "$sid" \
-    --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
-    --add-dir "$repo/azeroth-sdk/client" "$repo/azeroth-sdk/session" "$repo/azeroth-sdk/script" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
-    --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(wowdb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
-      "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Bash(standings:*)" "Bash(party:*)" "Edit(./**)" --disallowedTools "Edit(~/.claude/**)" "Read(~/.claude/**)" \
-    >> "$dir/agent.jsonl" 2>&1) &
+      -p "$(LEFT=$left envsubst '$LEFT' < "$msg")" --resume "$sid" \
+      --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
+      --add-dir "$repo/azeroth-sdk/client" "$repo/azeroth-sdk/session" "$repo/azeroth-sdk/script" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
+      --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(wowdb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
+        "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Bash(standings:*)" "Bash(party:*)" "Edit(./**)" --disallowedTools "Edit(~/.claude/**)" "Read(~/.claude/**)" \
+      >> "$dir/agent.jsonl" 2>&1) &
+  fi
   agent=$!
   wait $judge || true
   cat "$dir/judge.json"
 }
 
 port=8090
-for r in "$team"/a??.record.jsonl; do
+for r in "$team"/*.record.jsonl; do
   name=$(basename "$r" .record.jsonl)
   (resume_one "$name" $port >> "$team/$name.out" 2>&1) &
   port=$((port + 1)); sleep 5 # concurrent logins time out on the auth server
 done
 wait
-n=$(ls "$team"/a??.record.jsonl | wc -l)
-for f in "$team"/a??.out; do grep '^{' "$f" | tail -n 1; done | jq -s --argjson n $n '{agents: sort_by(-(.score // .value)), faction_score: (map(.score // 0) | add), team_s: (if length == $n and all(.met) then map(.elapsed_s) | max else null end)}' | tee "$team/team.json"
+n=$(ls "$team"/*.record.jsonl | wc -l)
+for f in "$team"/*.out; do grep '^{' "$f" | tail -n 1; done | jq -s --argjson n $n '{agents: sort_by(-(.score // .value)), faction_score: (map(.score // 0) | add), team_s: (if length == $n and all(.met) then map(.elapsed_s) | max else null end)}' | tee "$team/team.json"
 bun ../server/recorder/replay.ts "$team" || true

@@ -33,7 +33,7 @@ const timeout = dur(flag("timeout", "4h")), every = dur(flag("every", "15s")), s
 const board = flag("board", ""); // dir: the latest result per character, for the agents' `standings`
 // --events <file> --role <DPS|Tank|Healer>: the character's event stream (client-side, azsdk -events); its damage
 // dealt / taken and healing done since the start go on the board. Reported, not scored.
-const eventsFile = flag("events", ""), role = flag("role", "");
+const eventsFile = flag("events", ""), role = flag("role", ""), runtime = flag("runtime", "");
 const roleStats = { damage_dealt: 0, damage_taken: 0, healing_done: 0 };
 let eventsAt = 0, eventsTail = "";
 function tallyEvents(since: number) {
@@ -119,10 +119,10 @@ for (;;) {
   if (samples) appendFileSync(samples, JSON.stringify(sample) + "\n");
   tallyEvents(start);
   if (board) writeFileSync(`${board}/${char}.json`, JSON.stringify({ char, level: round(sig.level), progress: value, ...rates, elapsed_s,
-    money: sig.money_copper, avg_item_level: sig.avg_item_level, ...(role ? { role } : {}), ...(eventsFile ? roleStats : {}) }));
+    money: sig.money_copper, avg_item_level: sig.avg_item_level, ...(role ? { role } : {}), ...(runtime ? { runtime } : {}), ...(eventsFile ? roleStats : {}) }));
   if (record) appendFileSync(record, JSON.stringify({ t: Date.now(), ev: "score", n: char, value, level, ...rates }) + "\n");
   if (value >= need || Date.now() - start > timeout) {
-    console.log(JSON.stringify({ char, goal, met: value >= need, ...sample, at: new Date().toISOString() }));
+    console.log(JSON.stringify({ char, goal, met: value >= need, ...(runtime ? { runtime } : {}), ...sample, at: new Date().toISOString() }));
     process.exit(value >= need ? 0 : 1);
   }
   await Bun.sleep(every);

@@ -20,6 +20,8 @@ body { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
 header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
 header h1 { font-size: 15px; margin: 0; font-weight: 600; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rt { font-size: 10px; padding: 1px 6px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.rt-claude { color: #d97757; } .rt-codex { color: #10a37f; }
 .chip { display: flex; align-items: center; gap: 6px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; background: transparent; color: var(--ink); font: inherit; }
 .chip[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #0006; }

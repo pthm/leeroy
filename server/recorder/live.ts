@@ -6,7 +6,7 @@
 // each agent's transcript, whose visible messages appear in the Agent tab.
 import { existsSync, openSync, readSync, statSync, closeSync, readFileSync } from "node:fs";
 import { minimapTile } from "./clientmap.ts";
-import { S, SERVER_LOG, areas, clientChatFilter, itemNames, labels, nameUnits, parseLines, renderMap, runSources, serverChat, transcriptEvents, type Ev } from "./map.ts";
+import { S, SERVER_LOG, agentMeta, areas, clientChatFilter, itemNames, labels, nameUnits, parseLines, renderMap, runSources, serverChat, transcriptEvents, type Ev } from "./map.ts";
 
 const args = process.argv.slice(2);
 const flag = (k: string) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : undefined; };
@@ -70,6 +70,7 @@ const page = () => readFileSync(new URL("replay.html", import.meta.url).pathname
   .replace("__DATA__", JSON.stringify({
     // the clock starts at the oldest event we have (not --since), so the timeline isn't mostly empty
     live: true, title: "live", start: events[0]?.t ?? Date.now(), duration: Date.now() - (events[0]?.t ?? Date.now()), chars, players: [], events: [], zones, items: {},
+    agents: agentMeta(run.transcripts),
     labels: allLabels, map: { id: 0, xMax: S * 32, yMax: S * 32, res: 2 }, // map origin at the grid corner, 2 yd/px
   }).replace(/</g, "\\u003c"));
 

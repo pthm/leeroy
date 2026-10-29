@@ -11,15 +11,32 @@ export const COLOR = ["#888", "#C79C6E", "#F58CBA", "#ABD473", "#FFF569", "#FFFF
 
 export type Ev = { t: number; ev: string; n?: string; [k: string]: unknown };
 
-// An agent transcript (Claude Code stream-json) as "say" events: only the agent's visible text messages.
+// An agent transcript as "say" events: only the agent's visible text messages. Claude Code stream-json (assistant
+// messages), or Codex --json (agent_message items, timestamped by bench.sh as they arrive).
 export const transcriptEvents = (text: string, name: string): Ev[] =>
   text.split("\n").filter(Boolean).flatMap((l) => {
-    let m: { type?: string; timestamp?: string; message?: { content?: { type: string; text?: string }[] } };
+    let m: { type?: string; timestamp?: string; message?: { content?: { type: string; text?: string }[] }; item?: { type?: string; text?: string } };
     try { m = JSON.parse(l); } catch { return []; }
-    if (m.type !== "assistant" || !m.timestamp) return [];
+    if (!m.timestamp) return [];
+    if (m.type === "item.completed" && m.item?.type === "agent_message" && m.item.text?.trim())
+      return [{ t: Date.parse(m.timestamp), ev: "say", n: name, text: m.item.text.trim() }];
+    if (m.type !== "assistant") return [];
     return (m.message?.content ?? []).filter((c) => c.type === "text" && c.text?.trim())
       .map((c) => ({ t: Date.parse(m.timestamp!), ev: "say", n: name, text: c.text!.trim() }));
   });
+
+// Who plays each character (bench.sh writes meta.json in each agent's run dir): runtime, model, spec, role.
+export type AgentMeta = { agent: string; char: string; runtime: string; model: string; spec?: string; role?: string };
+export function agentMeta(transcripts: { path: string; name: string }[]): Record<string, AgentMeta> {
+  const { existsSync, readFileSync } = require("node:fs") as typeof import("node:fs");
+  const { dirname, join } = require("node:path") as typeof import("node:path");
+  const out: Record<string, AgentMeta> = {};
+  for (const t of transcripts) {
+    const f = join(dirname(t.path), "meta.json");
+    if (existsSync(f)) try { out[t.name] = JSON.parse(readFileSync(f, "utf8")); } catch { /* being written */ }
+  }
+  return out;
+}
 
 // Everything a bench run directory has: record files, and each agent's transcript with its character name.
 // A team dir holds <agent>.record.jsonl; the agents' own run dirs (<time>-<agent>/) sit beside it.

@@ -12,7 +12,7 @@ sid=$(head -1 "$dir/agent.jsonl" | jq -r .session_id)
 acct=$(printf %s "$name" | tr -cd 'a-zA-Z0-9' | cut -c1-16)
 mins=$(sed -n 's/.*progress as much as you can in \([0-9]*\) minutes.*/\1/p' "$dir/prompt.md" | head -1)
 left=$(( ${mins:-60} - ($(date +%s) - $(cat "$team/go")) / 60 ))
-port=$(( 8090 + $(ls "$team"/a??.record.jsonl | grep -n "/$name.record.jsonl" | cut -d: -f1) - 1 ))
+port=$(( 8090 + $(ls "$team"/*.record.jsonl | grep -n "/$name.record.jsonl" | cut -d: -f1) - 1 ))
 export WOW_PORT=$port
 sql() { docker exec ac-database mysql -uroot -ppassword -N acore_characters -e "$1" 2>/dev/null; }
 pkill -f -- "-char $char " 2>/dev/null || true
@@ -20,6 +20,12 @@ until [ "$(sql "SELECT online FROM characters WHERE name = '$char'")" = 0 ]; do 
 ACCOUNT=$acct RECORD="$team/$name.record.jsonl" EVENTS="$team" nohup client/play.sh "$char" >> "$ws/session.log" 2>&1 &
 until agent/bin/wow 'return 1' 2>/dev/null | grep -q result; do sleep 1; done
 agent/bin/wow "LIB = '$ws/'; chat.join('${CHANNEL:-General - Stormwind City}', 1)" >/dev/null
+if [ "$(jq -r .runtime "$dir/meta.json" 2>/dev/null)" = codex ]; then
+  PATH="$root/agent/bin:$PATH" WOWBENCH_BOARD="$team/board" WOWBENCH_CHAR="$char" nohup "$root/agent/codex-resume.sh" "$dir" "$ws" "$left" \
+    "$(LEFT=$left envsubst '$LEFT' < "$msg")" > /dev/null 2>&1 &
+  echo "$name ($char, codex) back on port $port, $left min left"
+  exit
+fi
 cd "$ws" && PATH="$root/agent/bin:$PATH" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 WOWBENCH_BOARD="$team/board" WOWBENCH_CHAR="$char" nohup timeout "${left}m" claude \
   -p "$(LEFT=$left envsubst '$LEFT' < "$msg")" --resume "$sid" \
   --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \

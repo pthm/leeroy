@@ -6,7 +6,7 @@
 // run's judge.json (or team.json), or from --chars/--from/--to.
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CLASS, COLOR, SERVER_LOG, areas, clientChatFilter, itemNames, labels as areaLabels, nameUnits, parseLines, renderMap, runSources, serverChat, trackRow, transcriptEvents } from "./map.ts";
+import { CLASS, COLOR, SERVER_LOG, agentMeta, areas, clientChatFilter, itemNames, labels as areaLabels, nameUnits, parseLines, renderMap, runSources, serverChat, trackRow, transcriptEvents } from "./map.ts";
 
 const [dirArg, ...rest] = process.argv.slice(2);
 const flag = (k: string) => { const i = rest.indexOf(`--${k}`); return i >= 0 ? rest[i + 1] : undefined; };
@@ -72,7 +72,8 @@ const labels = areaLabels(mapId, [xMin, xMax, yMin, yMax]);
 const names = areas(mapId).names;
 const items = itemNames([...new Set(events.filter((e) => e.ev === "loot").map((e) => Number(e.item)))]);
 
-const data = { title, start: t0, duration: t1 - t0, map: { id: mapId, xMax, yMax, res, w: W, h: H }, players, events, labels, zones: Object.fromEntries(names), items };
+const data = { title, start: t0, duration: t1 - t0, map: { id: mapId, xMax, yMax, res, w: W, h: H }, players, events, labels, zones: Object.fromEntries(names), items,
+  agents: agentMeta(transcripts) };
 const html = readFileSync(new URL("replay.html", import.meta.url).pathname, "utf8")
   .replace("__TITLE__", title)
   .replace("__MAP__", `data:image/png;base64,${png.toString("base64")}`)

@@ -11,7 +11,8 @@
 # (default "General - Elwynn Forest"; real clients join their zone's General automatically).
 # $HINT: extra line appended to the task prompt. $SPEC: a key from specs.tsv (class spec, role, what to optimise, key
 # stats) for the character's identity line. $ROSTER: the other players (one per line). $NOTICE: a file whose text
-# is added to the prompt (e.g. what changed since the agent's last run). $GO: file to wait for before the judge/agent start
+# is added to the prompt (e.g. what changed since the agent's last run). $RUNTIME: claude (default: Claude Code,
+# $MODEL) or codex (Codex CLI, $CODEX_MODEL; default its configured model). $GO: file to wait for before the judge/agent start
 # (team.sh uses it to start every clock together; touches $GO.<name>.ready once the session is up).
 set -e
 { # parsed whole before running, so editing this file can't break runs in progress
@@ -112,7 +113,7 @@ agent/bin/wow "LIB = '$ws/'; chat.join('${CHANNEL:-General - Elwynn Forest}', 1)
 
 [ -z "$GO" ] || { touch "$GO.$name.ready"; until [ -e "$GO" ]; do sleep 1; done; }
 bun judge/judge.ts "$char" "$goal" --timeout "${mins}m" --samples "$dir/samples.jsonl" --record "$record" --board "$board" \
-  --events "$events/$char.events.jsonl" ${role:+--role "$role"} > "$dir/judge.json" &
+  --events "$events/$char.events.jsonl" ${role:+--role "$role"} --runtime "${RUNTIME:-claude}" > "$dir/judge.json" &
 judge=$!
 
 cat > "$dir/prompt.md" <<PROMPT
@@ -181,13 +182,45 @@ PROMPT
 
 # no auto-memory: it's keyed by the git root, so agents would share notes with each other (and with us). The env var
 # turns it off, but Claude Code still lets sessions write the memory folder, so ~/.claude is denied outright.
-(cd "$ws" && PATH="$root/agent/bin:$PATH" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 WOWBENCH_BOARD="$board" WOWBENCH_CHAR="$char" exec timeout "${mins}m" claude -p "$(cat "$root/$dir/prompt.md")" \
-  --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
-  --add-dir "$repo/azeroth-sdk/client" "$repo/azeroth-sdk/session" "$repo/azeroth-sdk/script" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
-  --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(wowdb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
-    "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Bash(standings:*)" "Bash(party:*)" "Edit(./**)" --disallowedTools "Edit(~/.claude/**)" "Read(~/.claude/**)" \
-  > "$root/$dir/agent.jsonl" 2>&1) &
-agent=$!
+case "${RUNTIME:-claude}" in
+codex)
+  # Codex: sandboxed to its workspace (writes) with network on (the session API is on localhost); its JSONL events
+  # have no timestamps, so each line is stamped as it arrives (the viewer places them on the timeline)
+  (cd "$ws" && PATH="$root/agent/bin:$PATH" WOWBENCH_BOARD="$board" WOWBENCH_CHAR="$char" timeout "${mins}m" codex exec --json \
+    --skip-git-repo-check -s workspace-write -c sandbox_workspace_write.network_access=true -c 'approval_policy="never"' \
+    -c shell_environment_policy.inherit=all ${CODEX_MODEL:+-m "$CODEX_MODEL"} -C "$ws" "$(cat "$root/$dir/prompt.md")" < /dev/null 2>&1 |
+    jq --unbuffered -cR 'fromjson? // {type: "stderr", text: .} | . + {timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))}' \
+    > "$root/$dir/agent.jsonl") &
+  agent=$!
+  trap 'kill $agent $judge $session 2>/dev/null; pkill -f -- "-C $ws " 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM ;;
+*)
+  (cd "$ws" && PATH="$root/agent/bin:$PATH" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 WOWBENCH_BOARD="$board" WOWBENCH_CHAR="$char" exec timeout "${mins}m" claude -p "$(cat "$root/$dir/prompt.md")" \
+    --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
+    --add-dir "$repo/azeroth-sdk/client" "$repo/azeroth-sdk/session" "$repo/azeroth-sdk/script" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
+    --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(wowdb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
+      "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Bash(standings:*)" "Bash(party:*)" "Edit(./**)" --disallowedTools "Edit(~/.claude/**)" "Read(~/.claude/**)" \
+    > "$root/$dir/agent.jsonl" 2>&1) &
+  agent=$! ;;
+esac
+# meta.json: who plays this character (runtime, model, spec, role), for team.json, the board and the viewer. The
+# model is what the runtime reports once it starts (Claude: its init event; Codex: its session file).
+(
+  model=""
+  for i in $(seq 1 60); do
+    case "${RUNTIME:-claude}" in
+    codex)
+      tid=$(head -5 "$dir/agent.jsonl" 2>/dev/null | jq -r 'select(.type == "thread.started") | .thread_id' | head -1)
+      [ -n "$tid" ] && f=$(ls ~/.codex/sessions/*/*/*/*"$tid".jsonl 2>/dev/null | head -1) &&
+        model=$(grep -o '"model":"[^"]*"' "$f" 2>/dev/null | head -1 | cut -d'"' -f4) ;;
+    *) model=$(head -5 "$dir/agent.jsonl" 2>/dev/null | jq -r 'select(.subtype == "init") | .model' | head -1) ;;
+    esac
+    [ -n "$model" ] && break
+    sleep 2
+  done
+  jq -n --arg a "$name" --arg c "$char" --arg rt "${RUNTIME:-claude}" --arg m "${model:-${MODEL:-${CODEX_MODEL:-default}}}" \
+    --arg sp "${spec_title:-}" --arg ro "${role:-}" \
+    '{agent: $a, char: $c, runtime: $rt, model: $m, spec: $sp, role: $ro}' > "$dir/meta.json"
+) &
 
 wait $judge || true
 cat "$dir/judge.json"
