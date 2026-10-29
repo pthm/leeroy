@@ -340,6 +340,7 @@ func (b *Bot) watchEvents() {
 func (b *Bot) stateEvents() {
 	combat, alive := b.InCombat(), b.IsAlive() && !b.IsGhost()
 	if b.wasAlive != nil {
+		b.fightTransitions(combat && !b.wasCombat, !combat && b.wasCombat, !alive && *b.wasAlive && !b.IsGhost())
 		if combat != b.wasCombat {
 			b.emit(map[bool]string{true: "combat_start", false: "combat_end"}[combat], types.None{})
 		}

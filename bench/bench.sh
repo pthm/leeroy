@@ -27,7 +27,7 @@ board="$root/$dir/board"; [ -z "$GO" ] || board="$(dirname "$GO")/board" # judge
 events="$root/$dir"; [ -z "$GO" ] || events="$(dirname "$GO")" # <char>.events.jsonl: the character's event stream for the run
 mkdir -p "$dir" "$ws"
 # refreshed each run: bench task docs, the playing guide, the SDK reference, and an example script
-cat agent/AGENTS.md ../azeroth-sdk/docs/guide.md ../azeroth-sdk/docs/runtime.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/api-reference.md ../azeroth-sdk/docs/world-data.md > "$ws/AGENTS.md"
+cat agent/AGENTS.md ../azeroth-sdk/docs/playing.md ../azeroth-sdk/docs/guide.md ../azeroth-sdk/docs/runtime.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/api-reference.md ../azeroth-sdk/docs/world-data.md > "$ws/AGENTS.md"
 cp ../azeroth-sdk/examples/lua/grind.lua "$ws/example.lua"
 [ -f "$ws/NOTES.md" ] || printf '# Notes\n\nYour own notes: what worked, what killed you, where things are. Kept between runs.\n' > "$ws/NOTES.md"
 acct=$(printf %s "$name" | tr -cd 'a-zA-Z0-9' | cut -c1-16)
@@ -123,7 +123,8 @@ GOAL: $goal_text.${HINT:+ $HINT}
 
 $score_text
 
-Read AGENTS.md first. It documents your session (wow), how to play well with the SDK (bags, vendors,
+Read AGENTS.md first. It covers playing the game well (gear, spells, combat, pulls), your session (wow), how to
+play well with the SDK (bags, vendors,
 trainers, death, other players), the runtime and the Lua API, and the world data tools: wowdb (where a quest's targets are,
 what drops an item, the nearest trainer) and worlddb (read-only SQL over the game's world database).
 Reference source (read-only): the client and its Lua bindings in $repo/azeroth-sdk (client/, session/,
@@ -140,6 +141,23 @@ HOW TO WORK
   failed task, a script asking you a question), wow events (the log), wow tasks (what each is doing). Don't end
   your session.
 - $stop_text
+
+REVIEW YOUR PLAY: be critical of how you're playing, not just of whether your script runs. Brute force (the same
+fight again and again, dying and running back, fighting with whatever you have) is the slowest way to progress.
+- Step back regularly (every 10 minutes or so, and after every death) and look at the bigger picture: what is your
+  XP rate (standings), is it rising, and how does it compare with the others? What limits you most right now:
+  your gear, untrained spells, unspent talents, the mobs you pick, your tactics in a fight, travel, or deaths?
+- Measure your play. me.status() grades your gear against your level (gear.score), lists the class spells you're
+  missing (spellbook) and your unspent talents. Every fight ends with a fight_end event: how long it took, the
+  damage you dealt and took, the abilities you used, how it ended (wow events --types fight_end). Long fights,
+  fights that use one ability, and fights that end with you near death are telling you something.
+- When something fails twice, stop and find the cause before you try again. After a death, read the summary of
+  the fight you died in and what killed you; change what led to it, not just how you recover.
+- Invest in your character: ten minutes spent upgrading a weapon, training spells or spending talents pays back
+  for the rest of the run. AGENTS.md ("Playing World of Warcraft well") explains what matters and why.
+- A group is a tool, not a fix. If you only survive in a group, your character is too weak for where you are:
+  fix that. Group up when it lets you do what you couldn't alone.
+- Keep NOTES.md honest: what worked, what didn't, why, and what you'd do differently next time.
 
 YOUR LIBRARY: your working directory is yours and persists across runs. It may be empty (apart from
 AGENTS.md, example.lua and NOTES.md) or hold scripts from your earlier runs: check with ls, reuse what's there, and

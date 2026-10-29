@@ -148,6 +148,9 @@ func (b *Bot) setupCoreAPI() {
 	e.Func("me.status", "() → Status", "a one-call snapshot: level, xp, health, power, money, where you are, state, target, attackers, nearby mobs and players, group, quests, broken gear, bag upgrades, your last minute of fighting, corpse, tasks",
 		func() types.Status { return b.snapshot() })
 
+	e.Func("me.gear", "() → Gear", "your gear graded against your level: average item level, a 0-100 score, the weakest slots, empty and broken ones", b.gear)
+	e.Func("me.spellbook", "() → Spellbook", "the class spells you could know at your level against the ones you do, and what's missing (learn them at your trainer)", b.spellbook)
+
 	// ---------- units ----------
 	dist := func(d float32) float32 {
 		if d <= 0 {
@@ -332,6 +335,7 @@ func (b *Bot) snapshot() types.Status {
 	e := b.lua
 	st.Location, _ = e.Native("me.location").(types.Location)
 	st.Movement, _ = e.Native("me.movement").(types.Movement)
+	st.Gear, st.Spellbook, st.Talents = b.gear(), b.spellbook(), unspentTalents(w)
 	if c, ok := e.Native("me.casting").(types.Casting); ok {
 		st.Casting = &c
 	}

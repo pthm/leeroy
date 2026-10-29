@@ -124,7 +124,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 |---|---|
 | `group.accept() → request` | accept a pending invite (party_invite event) |
 | `group.decline() → request` | decline a pending invite |
-| `group.info() → Group?` | your party (the others, not you); nil when you're solo |
+| `group.info() → Group?` | your party: who leads it, and each member's class, level, health, power, state and where they are (the others, not you); nil when you're solo |
 | `group.invite(name) → request` | invite a player (by exact character name) to your group: ok once the invite is sent; they answer with group.accept |
 | `group.invited_by() → string?` | who invited you, nil if no invite is pending |
 | `group.leave() → request` | leave your group |
@@ -164,6 +164,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `me.alive() → bool` | false while dead or a ghost |
 | `me.casting() → Casting?` | the cast or channel in progress (from the moment you send it); nil when idle. Moving interrupts it |
 | `me.class() → string` | warrior, paladin, hunter, rogue, priest, death_knight, shaman, mage, warlock, druid |
+| `me.gear() → Gear` | your gear graded against your level: average item level, a 0-100 score, the weakest slots, empty and broken ones |
 | `me.ghost() → bool` | released and walking back as a ghost |
 | `me.guid() → GUID` | your GUID |
 | `me.health() → Resource` | your health |
@@ -179,6 +180,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `me.power() → Resource` | your mana, rage, energy or runic power |
 | `me.race() → string` | human, dwarf, night_elf, gnome, draenei, orc, undead, tauren, troll, blood_elf |
 | `me.resting() → bool` | in an inn or city: rested XP builds up |
+| `me.spellbook() → Spellbook` | the class spells you could know at your level against the ones you do, and what's missing (learn them at your trainer) |
 | `me.stance() → number` | warrior stance / druid form index (0 = none) |
 | `me.stats() → Stats?` | your character sheet: what gear, buffs and talents add up to |
 | `me.status() → Status` | a one-call snapshot: level, xp, health, power, money, where you are, state, target, attackers, nearby mobs and players, group, quests, broken gear, bag upgrades, your last minute of fighting, corpse, tasks |
@@ -598,15 +600,31 @@ Everything in [Item](#item), plus:
 | Field | Type | |
 |---|---|---|
 | `leader` | string |  |
+| `me_leader` | bool | you lead the group |
 | `members` | GroupMember[] | the others, not you |
 
 ### GroupMember
+
+GroupMember is a party member as the real client's party frames show them: health, power, level and where they are come from the server's party updates even when they're out of sight.
 
 | Field | Type | |
 |---|---|---|
 | `name` | string |  |
 | `guid` | GUID |  |
+| `leader` | bool |  |
 | `online` | bool |  |
+| `class?` | string |  |
+| `level?` | number |  |
+| `health` | Resource |  |
+| `power` | Resource |  |
+| `alive` | bool |  |
+| `ghost?` | bool |  |
+| `in_combat?` | bool | only known while they're in sight |
+| `zone?` | string |  |
+| `position?` | Position | x, y (and z while in sight) |
+| `distance?` | number | yards from you |
+| `in_sight` | bool | close enough to see (about 100 yd): units.get works on them |
+| `target?` | GUID | what they're targeting (in sight only) |
 
 ### Trade
 
@@ -694,6 +712,9 @@ Status is a one-call snapshot of your character (me.status, `wow status`).
 | `in_combat` | bool |  |
 | `resting` | bool |  |
 | `movement` | Movement | who's moving you (free, in_flight, feared...) |
+| `gear` | Gear |  |
+| `spellbook` | Spellbook |  |
+| `unspent_talents` | number | talent points to spend (talents.list, talents.learn) |
 | `casting?` | Casting |  |
 | `free_slots` | number |  |
 | `stats?` | Stats |  |
@@ -744,6 +765,48 @@ TaxiNode is a flight point (TaxiNodes.dbc).
 | `known` | bool | you've discovered it (talk to its flight master once). Only accurate after you've opened a flight map (flights.map) |
 | `cost?` | number | copper from the flight master you asked (flights.map), over known nodes |
 | `hops?` | number | stops on the way (1 = direct) |
+
+### Gear
+
+Gear grades what you wear against your level, from the game's own numbers: item level, quality, durability.
+
+| Field | Type | |
+|---|---|---|
+| `avg_item_level` | number | over the 17 slots that count (not shirt or tabard); empty = 0 |
+| `score` | number | 0-100: how well your gear suits your level. Each slot: its item level against your level, times its quality (poor 0.6, common 0.85, uncommon 1, rare 1.1, epic 1.2), capped at 1; empty or broken = 0. The main-hand weapon weighs most, then chest, legs, head, shoulders |
+| `grade` | string | poor (under 40), weak (40-64), ok (65-84), good (85+) |
+| `weapon?` | Item | your main hand |
+| `weakest` | GearSlot[] | the slots holding you back most |
+| `empty` | string[] |  |
+| `broken` | string[] |  |
+
+### GearSlot
+
+| Field | Type | |
+|---|---|---|
+| `slot` | string |  |
+| `item?` | string |  |
+| `item_level` | number |  |
+| `score` | number | 0-100 |
+
+### Spellbook
+
+Spellbook: the class spells you could know at your level (Spell.dbc and SkillLineAbility.dbc, as the real client's spellbook knows them) against the ones you do.
+
+| Field | Type | |
+|---|---|---|
+| `known` | number |  |
+| `total` | number |  |
+| `missing` | MissingSpell[] | learn them at your class trainer (some come from class quests, e.g. stances) |
+
+### MissingSpell
+
+| Field | Type | |
+|---|---|---|
+| `id` | number |  |
+| `name` | string |  |
+| `rank?` | string |  |
+| `level` | number |  |
 
 ### MobSummary
 

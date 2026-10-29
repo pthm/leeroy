@@ -297,14 +297,35 @@ export interface Talent {
 
 export interface Group {
   leader: string;
+  /** you lead the group */
+  me_leader: boolean;
   /** the others, not you */
   members: GroupMember[];
 }
 
+/** GroupMember is a party member as the real client's party frames show them: health, power, level and where they are come from the server's party updates even when they're out of sight. */
 export interface GroupMember {
   name: string;
   guid: Guid | null;
+  leader: boolean;
   online: boolean;
+  class?: string;
+  level?: number;
+  health: Resource;
+  power: Resource;
+  alive: boolean;
+  ghost?: boolean;
+  /** only known while they're in sight */
+  in_combat?: boolean;
+  zone?: string;
+  /** x, y (and z while in sight) */
+  position?: Position;
+  /** yards from you */
+  distance?: number;
+  /** close enough to see (about 100 yd): units.get works on them */
+  in_sight: boolean;
+  /** what they're targeting (in sight only) */
+  target?: Guid | null;
 }
 
 export interface Trade {
@@ -382,6 +403,10 @@ export interface Status {
   resting: boolean;
   /** who's moving you (free, in_flight, feared...) */
   movement: Movement;
+  gear: Gear;
+  spellbook: Spellbook;
+  /** talent points to spend (talents.list, talents.learn) */
+  unspent_talents: number;
   casting?: Casting;
   free_slots: number;
   stats?: Stats;
@@ -435,6 +460,45 @@ export interface TaxiNode {
   cost?: number;
   /** stops on the way (1 = direct) */
   hops?: number;
+}
+
+/** Gear grades what you wear against your level, from the game's own numbers: item level, quality, durability. */
+export interface Gear {
+  /** over the 17 slots that count (not shirt or tabard); empty = 0 */
+  avg_item_level: number;
+  /** 0-100: how well your gear suits your level. Each slot: its item level against your level, times its quality (poor 0.6, common 0.85, uncommon 1, rare 1.1, epic 1.2), capped at 1; empty or broken = 0. The main-hand weapon weighs most, then chest, legs, head, shoulders */
+  score: number;
+  /** poor (under 40), weak (40-64), ok (65-84), good (85+) */
+  grade: string;
+  /** your main hand */
+  weapon?: Item;
+  /** the slots holding you back most */
+  weakest: GearSlot[];
+  empty: string[];
+  broken: string[];
+}
+
+export interface GearSlot {
+  slot: string;
+  item?: string;
+  item_level: number;
+  /** 0-100 */
+  score: number;
+}
+
+/** Spellbook: the class spells you could know at your level (Spell.dbc and SkillLineAbility.dbc, as the real client's spellbook knows them) against the ones you do. */
+export interface Spellbook {
+  known: number;
+  total: number;
+  /** learn them at your class trainer (some come from class quests, e.g. stances) */
+  missing: MissingSpell[];
+}
+
+export interface MissingSpell {
+  id: number;
+  name: string;
+  rank?: string;
+  level: number;
 }
 
 export interface MobSummary {

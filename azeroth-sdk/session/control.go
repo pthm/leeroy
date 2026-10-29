@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -51,14 +52,78 @@ type controlState struct {
 	packets   []RawPacket
 	watched   map[uint16]bool
 	names     map[uint64]string
+	classes   map[uint64]uint8 // from name queries
+	members   map[uint64]*memberStats
 	invitedBy string // pending group invite
+}
+
+// memberStats: a party member as SMSG_PARTY_MEMBER_STATS(_FULL) describes them (sent even when out of sight)
+type memberStats struct {
+	status                 uint16 // 1 online, 4 dead, 8 ghost
+	hp, maxHP              uint32
+	powerType              uint8
+	power, maxPower, level uint16
+	zone                   uint16
+	x, y                   int16
+	seen                   bool
+}
+
+const (
+	smsgPartyMemberStats     = 0x07E
+	smsgPartyMemberStatsFull = 0x2F2
+)
+
+// parsePartyStats reads the fields up to the position (auras and pet data after it aren't needed).
+func (c *controlState) parsePartyStats(full bool, data []byte) {
+	r := bytes.NewReader(data)
+	if full {
+		r.ReadByte()
+	}
+	guid := readPackedGUID(r)
+	var mask uint32
+	binary.Read(r, binary.LittleEndian, &mask)
+	m := c.members[guid]
+	if m == nil {
+		m = &memberStats{}
+		c.members[guid] = m
+	}
+	m.seen = true
+	rd := func(v any) { binary.Read(r, binary.LittleEndian, v) }
+	if mask&0x1 != 0 {
+		rd(&m.status)
+	}
+	if mask&0x2 != 0 {
+		rd(&m.hp)
+	}
+	if mask&0x4 != 0 {
+		rd(&m.maxHP)
+	}
+	if mask&0x8 != 0 {
+		rd(&m.powerType)
+	}
+	if mask&0x10 != 0 {
+		rd(&m.power)
+	}
+	if mask&0x20 != 0 {
+		rd(&m.maxPower)
+	}
+	if mask&0x40 != 0 {
+		rd(&m.level)
+	}
+	if mask&0x80 != 0 {
+		rd(&m.zone)
+	}
+	if mask&0x100 != 0 {
+		rd(&m.x)
+		rd(&m.y)
+	}
 }
 
 //go:embed act.lua
 var actLua string // the built-in act library and me.status() (Lua, on top of the API)
 
 func (b *Bot) setupControl() {
-	c := &controlState{watched: map[uint16]bool{}, names: map[uint64]string{}}
+	c := &controlState{watched: map[uint16]bool{}, names: map[uint64]string{}, classes: map[uint64]uint8{}, members: map[uint64]*memberStats{}}
 	w := b.world
 	w.AddPacketHook(func(op uint16, data []byte) { c.onPacket(b, op, data) })
 
@@ -84,29 +149,73 @@ func (b *Bot) setupControl() {
 	b.setupTalents()
 	b.setupTrade()
 	b.setupTravel()
+	b.setupFights()
 	b.watchAreaTriggers()
 	b.watchEvents()
 	b.startRecording()
 	e := b.lua
 
 	// ---------- group ----------
-	e.Func("group.info", "() → Group?", "your party (the others, not you); nil when you're solo", func() any {
-		st := w.GroupState()
-		if !st.InGroup {
-			return nil
-		}
-		g := types.Group{Members: []types.GroupMember{}}
-		if st.LeaderGUID == w.CharGUID() {
-			g.Leader = b.config.CharacterName
-		}
-		for _, m := range st.Members {
-			g.Members = append(g.Members, types.GroupMember{Name: m.Name, GUID: types.GUID(m.GUID), Online: m.Online != 0})
-			if m.GUID == st.LeaderGUID {
-				g.Leader = m.Name
+	e.Func("group.info", "() → Group?", "your party: who leads it, and each member's class, level, health, power, state and where they are (the others, not you); nil when you're solo",
+		func() any {
+			st := w.GroupState()
+			if !st.InGroup {
+				return nil
 			}
-		}
-		return g
-	})
+			me := w.CharGUID()
+			g := types.Group{Members: []types.GroupMember{}, MeLeader: st.LeaderGUID == me}
+			if g.MeLeader {
+				g.Leader = b.config.CharacterName
+			}
+			mx, my, mz, _, mapID := w.Position()
+			names := areaNames()
+			for _, m := range st.Members {
+				gm := types.GroupMember{Name: m.Name, GUID: types.GUID(m.GUID), Leader: m.GUID == st.LeaderGUID, Online: m.Online != 0, Alive: true}
+				if gm.Leader {
+					g.Leader = m.Name
+				}
+				c.mu.Lock()
+				ms, cls := c.members[m.GUID], c.classes[m.GUID]
+				var stats memberStats
+				if ms != nil {
+					stats = *ms
+				}
+				c.mu.Unlock()
+				if cls == 0 && b.playerName != nil {
+					b.playerName(m.GUID) // asks the server (name, race, class) if we haven't yet
+				}
+				if stats.seen {
+					gm.Level, gm.Online = uint32(stats.level), stats.status&1 != 0
+					gm.Alive, gm.Ghost = stats.status&0xC == 0, stats.status&8 != 0
+					gm.Health = types.Resource{Current: stats.hp, Max: stats.maxHP}
+					gm.Power = types.Resource{Current: uint32(stats.power), Max: uint32(stats.maxPower), Type: name(powerNames, stats.powerType)}
+					gm.Zone = names[uint32(stats.zone)]
+					if stats.x != 0 || stats.y != 0 {
+						gm.Position = &types.Position{X: float64(stats.x), Y: float64(stats.y), Map: mapID}
+						d := math.Round(math.Hypot(float64(stats.x)-float64(mx), float64(stats.y)-float64(my)))
+						gm.Distance = &d
+					}
+				}
+				if o := w.GetObject(m.GUID); o != nil { // in sight: exact
+					u := b.worldObjToUnitInfo(o)
+					gm.InSight, gm.Level, gm.Alive = true, u.Level, u.IsAlive
+					gm.Health = types.Resource{Current: u.Health, Max: u.MaxHealth}
+					gm.InCombat, gm.Target = u.Flags&0x80000 != 0, types.GUID(u.Target)
+					gm.Position = &types.Position{X: round1(u.PosX), Y: round1(u.PosY), Z: round1(u.PosZ), Map: mapID}
+					d := math.Round(math.Sqrt(float64((u.PosX-mx)*(u.PosX-mx)+(u.PosY-my)*(u.PosY-my)+(u.PosZ-mz)*(u.PosZ-mz)))*10) / 10
+					gm.Distance = &d
+					b0 := o.Value(fieldUnitBytes0)
+					cls = uint8(b0 >> 8 & 0xFF)
+					pt := uint16(b0 >> 24 & 0xFF)
+					gm.Power = types.Resource{Current: o.Value(client.UnitFieldPower1 + pt), Max: o.Value(client.UnitFieldMaxPower1 + pt), Type: name(powerNames, uint8(pt))}
+				}
+				if cls != 0 {
+					gm.Class = name(classNames, cls)
+				}
+				g.Members = append(g.Members, gm)
+			}
+			return g
+		})
 	e.Func("group.invite", "(name) → request", "invite a player (by exact character name) to your group: ok once the invite is sent; they answer with group.accept", func(name string) map[string]any {
 		args := map[string]any{"name": name}
 		if err := w.GroupInvite(name); err != nil {
@@ -253,7 +362,15 @@ func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
 		guid := readPackedGUID(r)
 		if found, _ := r.ReadByte(); found == 0 {
 			c.names[guid] = readCString(r)
+			readCString(r) // realm
+			r.ReadByte()   // race
+			r.ReadByte()   // gender
+			if cls, err := r.ReadByte(); err == nil {
+				c.classes[guid] = cls
+			}
 		}
+	case smsgPartyMemberStats, smsgPartyMemberStatsFull:
+		c.parsePartyStats(op == smsgPartyMemberStatsFull, data)
 	case smsgMessageChat, smsgGMMessageChat:
 		if m, guid, ok := parseChat(op, data); ok && (guid != w.CharGUID() || m.Type == 8 || m.Type == 9) {
 			if m.From == "" && guid != 0 {

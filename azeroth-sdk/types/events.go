@@ -143,6 +143,27 @@ type Answer struct {
 	Choice string `json:"choice"`
 }
 
+// FightSummary: one fight, from entering combat to leaving it (or dying).
+type FightSummary struct {
+	Outcome       string         `json:"outcome" doc:"won (you killed something and left combat), died, or ended (left combat without a kill: it fled, evaded or you got away)"`
+	Seconds       float64        `json:"seconds"`
+	Enemies       []UnitRef      `json:"enemies" doc:"everything that hit you or that you hit"`
+	Kills         []UnitRef      `json:"kills"`
+	DamageDealt   uint32         `json:"damage_dealt"`
+	DamageTaken   uint32         `json:"damage_taken"`
+	HealingDone   uint32         `json:"healing_done"`
+	HealingTaken  uint32         `json:"healing_taken"`
+	DPS           float64        `json:"dps" doc:"damage dealt per second of the fight"`
+	HealthStart   float64        `json:"health_start" doc:"fraction 0-1"`
+	HealthEnd     float64        `json:"health_end"`
+	PowerStart    float64        `json:"power_start" doc:"fraction 0-1 (mana, rage, energy)"`
+	PowerEnd      float64        `json:"power_end"`
+	XP            uint32         `json:"xp"`
+	Abilities     map[string]int `json:"abilities" doc:"casts that went off, by spell"`
+	FailedCasts   map[string]int `json:"failed_casts,omitempty" doc:"by reason (out_of_range, no_power, not_ready...)"`
+	SwingsRefused int            `json:"swings_refused,omitempty" doc:"melee swings the server refused (not_in_range, bad_facing)"`
+}
+
 type None struct{}
 
 // EventType describes one event type for the generated references.

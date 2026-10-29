@@ -457,7 +457,9 @@ type spellRec struct {
 	PowerType        uint32  `json:"power_type"`
 	Cost             uint32  `json:"cost"`    // rage/runic are x10, as in get_power()
 	CastMS           uint32  `json:"cast_ms"` // base cast time (0 = instant)
-	Range            float32 `json:"range"`   // max range against hostile targets, yards (melee spells ~5)
+	Level            uint32  `json:"level"`   // the level you can learn it at (base level)
+	attrs            uint32  // Attributes (passive 0x40, hidden 0x80)
+	Range            float32 `json:"range"` // max range against hostile targets, yards (melee spells ~5)
 }
 
 var (
@@ -491,7 +493,7 @@ func loadSpells() {
 			// field indices per AzerothCore DBCStructure.h SpellEntry
 			spells[f(0)] = &spellRec{Name: str(f(136)), Rank: str(f(153)), Category: f(1), Cooldown: f(29),
 				CategoryCooldown: f(30), GCDCategory: f(205), GCD: f(206), PowerType: f(41), Cost: f(42),
-				Range: ranges[f(46)], CastMS: castTimes[f(28)]}
+				Range: ranges[f(46)], CastMS: castTimes[f(28)], Level: f(38), attrs: f(4)}
 		}
 	})
 }

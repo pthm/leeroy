@@ -280,14 +280,30 @@ type Talents struct {
 // ---------- others ----------
 
 type Group struct {
-	Leader  string        `json:"leader"`
-	Members []GroupMember `json:"members" doc:"the others, not you"`
+	Leader   string        `json:"leader"`
+	MeLeader bool          `json:"me_leader" doc:"you lead the group"`
+	Members  []GroupMember `json:"members" doc:"the others, not you"`
 }
 
+// GroupMember is a party member as the real client's party frames show them: health, power, level and where they
+// are come from the server's party updates even when they're out of sight.
 type GroupMember struct {
-	Name   string `json:"name"`
-	GUID   GUID   `json:"guid"`
-	Online bool   `json:"online"`
+	Name     string    `json:"name"`
+	GUID     GUID      `json:"guid"`
+	Leader   bool      `json:"leader"`
+	Online   bool      `json:"online"`
+	Class    string    `json:"class,omitempty"`
+	Level    uint32    `json:"level,omitempty"`
+	Health   Resource  `json:"health"`
+	Power    Resource  `json:"power"`
+	Alive    bool      `json:"alive"`
+	Ghost    bool      `json:"ghost,omitempty"`
+	InCombat bool      `json:"in_combat,omitempty" doc:"only known while they're in sight"`
+	Zone     string    `json:"zone,omitempty"`
+	Position *Position `json:"position,omitempty" doc:"x, y (and z while in sight)"`
+	Distance *float64  `json:"distance,omitempty" doc:"yards from you"`
+	InSight  bool      `json:"in_sight" doc:"close enough to see (about 100 yd): units.get works on them"`
+	Target   GUID      `json:"target,omitempty" doc:"what they're targeting (in sight only)"`
 }
 
 type TradeSide struct {
@@ -380,6 +396,39 @@ type TaskInfo struct {
 	Error      string `json:"error,omitempty"`
 }
 
+// Gear grades what you wear against your level, from the game's own numbers: item level, quality, durability.
+type Gear struct {
+	AvgItemLevel float64    `json:"avg_item_level" doc:"over the 17 slots that count (not shirt or tabard); empty = 0"`
+	Score        int        `json:"score" doc:"0-100: how well your gear suits your level. Each slot: its item level against your level, times its quality (poor 0.6, common 0.85, uncommon 1, rare 1.1, epic 1.2), capped at 1; empty or broken = 0. The main-hand weapon weighs most, then chest, legs, head, shoulders"`
+	Grade        string     `json:"grade" doc:"poor (under 40), weak (40-64), ok (65-84), good (85+)"`
+	Weapon       *Item      `json:"weapon,omitempty" doc:"your main hand"`
+	Weakest      []GearSlot `json:"weakest" doc:"the slots holding you back most"`
+	Empty        []string   `json:"empty"`
+	Broken       []string   `json:"broken"`
+}
+
+type GearSlot struct {
+	Slot  string `json:"slot"`
+	Item  string `json:"item,omitempty"`
+	Level uint32 `json:"item_level"`
+	Score int    `json:"score" doc:"0-100"`
+}
+
+// Spellbook: the class spells you could know at your level (Spell.dbc and SkillLineAbility.dbc, as the real
+// client's spellbook knows them) against the ones you do.
+type Spellbook struct {
+	Known   int            `json:"known"`
+	Total   int            `json:"total"`
+	Missing []MissingSpell `json:"missing" doc:"learn them at your class trainer (some come from class quests, e.g. stances)"`
+}
+
+type MissingSpell struct {
+	ID    uint32 `json:"id"`
+	Name  string `json:"name"`
+	Rank  string `json:"rank,omitempty"`
+	Level uint32 `json:"level"`
+}
+
 type MobSummary struct {
 	Count    int    `json:"count" doc:"hostile creatures within 30 yd, at most 5 levels below you"`
 	MaxLevel uint32 `json:"max_level"`
@@ -403,6 +452,9 @@ type Status struct {
 	InCombat    bool         `json:"in_combat"`
 	Resting     bool         `json:"resting"`
 	Movement    Movement     `json:"movement" doc:"who's moving you (free, in_flight, feared...)"`
+	Gear        Gear         `json:"gear"`
+	Spellbook   Spellbook    `json:"spellbook"`
+	Talents     uint32       `json:"unspent_talents" doc:"talent points to spend (talents.list, talents.learn)"`
 	Casting     *Casting     `json:"casting,omitempty"`
 	FreeSlots   int          `json:"free_slots"`
 	Stats       *Stats       `json:"stats,omitempty"`
