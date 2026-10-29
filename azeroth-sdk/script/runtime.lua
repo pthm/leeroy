@@ -13,6 +13,38 @@ do
   end
 end
 
+-- pcall / xpcall that can wait: gopher-lua can't yield across a native pcall, so inside a task the protected call
+-- runs as a nested coroutine whose waits are passed up to the scheduler.
+do
+  local raw_pcall, raw_xpcall = pcall, xpcall
+  local create, resume, status, yield = coroutine.create, coroutine.resume, coroutine.status, coroutine.yield
+  local function run(f, handler, ...)
+    local co = create(f)
+    task._adopt(co)
+    local res = { resume(co, ...) }
+    while true do
+      if not res[1] then
+        task._release(co)
+        if handler then return false, handler(res[2]) end
+        return false, res[2]
+      end
+      if status(co) == "dead" then
+        task._release(co)
+        return true, unpack(res, 2)
+      end
+      res = { resume(co, yield(unpack(res, 2))) } -- f waited: wait in the task, then carry on
+    end
+  end
+  function pcall(f, ...)
+    if not task.current() then return raw_pcall(f, ...) end
+    return run(f, nil, ...)
+  end
+  function xpcall(f, handler, ...)
+    if not task.current() then return raw_xpcall(f, handler, ...) end
+    return run(f, handler, ...)
+  end
+end
+
 -- ask(question, options, {default=, timeout=}) -> choice, "answered"|"timeout"
 -- From a task: emits an "attention" event and waits for the agent's answer(id, choice). id is the event's seq.
 function ask(question, options, opts)

@@ -650,7 +650,7 @@ func (e *Engine) runTasks() {
 func (e *Engine) resume(t *Task, args []lua.LValue) {
 	t.State, t.wait = "running", waitCond{}
 	e.cur = t
-	st, err, _ := e.L.Resume(t.co, t.fn, args...)
+	st, err := e.safeResume(t, args)
 	e.cur = nil
 	switch {
 	case err != nil:
@@ -665,6 +665,18 @@ func (e *Engine) resume(t *Task, args []lua.LValue) {
 			t.State = "waiting"
 		}
 	}
+}
+
+// safeResume resumes a task's coroutine; a Lua VM panic (e.g. yielding where gopher-lua can't) fails that task
+// instead of taking the whole session down.
+func (e *Engine) safeResume(t *Task, args []lua.LValue) (st lua.ResumeState, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			st, err = lua.ResumeError, fmt.Errorf("%v", r)
+		}
+	}()
+	st, err, _ = e.L.Resume(t.co, t.fn, args...)
+	return st, err
 }
 
 func (e *Engine) finish(t *Task) {
@@ -819,6 +831,21 @@ func (e *Engine) registerRuntime() {
 		"status": func(L *lua.LState) int {
 			if t := e.taskOf(L); t != nil {
 				t.Status = L.OptString(1, "")
+			}
+			return 0
+		},
+		// task._adopt(co) / task._release(co): a coroutine run inside a task (runtime.lua's pcall) waits on the
+		// task's behalf
+		"_adopt": func(L *lua.LState) int {
+			if t := e.taskOf(L); t != nil {
+				e.byThread[L.CheckThread(1)] = t
+			}
+			return 0
+		},
+		"_release": func(L *lua.LState) int {
+			co := L.CheckThread(1)
+			if t := e.byThread[co]; t != nil && t.co != co {
+				delete(e.byThread, co)
 			}
 			return 0
 		},

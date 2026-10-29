@@ -39,16 +39,17 @@ type pending struct {
 }
 
 type Requests struct {
-	mu      sync.Mutex
-	bus     *Bus
-	next    int
-	pending map[int]*pending
-	done    map[int]map[string]any
-	order   []int
+	mu       sync.Mutex
+	bus      *Bus
+	next     int
+	pending  map[int]*pending
+	done     map[int]map[string]any
+	order    []int
+	lastFail map[string]time.Time // op + code -> when an instant failure was last logged
 }
 
 func NewRequests(bus *Bus) *Requests {
-	r := &Requests{bus: bus, pending: map[int]*pending{}, done: map[int]map[string]any{}}
+	r := &Requests{bus: bus, pending: map[int]*pending{}, done: map[int]map[string]any{}, lastFail: map[string]time.Time{}}
 	bus.Listen(r.onEvent)
 	return r
 }
@@ -68,9 +69,21 @@ func (r *Requests) Start(s Spec) map[string]any {
 
 // Now resolves a request immediately and returns its result. The caller has the result in hand, so only a failure
 // becomes a "result" event (instant oks would flood the log).
+// A failure repeated within 10 s (same op and code: a script retrying every tick) is logged once.
 func (r *Requests) Now(s Spec, o *Outcome) map[string]any {
 	h := r.Start(s)
-	return r.resolve(h["id"].(int), o, !o.OK)
+	emit := !o.OK
+	if emit {
+		key := s.Op + " " + o.Code
+		r.mu.Lock()
+		if time.Since(r.lastFail[key]) < 10*time.Second {
+			emit = false
+		} else {
+			r.lastFail[key] = time.Now()
+		}
+		r.mu.Unlock()
+	}
+	return r.resolve(h["id"].(int), o, emit)
 }
 
 // Resolve ends a pending request with o and emits the "result" event. Resolving twice is a no-op.

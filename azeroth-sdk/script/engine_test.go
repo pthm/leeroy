@@ -58,6 +58,16 @@ func TestRuntime(t *testing.T) {
 	if v, _ := e.Eval(`return t.empty()`); fmt.Sprint(v) != "[]" {
 		t.Fatalf("empty list: %#v", v)
 	}
+	// waiting inside pcall (the bug that crashed sessions), and a failing task never takes the engine down
+	e.Eval(`pc = {} task.spawn("pc", function()
+		local ok, v = pcall(function() wait(0.01) return 42 end) pc.a = ok and v
+		local ok2, err = pcall(function() wait(0.01) error("boom") end) pc.b = (not ok2) and tostring(err):find("boom") ~= nil
+		local ok3, h = xpcall(function() wait(0.01) error("x") end, function(m) return "handled" end) pc.c = h
+	end)`)
+	tick(e, 10)
+	if v, _ := e.Eval(`return pc.a, pc.b, pc.c`); fmt.Sprint(v) != "[42 true handled]" {
+		t.Fatalf("pcall in task: %v", v)
+	}
 	if _, err := e.Eval(`wait(1)`); err == nil {
 		t.Fatal("wait outside a task should fail")
 	}
