@@ -485,7 +485,7 @@ type Result struct {
 	Op      string         `json:"op" doc:"the function, e.g. spells.cast"`
 	Pending bool           `json:"pending,omitempty" doc:"not resolved yet: await it, or result(id) later"`
 	OK      bool           `json:"ok"`
-	Data    any            `json:"data,omitempty" doc:"the op's result type (lua-api.md)"`
+	Data    any            `json:"data,omitempty" doc:"the op's result type (Action results)"`
 	Error   *Error         `json:"error,omitempty"`
 	Args    map[string]any `json:"args,omitempty"`
 	MS      int64          `json:"ms,omitempty" doc:"how long it took"`

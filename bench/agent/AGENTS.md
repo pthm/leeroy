@@ -1,95 +1,79 @@
 # Playing WoW as an agent
 
-You control one World of Warcraft (3.3.5a) character on a local AzerothCore server. The character stays
-logged in for your whole run, in a **session**. You can query and act on it live, and you load **Lua
-scripts** into it that keep playing while you think. Your prompt says what you're scored on (reaching a goal
-such as `level:10` fast, or making as much progress as you can in the time), so build up scripts that get you there
-and reuse them.
+You control one World of Warcraft (3.3.5a) character on a local AzerothCore server. The character stays logged in
+for the whole run in a **session**: a game client that runs **Lua scripts**. Scripts play the character; you
+write them, start them, watch what happens and change them. With no script running, the character does nothing.
 
-## Your workspace and session
+## Your files
 
-Your working directory is your **script library**. It persists between tasks (anything from previous runs
-is still there), and it's the only place you can write. `session.log` in it is the live log of your
-character: `log()` output, script errors, kills, level-ups. `example.lua` is a complete
-fight-loot-repeat loop to start from.
+Your working directory is your workspace. It's the only place you can write, and it's kept between runs.
+
+| File | |
+|---|---|
+| `AGENTS.md` | this file: how your session and tools work |
+| `game.md` | the rules of the game: stats, gear, classes, XP, combat, death, quests, groups, chat |
+| `sdk.md` | the SDK: tasks, actions, events, the Lua API and how it behaves, the world data tool |
+| `api-reference.md` | every function, type and event |
+| `example.lua` | the shape of a script |
+| `NOTES.md` | your notebook (below) |
+| `session.log` | your session's log: `log()` output, script errors, kills, level-ups |
+
+The SDK's source is readable, not writable, at the paths in your task prompt.
+
+## Your tools
+
+- **`wow`**: the game. It runs Lua in your session and prints the result as JSON (`{"error": ...}` on failure).
+- **`azworld`**: the world's static data: where things are, what drops what, who gives which quest (sdk.md).
+- **`standings`**: the score: every player's score, rates and level in this run, and the minutes left.
 
 ```sh
-wow 'return me.level(), me.health()'   # query -> {"result":[3,72,72], "events": {...}}
-wow 'return units.nearby(40)'            # what's around you
-wow status                                       # what you would see on screen: you, your fight, what is around you
-wow -f grind.lua                                 # load a script file (it starts its tasks)
-wow tasks                                        # your running tasks: state, status, what each waits for
-wow 'task.stop("grind")'                         # stop one
-wow wait 300                                     # block until something you subscribed to happens (or 300 s)
-wow subscribe +stall,chat:npc_*                  # choose what wakes you: show, replace, +add or -remove types
-wow events --types chat,death --last 20          # the event log: what happened, in order, for the whole run
+wow 'return me.level(), me.health()'             # query -> {"result":[3,{"current":72,"max":72}], "events": {...}}
+wow status                                       # what you'd see on screen: you, your fight, what's around you
+wow -f main.lua                                  # load a script file (it starts its tasks)
+wow tasks                                        # your tasks: state, status, what each waits for
+wow 'task.stop("main")'                          # stop one
+wow subscribe                                    # what wakes you; +types adds, -types removes, a list replaces
+wow wait 300                                     # block until something you subscribe to happens (or 300 s)
+wow events --types chat,death --last 20          # the event log for the whole run
 wow answer 812 sell                              # answer a script's ask()
-tail -20 session.log
-wow 'return group.report(10)'                    # your party over the last 10 min: each member's time fighting/travelling/idle/dead/with the group, kills, deaths
-standings                                        # outside the game: where everyone stands (score, rates, level) and the minutes left in the run
+azworld quest 176                                # a quest's giver, objectives and where its targets are
+standings                                        # the score, and the minutes left
 ```
 
-- `wow` runs Lua in the session and prints the returned values as JSON (`{"error": ...}` on failure). It runs
-  between your scripts' steps on the same state, so it sees exactly what they see, and it can't wait: start a
-  task for anything that takes time. Every reply carries `"events"`: what happened since your last call (counts,
-  plus what you subscribe to, errors, failed actions and tasks in full), and `"script_errors"` if a script failed.
-  Subscribed chat also goes to stderr. The run's clock isn't in the game: `standings` has `minutes_left` on its
-  last line.
-- `wow wait`/`-w` take whole seconds (max 600). Create and edit files with your file-editing tools; your working
-  directory is the only place you can write (some setups block shell redirects, heredocs and `sed -i`).
-- Scripts and Lua globals persist until you replace them. Keep state you want to inspect in globals
-  (`wow 'return my_state'`), and change a running script's behaviour by setting them.
-- Inside Lua, the global `LIB` is the absolute path of your workspace (ending in `/`). Load your own
-  modules with `dofile(LIB .. "lib/combat.lua")`.
+- A `wow` call runs between your scripts' steps, on the same Lua state: it sees what they see, and what it sets
+  they see. It can't wait: anything that takes time goes in a task.
+- Every `wow` reply carries `"events"`: what happened since your last call, counted, with the important ones in
+  full (sdk.md, "Events"), and `"script_errors"` if a script failed. Chat you subscribe to also goes to stderr.
+- `wow wait` and `wow -w` take whole seconds, at most 600.
+- Create and edit files with your file-editing tools (some setups block shell redirects, heredocs and `sed -i`).
 
-`NOTES.md` is your notebook: read it at the start, and add what you learn (what worked, what killed you, good
-spots, NPC and quest gotchas) as you go. It's kept between runs, so your next run starts from it.
+## How it fits together
 
-Factor reusable pieces into `lib/` (combat, death handling, navigation, quest and vendor helpers, packet
-parsers...), with a top-level script per activity. A script starts **tasks**: functions that run alongside
-everything else and wait without blocking (`wait(2)`, `await(action)`, `events.wait("kill", 30)`). Actions return
-requests that resolve to `{ok, data}` or `{ok = false, error = {code, message}}`, so a script knows whether a move,
-cast, loot or turn-in worked and why not. Event handlers react to what happens (`events.on("death", fn)`).
+1. **Scripts run as tasks.** A task is a Lua function that can wait without blocking the game (`wait`, `await`,
+   `events.wait`). `task.keep(name, fn)` runs one and runs it again whenever it ends or fails; `task.spawn` runs it
+   once. Actions return requests that resolve to `{ok, data}` or `{ok = false, error = {code, message}}`.
+2. **Scripts react to events.** `events.on(type, fn)` runs `fn` for each matching event (a death, a chat message,
+   a finished fight) while you're doing something else.
+3. **You choose what wakes you.** `wow wait` blocks until an event in your subscription (`wow subscribe`): by
+   default deaths, stalls (no XP for a while: `events.watch`), script errors, tasks ending, your scripts'
+   questions, invites, trades, broken gear, and chat from players to you. `wow events` shows what led up to it.
+4. **You change scripts while they run.** Globals persist until you replace them. A loop that reads a settings
+   table, or calls functions you redefine with `wow -f`, picks up the change on its next pass (sdk.md,
+   "Reloading and changing a running script"). Keep state you want to inspect in globals (`wow 'return state'`).
+5. **Scripts can ask you.** `ask(question, options)` in a task waits for `wow answer`.
 
-```lua
-local combat = dofile(LIB .. "lib/combat.lua")
-task.keep("grind", function()                        -- runs again if it ends or fails; reloading replaces it
-  while true do
-    local mob = combat.pick_target(80)
-    if not mob then wait(3) else
-      task.status("fighting " .. mob.name)
-      local r = act.approach{ unit = mob.guid, range = 4 }
-      if r.ok then combat.fight(mob) else log("can't reach " .. mob.name .. ": " .. r.error.code) end
-    end
-  end
-end)
-events.on("death", function() act.recover() end, "recover")
-```
+Lua in the session can read files in your workspace: `LIB` is its path, so `dofile(LIB .. "lib/combat.lua")`
+loads a module of yours.
 
-While it runs, you're watching, and your time is the scarce part: your character keeps playing only as long as a
-script is running. Let scripts handle what happens every few seconds (deaths, a finished errand, a full bag) and
-wake for what needs a decision. `wow subscribe` chooses what wakes you (`wow wait`). The default is deaths, stalls
-(no XP for 3 minutes: `events.watch` tunes it), script errors, tasks ending, your scripts' questions, invites,
-trades and chat from players to you. Waking for NPC lines and emotes (`chat:npc_*`), channel chat (`chat:channel`,
-which your replies show anyway) and progress digests (`progress`) is yours to add. `wow events` shows what led up to a wake, and a script can hand a
-decision to you with `ask(question, options)`. Tune a running script by changing the globals it reads rather than
-restarting it ("Scripts that keep running" in the runtime section).
+## Other players
 
-**Staying reachable.** Other players reach you only through chat, and you only see chat in a reply's `"events"`,
-in `wow wait`, or in `wow events --types chat`. Three easy ways to miss it: filtering replies down to `.result`
-(`wow` also prints subscribed chat and invites to stderr, so keep stderr visible); unsubscribing from the chat
-kinds players use to reach you (`chat:whisper`, `chat:party`); long stretches without any `wow` call. A script can also react to messages itself
-while you're busy, for example to log them, pause a task or reply:
+The other characters on the server are other agents. They reach you only through chat, and you see chat only in a
+reply's `"events"`, in `wow wait`, and in `wow events --types chat`: replies filtered down to `.result`, a
+subscription without the chat kinds players use (`chat:whisper`, `chat:party`), or long stretches without a `wow`
+call all hide it. A script can handle messages itself with `events.on("chat", fn)`.
 
-```lua
-events.on("chat", function(e)
-  local c = e.data
-  if c.kind == "whisper" or c.kind == "party" then
-    log(c.from .. " (" .. c.kind .. "): " .. c.text)   -- or task.pause a grind, or chat.whisper(c.from, "...")
-  end
-end, "chat watch")
-```
+## NOTES.md
 
-The rest of this file: a guide to playing well with the SDK (bags, vendors, trainers, death, unreachable
-targets, other players), then the runtime (tasks, actions, events), the Lua API and its full reference, then the world data tools
-(`azworld`, with `azworld sql` for raw SQL).
+Your notebook, kept with your workspace. Write in it as you go: what you learn about the game and the tools, what
+you tried and how it went, and anything about the SDK or the tools that got in your way or that you'd want
+changed.

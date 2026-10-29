@@ -49,30 +49,36 @@ func (p *player) account() string {
 	return s[:min(16, len(s))]
 }
 
-// workspace: refreshed each run: the task docs, the playing guide, the SDK reference, an example script, and NOTES.md
-// if it has none yet.
+// workspaceFiles: what each run refreshes in the workspace, from the repo. AGENTS.md is where the agent starts (Codex
+// loads it by itself; CLAUDE.md imports it for Claude Code, so both start from the same text) and points to the rest.
+var workspaceFiles = map[string]string{
+	"AGENTS.md":        "bench/agent/AGENTS.md",
+	"game.md":          "azeroth-sdk/docs/game.md",
+	"sdk.md":           "azeroth-sdk/docs/sdk.md",
+	"api-reference.md": "azeroth-sdk/docs/api-reference.md",
+	"example.lua":      "azeroth-sdk/examples/lua/skeleton.lua",
+}
+
+// workspace: refreshed each run: the docs, the example script, CLAUDE.md, and NOTES.md if it has none yet.
 func (p *player) workspace() error {
 	if err := os.MkdirAll(p.ws, 0o755); err != nil {
 		return err
 	}
-	var docs bytes.Buffer
-	for _, f := range []string{"bench/agent/AGENTS.md", "azeroth-sdk/docs/playing.md", "azeroth-sdk/docs/guide.md",
-		"azeroth-sdk/docs/runtime.md", "azeroth-sdk/docs/lua-api.md", "azeroth-sdk/docs/api-reference.md",
-		"azeroth-sdk/docs/world-data.md"} {
-		b, err := os.ReadFile(filepath.Join(p.r.repo, f))
+	for name, src := range workspaceFiles {
+		b, err := os.ReadFile(filepath.Join(p.r.repo, src))
 		if err != nil {
 			return err
 		}
-		docs.Write(b)
+		if err := os.WriteFile(filepath.Join(p.ws, name), b, 0o644); err != nil {
+			return err
+		}
 	}
-	if err := os.WriteFile(filepath.Join(p.ws, "AGENTS.md"), docs.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(p.ws, "CLAUDE.md"), []byte("@AGENTS.md\n"), 0o644); err != nil {
 		return err
 	}
-	ex, _ := os.ReadFile(filepath.Join(p.r.repo, "azeroth-sdk/examples/lua/grind.lua"))
-	os.WriteFile(filepath.Join(p.ws, "example.lua"), ex, 0o644)
 	notes := filepath.Join(p.ws, "NOTES.md")
 	if _, err := os.Stat(notes); err != nil {
-		os.WriteFile(notes, []byte("# Notes\n\nYour own notes: what worked, what killed you, where things are. Kept between runs.\n"), 0o644)
+		os.WriteFile(notes, []byte("# Notes\n\nYour notebook, kept with your workspace (AGENTS.md, \"NOTES.md\").\n"), 0o644)
 	}
 	return nil
 }

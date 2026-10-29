@@ -159,9 +159,19 @@ move their `workspaces/<agent>/` aside: the library and `NOTES.md` carry over ot
 
 ## The agent
 
-Each run writes the workspace's `AGENTS.md` from `agent/AGENTS.md` (workspace, session, `wow`, tasks) followed by
-`../azeroth-sdk/docs/` `playing.md`, `guide.md`, `runtime.md`, `lua-api.md`, `api-reference.md` and `world-data.md`.
-It copies `../azeroth-sdk/examples/lua/grind.lua` to `example.lua`, and creates `NOTES.md` only if missing. The
+The agent's context comes in layers, each its own file:
+
+| | File | |
+|---|---|---|
+| task | `prompt.md` (`azbench/run/prompt.tmpl`) | who it plays, the goal, how it's scored, the run's length, the other players, the rules |
+| how it works | `AGENTS.md` (`agent/AGENTS.md`) | the workspace, the three tools, how scripts, events and subscriptions fit together; points to the rest |
+| the game | `game.md` (`../azeroth-sdk/docs/`) | the rules of the game, described, not coached |
+| reference | `sdk.md`, `api-reference.md` (`../azeroth-sdk/docs/`) | the runtime, the Lua API and how it behaves, `azworld`; every function, type and event |
+
+Each run refreshes those files in the workspace, copies `../azeroth-sdk/examples/lua/skeleton.lua` (the shape of a
+script, no play in it) to `example.lua`, writes `CLAUDE.md` as `@AGENTS.md` (Codex loads `AGENTS.md` by itself, so
+both runtimes start from the same text), and creates `NOTES.md` only if missing. `NOTES.md` is the agent's
+notebook: kept with the workspace, it's where it writes what it learned and what got in its way, for review. The
 agent's tools come from `agent/bin/` on its `PATH`, outside the workspace, so it can't edit them. There are three,
 one per thing the agent deals with: the game, the world's data, and its score.
 

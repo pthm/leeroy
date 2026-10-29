@@ -1,6 +1,6 @@
 // Package api serves the agent API as JSON-RPC 2.0 over HTTP (POST /rpc).
 //
-// The surface is small on purpose: the game API itself is the Lua API (docs/lua-api.md), reached three ways:
+// The surface is small on purpose: the game API itself is the Lua API (docs/sdk.md), reached three ways:
 // script.eval (Lua), api.call (one function with JSON args: what the generated TypeScript SDK uses) and the
 // event stream (events.query / events.wait). Values are the structs of package types.
 package api

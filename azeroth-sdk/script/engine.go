@@ -1,6 +1,6 @@
 // Package script is the Lua runtime for an agent's character: one gopher-lua state shared by the agent's live
 // evaluations and its running scripts, a coroutine scheduler for tasks, the event stream and action requests.
-// See docs/runtime.md.
+// See docs/sdk.md.
 package script
 
 import (

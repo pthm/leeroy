@@ -18,11 +18,11 @@ worldserver ──> client ─────> session ─────> script ─�
 - **client** speaks the protocol: SRP6 login on the authserver, the encrypted world session, the object model built
   from update packets, and typed hooks (`AddPacketHook`, `AddAuraHook`, ...) for everything above it.
 - **session** runs one character (`Bot`): login (creating the character if needed), then a tick loop. It registers
-  the Lua API (namespaces `me`, `units`, `move`, `items`, ...; see `docs/lua-api.md`), decodes server packets into
+  the Lua API (namespaces `me`, `units`, `move`, `items`, ...; see `docs/sdk.md`), decodes server packets into
   typed events and action results (values from `types`), and emits them on the character's event bus.
 - **script** is the Lua runtime (gopher-lua): one state per character shared by live evaluations and running
   scripts, a coroutine scheduler for tasks, the event `Bus` and action requests. Each tick (`Engine.CallTick`)
-  delivers events, polls pending requests, resumes tasks and calls `on_tick`. See `docs/runtime.md`.
+  delivers events, polls pending requests, resumes tasks and calls `on_tick`. See `docs/sdk.md`.
 - **api** serves the engines over JSON-RPC. The game API itself is the Lua API; RPC only reaches it.
 - **Movement**: `move.to` asks `navigation` for a path, which wraps `pathfinding` (Detour on the server's `mmaps/`,
   heights from `maps/` and `vmaps/`). `movement` walks the path and sends the movement packets a real client
@@ -141,20 +141,18 @@ AC_DATA_DIR=$PWD/../data go test ./pathfinding/ ./movement/   # tests that need 
 | [`jqjson`](jqjson) | JSON read and printed the way `jq -c` does (`wow`'s output) |
 | [`cmd/apigen`](cmd/apigen) | generates the API reference |
 | [`cmd/clientdata`](cmd/clientdata), [`cmd/navprobe`](cmd/navprobe) | data extraction and navmesh probing |
-| [`examples/lua`](examples/lua) | example in-daemon scripts |
+| [`examples/lua`](examples/lua) | example in-daemon scripts: `skeleton.lua`, the shape of a script (the bench's `example.lua`); `grind.lua`, a fight-loot-repeat loop |
 
 ## Docs
 
-Agent-facing documentation, in `docs/`:
+Agent-facing documentation, in `docs/`. It describes; it doesn't coach: how to play well within the rules is the
+agent's to work out.
 
 | File | |
 |---|---|
-| [`playing.md`](docs/playing.md) | game knowledge: what makes a character strong, how to play well |
-| [`guide.md`](docs/guide.md) | practical notes on using the SDK: moving, casting, bags, gear, travel, death |
-| [`runtime.md`](docs/runtime.md) | tasks, actions (requests and results), events |
-| [`lua-api.md`](docs/lua-api.md) | the Lua API by namespace, and its conventions |
+| [`game.md`](docs/game.md) | the rules of the game: stats, gear, classes and roles, XP, combat, death, quests, travel, groups, chat |
+| [`sdk.md`](docs/sdk.md) | the SDK: tasks, actions, events and subscriptions, the Lua API and its conventions, how the API behaves, `azworld` |
 | [`api-reference.md`](docs/api-reference.md) | every function, type and event (generated) |
-| [`world-data.md`](docs/world-data.md) | `azworld`: structured lookups and raw SQL (`azworld sql`), the bench's world tool, documented here for agents |
 
 Derived from [AzerothGhost](https://github.com/azerothcore/AzerothGhost) (MIT, see `LICENSE.AzerothGhost`),
 with the bot AI removed and the agent API, movement and pathfinding fixes from LEEROY.

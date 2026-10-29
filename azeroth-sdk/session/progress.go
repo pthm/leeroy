@@ -1,7 +1,7 @@
 package session
 
 // How well the character is built for its level: gear (Gear: a 0-100 grade from item level, quality and durability)
-// and the class spells it could know (Spellbook). Both are in me.status(); see docs/playing.md for why they matter.
+// and the class spells it could know (Spellbook). Both are in me.status(); see docs/game.md for what they are.
 
 import (
 	"encoding/binary"

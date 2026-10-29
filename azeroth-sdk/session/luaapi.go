@@ -12,7 +12,7 @@ package session
 //	trade     trading with players              talents  talent points
 //	client    raw protocol (outside the stable API)
 //
-// Conventions (docs/lua-api.md): queries are nouns and return one value or one table (nil when unknown); actions
+// Conventions (docs/sdk.md): queries are nouns and return one value or one table (nil when unknown); actions
 // are verbs and return a request (script/requests.go) whose op is the function's name; every value is one of the
 // structs in package types (built in model.go), so a creature or an item has the same fields everywhere. Domain files register their own namespaces (items.go, trade.go, ...);
 // this file has the core ones. Every registration carries its signature and description: help() and the

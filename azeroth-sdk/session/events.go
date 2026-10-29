@@ -1,6 +1,6 @@
 package session
 
-// Typed events and action requests (docs/runtime.md). Everything here is decoded from what a stock AzerothCore
+// Typed events and action requests (docs/sdk.md). Everything here is decoded from what a stock AzerothCore
 // server sends the client (SMSG opcodes on the world connection): no server-side modules or logs. Event data
 // are the structs in package types (EventTypes lists them).
 

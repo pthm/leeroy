@@ -54,31 +54,26 @@ func goalText(goal string, mins int) string {
 	return goal
 }
 
-func scoreText(goal string, mins int) (score, stop string) {
+func scoreText(goal string) (score, stop string) {
 	kind, _, _ := strings.Cut(goal, ":")
 	switch kind {
 	case "achpoints":
-		return fmt.Sprintf(`Your score is the total points of the achievements you earn during the next %d minutes
-(ones already earned don't count). There is no finish line: keep earning until time runs out. Achievement
-names, points and criteria are in the world database (azworld sql; see AGENTS.md); me.achievements() shows your progress.`, mins),
+		return `Your score is the total points of the achievements you earn during the run (ones already earned don't
+count). Achievement names, points and criteria are in the world database (azworld sql, sdk.md);
+me.achievements() shows your progress.`,
 			"Do not stop early: keep earning points until the time runs out."
 	case "score":
-		return fmt.Sprintf(`HOW YOU ARE JUDGED: every 15 seconds the judge reads your character from the server database. Your
-progress is the XP you've earned since the start (kills, quests, exploring: the game already gives more for harder
-content). Gear, money, talents and everything else aren't scored: they're how you earn XP faster.
-YOUR SCORE is the average of two rates, in XP per hour: your rate over the whole %d minutes, and
-your best rate over any 15-minute stretch. Sustained progress counts, and so does finding a better way to play:
-time spent trying a new strategy lowers your overall rate but not your best stretch. Deaths, stalls and time spent
-stuck cost you through the time they lose. There is no finish line.
-FACTION SCORE: every player on this server is on your faction (Alliance), and the faction's score is the sum of
-all players' scores. It is reported alongside yours; your own score is still yours alone.
-The standings command shows where every player in this run stands right now (rank, score, recent rate, level) and
-the faction total. It also shows each player's role and their damage dealt, damage taken and healing done this
-run: the measure of how each plays their role. That's not scored: it's for you to see how you and others play.`, mins),
+		return `HOW YOU ARE SCORED: every 15 seconds the judge reads your character from the server database. Your
+progress is the XP you've earned since the start of the run, from any source (kills, quests, exploring). Nothing
+else is scored. YOUR SCORE is the average of two rates, in XP per hour: your rate over the whole run, and your best
+rate over any 15-minute stretch of it.
+FACTION SCORE: every player on this server is on your faction (Alliance); the faction's score, reported alongside
+yours, is the sum of all players' scores. standings shows every player's score, rates, level and role, their damage
+dealt, damage taken and healing done (not scored), and the faction total.`,
 			"Do not stop early: keep improving your score until the time runs out."
 	}
-	return fmt.Sprintf(`You are scored on wall-clock time until an external judge sees the goal met; if time
-runs out (%d minutes), your progress toward it is the score.`, mins),
+	return `You are scored on the time until the judge, which reads your character from the server database, sees
+the goal met; if time runs out, your progress toward it is the score.`,
 		"Do not stop until the goal is met: confirm it yourself with wow before finishing."
 }
 
@@ -87,10 +82,8 @@ func prompt(s *config.Scenario, b *config.Bench, a config.Agent, repo string) (s
 	race, _ := config.ID(config.Races, a.Race)
 	identity := fmt.Sprintf("Your character %s is already logged in and waiting.", a.Char)
 	if sp, ok := b.Specs[a.Spec]; ok {
-		identity = fmt.Sprintf(`You are %s, a %s %s. Your role is %s: you should optimise for %s.
-Your key stats are %s. Build your character for that: your talents (talents.list, talents.learn), the spells
-you train and the gear you choose. %s is already logged in and waiting.`, a.Char, config.RaceName(race), sp.Title,
-			sp.Role, sp.Optimise, sp.Stats, a.Char)
+		identity = fmt.Sprintf(`You are %s, a %s %s. Your role is %s: %s. The spec's key stats are %s.
+%s is already logged in and waiting.`, a.Char, config.RaceName(race), sp.Title, sp.Role, sp.Optimise, sp.Stats, a.Char)
 	}
 	var roster []string // the other players with a spec: "- Char: Warrior - Protection (Tank)"
 	for _, o := range s.Agents {
@@ -102,7 +95,7 @@ you train and the gear you choose. %s is already logged in and waiting.`, a.Char
 	if err != nil {
 		return "", err
 	}
-	score, stop := scoreText(s.Goal, s.Minutes)
+	score, stop := scoreText(s.Goal)
 	var out strings.Builder
 	err = promptTmpl.Execute(&out, map[string]any{"Identity": identity, "GoalText": goalText(s.Goal, s.Minutes),
 		"Hint": strings.TrimSpace(s.Hint), "ScoreText": score, "StopText": stop, "Repo": repo,
