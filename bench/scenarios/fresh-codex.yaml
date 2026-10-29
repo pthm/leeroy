@@ -1,0 +1,14 @@
+name: fresh-codex
+description: >
+  fresh-claude on Codex: five brand-new Codex agents (empty workspaces, new level-1 Humans in Northshire), the same
+  classes and specs as fresh-claude, progressing as much as they can in an hour.
+goal: score:100000
+minutes: 60
+require_fresh: true
+runtime: codex
+agents:
+  - {name: a26, char: Hollis, class: warrior, spec: protwarrior}
+  - {name: a27, char: Wrenna, class: paladin, spec: ret}
+  - {name: a28, char: Garrow, class: rogue, spec: combat}
+  - {name: a29, char: Ottilie, class: priest, spec: holy}
+  - {name: a30, char: Fenwick, class: mage, spec: frost}

@@ -1,0 +1,15 @@
+name: fresh-claude
+description: >
+  Five brand-new Claude Code agents (empty workspaces, new level-1 Humans in Northshire), one of each class with
+  the same role mix as fresh-split's (a tank, a healer, three DPS), progressing as much as they can in an hour.
+goal: score:100000
+minutes: 60
+require_fresh: true
+runtime: claude
+models: {claude: claude-opus-5-5}
+agents:
+  - {name: a21, char: Bramwell, class: warrior, spec: protwarrior}
+  - {name: a22, char: Ysolde, class: paladin, spec: ret}
+  - {name: a23, char: Dagny, class: rogue, spec: combat}
+  - {name: a24, char: Maelis, class: priest, spec: holy}
+  - {name: a25, char: Corwen, class: mage, spec: frost}
