@@ -367,6 +367,12 @@ function A.status()
     sub = cur and cur.sub and cur.sub.name, result = A.result, log = { table.unpack(A.log, math.max(1, #A.log - 5)) } }
 end
 
+-- in_los(guid) or in_los(x, y, z): nothing solid between your eyes and the target (as the server checks spells)
+function bot.in_los(a, y, z)
+  if y then return bot.los_point(a, y, z) end
+  return bot.los_unit(a)
+end
+
 -- ---------- trade ----------
 -- bot.trade_offer{items = {entry or guid, ...}, money = copper}: set your side of an open trade window (replaces it)
 function bot.trade_offer(o)

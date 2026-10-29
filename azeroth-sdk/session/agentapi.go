@@ -162,33 +162,31 @@ func (b *Bot) setupAgentAPI() {
 		return nil
 	})
 	e.RegisterFunc("spell_info", func(id uint32) *spellRec { return spellInfo(id) })
-	// in_los(guid) or in_los(x, y, z) -> true if nothing solid (walls, rock, buildings) is between your eyes and the
-	// target, the way the server checks spells; nil if there's no collision data here. Trees and terrain don't count.
-	e.RegisterFunc("in_los", func(target uint64, ty, tz float32) any {
-		los, ok := b.nav.(interface {
+	// los_unit(guid) / los_point(x, y, z): line of sight from your eyes, like the server's spell check; nil without
+	// collision data. bot.in_los(guid | x, y, z) in act.lua picks one.
+	los := func(to navigation.Point3D) any {
+		l, ok := b.nav.(interface {
 			InLineOfSight(mapID uint32, a, b navigation.Point3D) (bool, bool)
 		})
 		if !ok {
 			return nil
 		}
 		px, py, pz, _, m := w.Position()
-		var to navigation.Point3D
-		if ty == 0 && tz == 0 { // a unit
-			o := w.GetObject(target)
-			if o == nil {
-				return nil
-			}
-			x, y, z := o.InterpolatedPosition()
-			to = navigation.Point3D{X: x, Y: y, Z: z + 1.5}
-		} else {
-			to = navigation.Point3D{X: float32(int64(target)), Y: ty, Z: tz + 1.5}
-		}
-		clear, ok := los.InLineOfSight(m, navigation.Point3D{X: px, Y: py, Z: pz + 1.8}, to)
+		clear, ok := l.InLineOfSight(m, navigation.Point3D{X: px, Y: py, Z: pz + 1.8}, to)
 		if !ok {
 			return nil
 		}
 		return clear
+	}
+	e.RegisterFunc("los_unit", func(guid uint64) any {
+		o := w.GetObject(guid)
+		if o == nil {
+			return nil
+		}
+		x, y, z := o.InterpolatedPosition()
+		return los(navigation.Point3D{X: x, Y: y, Z: z + 1.5})
 	})
+	e.RegisterFunc("los_point", func(x, y, z float32) any { return los(navigation.Point3D{X: x, Y: y, Z: z + 1.5}) })
 	// reaction(guid) -> "hostile" (attacks on sight), "neutral" (fights back) or "friendly", toward you
 	e.RegisterFunc("reaction", func(g uint64) any {
 		o, me := w.GetObject(g), w.GetObject(w.CharGUID())
