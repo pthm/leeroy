@@ -7,7 +7,7 @@ game (`wow 'return help("items")'`); the API reference below has every function,
 |---|---|
 | `me` | your character: level, xp, health, power, position, location, money, stats, state, target, `me.status()` |
 | `units` | creatures and players around you: `units.nearby`, `units.players`, `units.get`, `units.attackers`, auras, line of sight, inspect |
-| `objects` | game objects: chests, doors, quest objects, herbs (`objects.nearby`, `objects.find`, `objects.use`) |
+| `objects` | game objects: chests, gathering nodes (ore, herbs), doors, quest objects (`objects.nearby`, `objects.find`, `objects.use`) |
 | `world` | terrain: heights to stand at, walking paths, line of sight to a point |
 | `move` | walking (`move.to`, `move.stop`) and facing (`move.face`, `move.turn`) |
 | `combat` | targeting and auto-attack, your pet, the combat log and damage/healing meters |

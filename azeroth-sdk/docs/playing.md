@@ -119,6 +119,13 @@ empty and broken ones), `spellbook` (the class spells you could know at your lev
 - **What money is for** at these levels: training (every even level), repairs, bags, food and drink, flights, and
   a few white weapons and armor pieces when quests haven't given you better. Riding becomes available at level 20.
   Sell what you don't need in town and keep enough for your next training visit.
+- **Chests and gathering.** Not every chest is a quest object: treasure chests in camps, mines and caves open for
+  anyone, hold money, food and sometimes uncommon gear, and come back a while after they're opened. The gathering
+  professions (Mining, Herbalism, Skinning; taught by trainers in towns) turn ore veins, herbs and beast corpses
+  into materials that sell or that crafters need, and their skill rises as you use it: a node that needs more skill
+  than you have can't be gathered yet. `me.status()` lists the chests, nodes and quest objects near you, and
+  `objects.nearby` says what each one takes (`gather`, `skill`, `can_use`, `key`), whether it's in sight, and how far
+  the walk is: a chest in a mine under you can be close in a straight line and a long walk round.
 
 ## Combat
 

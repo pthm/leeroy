@@ -104,7 +104,9 @@ to build.
 - `wowdb quest <id>` gives the giver, objectives with spawn locations, the turn-in NPC and the next quest in
   the chain. Many quests only become available after an earlier one, or at a minimum level.
 - Quest objects (crates, barrels, chests) are used with `objects.use(guid)` within ~5 yards. Find them with
-  `objects.find(entry)` or `objects.nearby(40)`. A quest object usually does nothing unless you have the quest.
+  `objects.find(entry)` or `objects.nearby(40)`. A quest object usually does nothing unless you have the quest
+  (`lit` is true when one of yours needs it); treasure chests, ore veins and herbs aren't quest objects (see
+  `gather` and `can_use`).
 - Quest drops only drop while you have the quest, and only for whoever has loot rights to the corpse.
 
 ## Travel
