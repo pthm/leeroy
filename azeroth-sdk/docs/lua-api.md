@@ -105,6 +105,10 @@ target, the way the server checks spells (trees and terrain bumps don't count); 
 `location()` → `{zone, area, zone_id, area_id}` · `reaction(guid)` → "hostile" (attacks on sight), "neutral" or
 "friendly" toward you.
 
+**Talents** (from level 10, one point per level): `talents()` → `{points, trees = {{name, spent, talents = {{id,
+name, rank, max_rank, row, requires, available, spell}}}}}` (row r needs 5 × r points in that tree) ·
+`learn_talent(id)` spends a point on the next rank. `wowdb spell <spell>` describes what a talent does.
+
 **Combat log, meters, inspect** (what a real client sees: fights within ~100 yd, any source and target, party
 included): `combat_log([since_ms])` → `{t, kind, src, dst, spell, amount, over, crit}` events (default the last 30s;
 `kind`: melee, spell, dot, heal, hot, kill; `src`/`dst` are `{guid, name, entry}`) · `meter([window_s = 60])` → per

@@ -86,6 +86,7 @@ func (b *Bot) setupControl() {
 	b.setupAgentAPI()
 	b.setupItems()
 	b.setupCombatLog()
+	b.setupTalents()
 	b.setupTrade(func(text string) { // a system message in read_chat that also wakes `wow -c`
 		c.mu.Lock()
 		defer c.mu.Unlock()

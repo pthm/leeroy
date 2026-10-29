@@ -69,6 +69,8 @@ how you fight, what you kill, when you rest, what to do about death and how to w
   repair at an armorer or weaponsmith (npc_flags 0x1000; `wowdb near x y --kind repair`) with `bot.repair(npc)`.
 - Your race's capital flight path is known from the start (humans: Stormwind); new ones are learned by talking to
   their flight master.
+- From level 10 you get a talent point every level: `bot.talents()` shows your trees and what's available,
+  `bot.learn_talent(id)` spends one.
 - Food and drink restore health and mana much faster than waiting: `bot.use_item(entry)` out of combat, then
   don't move until you're full.
 
