@@ -1,7 +1,7 @@
 package session
 
 // Talents: from level 10 you get a talent point every level, spent in one of your class's three trees.
-// bot.talents() lists the trees with every talent's current rank and what it needs; bot.learn_talent(id) spends a
+// talents.list() lists the trees with every talent's current rank and what it needs; talents.learn(id) spends a
 // point. Talent.dbc / TalentTab.dbc from <data>/dbc.
 
 import (

@@ -26,7 +26,7 @@ import { sql, signals, weights, composite } from "./signals.ts";
 
 const [char, goal, ...rest] = process.argv.slice(2);
 if (!char || !/^[A-Za-z]+$/.test(char) || !/^(level|item|quality|money|quests|quest|achpoints|score):\d+$/.test(goal ?? ""))
-  throw new Error("usage: bun bench/judge/judge.ts <character> <level|item|quality|money|quests|quest|achpoints|score>:<n> [--timeout 4h] [--every 15s]");
+  throw new Error("usage: bun bench/judge/judge.ts <character> <level|item|quality|money|quests|quest|achpoints|score>:<n> [--timeout 4h] [--every 15s] [--samples f] [--resume f] [--record f] [--board dir] [--events f] [--role r] [--runtime r]");
 const flag = (name: string, def: string) => { const i = rest.indexOf(`--${name}`); return i >= 0 ? rest[i + 1] : def; };
 const dur = (s: string) => { const [, n, u] = s.match(/^(\d+)(s|m|h)$/)!; return +n * { s: 1e3, m: 6e4, h: 36e5 }[u]!; };
 const timeout = dur(flag("timeout", "4h")), every = dur(flag("every", "15s")), samples = flag("samples", ""), record = flag("record", "");

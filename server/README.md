@@ -1,0 +1,115 @@
+# server
+
+The local AzerothCore 3.3.5a server the agents play on, and the tools around it.
+
+| Path | What it is |
+|---|---|
+| `azerothcore/` | Upstream [azerothcore-wotlk](https://github.com/azerothcore/azerothcore-wotlk) checkout (gitignored) |
+| `override.yml` | Compose overrides layered on `azerothcore/docker-compose.yml` |
+| `account.ts` | Create or reset a game account (and its GM level) |
+| [`recorder/`](recorder/README.md) | `mod-recorder` (server-side event log) and the live viewer, replay builder and movement audit that read it |
+
+All commands run from the repo root. First-time setup (clone, build, client data) is in the [root README](../README.md).
+
+## Running the server
+
+```sh
+bun run server        # docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml up -d
+bun run server:down   # same files, down
+bun run server:logs   # docker logs -f ac-worldserver
+```
+
+Always pass both compose files (the `package.json` scripts do). `override.yml` sets `name: server`, which pins the
+compose project name, so the volumes are always `server_ac-database` (MySQL) and `server_ac-client-data` (maps,
+vmaps, mmaps, DBC files) whatever directory compose runs from.
+
+What `override.yml` changes, on `ac-worldserver` only:
+
+| Setting | Value | Why |
+|---|---|---|
+| `AC_WARDEN_ENABLED` | `0` | The headless client can't answer Warden anti-cheat probes |
+| `AC_PLAYER_SAVE_INTERVAL` | `15000` (ms) | The judge reads progress from the DB; the default is 15 minutes |
+
+Any `worldserver.conf` key can be set the same way, as `AC_<KEY>` (dots become `_`, camelCase becomes SNAKE_CASE).
+Ports are upstream's defaults and the override doesn't touch them:
+
+| Port | Service |
+|---|---|
+| 3724 | authserver (`ac-authserver`) |
+| 8085 | worldserver (`ac-worldserver`) |
+| 7878 | worldserver SOAP |
+| 3306 | MySQL (`ac-database`, root password `password`) |
+
+## Accounts
+
+```sh
+bun server/account.ts <user> <pass> [gmLevel]
+bun server/account.ts agent1 agent1      # non-GM
+bun server/account.ts dev dev 3          # GM level 3
+```
+
+`account.ts` computes the SRP6 salt and verifier itself and writes them to `acore_auth.account` through
+`docker exec ac-database mysql`, so the database container must be running. Details:
+- The username is upper-cased (as the client does); it must be alphanumeric, at most 16 characters.
+- An existing account is reset: new salt and verifier, so the new password applies.
+- GM access is always cleared first; a `gmLevel` other than 0 then adds an `account_access` row for all realms
+  (`RealmID -1`). `gmLevel` is one digit; 3 is the usual full GM.
+- Accounts are created with expansion 2 (Wrath).
+
+GM accounts are for development and testing only: GM level 3 unlocks dot-commands like `.levelup`, `.additem` and
+`.tele`, which are handy for setting up a scenario and unfair in a benchmark. Scored runs use non-GM accounts
+(`bench/bench.sh` creates one per agent).
+
+## Observing with a real client
+
+A 3.3.5a game client can log in next to the agents. In the client's `Data/<locale>/realmlist.wtf`:
+
+```
+set realmlist 127.0.0.1
+```
+
+The realm list the authserver hands out comes from `acore_auth.realmlist`; its `address` must be reachable from the
+client (`127.0.0.1` when the client runs on the same machine).
+
+Log in with a GM account (`bun server/account.ts dev dev 3`) and, in game:
+
+| Command | Effect |
+|---|---|
+| `.gm on` | GM mode |
+| `.gm visible off` | Invisible to players (and so to the agents' clients) |
+| `.cheat god on` | Can't be killed |
+| `.appear <name>` | Teleport to a character |
+
+`GM.LoginState` and `GM.Visible` default to `2` (last saved state), so GM mode and invisibility persist across
+logins once set. Invisibility doesn't hide chat: a `/say` from an invisible GM is still heard by players nearby,
+and so by the agents.
+
+## Resetting characters
+
+To delete a character so its name can be used again, soft-delete it in SQL (with the character logged out), then
+restart the worldserver, which caches character names:
+
+```sh
+docker exec -i ac-database mysql -uroot -ppassword acore_characters <<'SQL'
+UPDATE characters SET deleteInfos_Name = name, deleteInfos_Account = account, deleteDate = UNIX_TIMESTAMP(),
+  name = '', account = 0 WHERE name = 'Agentone';
+SQL
+docker restart ac-worldserver
+```
+
+This is the same update the server does when a player deletes a character. The restart disconnects every player, so
+don't do it during a run. The in-game alternatives don't work here: `.character erase` is console-only, and
+`.character deleted delete` isn't available to GM level 3 in game.
+
+## Logs
+
+| Where | What |
+|---|---|
+| `server/azerothcore/env/dist/logs/Server.log` | worldserver log |
+| `server/azerothcore/env/dist/logs/Errors.log` | worldserver errors |
+| `server/azerothcore/env/dist/logs/Auth.log` | authserver log |
+| `server/azerothcore/env/dist/logs/DBImport.log` | database import (first boot, updates) |
+| `server/azerothcore/env/dist/logs/recorder.jsonl` | `mod-recorder` events, if installed ([recorder/](recorder/README.md)) |
+| `docker logs ac-worldserver` | worldserver console output (`bun run server:logs`) |
+
+Each container mounts `server/azerothcore/env/dist/logs` as `/azerothcore/env/dist/logs`.

@@ -2,7 +2,7 @@
 //   pos     every RECORDER_INTERVAL_MS (default 1000) per online player: position, health, power, level, state
 //   chat, dmg, heal, cast, kill, death, pvp, release, resurrect, level, xp, money, quest, achievement, loot,
 //   zone, spell (learned), login, logout, group (party changes: grp, leader, members; grp 0 = left)
-// File: $RECORDER_FILE (default /azerothcore/env/dist/logs/recorder.jsonl, the host's server/env/dist/logs).
+// File: $RECORDER_FILE (default /azerothcore/env/dist/logs/recorder.jsonl, the host's server/azerothcore/env/dist/logs).
 // Units are {"id": entry (creature) or guid counter (player), "n": name, "pl": 1 if a player}.
 
 #include "Channel.h"

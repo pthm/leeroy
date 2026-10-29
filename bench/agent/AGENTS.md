@@ -2,9 +2,9 @@
 
 You control one World of Warcraft (3.3.5a) character on a local AzerothCore server. The character stays
 logged in for your whole run, in a **session**. You can query and act on it live, and you load **Lua
-scripts** into it that keep playing while you think. Your score is how long it takes you to reach the goal
-you were given (e.g. `level:10`, or owning a rare item), so build up scripts that get you there and reuse
-them.
+scripts** into it that keep playing while you think. Your prompt says what you're scored on (reaching a goal
+such as `level:10` fast, or making as much progress as you can in the time), so build up scripts that get you there
+and reuse them.
 
 ## Your workspace and session
 

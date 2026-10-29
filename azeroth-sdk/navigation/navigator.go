@@ -1,6 +1,6 @@
-// Package navigation provides pathfinding for the bot, supporting primarily
-// an embedded mmap-based pathfinder (vendored). Remote gRPC is optional and
-// deprioritized (stubbed here; full support can be added behind a build tag).
+// Package navigation is the Navigator interface sessions move with: paths, ground heights, floors and line of
+// sight, backed by the embedded pathfinding package (the server's mmaps, vmaps and maps from the data dir).
+// NewRemoteNavigator is a stub that always fails; Config.PathfindingAddress has no working backend.
 package navigation
 
 import (

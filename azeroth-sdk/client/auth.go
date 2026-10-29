@@ -1,15 +1,3 @@
-// Package client implements the core World of Warcraft 3.3.5a protocol clients.
-//
-// AuthClient performs SRP6 authentication against an authserver and returns
-// realm list information plus the session key.
-//
-// WorldClient manages the encrypted world session, character operations
-// (enum/create/delete/login), object tracking, movement, combat, spells,
-// chat, and exposes callbacks for higher layers (bot, testkit, orchestrator).
-//
-// This is the pure protocol layer with no AI, navigation, or DB coupling.
-// It is intended for use both by the AzerothGhost bot runtime and directly
-// in integration tests.
 package client
 
 import (

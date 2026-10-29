@@ -1,7 +1,7 @@
 // Package types is the data model of the agent API: every value the Lua API returns, every action result and
 // every event's data is one of these structs, with the same field names everywhere. Lua sees them as tables
 // (through their json names), the RPC API as JSON, and the TypeScript SDK as generated interfaces (cmd/apigen
-// writes sdk/ts/src/types.ts and docs/types.md from this file), so all three stay in sync.
+// writes sdk/ts/src/types.ts and docs/api-reference.md from this file), so all three stay in sync.
 //
 // Field docs live in `doc` tags: they're what the generated references show.
 package types

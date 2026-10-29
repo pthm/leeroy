@@ -1,7 +1,7 @@
 #!/bin/sh
 # bench/bench.sh <agent-name> <Character> <race> <class> <goal> [timeout-min]
 #   e.g. bench/bench.sh claude1 Humanwar 1 1 level:5 60
-# Fresh account + character, a persistent session, the judge, and a headless Claude Code agent.
+# Fresh account + character, a persistent session, the judge, and a headless agent (Claude Code, or Codex with RUNTIME=codex).
 # The agent runs inside workspaces/<name>/ (its persistent library, the only place it can read or write besides
 # the client/server source); tools come from agent/bin/ on PATH so it can't edit them.
 # Results land in runs/<id>/: judge.json (score), samples.jsonl (progress every 15s), agent.jsonl

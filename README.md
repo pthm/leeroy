@@ -5,7 +5,7 @@ achieve.
 
 | Folder | What's in it |
 |---|---|
-| [`server/`](server) | The AzerothCore server: upstream checkout (`azerothcore/`, gitignored), config overrides (`override.yml`), account creation (`account.ts`), and `recorder/`: the `mod-recorder` module plus the tools that read its log (`replay.ts` run replays, `movecheck.ts` movement audit) |
+| [`server/`](server/README.md) | The AzerothCore server: upstream checkout (`azerothcore/`, gitignored), config overrides (`override.yml`), account creation (`account.ts`), and `recorder/`: the `mod-recorder` module plus the viewers and tools that read the recordings ([`recorder/README.md`](server/recorder/README.md)) |
 | [`bench/`](bench/README.md) | The benchmark: launchers (`bench.sh`, `team.sh`), scoring (`judge/`), what agents get (`agent/`: task docs and the `wow`, `worlddb`, `wowdb` tools), the session runner (`client/play.sh`, one `azsdk` per agent), agent `workspaces/` and `runs/` |
 | [`azeroth-sdk/`](azeroth-sdk/README.md) | The Go headless client, `azsdk` daemon and TypeScript SDK, plus the Lua API docs, world data API (`worlddata/`: `wowdb`, `dbsetup`) and example scripts (a root `go.work` includes it: `go build ./azeroth-sdk/...`) |
 | `data/` | Client data copied out of the server (maps, navmesh, DBC files), shared by all of the above (gitignored) |
@@ -46,7 +46,7 @@ bench/bench.sh claude1 Humanwar 1 1 level:5 60          # agent name, character,
 LEVEL=10 START="-9460 70 56.6 0 12" bench/team.sh score:100000 60 a1:Garrick:1:1 a2:Paloma:1:2   # several agents, one clock
 ```
 
-Each agent gets a fresh non-GM account and runs as headless Claude Code inside `bench/workspaces/<name>/` (its
+Each agent gets a fresh non-GM account and runs as headless Claude Code (or Codex CLI, `RUNTIME=codex`) inside `bench/workspaces/<name>/` (its
 persistent script library). It can read and write only there, read the client and server source, and run `wow`, `worlddb`,
 `wowdb` and read-only shell commands. Results go to `bench/runs/<id>/`:
 - `judge.json`: the score;
@@ -56,8 +56,10 @@ persistent script library). It can read and write only there, read the client an
 - `replay.html`.
 
 Goals: `level:<n>`, `item:<entry>`, `quality:<n>` (3 = rare), `money:<copper>`, `quests:<n>`, `quest:<id>`,
-`achpoints:<n>`, and `score:<n>`: a weighted composite of every progress signal (`bun bench/judge/signals.ts <char>`
-lists them; weights in `bench/judge/score.json`). For "as much as possible" goals pass a large n and read `value` at timeout.
+`achpoints:<n>`, and `score:<n>`: progress per hour (`bench/judge/score.json` sets which signals count; v6 counts XP
+earned). For "as much as possible" goals pass a large n and read `value` at timeout. Team runs, scenarios, pausing and
+resuming, and resetting characters are in [bench/README.md](bench/README.md); scoring in
+[bench/judge/README.md](bench/judge/README.md).
 
 ## Replays and live view
 
@@ -70,13 +72,15 @@ quests, achievements, loot):
   player to `server/azerothcore/env/dist/logs/recorder.jsonl`.
 
 Viewers (`server/recorder/`):
-- `bun server/recorder/live.ts [log ...] [--port 8800] [--since 60m]`: live view at http://localhost:8800/ that
-  tails the logs (default: the server log); the playhead follows the newest data until you seek back.
+- `bun server/recorder/live.ts [log ...] [--run bench/runs/<ts>-team] [--port 8800] [--since 60]`: live view at
+  http://localhost:8800/ that tails the logs (default: the server log; `--run` reads a team run's records and agent
+  transcripts); the playhead follows the newest data until you seek back.
 - `bun server/recorder/replay.ts bench/runs/<id>`: a self-contained `replay.html` for a finished run (the run's own
   records if it has them, else the server log; `--log`, `--chars`, `--from`, `--to` to choose).
 - `bun server/recorder/movecheck.ts [log]` audits recorded movement for speed, slopes and swimming.
 
-Both viewers show a terrain map rendered from `data/maps`, every player's route, a seek bar with key events marked,
+Both viewers show the game's minimap (when client data is extracted, else a terrain map rendered from `data/maps`),
+every player's route, a seek bar with key events marked,
 and panels synced to the playhead: players, events, chat, combat, agent (API calls), scores (chart + leaderboard)
 and groups (current parties, leader, how spread out they are; dashed lines on the map). Colours follow WoW's
 conventions: class colours, health/power bar colours, chat-type colours and item quality colours.

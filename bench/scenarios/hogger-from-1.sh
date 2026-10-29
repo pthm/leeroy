@@ -1,5 +1,5 @@
 #!/bin/sh
-# 10 human agents from level 1 in Northshire, 120 minutes, scored on progress (score = (progress + pace) / 2),
+# 10 human agents from level 1 in Northshire, 120 minutes, scored on progress (score = (rate + best 15-min window) / 2),
 # with "Wanted: Hogger" as a soft target. Watch live: bun server/recorder/live.ts bench/runs/<team>/*.record.jsonl
 cd "$(dirname "$0")/.." || exit 1
 HINT="Suggested target: complete \"Wanted: Hogger\" (quest 176) in Elwynn Forest. It's a stretch from level 1, and \

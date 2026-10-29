@@ -1,7 +1,7 @@
 // bun server/recorder/replay.ts <run-dir | team-dir> [--out replay.html] [--log server/azerothcore/env/dist/logs/recorder.jsonl]
 //                [--chars A,B] [--from <ms|ISO>] [--to <ms|ISO>]
-// Builds a self-contained HTML replay of a run from the mod-recorder log: a terrain map rendered from the
-// server's own map files (data/maps: heights, water, zone borders) with every player's route, a seek bar,
+// Builds a self-contained HTML replay of a run from its own client-side records (or the mod-recorder log): the
+// game's minimap when client data is extracted, else a terrain map from data/maps, with every player's route, a seek bar,
 // and chat / combat / event panels synced to the playhead. Characters and the time window come from the
 // run's judge.json (or team.json), or from --chars/--from/--to.
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
