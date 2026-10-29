@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
 // Event is one thing that happened. Data holds JSON-able values only.
@@ -110,7 +112,7 @@ func (q Query) wants(e Event) bool {
 	if e.Seq <= q.Since {
 		return false
 	}
-	if len(q.Types) > 0 && !typeIn(e.Type, q.Types) {
+	if len(q.Types) > 0 && !Matches(e, q.Types) {
 		return false
 	}
 	if q.Match != "" {
@@ -122,14 +124,32 @@ func (q Query) wants(e Event) bool {
 	return true
 }
 
-// typeIn: "chat" matches "chat"; a pattern ending in "*" matches a prefix ("quest_*")
-func typeIn(t string, types []string) bool {
-	for _, p := range types {
-		if p == t || p == "*" || (strings.HasSuffix(p, "*") && strings.HasPrefix(t, strings.TrimSuffix(p, "*"))) {
+// Matches: "chat" matches every chat event; a pattern ending in "*" matches a prefix ("quest_*"); "type:kind"
+// also matches the event's kind, for chat ("chat:whisper", "chat:npc_*").
+func Matches(e Event, pats []string) bool {
+	for _, p := range pats {
+		t, kind, byKind := strings.Cut(p, ":")
+		if glob(t, e.Type) && (!byKind || glob(kind, kindOf(e))) {
 			return true
 		}
 	}
 	return false
+}
+
+func glob(p, s string) bool {
+	return p == s || p == "*" || (strings.HasSuffix(p, "*") && strings.HasPrefix(s, strings.TrimSuffix(p, "*")))
+}
+
+// kindOf: a chat event's kind ("whisper", "npc_say", ...), live or read back from the file
+func kindOf(e Event) string {
+	switch d := e.Data.(type) {
+	case types.Chat:
+		return d.Kind
+	case map[string]any:
+		k, _ := d["kind"].(string)
+		return k
+	}
+	return ""
 }
 
 func (b *Bus) Query(q Query) []Event {

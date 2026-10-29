@@ -574,3 +574,103 @@ func castMatch(spell uint32) func(script.Event) *script.Outcome {
 
 // SetEventsFile keeps the event stream in path (JSONL), before Run.
 func (b *Bot) SetEventsFile(path string) { b.config.EventsFile = path }
+
+// setupWatch: the "stall" and "progress" events, so the agent can wait for its scripts to need it (subscribe to
+// stall) instead of waking for everything that happens. XP is the measure: kills, quests and exploring all give it.
+//
+//	stall    (types.Stall): no XP for stall_s, or the XP rate over the last window_s below `below`. Once, until
+//	         progress resumes.
+//	progress (types.Progress): a digest every every_s (0 = off)
+func (b *Bot) setupWatch() {
+	type gain struct {
+		t  time.Time
+		xp uint32
+	}
+	var (
+		mu                             sync.Mutex
+		stallS, below, everyS, windowS = 180.0, 0.0, 0.0, 300.0
+		gains                          []gain // ponytail: trimmed to the window each tick
+		kills, deaths                  int
+		lastXP, lastDigest             = time.Now(), time.Now()
+		stalled                        string // the reason of the stall reported, until it's over
+	)
+	b.lua.Bus.Listen(func(ev script.Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch ev.Type {
+		case "xp":
+			if x, ok := ev.Data.(types.XPGain); ok {
+				gains, lastXP = append(gains, gain{time.Now(), x.Amount}), time.Now()
+				if stalled == "no_xp" {
+					stalled = ""
+				}
+			}
+		case "kill", "party_kill":
+			kills++
+		case "death":
+			deaths++
+		}
+	})
+	b.lua.Func("events.watch", "{[stall_s = 180, below = 0, window_s = 300, every_s = 0]} → settings",
+		"when to emit stall (no XP for stall_s seconds, or fewer than below XP/hour over the last window_s; 0 = off) and progress (a digest every every_s; 0 = off) events. Subscribe to them to be woken",
+		func(o map[string]any) map[string]any {
+			mu.Lock()
+			defer mu.Unlock()
+			for k, p := range map[string]*float64{"stall_s": &stallS, "below": &below, "window_s": &windowS, "every_s": &everyS} {
+				if v, ok := o[k].(float64); ok {
+					*p = v
+				}
+			}
+			stalled = ""
+			return map[string]any{"stall_s": stallS, "below": below, "window_s": windowS, "every_s": everyS}
+		})
+	start := time.Now()
+	go func() {
+		for range time.Tick(5 * time.Second) {
+			mu.Lock()
+			now := time.Now()
+			for len(gains) > 0 && now.Sub(gains[0].t).Seconds() > max(windowS, everyS) {
+				gains = gains[1:]
+			}
+			sum := func(s float64) (xp uint32) { // XP over the last s seconds
+				for _, g := range gains {
+					if now.Sub(g.t).Seconds() <= s {
+						xp += g.xp
+					}
+				}
+				return xp
+			}
+			rate := func(s float64) float64 { // XP/hour over the last s seconds (or since the start)
+				s = min(s, now.Sub(start).Seconds())
+				return math.Round(float64(sum(s)) / max(s, 60) * 3600)
+			}
+			type out struct {
+				typ  string
+				data any
+			}
+			var emit []out
+			idle, r := now.Sub(lastXP).Seconds(), rate(windowS)
+			slow := below > 0 && now.Sub(start).Seconds() >= windowS && r < below
+			switch {
+			case stalled == "slow" && !slow:
+				stalled = ""
+			case stalled == "" && stallS > 0 && idle >= stallS:
+				stalled = "no_xp"
+				emit = append(emit, out{"stall", types.Stall{Reason: "no_xp", Seconds: int(idle), XPPerHour: r}})
+			case stalled == "" && slow:
+				stalled = "slow"
+				emit = append(emit, out{"stall", types.Stall{Reason: "slow", XPPerHour: r, Below: below, WindowS: windowS}})
+			}
+			if everyS > 0 && now.Sub(lastDigest).Seconds() >= everyS {
+				s := now.Sub(lastDigest).Seconds()
+				d := types.Progress{XP: sum(s), XPPerHour: rate(s), Kills: kills, Deaths: deaths, Seconds: int(s)}
+				lastDigest, kills, deaths = now, 0, 0
+				emit = append(emit, out{"progress", d})
+			}
+			mu.Unlock()
+			for _, o := range emit {
+				b.emit(o.typ, o.data)
+			}
+		}
+	}()
+}

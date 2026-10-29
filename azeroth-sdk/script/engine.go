@@ -857,7 +857,7 @@ func (e *Engine) dispatchEvents() {
 	e.inboxMu.Unlock()
 	for _, ev := range evs {
 		for _, t := range e.tasks {
-			if t.State == "waiting" && t.wait.kind == "event" && t.wait.got == nil && ev.Seq > t.wait.since && typeIn(ev.Type, t.wait.types) {
+			if t.State == "waiting" && t.wait.kind == "event" && t.wait.got == nil && ev.Seq > t.wait.since && Matches(ev, t.wait.types) {
 				evc := ev
 				t.wait.got = &evc
 			}
@@ -868,7 +868,7 @@ func (e *Engine) dispatchEvents() {
 		}
 		sort.Slice(hs, func(i, j int) bool { return hs[i].id < hs[j].id })
 		for _, h := range hs {
-			if typeIn(ev.Type, h.types) && taskOfEvent(ev) != h.name { // not its own output (a "*" handler that logs)
+			if Matches(ev, h.types) && taskOfEvent(ev) != h.name { // not its own output (a "*" handler that logs)
 				e.spawn(h.name, h.fn, []lua.LValue{eventToLua(e.L, ev)}, true)
 			}
 		}

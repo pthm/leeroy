@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -140,7 +139,25 @@ var methods = map[string]method{
 		}
 		return e.Bus.Query(p.Query), nil
 	}),
-	// events.wait: blocks until an event matching types/match arrives after since (default: now), or timeout_s
+	// events.subscribe: set what wakes the agent (events.wait without types) and what eval replies show in full;
+	// no types: just read it. Returns the subscription.
+	"events.subscribe": typed(func(s Sessions, p struct {
+		Char  string   `json:"char"`
+		Types []string `json:"types"`
+	}) (any, error) {
+		e, err := engine(s, p.Char)
+		if err != nil {
+			return nil, err
+		}
+		if p.Types != nil {
+			subsMu.Lock()
+			subs[e] = p.Types
+			subsMu.Unlock()
+		}
+		return subscribed(e), nil
+	}),
+	// events.wait: blocks until an event matching types/match (default: the subscription) arrives after since
+	// (default: now), or timeout_s
 	"events.wait": typed(func(s Sessions, p struct {
 		Char    string  `json:"char"`
 		Timeout float64 `json:"timeout_s"`
@@ -153,6 +170,9 @@ var methods = map[string]method{
 		}
 		if p.Timeout <= 0 || p.Timeout > 600 {
 			p.Timeout = 60
+		}
+		if len(p.Types) == 0 {
+			p.Types = subscribed(e)
 		}
 		p.Query.Since = e.Bus.Seq()
 		if p.Since != nil {
@@ -169,9 +189,29 @@ var (
 	cursors  = map[*script.Engine]uint64{}
 )
 
-// important event types are shown in full in eval replies; the rest are counted
-var important = []string{"chat", "attention", "death", "resurrected", "level_up", "script_error", "error", "notice",
-	"party_invite", "party_changed", "quest_complete", "quest_turned_in", "gear_broken", "trade"}
+// What wakes the agent and what eval replies show in full, per character: the agent's choice (events.subscribe).
+// Chat is by kind, so NPC lines and channel chatter only reach it if it asks for them.
+var (
+	subsMu sync.Mutex
+	subs   = map[*script.Engine][]string{}
+)
+
+var defaultSubs = []string{"attention", "death", "stall", "script_error", "task_finished", "party_invite", "trade",
+	"gear_broken", "chat:whisper", "chat:party", "chat:raid", "chat:say"}
+
+func subscribed(e *script.Engine) []string {
+	subsMu.Lock()
+	defer subsMu.Unlock()
+	if s, ok := subs[e]; ok {
+		return s
+	}
+	return defaultSubs
+}
+
+// informational events eval replies always show in full (they don't wake the agent unless subscribed). Channel
+// chat is how players broadcast to each other, so it's shown even though it doesn't wake by default.
+var shown = []string{"level_up", "resurrected", "error", "notice", "party_changed", "quest_complete", "quest_turned_in",
+	"chat:channel"}
 
 // news summarises the events since the agent's last eval: {seq, counts by type, important events (last 20)}.
 func news(e *script.Engine) map[string]any {
@@ -184,7 +224,7 @@ func news(e *script.Engine) map[string]any {
 		return nil
 	}
 	evs := e.Bus.Query(script.Query{Since: since})
-	counts, keep := map[string]int{}, []script.Event{}
+	counts, keep, sub := map[string]int{}, []script.Event{}, subscribed(e)
 	for _, ev := range evs {
 		counts[ev.Type]++
 		failed := false
@@ -193,12 +233,8 @@ func news(e *script.Engine) map[string]any {
 			failed = ev.Type == "result" && d["ok"] == false
 		case types.TaskEvent:
 			failed = ev.Type == "task_finished" && d.State != "done"
-		case types.Chat:
-			if d.Kind == "whisper_sent" {
-				continue
-			}
 		}
-		if failed || matchAny(ev.Type, important) {
+		if failed || script.Matches(ev, sub) || script.Matches(ev, shown) {
 			keep = append(keep, ev)
 		}
 	}
@@ -213,15 +249,6 @@ func news(e *script.Engine) map[string]any {
 		out["note"] = "older events trimmed; wow events --since for the rest"
 	}
 	return out
-}
-
-func matchAny(t string, pats []string) bool {
-	for _, p := range pats {
-		if p == t || (strings.HasSuffix(p, "*") && strings.HasPrefix(t, strings.TrimSuffix(p, "*"))) {
-			return true
-		}
-	}
-	return false
 }
 
 // session_ finds a character's session (char may be empty for a single-character daemon), or nil.

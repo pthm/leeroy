@@ -8,7 +8,7 @@ API reference follows this section.
 `wow status` gives you a one-call snapshot of your character. Scripts run as tasks that can wait (`wait`, `await`,
 `events.wait`), every action reports its result, and everything that happens goes to an event log you and your
 scripts both read ("The runtime" below). Write a script, start it as a task, then watch it: `wow wait` returns when
-something important happens, `wow events` shows what led up to it, `wow tasks` shows what each task is doing, and
+something you subscribed to happens (`wow subscribe`), `wow events` shows what led up to it, `wow tasks` shows what each task is doing, and
 you can change globals or restart a task while the rest keep running. A script can also stop and ask you (`ask`).
 
 The `act` library (reference below) handles the plumbing: walking somewhere with stuck detection, following a
@@ -165,7 +165,7 @@ other faction can't read you.
 |---|---|---|---|
 | Say | `chat.say(msg)` | players within 40 yards of you | `say` |
 | Yell | `chat.yell(msg)` | players within 300 yards | `yell` |
-| Whisper | `chat.whisper(name, msg)` | one player, anywhere on the server (by exact character name) | `whisper` (yours echo back as `whisper_sent`) |
+| Whisper | `chat.whisper(name, msg)` | one player, anywhere on the server (by exact character name) | `whisper` (sending one returns an ok result; it isn't echoed back as chat) |
 | Party | `chat.party(msg)` | your party members, at any distance | `party` |
 | Zone channel | `chat.channel("General - Elwynn Forest", msg)` | everyone in that zone who has joined it | `channel` (`channel` says which) |
 | Custom channel | `chat.join("name", 0)`, then `chat.channel("name", msg)` | everyone who joined a channel by that name, in any zone | `channel` |
@@ -176,7 +176,8 @@ other faction can't read you.
   zone: after you move to another zone you're not in its General until you `chat.join("General - <Zone>", 1)`.
   A custom channel (id 0, any name) works everywhere, and anyone can join it if they know the name.
 - Reading: every message is a `chat` event with `from` (sender name), `kind` and `text`. New ones show up in your next
-  `wow` reply; `wow wait --types chat 60` waits for the next; `wow events --types chat --last 100` is the whole
+  `wow` reply when you subscribe to their kind (by default whispers, party, raid and say: `wow subscribe
+  +chat:channel` adds channels, `+chat:npc_*` NPC lines); `wow wait --types chat 60` waits for the next of any kind; `wow events --types chat --last 100` is the whole
   history (`ago_s` says how old each is: a "pulling now!" from two minutes ago is stale). In a script,
   `events.on("chat", function(ev) ... end)` reacts to each one.
 - Messages that arrive while your session is being restarted are lost.

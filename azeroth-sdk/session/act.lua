@@ -303,10 +303,48 @@ function A.spirit_res()
   end
   return result("act.spirit_res", true)
 end
+-- recover: back to life however it takes: release, run to the corpse (the spirit healer if that fails, or with
+-- spirit = true), then rest unless rest = false. Pair it with a death handler:
+--   events.on("death", function() act.recover() end, "recover")
+function A.recover(o)
+  o = o or {}
+  if me.alive() then return result("act.recover", true) end
+  if not me.ghost() then
+    local r = A.release()
+    if not r.ok then r.op = "act.recover" return r end
+  end
+  local r = o.spirit and A.spirit_res() or A.corpse_run()
+  if not r.ok and not o.spirit then r = A.spirit_res() end
+  r.op = "act.recover"
+  if r.ok and o.rest ~= false then A.rest() end
+  return r
+end
+
+-- task.keep: a script that doesn't stop when it ends. It runs fn as a task called name and runs it again each time
+-- it finishes or fails (after a pause that grows while it keeps failing fast, up to 30 s), waiting while you're
+-- dead. Calling it again replaces it; task.stop(name) stops it for good.
+function task.keep(name, fn, ...)
+  local args, n = { ... }, select("#", ...)
+  task.stop(name)
+  return task.spawn(name, function()
+    local quick = 0
+    while true do
+      while not me.alive() do events.wait("resurrected", 5) end
+      local started = now()
+      local id = task.spawn(name, fn, unpack(args, 1, n))
+      local ev
+      repeat ev = events.wait("task_finished") until ev and ev.data.task == id
+      if ev.data.state == "stopped" then return end
+      quick = (now() - started < 10000) and quick + 1 or 0
+      wait(math.min(2 ^ quick, 30))
+    end
+  end)
+end
+doc("task.keep", "(name, fn, ...) → id", "run fn as a task and run it again whenever it finishes or fails (backing off while it fails fast, waiting while you're dead); task.stop(name) ends it")
 
 -- the functions above that wait need a task: say so plainly instead of failing deep inside
 for _, n in ipairs({ "go_to", "travel", "approach", "follow", "reach_npc", "accept", "turn_in", "vendor", "train", "talk",
-  "use_object", "rest", "release", "corpse_run", "spirit_res", "loot_nearby", "fly" }) do
+  "use_object", "rest", "release", "corpse_run", "spirit_res", "recover", "loot_nearby", "fly" }) do
   local f = A[n]
   A[n] = function(...)
     if not task.current() then
@@ -350,4 +388,5 @@ for name, d in pairs({
   release = { "() → result", "release your spirit" },
   corpse_run = { "() → result", "as a ghost, walk to your corpse and reclaim it" },
   spirit_res = { "() → result", "as a ghost, resurrect at the nearest spirit healer in sight (costs durability)" },
+  recover = { "{[spirit = false, rest = true]} → result", "back to life: release, corpse run (spirit healer if that fails, or with spirit = true), then rest" },
 }) do doc("act." .. name, d[1], d[2]) end

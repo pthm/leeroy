@@ -8,6 +8,7 @@ the repo root; server and client setup is in the [repo README](../README.md).
 |---|---|
 | `bench.sh` | one agent: account, character, session, judge, agent; results in `runs/<ts>-<agent>/` |
 | `matrix.sh` | a grid of solo runs (task × race × class × minutes × reps) from a config in `matrices/`; writes `summary.json` |
+| `report.ts` | the report card: how each agent spent a run (duty cycle, idle gaps, progress by what the agent was doing, wakes and what triggered them, restarts, deaths, tokens, cost); `report.json` in the run or team dir, written at the end of every run |
 | `team.sh` | several `bench.sh` on one clock; writes `team.json` and one replay to `runs/<ts>-team/` |
 | `resume.sh` | resumes a paused team run |
 | `restart-agent.sh` | mid-run, brings back one agent whose session or conversation ended |

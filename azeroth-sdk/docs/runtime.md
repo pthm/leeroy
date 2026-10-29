@@ -36,6 +36,40 @@ end)
 - `wow` evaluations run between ticks on the same state, so they never wait: start a task instead. Reloading a
   file doesn't stop the tasks it started: `task.stop("name")` first.
 
+### Scripts that keep running
+
+A script that ends, fails or dies leaves your character standing still until you notice. Make the loop the
+script's job, not yours:
+
+```lua
+events.on("death", function() act.recover() end, "recover")   -- release, corpse run, rest
+task.keep("grind", function()                                 -- runs again whenever it ends or fails
+  while true do ... end
+end)
+```
+
+- `task.keep(name, fn, ...)` runs `fn` as a task and runs it again each time it finishes or fails, after a pause
+  that grows while it keeps failing fast (up to 30 s), and not while you're dead. Calling it again replaces it;
+  `task.stop(name)` ends it for good.
+- `act.recover{[spirit = false, rest = true]}`: release, run back to the corpse (the spirit healer if that fails),
+  then rest.
+
+**Tune, don't restart.** Restarting a script throws away what it was doing: the target it picked, the path it was
+walking, the pull it was half-way through. Keep what you tune in a table the loop reads on every pass, and change
+it while the script runs:
+
+```lua
+G = G or { area = {x = -9460, y = 70, radius = 80}, rest_hp = 0.5, avoid = {} }   -- keeps its values on reload
+task.keep("grind", function()
+  while true do grind_once(G) end                             -- reads G every pass
+end)
+```
+
+```sh
+wow 'G.rest_hp = 0.6; G.avoid[475] = true'                    # takes effect on the next pass
+wow -f grind.lua                                              # redefines grind_once; the running loop calls the new one
+```
+
 ## Actions: requests and results
 
 Every action returns a **request** at once, which later resolves to a **result**:
@@ -68,6 +102,11 @@ see on screen and in a real client's combat log.
   wait and act). Registering again under the same name (default `"on <types>"`) replaces the handler, so reloading
   a script doesn't stack them. `events.off(id)`, `events.handlers()`.
 - `events.wait(types [, timeout_s])` inside a task: the next matching event after now.
+- Types match an event's type; `"quest_*"` matches a prefix, and `"chat:<kind>"` one kind of chat
+  (`"chat:whisper"`, `"chat:npc_*"` for NPC lines and emotes: a boss's yell often announces its next ability).
+- `events.watch{[stall_s = 180, below = 0, window_s = 300, every_s = 0]}`: when to emit `stall` (no XP for
+  `stall_s` seconds, or fewer than `below` XP per hour over the last `window_s`) and `progress` (a digest of XP, XP
+  per hour, kills and deaths every `every_s`; off by default). A stall is reported once, until progress resumes.
 - `events.query{since = seq, types = {...}, match = "text", last = 50}` → past events (`limit = n`: the first n
   after `since`). Types can end in `*` (`"quest_*"`, `"cast_*"`); `match` is a case-insensitive search of the
   event's data. `events.seq()` → the latest seq.
@@ -81,15 +120,24 @@ wow events --types chat --last 100               # chat history
 wow events --types damage,heal --last 200        # your combat log
 wow events --types result --match '"ok":false'   # failed actions
 wow events --since 1200                          # everything after seq 1200
-wow wait 120                                     # block until something important happens (or 120 s)
+wow wait 120                                     # block until something you subscribed to happens (or 120 s)
 wow wait --types quest_complete,death 600        # block for specific events
+wow subscribe                                    # what wakes you
+wow subscribe +chat:channel,progress             # also wake for channel chat and progress digests
+wow subscribe -task_finished                     # stop waking when a task ends
 wow tasks                                        # what your tasks are doing
 ```
 
+**Your subscription** is what wakes you: `wow wait` without `--types` waits for it. You choose it. The default is
+deaths, stalls, script errors, tasks ending, questions from your scripts, invites, trades, broken gear, and chat
+from players to you (whispers, party, raid and say). NPC lines and emotes, channel chat, progress digests and the
+rest are there when you ask for them: wake for what needs you, and let your scripts handle the rest
+(`events.on`). A session restart resets it to the default.
+
 Every `wow` evaluation's reply also carries `"events"`: what happened since your previous `wow` call, counted by
-type, with the important ones in full (chat, deaths, level-ups, errors, notices, failed actions and tasks,
-invites, trades, quest completions, questions from your scripts). Nothing is lost if you don't look: the log keeps
-the whole run, through restarts, and reading it never consumes anything.
+type, with these in full: what you subscribe to, failed actions and tasks, channel chat, and level-ups,
+resurrections, errors, notices, group changes and quest completions. Nothing is lost if you don't look: the log keeps the whole run,
+through restarts, and reading it never consumes anything.
 
 ## Scripts asking you
 

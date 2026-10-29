@@ -98,7 +98,7 @@ type GearBroken struct {
 }
 
 type Chat struct {
-	Kind    string `json:"kind" doc:"say, yell, party, whisper, whisper_sent (yours, echoed), channel, system, emote, npc_say, npc_yell, npc_whisper, npc_emote"`
+	Kind    string `json:"kind" doc:"say, yell, party, whisper, channel, system, emote, npc_say, npc_yell, npc_whisper, npc_emote (match one with chat:<kind>)"`
 	From    string `json:"from"`
 	GUID    GUID   `json:"guid"`
 	Channel string `json:"channel,omitempty"`
@@ -197,6 +197,22 @@ type EventType struct {
 	When string // when it happens
 }
 
+type Stall struct {
+	Reason    string  `json:"reason" doc:"no_xp: none for stall_s seconds; slow: the rate over window_s fell below below"`
+	Seconds   int     `json:"seconds,omitempty" doc:"no_xp: seconds since the last XP"`
+	XPPerHour float64 `json:"xp_per_hour" doc:"over the last window_s"`
+	Below     float64 `json:"below,omitempty"`
+	WindowS   float64 `json:"window_s,omitempty"`
+}
+
+type Progress struct {
+	XP        uint32  `json:"xp" doc:"XP gained in the period"`
+	XPPerHour float64 `json:"xp_per_hour"`
+	Kills     int     `json:"kills" doc:"yours and your party's"`
+	Deaths    int     `json:"deaths"`
+	Seconds   int     `json:"seconds" doc:"the period"`
+}
+
 // EventTypes: every event the runtime emits.
 var EventTypes = map[string]EventType{
 	"damage":           {Damage{}, "a hit involving you (melee or spell)"},
@@ -245,6 +261,8 @@ var EventTypes = map[string]EventType{
 	"task_finished":    {TaskEvent{}, "a task ended (done, failed or stopped)"},
 	"script_error":     {ScriptError{}, "a script raised an error"},
 	"attention":        {Attention{}, "a script asks the agent (ask)"},
+	"stall":            {Stall{}, "no XP for a while, or the XP rate fell below your threshold (events.watch); once until progress resumes"},
+	"progress":         {Progress{}, "a periodic digest of your progress (events.watch{every_s = ...}; off by default)"},
 	"answer":           {Answer{}, "the agent answered (answer)"},
 }
 

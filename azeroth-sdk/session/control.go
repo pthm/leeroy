@@ -176,6 +176,7 @@ func (b *Bot) setupControl() {
 	b.setupCombatInfo()
 	b.watchAreaTriggers()
 	b.watchEvents()
+	b.setupWatch()
 	b.startRecording()
 	e := b.lua
 
@@ -436,7 +437,8 @@ func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
 	case smsgPartyMemberStats, smsgPartyMemberStatsFull:
 		c.parsePartyStats(op == smsgPartyMemberStatsFull, data)
 	case smsgMessageChat, smsgGMMessageChat:
-		if m, guid, ok := parseChat(op, data); ok && (guid != w.CharGUID() || m.Type == 8 || m.Type == 9) {
+		// not your own chat, nor the server's echo of a whisper you sent: chat.whisper's result is the ack
+		if m, guid, ok := parseChat(op, data); ok && guid != w.CharGUID() && chatKind(m.Type) != "whisper_sent" {
 			if m.From == "" && guid != 0 {
 				m.From = c.names[guid]
 				if m.From == "" {

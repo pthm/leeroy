@@ -20,7 +20,8 @@ wow status                                       # one-call snapshot of your cha
 wow -f grind.lua                                 # load a script file (it starts its tasks)
 wow tasks                                        # your running tasks: state, status, what each waits for
 wow 'task.stop("grind")'                         # stop one
-wow wait 300                                     # block until something important happens (chat, death, failure...)
+wow wait 300                                     # block until something you subscribed to happens (or 300 s)
+wow subscribe +stall,chat:npc_*                  # choose what wakes you: show, replace, +add or -remove types
 wow events --types chat,death --last 20          # the event log: what happened, in order, for the whole run
 wow answer 812 sell                              # answer a script's ask()
 tail -20 session.log
@@ -31,8 +32,8 @@ party [10]                                       # your party over the last 10 m
 - `wow` runs Lua in the session and prints the returned values as JSON (`{"error": ...}` on failure). It runs
   between your scripts' steps on the same state, so it sees exactly what they see, and it can't wait: start a
   task for anything that takes time. Every reply carries `"events"`: what happened since your last call (counts,
-  plus chat, deaths, errors, failed actions and tasks in full), and `"script_errors"` if a script failed.
-  Messages from other players and the minutes left in the run (`wow: 42 min left`) also go to stderr;
+  plus what you subscribe to, errors, failed actions and tasks in full), and `"script_errors"` if a script failed.
+  Subscribed chat and the minutes left in the run (`wow: 42 min left`) also go to stderr;
   `standings` has `minutes_left` on its last line.
 - `wow wait`/`-w` take whole seconds (max 600). Create and edit files with your file-editing tools; your working
   directory is the only place you can write (some setups block shell redirects, heredocs and `sed -i`).
@@ -52,8 +53,7 @@ cast, loot or turn-in worked and why not. Event handlers react to what happens (
 
 ```lua
 local combat = dofile(LIB .. "lib/combat.lua")
-task.stop("grind")                                   -- reloading: replace the old one
-task.spawn("grind", function()
+task.keep("grind", function()                        -- runs again if it ends or fails; reloading replaces it
   while true do
     local mob = combat.pick_target(80)
     if not mob then wait(3) else
@@ -63,16 +63,22 @@ task.spawn("grind", function()
     end
   end
 end)
-events.on("death", function() act.release() act.corpse_run() end)
+events.on("death", function() act.recover() end, "recover")
 ```
 
-While it runs, you're watching: `wow wait` wakes you for anything important, `wow events` shows what led up to it,
-and a script can hand a decision to you with `ask(question, options)`.
+While it runs, you're watching, and your time is the scarce part: your character keeps playing only as long as a
+script is running. Let scripts handle what happens every few seconds (deaths, a finished errand, a full bag) and
+wake for what needs a decision. `wow subscribe` chooses what wakes you (`wow wait`). The default is deaths, stalls
+(no XP for 3 minutes: `events.watch` tunes it), script errors, tasks ending, your scripts' questions, invites,
+trades and chat from players to you. Waking for NPC lines and emotes (`chat:npc_*`), channel chat (`chat:channel`,
+which your replies show anyway) and progress digests (`progress`) is yours to add. `wow events` shows what led up to a wake, and a script can hand a
+decision to you with `ask(question, options)`. Tune a running script by changing the globals it reads rather than
+restarting it ("Scripts that keep running" in the runtime section).
 
 **Staying reachable.** Other players reach you only through chat, and you only see chat in a reply's `"events"`,
 in `wow wait`, or in `wow events --types chat`. Three easy ways to miss it: filtering replies down to `.result`
-(`wow` also prints other players' messages and invites to stderr, so keep stderr visible); `wow wait --types ...`
-without `chat` in the list; long stretches without any `wow` call. A script can also react to messages itself
+(`wow` also prints subscribed chat and invites to stderr, so keep stderr visible); unsubscribing from the chat
+kinds players use to reach you (`chat:whisper`, `chat:party`); long stretches without any `wow` call. A script can also react to messages itself
 while you're busy, for example to log them, pause a task or reply:
 
 ```lua

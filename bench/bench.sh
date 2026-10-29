@@ -13,7 +13,7 @@
 # stats) for the character's identity line. $ROSTER: the other players (one per line). $NOTICE: a file whose text
 # is added to the prompt (e.g. what changed since the agent's last run). $RUNTIME: claude (default: Claude Code,
 # $MODEL) or codex (Codex CLI, $CODEX_MODEL; default its configured model). $GO: file to wait for before the judge/agent start
-# (team.sh uses it to start every clock together; touches $GO.<name>.ready once the session is up).
+# (team.sh uses it to start every clock together; writes the run dir to $GO.<name>.ready once the session is up).
 set -e
 { # parsed whole before running, so editing this file can't break runs in progress
 cd "$(dirname "$0")" # everything below is relative to bench/
@@ -115,7 +115,7 @@ done
 agent/bin/wow "LIB = '$ws/'; chat.join('${CHANNEL:-General - Elwynn Forest}', 1)" >/dev/null
 # ponytail: one zone channel joined at start; no auto-rejoin on zone change (agents can join_channel)
 
-[ -z "$GO" ] || { touch "$GO.$name.ready"; until [ -e "$GO" ]; do sleep 1; done; }
+[ -z "$GO" ] || { echo "$root/$dir" > "$GO.$name.ready"; until [ -e "$GO" ]; do sleep 1; done; }
 "$repo/bin/judge" "$char" "$goal" --timeout "${mins}m" --samples "$dir/samples.jsonl" --record "$record" --board "$board" \
   --events "$events/$char.events.jsonl" ${role:+--role "$role"} --runtime "${RUNTIME:-claude}" > "$dir/judge.json" &
 judge=$!
@@ -142,9 +142,8 @@ HOW TO WORK
 - Measure, don't guess: check what your script is achieving (wow 'return me.level(), me.xp()',
   quests.log(), me.money()) and change strategy when progress stalls (mobs too low level, frequent deaths,
   full bags, a target you can't reach).
-- While your scripts run, watch them: wow wait (blocks until something important happens: chat, a death, a
-  failed task, a script asking you a question), wow events (the log), wow tasks (what each is doing). Don't end
-  your session.
+- While your scripts run, watch them: wow wait (blocks until something you subscribed to happens: wow subscribe
+  shows and changes what), wow events (the log), wow tasks (what each is doing). Don't end your session.
 - $stop_text
 
 REVIEW YOUR PLAY: be critical of how you're playing, not just of whether your script runs. Brute force (the same
@@ -173,8 +172,8 @@ OTHER PLAYERS: the other characters on this server are other AI agents like you,
 same time. You can team up with them or compete with them.${ROSTER:+ This run:
 $ROSTER
 }You can talk to them: say (nearby), whispers, party chat, the zone's General channel, or a channel of your
-own (chat.join(name)). Messages to you arrive as chat events: every wow reply shows new ones, and
-wow wait --types chat blocks until the next. You
+own (chat.join(name)). Messages arrive as chat events: every wow reply shows new ones from players, and
+wow wait wakes you for whispers, party and say (wow subscribe +chat:channel adds channels). You
 can invite them to groups, trade information, plan together or ignore them: how you deal with them is up to you.
 AGENTS.md ("Other players") explains the game mechanics of playing together.
 
@@ -231,5 +230,6 @@ watch=$!
 wait $judge || true
 cat "$dir/judge.json"
 [ -n "$GO" ] || "$repo/bin/azview" replay "$dir" >/dev/null 2>&1 || true # team.sh builds one replay for the whole team
+[ -n "$GO" ] || bun report.ts "$dir" >/dev/null 2>&1 || true # report card (team.sh writes the team's)
 exit
 }

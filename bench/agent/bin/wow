@@ -6,12 +6,15 @@
 # wow tasks                           your running script tasks: state, status, what each is waiting for
 # wow events [--types chat,quest_*] [--last 50] [--since seq] [--match text]
 #                                     the event log (chat, combat, loot, quests, action results, errors, script logs)
-# wow wait [--types chat,attention] [--match text] [seconds]
-#                                     block until a matching event happens (default: any important one), max 600s
+# wow wait [--types chat:whisper,death] [--match text] [seconds]
+#                                     block until a matching event happens (default: your subscription), max 600s
+# wow subscribe [types | +types | -types]
+#                                     what wakes you (wow wait) and what replies show in full: show it, replace it,
+#                                     or add/remove types. Chat by kind: chat:whisper, chat:npc_*, chat (all)
 # wow answer <id> <choice>            answer a script's ask() (an "attention" event)
 # wow -w 60 'lua'                     sleep 60s first, then evaluate
 # Every eval reply carries "events": what happened since your last call (counts by type, important ones in full).
-# Chat from other players, invites, trades and script questions are also printed to stderr ("wow: chat ..."),
+# Subscribed chat, invites, trades and script questions are also printed to stderr ("wow: chat ..."),
 # with the minutes left in the run ("wow: 42 min left").
 # Session: the azsdk daemon on port $WOW_PORT (default 8090).
 rpc() { # method, params JSON
@@ -24,7 +27,7 @@ eval_() {
   out=$(rpc script.eval "$(jq -n --arg code "$1" '{code: $code}')")
   printf '%s\n' "$out"
   printf '%s\n' "$out" | jq -r '.events.important[]? |
-    select((.type == "chat" and (.data.kind | test("^npc|_sent$|^system$") | not)) or .type == "party_invite" or .type == "trade" or .type == "attention") |
+    select(.type == "chat" or .type == "party_invite" or .type == "trade" or .type == "attention") |
     "wow: \(.type) " + (if .type == "chat" then "\(.data.kind) from \(.data.from): \(.data.text)" else (.data | tojson) end)' >&2
   [ -n "$WOWBENCH_BOARD" ] && jq -r '"wow: \(.minutes_left // empty) min left"' "$WOWBENCH_BOARD/$WOWBENCH_CHAR.json" >&2 2>/dev/null
   return 0
@@ -52,10 +55,17 @@ case "$1" in
   events) shift; rpc events.query "$(params "$@")" | lines; exit ;;
   wait) shift
     p=$(params "$@")
-    printf '%s' "$p" | jq -e .types >/dev/null || p=$(printf '%s' "$p" | jq -c '. + {types: ["chat","attention","death","level_up","script_error","task_finished","party_invite","error","gear_broken","trade"]}')
     out=$(rpc events.wait "$p")
     printf '%s\n' "$out" | jq -c '{timed_out, seq}'
     printf '%s\n' "$out" | jq -c '.events // []' | lines
+    exit ;;
+  subscribe)
+    case "$2" in
+      '') rpc events.subscribe '{}' ;;
+      [+-]*) rpc events.subscribe "$(rpc events.subscribe '{}' | jq -c --arg op "$(printf %.1s "$2")" --arg v "${2#?}" \
+        '($v | split(",")) as $t | {types: (if $op == "+" then . + ($t - .) else . - $t end)}')" ;;
+      *) rpc events.subscribe "$(jq -nc --arg v "$2" '{types: ($v | split(","))}')" ;;
+    esac
     exit ;;
   -w) case "$2" in ''|*[!0-9]*) echo "usage: wow -w <seconds> <lua>"; exit 1 ;; esac
     sleep $(( $2 > 600 ? 600 : $2 )); shift 2 ;;

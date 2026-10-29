@@ -32,6 +32,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `act.player(name) → Player` | a player by name (nearby or in your group) |
 | `act.reach_npc{npc [, x, y, z]} → result<Creature>` | find an NPC by entry (walking to x, y, z first) and stand next to it |
 | `act.ready(id [, guid]) → bool` | known, off cooldown, affordable, and you're not casting |
+| `act.recover{[spirit = false, rest = true]} → result` | back to life: release, corpse run (spirit healer if that fails, or with spirit = true), then rest |
 | `act.release() → result` | release your spirit |
 | `act.rest{[hp = 0.95, mana = 0.9, max_s = 40]} → result` | eat/drink if you carry food/water and wait until topped up; fails if attacked |
 | `act.spirit_res() → result` | as a ghost, resurrect at the nearest spirit healer in sight (costs durability) |
@@ -109,6 +110,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `events.query{since, types, match, last = 50, limit} → {events}` | past events; types may end in * ("quest_*"), match searches the data |
 | `events.seq() → seq` | the latest event's sequence number |
 | `events.wait(type or {types} [, timeout_s]) → event` | the next matching event, nil on timeout (tasks only) |
+| `events.watch{[stall_s = 180, below = 0, window_s = 300, every_s = 0]} → settings` | when to emit stall (no XP for stall_s seconds, or fewer than below XP/hour over the last window_s; 0 = off) and progress (a digest every every_s; 0 = off) events. Subscribe to them to be woken |
 
 ### flights
 
@@ -262,6 +264,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | Function | |
 |---|---|
 | `task.current() → id` | the current task's id (nil outside a task) |
+| `task.keep(name, fn, ...) → id` | run fn as a task and run it again whenever it finishes or fails (backing off while it fails fast, waiting while you're dead); task.stop(name) ends it |
 | `task.list() → TaskInfo[]` | your tasks (finished ones stay listed for 10 minutes) |
 | `task.pause(id)` | pause a waiting task |
 | `task.resume(id)` | resume a paused task |
@@ -1093,7 +1096,7 @@ AuraChange: an aura on you, or one you cast on another unit, began or ended.
 
 | Field | Type | |
 |---|---|---|
-| `kind` | string | say, yell, party, whisper, whisper_sent (yours, echoed), channel, system, emote, npc_say, npc_yell, npc_whisper, npc_emote |
+| `kind` | string | say, yell, party, whisper, channel, system, emote, npc_say, npc_yell, npc_whisper, npc_emote (match one with chat:<kind>) |
 | `from` | string |  |
 | `guid` | GUID |  |
 | `channel?` | string |  |
@@ -1226,6 +1229,16 @@ FightSummary: one fight, from you or a party member in sight entering combat unt
 |---|---|---|
 | `from` | string | accept with group.accept(), or group.decline() |
 
+### Progress
+
+| Field | Type | |
+|---|---|---|
+| `xp` | number | XP gained in the period |
+| `xp_per_hour` | number |  |
+| `kills` | number | yours and your party's |
+| `deaths` | number |  |
+| `seconds` | number | the period |
+
 ### QuestProgress
 
 | Field | Type | |
@@ -1241,6 +1254,16 @@ FightSummary: one fight, from you or a party member in sight entering combat unt
 |---|---|---|
 | `where` | string |  |
 | `error` | string |  |
+
+### Stall
+
+| Field | Type | |
+|---|---|---|
+| `reason` | string | no_xp: none for stall_s seconds; slow: the rate over window_s fell below below |
+| `seconds?` | number | no_xp: seconds since the last XP |
+| `xp_per_hour` | number | over the last window_s |
+| `below?` | number |  |
+| `window_s?` | number |  |
 
 ### TaskEvent
 
@@ -1313,12 +1336,14 @@ An event is an [Event](#event) whose `data` is the type below.
 | `party_changed` | PartyChanged | your group changed |
 | `party_invite` | PartyInvite | someone invited you to their group |
 | `party_kill` | Kill | a party member killed something |
+| `progress` | Progress | a periodic digest of your progress (events.watch{every_s = ...}; off by default) |
 | `quest_complete` | QuestDone | a quest's objectives are done: turn it in |
 | `quest_progress` | QuestProgress | a quest kill/object counter went up |
 | `quest_turned_in` | QuestDone | you turned a quest in |
 | `result` | Result | an action finished (its result) |
 | `resurrected` | None | you're alive again |
 | `script_error` | ScriptError | a script raised an error |
+| `stall` | Stall | no XP for a while, or the XP rate fell below your threshold (events.watch); once until progress resumes |
 | `task_finished` | TaskEvent | a task ended (done, failed or stopped) |
 | `task_started` | TaskEvent | a task started |
 | `teleported` | Teleport | you were teleported: a portal, hearthstone, summon, the graveyard, an instance |
