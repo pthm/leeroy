@@ -27,7 +27,7 @@ A recording is JSON Lines, one event per line, appended as it happens. Two write
 | Writer | Who it sees | Where it writes |
 |---|---|---|
 | `mod-recorder` (server side, optional) | Every player on the server | `$RECORDER_FILE`, default `server/azerothcore/env/dist/logs/recorder.jsonl` |
-| `azsdk -record <file>` (client side, `azeroth-sdk/session/recorder.go`) | The daemon's own characters, plus agent-side events | The given file; `bench.sh` uses `record.jsonl` in the run dir, or `<agent>.record.jsonl` in a team dir |
+| `azsdk -record <file>` (client side, `azeroth-sdk/session/recorder.go`) | The daemon's own characters, plus agent-side events | The given file; `azbench run` uses `<agent>.record.jsonl` in the run dir |
 
 Every line has:
 
@@ -68,7 +68,7 @@ viewers fill it in from `acore_world.creature_template`.
 | `script_error` | the script errors from a Lua eval | no | yes |
 
 Two more kinds come from elsewhere:
-- `score`: `bin/judge --record <file>` appends each judge sample (`value`, `level`, `rate`,
+- `score`: the judge's `--record <file>` appends each judge sample (`value`, `level`, `rate`,
   `recent_rate`, `best_window`, `pace`, `score`) to the run's record file. The viewer charts them.
 - `say`: not in any log. The viewers turn each agent's transcript into `say` events (below).
 
@@ -87,8 +87,8 @@ docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml u
 ```
 
 AzerothCore picks up modules in `modules/` at build time, so the worldserver image must be rebuilt after copying (and
-after changing `recorder.cpp`: copy again, rebuild). The module is optional: without it `bench.sh` and `team.sh`
-still record every run client-side.
+after changing `recorder.cpp`: copy again, rebuild). The module is optional: without it `azbench run`
+still records every run client-side.
 
 ## Viewers
 
@@ -143,8 +143,8 @@ bin/azview replay <run or team dir> [--out replay.html] [--log <file>] [--chars 
 
 The window defaults to the run's `go` file (team start) or the judge's start time, through the last judge result
 plus 5 s. The map is a single image of the box around every route on the most-visited map, embedded as a data URL:
-the terrain render, with the game's minimap colours where client data was extracted. `bench.sh` builds one for each
-single run, `team.sh` one for the whole team.
+the terrain render, with the game's minimap colours where client data was extracted. `azbench run` builds one at the end
+of every run.
 
 ### The viewer page
 
@@ -167,7 +167,7 @@ single run, `team.sh` one for the whole team.
 Colours follow WoW: class colours (players of the same class get `#1`, `#2`; `#2` and up draw dashed), health and
 power bar colours, chat-type colours, item quality colours.
 
-**Runtime and model badges**: `bench.sh` writes `meta.json` in each agent's run dir (`agent`, `char`, `runtime`,
+**Runtime and model badges**: `azbench run` writes `meta.json` in each agent's run dir (`agent`, `char`, `runtime`,
 `model`, `spec`, `role`). The viewers read it beside each transcript and show a badge like `claude · opus-5-5` (the
 `claude-` prefix dropped) on the player's chip and card; the card shows the spec in place of the class when set.
 

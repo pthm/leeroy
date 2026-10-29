@@ -1,0 +1,4 @@
+# Named starting positions for scenarios (start: <name>): "x y z map zone". Applied while the character is offline.
+northshire: "-8949.95 -132.49 83.53 0 12"   # Northshire Abbey, where Humans start
+goldshire: "-9460 70 56.6 0 12"             # the Lion's Pride Inn
+stormwind-trade: "-8833.38 628.63 94.01 0 1519" # Stormwind's Trade District: trainers, vendors, bank, flights

@@ -1,0 +1,78 @@
+# Class specialisations: a scenario's agents can take one (spec: <key>). The prompt states the class, spec, role,
+# what to optimise and the key stats, and the judge puts the role on the board.
+
+arms:
+  title: "Warrior - Arms"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Strength, then Agility (crit) and hit"
+fury:
+  title: "Warrior - Fury"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Strength, Agility"
+protwarrior:
+  title: "Warrior - Protection"
+  role: "Tank"
+  optimise: "holding enemies' attention (threat) and surviving the damage you take for your group"
+  stats: "Stamina, Strength and Armor (Defense later)"
+ret:
+  title: "Paladin - Retribution"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Strength, then Agility (crit) and some Intellect for mana"
+protpaladin:
+  title: "Paladin - Protection"
+  role: "Tank"
+  optimise: "holding enemies' attention (threat) and surviving the damage you take for your group"
+  stats: "Stamina, Strength and Armor, some Intellect for mana"
+holypaladin:
+  title: "Paladin - Holy"
+  role: "Healer"
+  optimise: "healing done: keeping yourself and the players you're with alive"
+  stats: "Intellect, then spell power and Spirit"
+combat:
+  title: "Rogue - Combat"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Agility, then Strength (attack power)"
+assassination:
+  title: "Rogue - Assassination"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Agility, then Strength (attack power)"
+subtlety:
+  title: "Rogue - Subtlety"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Agility, then Strength (attack power)"
+holy:
+  title: "Priest - Holy"
+  role: "Healer"
+  optimise: "healing done: keeping yourself and the players you're with alive"
+  stats: "Intellect and Spirit (mana and its regeneration), then spell power"
+discipline:
+  title: "Priest - Discipline"
+  role: "Healer"
+  optimise: "healing done and damage prevented: keeping yourself and the players you're with alive"
+  stats: "Intellect and Spirit, then spell power"
+shadow:
+  title: "Priest - Shadow"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Intellect, Spirit and spell power"
+fire:
+  title: "Mage - Fire"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Intellect and spell power, then Spirit"
+frost:
+  title: "Mage - Frost"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Intellect and spell power, then Spirit"
+arcane:
+  title: "Mage - Arcane"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Intellect and spell power, then Spirit"

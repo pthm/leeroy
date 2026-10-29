@@ -103,7 +103,7 @@ two `events.*` methods is logged as an `api` event.
 edit them by hand. After changing the Lua API or `types`:
 
 ```sh
-sh bench/dev/apidoc.sh                                  # from the repo root: builds azsdk-dev, starts the GM dev character on 8112 if needed, runs apigen
+bin/azbench apidoc                                      # from the repo root: builds everything, restarts the GM dev character on 8112, runs apigen
 cd azeroth-sdk && go run ./cmd/apigen -rpc http://127.0.0.1:8090/rpc   # or against any running session
 ```
 

@@ -1,0 +1,19 @@
+name: hogger-from-1
+description: >
+  10 Human agents from level 1 in Northshire, scored on progress, with "Wanted: Hogger" as a soft target.
+goal: score:100000
+minutes: 120
+hint: >-
+  Suggested target: complete "Wanted: Hogger" (quest 176) in Elwynn Forest. It's a stretch from level 1, and
+  everything on the way (levels, quests, gear) scores. Other players are in the area.
+agents:
+  - {name: a01, char: Alaric, class: warrior}
+  - {name: a02, char: Branwen, class: warrior}
+  - {name: a03, char: Corwin, class: paladin}
+  - {name: a04, char: Delphine, class: paladin}
+  - {name: a05, char: Emrys, class: rogue}
+  - {name: a06, char: Faelan, class: rogue}
+  - {name: a07, char: Gisela, class: priest}
+  - {name: a08, char: Halden, class: priest}
+  - {name: a09, char: Iseult, class: mage}
+  - {name: a10, char: Joren, class: mage}

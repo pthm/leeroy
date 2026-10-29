@@ -76,7 +76,8 @@ sandboxed: they can write only in their workspace, read the docs and source, and
 | Folder | What's in it |
 |---|---|
 | [`server/`](server/README.md) | The AzerothCore server: upstream checkout (`azerothcore/`, gitignored), config overrides (`override.yml`), account creation (`account/`) and `recorder/mod-recorder`, the server-side event log |
-| [`bench/`](bench/README.md) | The benchmark: launchers (`bench.sh`, `team.sh`), scoring (`judge/`), what agents get (`agent/`: task docs and the `wow`, `worlddb`, `azworld` tools), the session runner (`client/play.sh`, one `azsdk` per agent), agent `workspaces/` and `runs/` |
+| [`bench/`](bench/README.md) | The benchmark's configs and data: scenarios and matrices (YAML), specs and places, what agents get (`agent/`: task docs and their tools), agent `workspaces/` and `runs/` |
+| [`azbench/`](azbench) | `azbench`: runs the benchmark from those configs (one supervisor per run: sessions, judges, agents; pause, resume, restart), the judge and report card, and the agents' tools (`wow`, `standings`, `worlddb`, `party`) |
 | [`azeroth-sdk/`](azeroth-sdk/README.md) | `azsdk`: the Go headless client and daemon the agents drive, plus the Lua API docs and example scripts. Only a game client: no database access |
 | [`azview/`](azview/README.md) | `azview`: the viewer (live and replay) and movement audit, from the recordings |
 | [`azworld/`](azworld/README.md) | `azworld`: world queries for agents, from the server's databases and the game data; `azworld setup` builds the `wowbench` schema they read |
@@ -105,8 +106,8 @@ mkdir -p data/dbc && docker run --rm -v server_ac-client-data:/src:ro -v $PWD/da
 # map for `azworld route`); ~150MB, a few seconds
 go run ./azeroth-sdk/cmd/clientdata -client ~/path/to/WoW_3.3.5a extract data
 
-# the client (bench/client/play.sh also builds it on first use)
-go build -o azeroth-sdk/azsdk ./azeroth-sdk/cmd/azsdk
+# every tool, into bin/ (azbench run does this too)
+./build.sh
 ```
 
 The compose project is pinned to `server` (`server/override.yml`), so the volumes are `server_ac-database` and
@@ -115,11 +116,13 @@ The compose project is pinned to `server` (`server/override.yml`), so the volume
 ## Run a benchmark
 
 ```sh
-bench/bench.sh claude1 Humanwar 1 1 level:5 60          # agent name, character, race, class, goal, minutes
-LEVEL=10 START="-9460 70 56.6 0 12" bench/team.sh score:100000 60 a1:Garrick:1:1 a2:Paloma:1:2   # several agents, one clock
+bin/azbench run bench/scenarios/smoke.yaml               # 2 minutes, no agents: checks the harness end to end
+bin/azbench run bench/scenarios/fresh-split.yaml         # ten agents (Claude Code and Codex), one clock, 120 minutes
+bin/azbench matrix bench/matrices/starter.yaml --dry-run # a grid of solo runs
 ```
 
-Each agent gets a fresh non-GM account and runs as headless Claude Code (or Codex CLI, `RUNTIME=codex`) inside `bench/workspaces/<name>/` (its
+A scenario ([bench/scenarios/README.md](bench/scenarios/README.md)) lists the agents, the characters they play, the
+goal and the starting conditions. Each agent gets a fresh non-GM account and runs as headless Claude Code (or Codex CLI) inside `bench/workspaces/<name>/` (its
 persistent script library). It can read and write only there, read the client and server source, and run `wow`, `worlddb`,
 `azworld` and read-only shell commands. Results go to `bench/runs/<id>/`:
 - `judge.json`: the score;
@@ -129,18 +132,18 @@ persistent script library). It can read and write only there, read the client an
 - `replay.html`.
 
 Goals: `level:<n>`, `item:<entry>`, `quality:<n>` (3 = rare), `money:<copper>`, `quests:<n>`, `quest:<id>`,
-`achpoints:<n>`, and `score:<n>`: progress per hour (`bench/judge/score.json` sets which signals count; v6 counts XP
+`achpoints:<n>`, and `score:<n>`: progress per hour (`azbench/judge/score.json` sets which signals count; v6 counts XP
 earned). For "as much as possible" goals pass a large n and read `value` at timeout. Team runs, scenarios, pausing and
 resuming, and resetting characters are in [bench/README.md](bench/README.md); scoring in
-[bench/judge/README.md](bench/judge/README.md).
+[azbench/judge/README.md](azbench/judge/README.md).
 
 ## Replays and live view
 
 Two sources write the same event format (positions once a second, chat, damage, kills, deaths, levels, XP,
 quests, achievements, loot):
 - **Client side, by default:** `azsdk -record <file>` logs its own characters plus agent-side events the server can't
-  see (each API call and the Lua it ran, script errors). `bench.sh`/`team.sh` record every run this way
-  (`record.jsonl`, or `<agent>.record.jsonl` in a team dir). Works on any AzerothCore server.
+  see (each API call and the Lua it ran, script errors). `azbench run` records every run this way
+  (`<agent>.record.jsonl` in the run dir). Works on any AzerothCore server.
 - **Server side, optional and authoritative:** the `mod-recorder` module (`server/recorder/mod-recorder`) logs every
   player to `server/azerothcore/env/dist/logs/recorder.jsonl`.
 
@@ -162,8 +165,8 @@ conventions: class colours, health/power bar colours, chat-type colours and item
 
 ```sh
 bin/account agent1 agent1                                         # non-GM account
-WOW_PORT=8090 ACCOUNT=agent1 bench/client/play.sh Agentone > bench/runs/agent1.log 2>&1 &
-bin/judge Agentone level:10 --timeout 4h                          # prints JSON + elapsed_s when met
+bin/azsdk -char Agentone -account agent1 -race 1 -class 1 -listen 127.0.0.1:8090 -data data > agent1.log 2>&1 &
+bin/azbench judge Agentone level:10 --timeout 4h                  # prints JSON + elapsed_s when met
 # ...give the agent the docs (see bench/README.md) + the goal; it drives the session with bench/agent/bin/wow
 ```
 

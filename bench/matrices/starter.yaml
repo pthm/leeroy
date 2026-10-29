@@ -1,0 +1,20 @@
+name: starter
+parallel: 4
+reps: 2
+minutes: 60
+races: [human, dwarf, gnome]
+classes: [warrior, paladin, rogue, priest, mage]
+tasks:
+  - {key: level10, goal: "level:10", minutes: [30, 60]}
+  - key: blacksmith75
+    goal: "skill:164:75"
+    minutes: 45
+    races: [human]
+    money: 2000
+    start: goldshire
+    hint: Smith Argus in Goldshire teaches Blacksmithing; copper ore is mined in Elwynn Forest.
+  - key: hogger
+    goal: "quest:176"
+    level: 10
+    start: goldshire
+    hint: "Hogger is an elite: consider a group."

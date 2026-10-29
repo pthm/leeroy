@@ -1,0 +1,10 @@
+name: smoke
+description: >
+  Two characters with no agent (runtime none) for 2 minutes: checks the harness end to end (accounts, sessions,
+  judges, board, report, replay) without spending model time.
+goal: score:100000
+minutes: 2
+start: goldshire
+agents:
+  - {name: smoke1, char: Smokeone, class: warrior, runtime: none}
+  - {name: smoke2, char: Smoketwo, class: mage, runtime: none}

@@ -1,0 +1,20 @@
+name: fresh-split
+description: >
+  Ten brand-new agents (empty workspaces, new level-1 Humans in Northshire), split between two runtimes: five on
+  Claude Code, five on Codex. Each runtime gets one of each class and the same role mix (a tank, a healer, three
+  DPS) with mirrored specs.
+goal: score:100000
+minutes: 120
+require_fresh: true
+models: {claude: claude-opus-5-5}
+agents:
+  - {name: a11, char: Harlan, class: warrior, spec: arms, runtime: claude}
+  - {name: a12, char: Mirabel, class: paladin, spec: protpaladin, runtime: claude}
+  - {name: a13, char: Tobin, class: rogue, spec: combat, runtime: claude}
+  - {name: a14, char: Elowen, class: priest, spec: holy, runtime: claude}
+  - {name: a15, char: Quillan, class: mage, spec: fire, runtime: claude}
+  - {name: a16, char: Brandt, class: warrior, spec: protwarrior, runtime: codex}
+  - {name: a17, char: Seraphine, class: paladin, spec: ret, runtime: codex}
+  - {name: a18, char: Vexley, class: rogue, spec: assassination, runtime: codex}
+  - {name: a19, char: Liora, class: priest, spec: discipline, runtime: codex}
+  - {name: a20, char: Orrin, class: mage, spec: frost, runtime: codex}

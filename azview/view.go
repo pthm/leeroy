@@ -107,7 +107,7 @@ func parseTime(s string) (float64, bool) {
 }
 
 // TranscriptEvents is an agent transcript as "say" events: only the agent's visible text messages. Claude Code
-// stream-json (assistant messages), or Codex --json (agent_message items, timestamped by bench.sh as they arrive).
+// stream-json (assistant messages), or Codex --json (agent_message items, timestamped by azbench as they arrive).
 func TranscriptEvents(text, name string) []Ev {
 	var out []Ev
 	for _, l := range lines(text) {
@@ -145,7 +145,7 @@ func TranscriptEvents(text, name string) []Ev {
 // Transcript is one agent's transcript and the character it plays.
 type Transcript struct{ Name, Path string }
 
-// AgentMeta is who plays each character (bench.sh writes meta.json in each agent's run dir), as written.
+// AgentMeta is who plays each character (azbench writes meta.json in each agent's run dir), as written.
 func AgentMeta(ts []Transcript) map[string]any {
 	out := map[string]any{}
 	for _, t := range ts {
@@ -208,17 +208,20 @@ func RunSources(dir string) (records []string, transcripts []Transcript) {
 		if agent == "" {
 			continue
 		}
-		var runDir string
-		for _, d := range sibs { // sorted: the last match is the latest
-			if strings.HasSuffix(d.Name(), "-"+agent) {
-				runDir = d.Name()
+		runDir := filepath.Join(dir, agent) // azbench: the agent's files in the run dir
+		if !exists(filepath.Join(runDir, "agent.jsonl")) {
+			runDir = ""
+			for _, d := range sibs { // older team runs: a sibling <time>-<agent> dir (sorted: the last is the latest)
+				if strings.HasSuffix(d.Name(), "-"+agent) {
+					runDir = filepath.Join(parent, d.Name())
+				}
 			}
 		}
 		if runDir == "" {
 			continue
 		}
-		if name := charOf(filepath.Join(parent, runDir)); name != "" {
-			transcripts = append(transcripts, Transcript{name, filepath.Join(parent, runDir, "agent.jsonl")})
+		if name := charOf(runDir); name != "" {
+			transcripts = append(transcripts, Transcript{name, filepath.Join(runDir, "agent.jsonl")})
 		}
 	}
 	return records, transcripts

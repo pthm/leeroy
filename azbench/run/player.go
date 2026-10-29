@@ -1,0 +1,453 @@
+package run
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/pthm/leeroy/azbench/config"
+)
+
+// player is one agent and its character in a run: workspace, session (an azsdk daemon), judge and agent process.
+type player struct {
+	r           *Runner
+	a           config.Agent
+	race, class int
+	port        int
+	ws, dir     string // workspace (bench/workspaces/<name>), its files in the run (<run>/<name>)
+
+	mu       sync.Mutex
+	state    string // starting, ready, playing, done, paused, failed
+	session  *exec.Cmd
+	agent    *exec.Cmd
+	agentEnd time.Time // when its agent must stop: the run's clock
+	result   []byte    // the judge's final line
+}
+
+func (p *player) setState(s string) {
+	p.mu.Lock()
+	p.state = s
+	p.mu.Unlock()
+}
+
+func (p *player) logf(f string, a ...any) {
+	fmt.Fprintf(os.Stderr, "%s %s (%s): %s\n", time.Now().Format("15:04:05"), p.a.Name, p.a.Char, fmt.Sprintf(f, a...))
+}
+
+func (p *player) account() string {
+	s := regexp.MustCompile(`[^a-zA-Z0-9]`).ReplaceAllString(p.a.Name, "")
+	return s[:min(16, len(s))]
+}
+
+// workspace: refreshed each run: the task docs, the playing guide, the SDK reference, an example script, and NOTES.md
+// if it has none yet.
+func (p *player) workspace() error {
+	if err := os.MkdirAll(p.ws, 0o755); err != nil {
+		return err
+	}
+	var docs bytes.Buffer
+	for _, f := range []string{"bench/agent/AGENTS.md", "azeroth-sdk/docs/playing.md", "azeroth-sdk/docs/guide.md",
+		"azeroth-sdk/docs/runtime.md", "azeroth-sdk/docs/lua-api.md", "azeroth-sdk/docs/api-reference.md",
+		"azeroth-sdk/docs/world-data.md"} {
+		b, err := os.ReadFile(filepath.Join(p.r.repo, f))
+		if err != nil {
+			return err
+		}
+		docs.Write(b)
+	}
+	if err := os.WriteFile(filepath.Join(p.ws, "AGENTS.md"), docs.Bytes(), 0o644); err != nil {
+		return err
+	}
+	ex, _ := os.ReadFile(filepath.Join(p.r.repo, "azeroth-sdk/examples/lua/grind.lua"))
+	os.WriteFile(filepath.Join(p.ws, "example.lua"), ex, 0o644)
+	notes := filepath.Join(p.ws, "NOTES.md")
+	if _, err := os.Stat(notes); err != nil {
+		os.WriteFile(notes, []byte("# Notes\n\nYour own notes: what worked, what killed you, where things are. Kept between runs.\n"), 0o644)
+	}
+	return nil
+}
+
+// daemon starts the character's azsdk session; extra flags: -duration for a short login.
+func (p *player) daemon(extra ...string) (*exec.Cmd, error) {
+	log, err := os.OpenFile(filepath.Join(p.ws, "session.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	args := []string{"-char", p.a.Char, "-account", p.account(), "-listen", fmt.Sprintf("127.0.0.1:%d", p.port),
+		"-data", filepath.Join(p.r.repo, "data"), "-workspace", p.ws, "-race", fmt.Sprint(p.race), "-class", fmt.Sprint(p.class)}
+	if len(extra) == 0 {
+		args = append(args, "-record", filepath.Join(p.r.dir, p.a.Name+".record.jsonl"), "-events", p.r.dir)
+	}
+	cmd := exec.Command(filepath.Join(p.r.repo, "bin", "azsdk"), append(args, extra...)...)
+	cmd.Stdout, cmd.Stderr = log, log
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		log.Close()
+		return nil, err
+	}
+	go func() { cmd.Wait(); log.Close() }()
+	return cmd, nil
+}
+
+func alive(c *exec.Cmd) bool {
+	return c != nil && c.ProcessState == nil && c.Process.Signal(syscall.Signal(0)) == nil
+}
+
+// login starts the session and waits for its API, three tries (the auth server sometimes times out the logon).
+func (p *player) login(ctx context.Context) error {
+	for try := 1; ; try++ {
+		cmd, err := p.daemon()
+		if err != nil {
+			return err
+		}
+		for alive(cmd) {
+			if _, err := eval(ctx, p.port, "return 1"); err == nil {
+				p.mu.Lock()
+				p.session = cmd
+				p.mu.Unlock()
+				_, err := eval(ctx, p.port, fmt.Sprintf("LIB = %q; chat.join(%q, 1)", p.ws+"/", p.r.s.Channel))
+				return err
+			}
+			select {
+			case <-ctx.Done():
+				syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+				return ctx.Err()
+			case <-time.After(time.Second):
+			}
+		}
+		p.logf("session login failed (try %d), see %s/session.log", try, p.ws)
+		if try == 3 {
+			return fmt.Errorf("session login failed")
+		}
+		time.Sleep(time.Duration(try*5) * time.Second)
+	}
+}
+
+// prepare: workspace, account, starting conditions (on the offline character, creating it with a short login
+// first), then the session. The player is ready to start when it returns nil.
+func (p *player) prepare(ctx context.Context) error {
+	if err := p.workspace(); err != nil {
+		return err
+	}
+	if out, err := exec.Command(filepath.Join(p.r.repo, "bin", "account"), p.account(), p.account()).CombinedOutput(); err != nil {
+		return fmt.Errorf("account: %v: %s", err, out)
+	}
+	os.WriteFile(filepath.Join(p.ws, "session.log"), nil, 0o644) // the workspace (and old log) persists
+	s := p.r.s
+	if s.Level > 0 || s.Money > 0 || s.Start != nil || len(s.Setup) > 0 {
+		for try := 1; !charExists(p.a.Char) && try <= 3; try++ { // concurrent logins can time out on the auth server
+			if cmd, err := p.daemon("-duration", "8s"); err == nil {
+				for alive(cmd) {
+					time.Sleep(500 * time.Millisecond)
+				}
+			}
+			if !charExists(p.a.Char) {
+				time.Sleep(time.Duration(try*5) * time.Second)
+			}
+		}
+		if !charExists(p.a.Char) {
+			return fmt.Errorf("character not created, see %s/session.log", p.ws)
+		}
+		if !waitOffline(p.a.Char, 2*time.Minute) {
+			return fmt.Errorf("still online")
+		}
+		if err := applyStart(s, p.a.Char); err != nil {
+			return fmt.Errorf("starting conditions: %v", err)
+		}
+	} else if !waitOffline(p.a.Char, 2*time.Minute) {
+		return fmt.Errorf("still online from an earlier session")
+	}
+	return p.login(ctx)
+}
+
+// agentCmd builds the agent's process: a new conversation with prompt, or (resume != "") its earlier one with a
+// message.
+func (p *player) agentCmd(text, resume string) *exec.Cmd {
+	repo, a := p.r.repo, p.a
+	var cmd *exec.Cmd
+	switch a.Runtime {
+	case "codex":
+		// sandboxed to its workspace (writes) with network on (the session API is on localhost)
+		common := []string{"--json", "--skip-git-repo-check", "-c", "sandbox_workspace_write.network_access=true",
+			"-c", `approval_policy="never"`, "-c", "shell_environment_policy.inherit=all"}
+		if resume != "" {
+			cmd = exec.Command("codex", append(append([]string{"exec", "resume", resume}, common...),
+				"-c", `sandbox_mode="workspace-write"`, text)...)
+		} else {
+			args := append([]string{"exec"}, common...)
+			args = append(args, "-s", "workspace-write")
+			if a.Model != "" {
+				args = append(args, "-m", a.Model)
+			}
+			cmd = exec.Command("codex", append(args, "-C", p.ws, text)...)
+		}
+	default:
+		// no auto-memory: it's keyed by the git root, so agents would share notes with each other (and with us). The
+		// env var turns it off, but Claude Code still lets sessions write the memory folder, so ~/.claude is denied
+		args := []string{"-p", text}
+		if resume != "" {
+			args = append(args, "--resume", resume)
+		}
+		args = append(args, "--setting-sources", "project", "--strict-mcp-config", "--output-format", "stream-json", "--verbose")
+		if a.Model != "" {
+			args = append(args, "--model", a.Model)
+		}
+		args = append(args, "--add-dir", repo+"/azeroth-sdk/client", repo+"/azeroth-sdk/session", repo+"/azeroth-sdk/script",
+			repo+"/server/azerothcore/src/server/game", repo+"/server/azerothcore/src/server/shared",
+			"--allowedTools", "Bash(wow:*)", "Bash(worlddb:*)", "Bash(azworld:*)", "Bash(sleep:*)", "Bash(tail:*)",
+			"Bash(cat:*)", "Bash(ls:*)", "Bash(grep:*)", "Bash(mkdir:*)", "Bash(standings:*)", "Bash(party:*)", "Edit(./**)",
+			"--disallowedTools", "Edit(~/.claude/**)", "Read(~/.claude/**)")
+		cmd = exec.Command("claude", args...)
+	}
+	cmd.Dir = p.ws
+	cmd.Env = append(os.Environ(), "PATH="+filepath.Join(repo, "bench/agent/bin")+":"+os.Getenv("PATH"),
+		"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "WOWBENCH_BOARD="+filepath.Join(p.r.dir, "board"),
+		"WOWBENCH_CHAR="+a.Char, fmt.Sprintf("WOW_PORT=%d", p.port))
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // so stopping it stops its tools too
+	return cmd
+}
+
+// startAgent runs the agent until end, appending its output to agent.jsonl. Codex's JSONL events have no
+// timestamps, so each line is stamped as it arrives (the viewer and the report place them on the timeline).
+func (p *player) startAgent(text, resume string, end time.Time) error {
+	p.mu.Lock()
+	p.agentEnd = end
+	p.mu.Unlock()
+	if p.a.Runtime == "none" { // no agent: an empty transcript, so the report card still lists the player
+		f, err := os.OpenFile(filepath.Join(p.dir, "agent.jsonl"), os.O_CREATE|os.O_WRONLY, 0o644)
+		if err == nil {
+			f.Close()
+		}
+		return err
+	}
+	out, err := os.OpenFile(filepath.Join(p.dir, "agent.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	cmd := p.agentCmd(text, resume)
+	cmd.Stdin = nil
+	var stamp *io.PipeWriter
+	if p.a.Runtime == "codex" {
+		pr, pw := io.Pipe()
+		stamp = pw
+		cmd.Stdout, cmd.Stderr = pw, pw
+		go stampLines(pr, out)
+	} else {
+		cmd.Stdout, cmd.Stderr = out, out
+	}
+	if err := cmd.Start(); err != nil {
+		out.Close()
+		return err
+	}
+	p.mu.Lock()
+	p.agent = cmd
+	p.mu.Unlock()
+	stop := time.AfterFunc(time.Until(end), func() { syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) })
+	go func() {
+		cmd.Wait()
+		stop.Stop()
+		if stamp != nil {
+			stamp.Close()
+		} else {
+			out.Close()
+		}
+		p.exited(cmd)
+	}()
+	return nil
+}
+
+func stampLines(r io.Reader, w io.WriteCloser) {
+	defer w.Close()
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 1<<20), 1<<26)
+	for sc.Scan() {
+		line := bytes.TrimSpace(sc.Bytes())
+		ts := `"timestamp":"` + time.Now().UTC().Format("2006-01-02T15:04:05Z") + `"`
+		var obj map[string]json.RawMessage
+		if len(line) > 1 && line[0] == '{' && json.Unmarshal(line, &obj) == nil {
+			if len(obj) > 0 {
+				line = append(append(line[:len(line)-1:len(line)-1], ','), ts+"}"...)
+			} else {
+				line = []byte("{" + ts + "}")
+			}
+		} else {
+			t, _ := json.Marshal(sc.Text())
+			line = []byte(`{"type":"stderr","text":` + string(t) + "," + ts + "}")
+		}
+		w.Write(append(line, '\n'))
+	}
+}
+
+// exited: an agent that stops with 2+ minutes left is reported (alerts.log), with the runtime's last error (a
+// Codex usage limit, say). Nothing else would notice: the judge keeps scoring an idle character.
+func (p *player) exited(cmd *exec.Cmd) {
+	p.mu.Lock()
+	left, current := time.Until(p.agentEnd), p.agent == cmd
+	p.mu.Unlock()
+	if !current || left < 2*time.Minute || p.r.ctx.Err() != nil {
+		return
+	}
+	why := ""
+	f, _ := os.Open(filepath.Join(p.dir, "agent.jsonl"))
+	if f != nil {
+		sc := bufio.NewScanner(f)
+		sc.Buffer(make([]byte, 1<<20), 1<<26)
+		for sc.Scan() {
+			var e struct {
+				Type    string
+				IsError bool `json:"is_error"`
+				Message string
+				Result  string
+				Error   struct{ Message string }
+			}
+			if json.Unmarshal(sc.Bytes(), &e) != nil {
+				continue
+			}
+			switch {
+			case e.Type == "turn.failed":
+				why = e.Error.Message
+			case e.Type == "error":
+				why = e.Message
+			case e.Type == "result" && e.IsError:
+				why = e.Result
+			}
+		}
+		f.Close()
+	}
+	msg := fmt.Sprintf("agent exited with %.0f min left", left.Minutes())
+	if why != "" {
+		msg += ": " + why
+	}
+	p.r.alert(p, msg)
+}
+
+// meta writes meta.json: who plays this character, for the report, the board and the viewer. The model is what
+// the runtime reports once it starts (Claude: its init event; Codex: its session file).
+func (p *player) meta(spec config.Spec) {
+	model := ""
+	for i := 0; i < 60 && model == "" && p.a.Runtime != "none"; i++ {
+		model = detectModel(p.a.Runtime, filepath.Join(p.dir, "agent.jsonl"))
+		if model == "" {
+			time.Sleep(2 * time.Second)
+		}
+	}
+	if model == "" {
+		model = p.a.Model
+	}
+	if model == "" {
+		model = "default"
+	}
+	b, _ := json.Marshal(map[string]any{"agent": p.a.Name, "char": p.a.Char, "runtime": p.a.Runtime, "model": model,
+		"spec": spec.Title, "role": spec.Role, "goal": p.r.s.Goal, "port": p.port})
+	os.WriteFile(filepath.Join(p.dir, "meta.json"), b, 0o644)
+}
+
+func detectModel(runtime, transcript string) string {
+	f, err := os.Open(transcript)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 1<<26)
+	for i := 0; i < 5 && sc.Scan(); i++ {
+		var e struct {
+			Type, Subtype, Model string
+			ThreadID             string `json:"thread_id"`
+		}
+		if json.Unmarshal(sc.Bytes(), &e) != nil {
+			continue
+		}
+		if runtime == "claude" && e.Subtype == "init" {
+			return e.Model
+		}
+		if runtime == "codex" && e.Type == "thread.started" && e.ThreadID != "" {
+			home, _ := os.UserHomeDir()
+			m, _ := filepath.Glob(filepath.Join(home, ".codex/sessions/*/*/*/*"+e.ThreadID+".jsonl"))
+			if len(m) > 0 {
+				b, _ := os.ReadFile(m[0])
+				if x := regexp.MustCompile(`"model":"([^"]*)"`).FindSubmatch(b); x != nil {
+					return string(x[1])
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// conversation is the agent's earlier conversation to resume: Claude's session id or Codex's thread id.
+func (p *player) conversation() string {
+	f, err := os.Open(filepath.Join(p.dir, "agent.jsonl"))
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 1<<26)
+	for sc.Scan() {
+		var e struct {
+			Type      string
+			SessionID string `json:"session_id"`
+			ThreadID  string `json:"thread_id"`
+		}
+		if json.Unmarshal(sc.Bytes(), &e) != nil {
+			continue
+		}
+		if p.a.Runtime == "claude" && e.SessionID != "" {
+			return e.SessionID
+		}
+		if p.a.Runtime == "codex" && e.Type == "thread.started" {
+			return e.ThreadID
+		}
+	}
+	return ""
+}
+
+// stopAgent ends the agent's process group.
+func (p *player) stopAgent() {
+	p.mu.Lock()
+	cmd := p.agent
+	p.agent = nil
+	p.mu.Unlock()
+	if alive(cmd) {
+		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		for i := 0; i < 50 && alive(cmd); i++ {
+			time.Sleep(100 * time.Millisecond)
+		}
+		if alive(cmd) {
+			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+	}
+}
+
+// stopSession: calm the character (out of combat), then stop the daemon, which logs out.
+func (p *player) stopSession() {
+	p.mu.Lock()
+	cmd := p.session
+	p.session = nil
+	p.mu.Unlock()
+	if !alive(cmd) {
+		return
+	}
+	calm(p.port)
+	syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+	for i := 0; i < 400 && alive(cmd); i++ { // the logout takes ~20 s out of combat
+		time.Sleep(100 * time.Millisecond)
+	}
+	if alive(cmd) {
+		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	if b, err := os.ReadFile(filepath.Join(p.ws, "session.log")); err == nil {
+		os.WriteFile(filepath.Join(p.dir, "session.log"), b, 0o644)
+	}
+}

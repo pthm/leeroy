@@ -2,7 +2,7 @@
 // (signatures and descriptions, from the RPC method api.docs) and the data model (package types, by reflection
 // plus its doc comments): docs/api-reference.md, every function, type and event.
 //
-// Run it against any session (bench/dev/apidoc.sh starts one): go run ./cmd/apigen -rpc http://127.0.0.1:8112/rpc
+// Run it against any session (azbench apidoc starts one): go run ./cmd/apigen -rpc http://127.0.0.1:8112/rpc
 package main
 
 import (
@@ -63,7 +63,7 @@ func fetchDocs(url string) []fnDoc {
 	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "api.docs", "params": map[string]any{}})
 	res, err := http.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
-		log.Fatalf("api.docs: %v (start a session first: bench/dev/gm.sh)", err)
+		log.Fatalf("api.docs: %v (start a session first: azbench gm)", err)
 	}
 	defer res.Body.Close()
 	var out struct {

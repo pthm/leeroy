@@ -25,7 +25,6 @@ import (
 	"github.com/pthm/leeroy/azworld/world"
 )
 
-
 func runLive(args []string) {
 	var files []string
 	for i, a := range args {

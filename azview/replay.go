@@ -24,7 +24,6 @@ import (
 	"github.com/pthm/leeroy/azworld/world"
 )
 
-
 var n = N
 
 // parseWhen is a --from/--to value: unix ms or an ISO time.
@@ -297,4 +296,3 @@ func runReplay(args []string) {
 	fmt.Printf("%s: %d players, %d positions, %d events, map %dx%d @ %g yd/px, %.1f MB\n", out, len(players), len(pos),
 		len(events), img.W, img.H, res, float64(len(html))/1e6)
 }
-

@@ -59,7 +59,7 @@ port (3306), so the database container must be running. Details:
 
 GM accounts are for development and testing only: GM level 3 unlocks dot-commands like `.levelup`, `.additem` and
 `.tele`, which are handy for setting up a scenario and unfair in a benchmark. Scored runs use non-GM accounts
-(`bench/bench.sh` creates one per agent).
+(`azbench run` creates one per agent).
 
 ## Observing with a real client
 
