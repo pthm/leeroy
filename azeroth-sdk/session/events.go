@@ -37,7 +37,14 @@ const (
 	smsgSpellLogMiss       = 0x24B
 	smsgSpellFailedOther   = 0x2A6
 	smsgUpdateComboPoints  = 0x39D
+	smsgResurrectRequest   = 0x15B
+	smsgStartMirrorTimer   = 0x1D9
+	smsgPauseMirrorTimer   = 0x1DA
+	smsgStopMirrorTimer    = 0x1DB
+	smsgEnvironmentalDmg   = 0x1FC
 )
+
+var envCauses = map[uint8]string{0: "fatigue", 1: "drowning", 2: "fall", 3: "lava", 4: "slime", 5: "fire", 6: "fall"}
 
 // creature names by entry, from SMSG_CREATURE_QUERY_RESPONSE (the client asks once per entry)
 var creatures = struct {
@@ -115,6 +122,8 @@ var timeoutHints = map[string]string{
 	"quests.turn_in":   "the server ignores a turn-in when the quest isn't complete (quests.log) or you aren't next to the NPC that takes it",
 	"combat.attack":    "no swing started: out of range or not facing it (move.face)",
 	"trainer.learn":    "stand within ~5 yd of the trainer",
+	"trainer.list":     "stand within ~5 yd of the trainer, alive (it won't talk to ghosts), with a trainer for your class",
+	"gossip.open":      "stand within ~5 yd of the NPC; dead, only spirit healers talk to you",
 	"vendor.buy":       "stand within ~5 yd of the vendor",
 	"vendor.sell":      "stand within ~5 yd of the vendor",
 	"objects.use":      "stand within ~5 yd of the object",
@@ -169,9 +178,10 @@ func (b *Bot) watchEvents() {
 	me := w.CharGUID()
 	prevDeath, prevLevel := w.OnDeath, w.OnLevelUp
 	var lastAttacker uint64
+	var lastCause string // the environment hit us last
 	w.OnDeath = func() {
-		var d types.Death
-		if lastAttacker != 0 {
+		d := types.Death{Cause: lastCause}
+		if lastAttacker != 0 && lastCause == "" {
 			r := b.ref(lastAttacker)
 			d.Killer = &r
 		}
@@ -215,8 +225,8 @@ func (b *Bot) watchEvents() {
 			if (src != me && dst != me) || (amount == 0 && len(outcome) == 0) {
 				return
 			}
-			if dst == me && kind == "damage" {
-				lastAttacker = src
+			if dst == me && kind == "damage" && amount > 0 {
+				lastAttacker, lastCause = src, ""
 			}
 			d := types.Damage{Src: b.ref(src), Dst: b.ref(dst), Amount: amount, Spell: spell, SpellName: spellName(spell), Taken: dst == me}
 			if len(outcome) > 0 {
@@ -225,6 +235,54 @@ func (b *Bot) watchEvents() {
 			b.emit(kind, d)
 		}
 		switch op {
+		case smsgEnvironmentalDmg: // victim (u64), type, amount, resisted, absorbed
+			if u64() != me {
+				return
+			}
+			typ, _ := r.ReadByte()
+			amount := u32()
+			lastCause = envCauses[typ]
+			b.emit("damage", types.Damage{Dst: b.ref(me), Amount: amount, Taken: true, Cause: lastCause})
+			b.clog.add(combatEvent{T: time.Now().UnixMilli(), Dst: me, Amount: amount, Kind: "environment"})
+		case smsgResurrectRequest: // caster (u64), name length, name + 2 NULs (the string's and an explicit one), sickness
+			from := u64()
+			u32()
+			readCString(r)
+			r.ReadByte()
+			sick, _ := r.ReadByte()
+			b.agent.mu.Lock()
+			b.agent.resFrom = from
+			b.agent.mu.Unlock()
+			b.emit("resurrect_offered", types.ResurrectOffer{From: b.ref(from), Sickness: sick != 0})
+		case smsgStartMirrorTimer, smsgPauseMirrorTimer, smsgStopMirrorTimer: // timer, then start: value, max, scale, paused, spell; pause: paused
+			id := u32()
+			s := b.agent
+			s.mu.Lock()
+			t, ok := s.timers[id]
+			switch op {
+			case smsgStartMirrorTimer:
+				t = mirrorTimer{value: u32(), max: u32(), scale: int32(u32()), at: time.Now()}
+				p, _ := r.ReadByte()
+				t.paused = p != 0
+				s.timers[id] = t
+			case smsgPauseMirrorTimer:
+				if !ok {
+					s.mu.Unlock()
+					return
+				}
+				t = mirrorTimer{value: uint32(t.view(id).SecondsLeft * 1000), max: t.max, scale: t.scale, at: time.Now()}
+				p, _ := r.ReadByte()
+				t.paused = p != 0
+				s.timers[id] = t
+			default:
+				delete(s.timers, id)
+			}
+			v := t.view(id)
+			s.mu.Unlock()
+			if op == smsgStopMirrorTimer {
+				v.State, v.SecondsLeft = "stopped", 0
+			}
+			b.emit("mirror_timer", v)
 		case smsgCreatureQueryResp: // entry (high bit: unknown), name
 			if entry := u32(); entry&0x80000000 == 0 { // names x4, subname, icon, type flags, type, family, rank
 				n := readCString(r)
@@ -431,6 +489,9 @@ func (b *Bot) stateEvents() {
 			b.emit(map[bool]string{true: "combat_start", false: "combat_end"}[combat], types.None{})
 		}
 		if alive && !*b.wasAlive {
+			b.agent.mu.Lock()
+			b.agent.resFrom = 0
+			b.agent.mu.Unlock()
 			b.emit("resurrected", types.None{})
 			broken := []types.Item{}
 			for _, it := range bagItems(b.world) {

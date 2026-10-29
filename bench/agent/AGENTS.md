@@ -16,7 +16,7 @@ fight-loot-repeat loop to start from.
 ```sh
 wow 'return me.level(), me.health()'   # query -> {"result":[3,72,72], "events": {...}}
 wow 'return units.nearby(40)'            # what's around you
-wow status                                       # one-call snapshot of your character
+wow status                                       # what you would see on screen: you, your fight, what is around you
 wow -f grind.lua                                 # load a script file (it starts its tasks)
 wow tasks                                        # your running tasks: state, status, what each waits for
 wow 'task.stop("grind")'                         # stop one

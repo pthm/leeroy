@@ -7,6 +7,9 @@ package session
 import (
 	"bytes"
 	"encoding/binary"
+	"math"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,6 +24,10 @@ const (
 	fieldAuraState    = 0x3D // UNIT_FIELD_AURASTATE
 	unitFlagSkinnable = 0x04000000
 	spellStuck        = 7355 // what the client's "Character stuck" casts: hearths you home
+	smsgHighestThreat = 0x482
+	smsgThreatUpdate  = 0x483
+	smsgThreatRemove  = 0x484
+	smsgThreatClear   = 0x485
 )
 
 var auraStateNames = map[uint32]string{1: "defense", 2: "health_below_20", 3: "berserking", 4: "frozen", 5: "judgement",
@@ -41,6 +48,12 @@ type combatInfo struct {
 	casts  map[uint64]unitCast  // others' casts with a cast time (SMSG_SPELL_START)
 	evaded map[uint64]time.Time // when each unit last evaded
 	combo  types.ComboPoints
+	threat map[uint64][]threatRef // a creature's threat list, highest first (SMSG_THREAT_UPDATE: sent to everyone near it)
+}
+
+type threatRef struct {
+	guid   uint64
+	threat float64
 }
 
 func auraStates(o *client.WorldObject) []string {
@@ -89,9 +102,20 @@ func (b *Bot) creatureExtras(c *types.Creature, u UnitInfo) {
 		c.Elite = info.rank == 1 || info.rank == 2 || info.rank == 3
 	}
 	c.Skinnable = !u.IsAlive && u.Flags&unitFlagSkinnable != 0
+	if b.npc != nil {
+		c.QuestStatus = b.npc.questStatus(u.GUID)
+	}
 	if ci := b.cinfo; ci != nil {
 		ci.mu.Lock()
 		c.Evading = time.Since(ci.evaded[u.GUID]) < 6*time.Second
+		if l := ci.threat[u.GUID]; len(l) > 0 && l[0].threat > 0 {
+			for _, t := range l {
+				if t.guid == b.world.CharGUID() {
+					pct := math.Round(t.threat / l[0].threat * 100)
+					c.ThreatPct = &pct
+				}
+			}
+		}
 		ci.mu.Unlock()
 	}
 }
@@ -126,7 +150,7 @@ func (b *Bot) threats() []types.Creature {
 }
 
 func (b *Bot) setupCombatInfo() {
-	ci := &combatInfo{casts: map[uint64]unitCast{}, evaded: map[uint64]time.Time{}}
+	ci := &combatInfo{casts: map[uint64]unitCast{}, evaded: map[uint64]time.Time{}, threat: map[uint64][]threatRef{}}
 	b.cinfo = ci
 	w, e := b.world, b.lua
 	me := w.CharGUID()
@@ -169,6 +193,32 @@ func (b *Bot) setupCombatInfo() {
 			ci.mu.Lock()
 			delete(ci.casts, caster)
 			ci.mu.Unlock()
+		case smsgHighestThreat, smsgThreatUpdate: // ThreatManager::SendThreatListToClients: unit, [new top], count, (victim, threat*100)...
+			r := newReader(data)
+			unit := readPackedGUID(r.Reader)
+			if op == smsgHighestThreat {
+				readPackedGUID(r.Reader)
+			}
+			list := []threatRef{}
+			for n := r.u32(); n > 0 && r.Len() > 0; n-- {
+				v := readPackedGUID(r.Reader)
+				list = append(list, threatRef{v, float64(r.u32()) / 100})
+			}
+			sort.SliceStable(list, func(i, j int) bool { return list[i].threat > list[j].threat })
+			ci.mu.Lock()
+			ci.threat[unit] = list
+			ci.mu.Unlock()
+		case smsgThreatRemove: // unit, victim
+			r := newReader(data)
+			unit, v := readPackedGUID(r.Reader), readPackedGUID(r.Reader)
+			ci.mu.Lock()
+			ci.threat[unit] = slices.DeleteFunc(ci.threat[unit], func(t threatRef) bool { return t.guid == v })
+			ci.mu.Unlock()
+		case smsgThreatClear: // unit
+			unit := readPackedGUID(newReader(data).Reader)
+			ci.mu.Lock()
+			delete(ci.threat, unit)
+			ci.mu.Unlock()
 		case smsgUpdateComboPoints: // target, points
 			r := newReader(data)
 			t := readPackedGUID(r.Reader)
@@ -197,7 +247,18 @@ func (b *Bot) setupCombatInfo() {
 			return s
 		})
 	e.Func("units.threats", "() → Creature[]", "hostile creatures attacking you, your pet or anyone in your group, nearest first: what a tank has to pick up and a healer has to watch",
-		b.threats)
+		func() []types.Creature { cs := b.threats(); b.annotateNearby(cs); return cs })
+	e.Func("combat.threat", "(guid) → Threat[]", "a creature's threat table as the server sends it to everyone near: who it would attack, highest first, with each one's share of the top (pct = 100 is the one it attacks). Empty when it isn't fighting or out of sight",
+		func(g uint64) []types.Threat {
+			ci.mu.Lock()
+			l := ci.threat[g]
+			ci.mu.Unlock()
+			out := []types.Threat{}
+			for _, t := range l {
+				out = append(out, types.Threat{Unit: b.ref(t.guid), Threat: math.Round(t.threat), Pct: math.Round(t.threat / max(l[0].threat, 1) * 100)})
+			}
+			return out
+		})
 	e.Func("spells.find", "(name [, rank]) → Spell?", "a spell by name (any case): the highest rank you know, or that rank (a number, or \"Rank 2\"); nil if you know none",
 		func(n string, rank any) any {
 			want := ""

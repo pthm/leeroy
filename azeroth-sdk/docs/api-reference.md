@@ -83,11 +83,13 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `combat.sheath(state) → request` | 0 = weapons out, 1 = melee sheathed, 2 = ranged |
 | `combat.stop() → request` | stop auto-attacking |
 | `combat.target(guid) → request` | select a unit (some spells and abilities use your target) |
+| `combat.threat(guid) → Threat[]` | a creature's threat table as the server sends it to everyone near: who it would attack, highest first, with each one's share of the top (pct = 100 is the one it attacks). Empty when it isn't fighting or out of sight |
 
 ### death
 
 | Function | |
 |---|---|
+| `death.accept_res() → request` | accept a player's resurrection (after a resurrect_offered event): you come back where your body lies |
 | `death.corpse() → Corpse?` | your corpse and when you can reclaim it; nil while alive. Right after dying it asks the server: call again a moment later |
 | `death.reclaim() → request` | as a ghost within ~30 yd of your corpse, come back to life there |
 | `death.release() → request` | release your spirit: ok once you're a ghost at the graveyard |
@@ -120,6 +122,13 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `flights.nodes([map]) → TaxiNode[]` | every flight point for your faction (on one map: 0 Eastern Kingdoms, 1 Kalimdor, 530 Outland, 571 Northrend). known is only accurate after you've opened a flight map |
 | `flights.take(npc, node) → request<Flight>` | fly from this flight master to a known node (by id; via other known nodes if there's no direct path). Resolves when you land; await it with a long timeout (flights take minutes). You can't move while flying |
 
+### gossip
+
+| Function | |
+|---|---|
+| `gossip.open(npc) → request<Gossip?>` | talk to an NPC within ~5 yd: what it says, its dialogue options, and the quests it offers or takes (quests.info for their text). nil when it opened something else instead (a vendor, a trainer, a flight map: use their calls) |
+| `gossip.select(index [, code]) → request<Gossip?>` | choose an option (its index) from the open gossip menu: the next menu, or nil when the NPC closed the dialogue or acted on it (a vendor list, a bind, a teleport...). code: for options that ask for text |
+
 ### group
 
 | Function | |
@@ -151,12 +160,13 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `items.compare(item) → Comparison?` | an item (entry, or the guid of one you carry) against what you wear in its slot (the weaker one for rings, trinkets and one-handers); nil until the items' info has loaded |
 | `items.count(entry) → number` | how many of an item you carry |
 | `items.destroy(item [, count = all]) → request` | destroy an item you carry (entry or guid): gone for good |
-| `items.equip(item) → request<Equipped>` | wear an item you carry (entry or guid) in its slot |
+| `items.equip(item [, slot]) → request<Equipped>` | wear an item you carry (entry or guid) in its slot, or in the slot you name: main_hand, off_hand (a second one-hander, with Dual Wield), finger1, finger2, trinket1, trinket2 |
 | `items.find(name) → Item?` | an item you carry, by name (any case); count is how many you have in all |
 | `items.free_slots() → number` | empty bag slots; at 0, loot and item rewards are refused |
 | `items.info(entry) → Item?` | an item's template: stats, slot, prices, whether you can use it; nil the first time (it asks the server: call again a moment later) |
 | `items.list() → Item[]` | everything you wear and carry (equipped, bags, backpack) |
 | `items.loot(guid) → request<Looted>` | loot a corpse within 5 yd: takes every item and the money (waits a moment for a fresh corpse to become lootable) |
+| `items.unequip(slot) → request` | take off what you wear in a slot (head, chest, main_hand, off_hand, finger1, trinket2, ...) into your bags |
 | `items.use(item [, guid]) → request<CastDone>` | use an item you carry (entry or guid): food, drink, potions, quest items; optionally on a unit. Food and drink work out of combat, and you must sit still while they tick |
 
 ### runtime
@@ -196,8 +206,9 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `me.stance() → number` | warrior stance / druid form index (0 = none) |
 | `me.states() → string[]` | your aura states: defense (you dodged, parried or blocked: Revenge), health_below_20, ... (some abilities need one) |
 | `me.stats() → Stats?` | your character sheet: what gear, buffs and talents add up to |
-| `me.status() → Status` | a one-call snapshot: level, xp, health, power, money, where you are, state, target, attackers, nearby mobs and players, group, quests, broken gear, bag upgrades, your last minute of fighting, corpse, tasks |
+| `me.status() → Status` | what you'd see on screen, in one call: you (health, power, auras, cast, breath), your target and every mob in your fight, the NPCs, objects, players and mobs around you, your group, quests, what to improve (gear, untrained spells, talents, bag upgrades), your last minute of fighting, your tasks. Each part has a detail call |
 | `me.target() → GUID?` | your selected target, nil for none |
+| `me.timers() → MirrorTimer[]` | your breath (underwater), fatigue (deep water) and fire timers while one runs: at 0 you take damage every few seconds until you surface or turn back |
 | `me.xp() → XP` | XP into this level, and the XP this level needs |
 
 ### move
@@ -231,8 +242,9 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 |---|---|
 | `quests.abandon(quest) → request` | drop a quest from your log (to make room: the log holds 25) |
 | `quests.accept(npc, quest) → request<QuestDone>` | talk to a quest giver and accept a quest it offers |
+| `quests.info(quest) → QuestInfo?` | any quest's text (the story, what to do, who to return to) and rewards, as the quest giver shows them; nil the first time (it asks the server: call again a moment later) |
 | `quests.log() → Quest[]` | your quests with their objectives and progress (titles fill in once the server answers) |
-| `quests.turn_in(npc, quest [, reward = 0]) → request<QuestDone>` | hand a complete quest in (reward: the index of the item to choose, 0 = first; azworld quest <id> lists them) |
+| `quests.turn_in(npc, quest [, reward = 0]) → request<QuestDone>` | hand a complete quest in (reward: the index of the item to choose, 0 = first; quests.info lists the choices) |
 
 ### runtime
 
@@ -287,7 +299,8 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 
 | Function | |
 |---|---|
-| `trainer.learn(npc, spell) → request<Learned>` | learn a spell from a trainer within ~5 yd (costs money; azworld npc <trainer> lists spells, levels and costs) |
+| `trainer.learn(npc, spell) → request<Learned>` | learn a spell from a trainer within ~5 yd (costs money; trainer.list shows what it teaches you and what you can learn now) |
+| `trainer.list(npc) → request<Trainer>` | what a trainer within ~5 yd teaches you: every spell for your class with its cost, level and whether you can learn it now (available), later (unavailable) or already know it |
 
 ### units
 
@@ -355,6 +368,8 @@ In Lua these are tables with these fields; optional fields (`?`) are nil when un
 
 Unit is what creatures and players share.
 
+Everything in [Place](#place), plus:
+
 | Field | Type | |
 |---|---|---|
 | `guid` | GUID |  |
@@ -362,16 +377,26 @@ Unit is what creatures and players share.
 | `level` | number |  |
 | `health` | number |  |
 | `max_health` | number |  |
-| `x` | number |  |
-| `y` | number |  |
-| `z` | number |  |
-| `distance` | number | yards from you |
 | `alive` | bool |  |
 | `reaction` | string | toward you: hostile (attacks on sight), neutral (fights back) or friendly |
 | `target` | GUID | who it's targeting; null for nobody |
 | `in_combat` | bool |  |
 | `casting?` | Casting | the spell it's casting or channelling now (interrupt it, or get out of the way) |
 | `states?` | string[] | the game's aura states: health_below_20 (Execute, Hammer of Wrath), health_below_35, defense (it dodged, parried or blocked: Revenge), frozen, bleeding, enrage, ... |
+
+### Place
+
+Place is where something is in the world, measured from you: anything around you in me.status, units.* and objects.* has one.
+
+| Field | Type | |
+|---|---|---|
+| `x` | number |  |
+| `y` | number |  |
+| `z` | number |  |
+| `distance` | number | yards from you in a straight line |
+| `in_sight?` | bool | nothing solid (rock, walls) between you and it: a mob in a cave under you can be close but not in sight |
+| `path_distance?` | number | how far you'd walk to reach it (often much more than distance, across cliffs, floors and caves); worked out nearest first within a time budget, so the farthest may lack it |
+| `reachable?` | bool | with path_distance: whether a walking route gets you there |
 
 ### Casting
 
@@ -398,9 +423,8 @@ Everything in [Unit](#unit), plus:
 | `attackable` | bool | can be attacked at all (false for triggers, dummies, protected NPCs) |
 | `lootable` | bool | a corpse with loot for you |
 | `tapped_by_other` | bool | someone else damaged it first: killing it gives you nothing |
-| `in_sight?` | bool | units.nearby, living units: nothing solid (rock, walls) between you and it. Distance is a straight line: a mob in a cave under you can be close but not in sight |
-| `path_distance?` | number | units.nearby, living units, nearest first within a time budget: how far you'd walk to reach it (often much more than distance across cliffs, floors and caves) |
-| `reachable?` | bool | with path_distance: whether a walking route gets you there |
+| `quest_status?` | string | the marker over a quest giver: available (yellow !: a quest for you), available_repeatable (blue !), available_low_level (only quests far below your level), unavailable (none for you yet: level or prerequisites), incomplete (grey ?: you're on its quest), reward (yellow ?: turn a quest in here) |
+| `threat_pct?` | number | your threat on it as a share of the top (100 = it attacks you; another unit pulls it off you past 110 in melee, 130 at range); only while it has you on its threat table |
 
 ### Player
 
@@ -426,25 +450,20 @@ UnitRef names a unit in events and results.
 
 ### Object
 
+Everything in [Place](#place), plus:
+
 | Field | Type | |
 |---|---|---|
 | `guid` | GUID |  |
 | `entry` | number | game object template id |
 | `name` | string | empty for a moment after it first comes into view |
 | `type` | string | chest, door, button, goober (quest objects), questgiver, portal (use it: you're teleported), ship (boats and zeppelins), elevator, mailbox, fishing_pool (fish here), fishing_bobber, ... Mining veins and herbs are chests: see gather |
-| `x` | number |  |
-| `y` | number |  |
-| `z` | number |  |
-| `distance` | number |  |
 | `gather?` | string | the skill it takes: mining, herbalism, lockpicking, fishing or inscription |
 | `skill?` | number | the skill level it needs |
 | `can_use?` | bool | with gather: your skill is high enough (false without the skill: learn it from a trainer) |
 | `key?` | number | item entry of a key that opens it |
 | `quest?` | number | the quest it's for |
 | `lit?` | bool | the server marks it usable for you (it sparkles): a quest you have needs it (GM characters see every chest lit) |
-| `in_sight?` | bool | nothing solid (rock, walls) between you and it. Distance is a straight line: a chest in a mine under you can be close but not in sight |
-| `path_distance?` | number | nearest first within a time budget: how far you'd walk to reach it |
-| `reachable?` | bool | with path_distance: whether a walking route gets you there |
 
 ### Path
 
@@ -664,7 +683,10 @@ GroupMember is a party member as the real client's party frames show them: healt
 | `zone?` | string |  |
 | `position?` | Position | x, y (and z while in sight) |
 | `distance?` | number | yards from you |
-| `in_sight` | bool | close enough to see (about 100 yd): units.get works on them |
+| `in_range` | bool | close enough to see (about 100 yd): units.get works on them |
+| `in_sight?` | bool | in range and nothing solid between you |
+| `path_distance?` | number | how far you'd walk to reach them (in range only) |
+| `reachable?` | bool |  |
 | `target?` | GUID | what they're targeting (in sight only) |
 | `auras?` | Aura[] | their buffs and debuffs (spell, name, harmful; details while in sight) |
 
@@ -715,7 +737,7 @@ Everything in [Player](#player), plus:
 | Field | Type | |
 |---|---|---|
 | `t` | number | unix ms |
-| `kind` | string | melee, spell, dot, heal, hot, kill |
+| `kind` | string | melee, spell, dot, heal, hot, kill, environment (falls, drowning, lava: no src) |
 | `src` | UnitRef |  |
 | `dst` | UnitRef |  |
 | `spell?` | number |  |
@@ -751,7 +773,7 @@ Everything in [Player](#player), plus:
 
 ### Status
 
-Status is a one-call snapshot of your character (me.status, `wow status`).
+Status is what a player sees on screen, in one call (me.status, `wow status`): enough to decide what to do next. Each part has a detail call for more.
 
 | Field | Type | |
 |---|---|---|
@@ -770,28 +792,28 @@ Status is a one-call snapshot of your character (me.status, `wow status`).
 | `in_combat` | bool |  |
 | `resting` | bool |  |
 | `movement` | Movement | who's moving you (free, in_flight, feared...) |
-| `gear` | Gear |  |
-| `spellbook` | Spellbook |  |
-| `unspent_talents` | number | talent points to spend (talents.list, talents.learn) |
+| `casting?` | Casting |  |
 | `auras` | Aura[] | your buffs and debuffs |
-| `target_auras?` | Aura[] | your target's buffs and debuffs |
 | `states?` | string[] | your aura states (defense: you dodged/parried/blocked; health_below_20...) |
 | `combo_points?` | ComboPoints | rogues: combo points on a target; warriors: Overpower is ready on that target |
-| `threats` | Creature[] | hostile creatures attacking you, your pet or a party member |
-| `casting?` | Casting |  |
-| `free_slots` | number |  |
-| `stats?` | Stats |  |
+| `timers?` | MirrorTimer[] | breath, fatigue or fire running out: surface or turn back |
+| `resurrect_offer?` | UnitRef | a player is resurrecting you: death.accept_res() |
+| `corpse?` | Corpse |  |
 | `target?` | Unit |  |
-| `attackers` | Creature[] |  |
-| `mobs_nearby` | MobSummary |  |
-| `players` | Player[] | within 60 yd |
+| `target_auras?` | Aura[] | your target's buffs and debuffs |
+| `threats` | Hostile[] | hostile creatures fighting you, your pet or your group (combat.threat for a full threat table) |
+| `mobs_nearby` | MobSummary | units.nearby for each one |
+| `npcs` | NearbyNPC[] | friendly NPCs within 40 yd that offer something: quest givers with a marker first, then nearest; at most 8 |
 | `objects` | Object[] | within 40 yd, nearest first, at most 5: chests, gathering nodes (see gather / can_use), fishing pools and objects lit up for your quests |
+| `players` | Player[] | within 60 yd, nearest first, at most 10 (units.players for all) |
 | `group?` | Group |  |
 | `quests` | Quest[] |  |
-| `broken_gear` | Item[] |  |
-| `bag_upgrades` | Comparison[] | items you carry that beat what you wear (by item level) |
+| `gear` | GearSummary | me.gear() for every slot |
+| `untrained_spells` | number | class spells at your level you haven't learned: visit your trainer (trainer.list; me.spellbook() names them) |
+| `unspent_talents` | number | talent points to spend (talents.list, talents.learn) |
+| `free_slots` | number |  |
+| `bag_upgrades` | Upgrade[] | items you carry that beat what you wear: items.equip(item.guid) (items.compare for the stats) |
 | `last_minute?` | Meter | your fighting over the last minute |
-| `corpse?` | Corpse |  |
 | `tasks` | TaskInfo[] |  |
 
 ### Movement
@@ -830,54 +852,41 @@ TaxiNode is a flight point (TaxiNodes.dbc).
 | `cost?` | number | copper from the flight master you asked (flights.map), over known nodes |
 | `hops?` | number | stops on the way (1 = direct) |
 
-### Gear
-
-Gear grades what you wear against your level, from the game's own numbers: item level, quality, durability.
-
-| Field | Type | |
-|---|---|---|
-| `avg_item_level` | number | over the 17 slots that count (not shirt or tabard); empty = 0 |
-| `score` | number | 0-100: how well your gear suits your level. Each slot: its item level against your level, times its quality (poor 0.6, common 0.85, uncommon 1, rare 1.1, epic 1.2), capped at 1; empty or broken = 0. The main-hand weapon weighs most, then chest, legs, head, shoulders |
-| `grade` | string | poor (under 40), weak (40-64), ok (65-84), good (85+) |
-| `weapon?` | Item | your main hand |
-| `weakest` | GearSlot[] | the slots holding you back most |
-| `empty` | string[] |  |
-| `broken` | string[] |  |
-
-### GearSlot
-
-| Field | Type | |
-|---|---|---|
-| `slot` | string |  |
-| `item?` | string |  |
-| `item_level` | number |  |
-| `score` | number | 0-100 |
-
-### Spellbook
-
-Spellbook: the class spells you could know at your level (Spell.dbc and SkillLineAbility.dbc, as the real client's spellbook knows them) against the ones you do.
-
-| Field | Type | |
-|---|---|---|
-| `known` | number |  |
-| `total` | number |  |
-| `missing` | MissingSpell[] | learn them at your class trainer (some come from class quests, e.g. stances) |
-
-### MissingSpell
-
-| Field | Type | |
-|---|---|---|
-| `id` | number |  |
-| `name` | string |  |
-| `rank?` | string |  |
-| `level` | number |  |
-
 ### ComboPoints
 
 | Field | Type | |
 |---|---|---|
 | `target` | GUID |  |
 | `points` | number |  |
+
+### MirrorTimer
+
+MirrorTimer: breath underwater, fatigue in deep water, or fire.
+
+| Field | Type | |
+|---|---|---|
+| `timer` | string | breath, fatigue or fire |
+| `state` | string | running (counting down: you take damage at 0), recovering (refilling), paused, stopped |
+| `seconds_left` | number |  |
+| `max_s` | number |  |
+
+### Hostile
+
+Hostile: a creature in your fight, as a unit frame shows it.
+
+Everything in [Place](#place), plus:
+
+| Field | Type | |
+|---|---|---|
+| `guid` | GUID |  |
+| `name` | string |  |
+| `level` | number |  |
+| `health_pct` | number |  |
+| `on` | string | who it's attacking: you, pet, or a group member's name |
+| `threat_pct?` | number | your threat on it as a share of the top (100 = it attacks you) |
+| `elite?` | bool |  |
+| `evading?` | bool | resetting: your attacks do nothing; leave it |
+| `casting?` | Casting | interrupt it, or get out of the way |
 
 ### MobSummary
 
@@ -886,6 +895,45 @@ Spellbook: the class spells you could know at your level (Spell.dbc and SkillLin
 | `count` | number | hostile creatures within 30 yd, at most 5 levels below you |
 | `max_level` | number |  |
 | `elites` | number |  |
+
+### NearbyNPC
+
+NearbyNPC: a friendly NPC and what it offers.
+
+Everything in [Place](#place), plus:
+
+| Field | Type | |
+|---|---|---|
+| `guid` | GUID |  |
+| `name` | string |  |
+| `roles?` | string[] | vendor, repair, trainer, quest_giver, flight_master, innkeeper, banker, spirit_healer, gossip |
+| `quest_status?` | string | available (a quest for you), reward (turn one in here), incomplete, ... (see Creature) |
+
+### GearSummary
+
+| Field | Type | |
+|---|---|---|
+| `score` | number | 0-100: how well your gear suits your level |
+| `grade` | string | poor, weak, ok, good |
+| `avg_item_level` | number |  |
+| `weakest` | string[] | the three slots holding you back most (empty ones included) |
+| `broken?` | string[] | slots at 0 durability: they give nothing; repair at an armorer |
+
+### Upgrade
+
+| Field | Type | |
+|---|---|---|
+| `item` | ItemRef |  |
+| `slot` | string |  |
+| `item_level` | number | gain over what you wear there |
+
+### ItemRef
+
+| Field | Type | |
+|---|---|---|
+| `guid` | GUID |  |
+| `entry` | number |  |
+| `name` | string |  |
 
 ### TaskInfo
 
@@ -1117,12 +1165,14 @@ AuraChange: an aura on you, or one you cast on another unit, began or ended.
 | `spell_name?` | string |  |
 | `taken` | bool | you're dst |
 | `outcome?` | string | hit, crit, miss, dodge, parry, block, resist, absorb, evade (it's resetting: unreachable), immune, deflect, reflect; misses have amount 0 |
+| `cause?` | string | environmental damage (no src): fall, drowning, lava, slime, fire, fatigue (swimming too far out) |
 
 ### Death
 
 | Field | Type | |
 |---|---|---|
 | `killer?` | UnitRef | who last hit you |
+| `cause?` | string | when the environment killed you: fall, drowning, lava, slime, fire, fatigue |
 
 ### ErrorEvent
 
@@ -1248,6 +1298,15 @@ FightSummary: one fight, from you or a party member in sight entering combat unt
 | `have` | number |  |
 | `need` | number |  |
 
+### ResurrectOffer
+
+ResurrectOffer: another player cast a resurrection on you.
+
+| Field | Type | |
+|---|---|---|
+| `from` | UnitRef |  |
+| `sickness` | bool | accepting gives resurrection sickness (offers from NPCs) |
+
 ### ScriptError
 
 | Field | Type | |
@@ -1330,6 +1389,7 @@ An event is an [Event](#event) whose `data` is the type below.
 | `learned` | Learned | you learned a spell from a trainer |
 | `level_up` | LevelUp | you reached a new level |
 | `log` | Log | log(msg) from a script |
+| `mirror_timer` | MirrorTimer | your breath, fatigue or fire timer started, paused or stopped: surface or turn back before it runs out (me.timers) |
 | `money` | Money | you looted money |
 | `movement_changed` | MovementChanged | who moves you changed: a flight, a teleport, fear, a stun or a root began or ended |
 | `notice` | Notice | a server notice ("Inventory is full") |
@@ -1341,6 +1401,7 @@ An event is an [Event](#event) whose `data` is the type below.
 | `quest_progress` | QuestProgress | a quest kill/object counter went up |
 | `quest_turned_in` | QuestDone | you turned a quest in |
 | `result` | Result | an action finished (its result) |
+| `resurrect_offered` | ResurrectOffer | a player is resurrecting you: death.accept_res() (works dead or as a ghost) |
 | `resurrected` | None | you're alive again |
 | `script_error` | ScriptError | a script raised an error |
 | `stall` | Stall | no XP for a while, or the XP rate fell below your threshold (events.watch); once until progress resumes |

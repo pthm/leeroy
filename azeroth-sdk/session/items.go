@@ -10,7 +10,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"maps"
 	"math"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,15 +24,17 @@ import (
 )
 
 const (
-	cmsgItemQuery     = 0x056
-	smsgItemQuery     = 0x058
-	cmsgUseItem       = 0x0AB
-	cmsgDestroyItem   = 0x111
-	cmsgListInventory = 0x19E
-	smsgListInventory = 0x19F
-	cmsgSellItem      = 0x1A0
-	cmsgBuyItem       = 0x1A2
-	cmsgCastSpellOp   = 0x12E
+	cmsgItemQuery         = 0x056
+	smsgItemQuery         = 0x058
+	cmsgUseItem           = 0x0AB
+	cmsgAutoStoreBagItem  = 0x10B
+	cmsgAutoEquipItemSlot = 0x10F
+	cmsgDestroyItem       = 0x111
+	cmsgListInventory     = 0x19E
+	smsgListInventory     = 0x19F
+	cmsgSellItem          = 0x1A0
+	cmsgBuyItem           = 0x1A2
+	cmsgCastSpellOp       = 0x12E
 
 	fieldGOBytes1 = 0x11 // GAMEOBJECT_BYTES_1: state, type, art kit, anim progress
 	goTypeChest   = 3
@@ -64,6 +69,11 @@ var statNames = map[uint32]string{0: "mana", 1: "health", 3: "agility", 4: "stre
 	45: "spell_power", 46: "health_per_5s", 47: "spell_penetration", 48: "block_value"}
 
 // inventory type -> slot name and the equipment slots (0-18) it can go in
+// equipSlots: equipment slot names agents can pass (inventory slot index)
+var equipSlots = map[string]uint8{"head": 0, "neck": 1, "shoulder": 2, "shirt": 3, "chest": 4, "waist": 5, "legs": 6, "feet": 7,
+	"wrists": 8, "hands": 9, "finger1": 10, "finger2": 11, "trinket1": 12, "trinket2": 13, "back": 14, "main_hand": 15,
+	"off_hand": 16, "ranged": 17, "tabard": 18}
+
 var invSlots = map[uint32]struct {
 	name  string
 	slots []uint8
@@ -288,26 +298,70 @@ func (b *Bot) setupItems() {
 			w.SendPacketRaw(cmsgUseItem, buf.Bytes())
 			return b.request("items.use", args, 5*time.Second, nil, castMatch(it.UseSpell))
 		})
-	e.Func("items.equip", "(item) → request<Equipped>", "wear an item you carry (entry or guid) in its slot", func(item uint64) map[string]any {
-		args := map[string]any{"item": gs(item)}
-		it := findItem(w, item)
-		if it == nil {
-			return b.refuse("items.equip", args, "item_not_found", "no such item in your bags")
-		}
-		if it.Name != "" && !it.Usable {
-			return b.refuse("items.equip", args, "not_usable", it.WhyNot)
-		}
-		g := it.GUID
-		w.AutoEquipItem(it.Bag, it.BagSlot)
-		return b.request("items.equip", args, 3*time.Second, func() *script.Outcome {
+	e.Func("items.equip", "(item [, slot]) → request<Equipped>", "wear an item you carry (entry or guid) in its slot, or in the slot you name: main_hand, off_hand (a second one-hander, with Dual Wield), finger1, finger2, trinket1, trinket2",
+		func(item uint64, slot string) map[string]any {
+			args := map[string]any{"item": gs(item)}
+			it := findItem(w, item)
+			if it == nil {
+				return b.refuse("items.equip", args, "item_not_found", "no such item in your bags")
+			}
+			if it.Name != "" && !it.Usable {
+				return b.refuse("items.equip", args, "not_usable", it.WhyNot)
+			}
+			g := it.GUID
+			want := -1
+			if slot != "" {
+				args["slot"] = slot
+				idx, ok := equipSlots[slot]
+				if !ok {
+					return b.refuse("items.equip", args, "bad_slot", "slot: one of "+strings.Join(slices.Sorted(maps.Keys(equipSlots)), ", "))
+				}
+				if p := itemInfo(w, it.Entry); p != nil && !slices.Contains(invSlots[p.InvType].slots, idx) {
+					return b.refuse("items.equip", args, "wrong_slot", fmt.Sprintf("a %s item doesn't go in %s", invSlots[p.InvType].name, slot))
+				}
+				want = int(idx)
+				w.SendPacketRaw(cmsgAutoEquipItemSlot, append(binary.LittleEndian.AppendUint64(nil, uint64(g)), idx))
+			} else {
+				w.AutoEquipItem(it.Bag, it.BagSlot)
+			}
+			return b.request("items.equip", args, 3*time.Second, func() *script.Outcome {
+				for _, x := range bagItems(w) {
+					if x.GUID == g && x.Equipped && (want < 0 || int(x.BagSlot) == want) {
+						return script.Ok(types.Equipped{Slot: x.Slot})
+					}
+				}
+				return nil
+			}, func(ev script.Event) *script.Outcome { return failOn(ev, "items") })
+		})
+	e.Func("items.unequip", "(slot) → request", "take off what you wear in a slot (head, chest, main_hand, off_hand, finger1, trinket2, ...) into your bags",
+		func(slot string) map[string]any {
+			args := map[string]any{"slot": slot}
+			idx, ok := equipSlots[slot]
+			if !ok {
+				return b.refuse("items.unequip", args, "bad_slot", "slot: one of "+strings.Join(slices.Sorted(maps.Keys(equipSlots)), ", "))
+			}
+			var g types.GUID
 			for _, x := range bagItems(w) {
-				if x.GUID == g && x.Equipped {
-					return script.Ok(types.Equipped{Slot: x.Slot})
+				if x.Equipped && x.BagSlot == idx {
+					g = x.GUID
 				}
 			}
-			return nil
-		}, func(ev script.Event) *script.Outcome { return failOn(ev, "items") })
-	})
+			if g == 0 {
+				return b.refuse("items.unequip", args, "empty_slot", "you wear nothing there")
+			}
+			if freeSlots(w) == 0 {
+				return b.refuse("items.unequip", args, "bags_full", "no room in your bags")
+			}
+			w.SendPacketRaw(cmsgAutoStoreBagItem, []byte{255, idx, 255}) // from the equipment slot to any bag
+			return b.request("items.unequip", args, 3*time.Second, func() *script.Outcome {
+				for _, x := range bagItems(w) {
+					if x.GUID == g && !x.Equipped {
+						return script.Ok(nil)
+					}
+				}
+				return nil
+			}, func(ev script.Event) *script.Outcome { return failOn(ev, "items") })
+		})
 	e.Func("items.destroy", "(item [, count = all]) → request", "destroy an item you carry (entry or guid): gone for good", func(item uint64, count uint32) map[string]any {
 		args := map[string]any{"item": gs(item)}
 		it := findItem(w, item)
@@ -541,7 +595,7 @@ func (b *Bot) setupItems() {
 		})
 
 	// ---------- trainer ----------
-	e.Func("trainer.learn", "(npc, spell) → request<Learned>", "learn a spell from a trainer within ~5 yd (costs money; azworld npc <trainer> lists spells, levels and costs)",
+	e.Func("trainer.learn", "(npc, spell) → request<Learned>", "learn a spell from a trainer within ~5 yd (costs money; trainer.list shows what it teaches you and what you can learn now)",
 		func(trainer uint64, spell uint32) map[string]any {
 			if r := b.noNPC("trainer.learn", map[string]any{"npc": gs(trainer), "spell": spell}, trainer); r != nil {
 				return r

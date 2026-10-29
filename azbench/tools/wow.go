@@ -18,7 +18,7 @@ import (
 const wowUsage = `wow 'return me.level()'              evaluate Lua in the live session (shared with your running scripts), print JSON
 wow < snippet.lua                   same, from stdin
 wow -f grind.lua                    (re)load a script file
-wow status                          one-call snapshot: level, xp, hp, position, state, bags, quests, group, nearby
+wow status                          what you'd see on screen: you, your fight, NPCs and mobs around you, quests, what to improve
 wow tasks                           your running script tasks: state, status, what each is waiting for
 wow events [--types chat,quest_*] [--last 50] [--since seq] [--match text]
                                     the event log (chat, combat, loot, quests, action results, errors, script logs)

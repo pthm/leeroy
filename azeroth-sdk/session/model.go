@@ -48,7 +48,7 @@ func name[T comparable](m map[T]string, k T) string {
 
 func (b *Bot) baseUnit(u UnitInfo) types.Unit {
 	t := types.Unit{GUID: types.GUID(u.GUID), Name: u.Name, Level: u.Level, Health: u.Health, MaxHealth: u.MaxHealth,
-		X: round1(u.PosX), Y: round1(u.PosY), Z: round1(u.PosZ), Distance: round1(u.Distance), Alive: u.IsAlive,
+		Place: types.Place{X: round1(u.PosX), Y: round1(u.PosY), Z: round1(u.PosZ), Distance: round1(u.Distance)}, Alive: u.IsAlive,
 		Target: types.GUID(u.Target), InCombat: u.Flags&0x80000 != 0} // UNIT_FLAG_IN_COMBAT
 	if me := b.world.GetObject(b.world.CharGUID()); me != nil {
 		t.Reaction = factionReaction(u.Faction, me.Value(fieldUnitFaction))
@@ -229,6 +229,13 @@ type questProto struct {
 	needKill   [4]uint32
 	items      [6][2]uint32 // item, count
 	objectives [4]string
+	minLevel   uint32
+	details    string // the story the quest giver tells
+	completed  string // where to go when it's done
+	money      uint32 // reward copper (negative values, money the quest takes, read as 0)
+	rewSpell   uint32
+	rewards    [4][2]uint32 // item, count: all of them
+	choices    [6][2]uint32 // item, count: pick one
 }
 
 var quests = struct {
@@ -256,18 +263,35 @@ func parseQuestQuery(data []byte) {
 	u32 := func() (v uint32) { binary.Read(r, binary.LittleEndian, &v); return }
 	id := u32()
 	u32() // method
-	p := &questProto{level: int32(u32())}
-	for i := 0; i < 8; i++ { // min level, zone, type, suggested players, rep objectives x4
+	p := &questProto{level: int32(u32()), minLevel: u32()}
+	for i := 0; i < 7; i++ { // zone, type, suggested players, rep objectives x4
 		u32()
 	}
 	p.next = u32()
-	for i := 0; i < 14+35+4; i++ { // xp id .. rep mask (14), rewards/choices/reputations (35), POI (4)
+	u32() // xp id
+	if m := int32(u32()); m > 0 {
+		p.money = uint32(m)
+	}
+	u32() // money at max level
+	p.rewSpell = u32()
+	if c := int32(u32()); c > 0 { // the spell cast on you, when it isn't the one shown
+		p.rewSpell = uint32(c)
+	}
+	for i := 0; i < 9; i++ { // honor x2, source item, flags, title, players slain, talents, arena points, rep mask
 		u32()
 	}
-	p.title, p.summary = readCString(r), readCString(r)
-	for i := 0; i < 3; i++ { // details, area description, completed text
-		readCString(r)
+	for i := range p.rewards {
+		p.rewards[i] = [2]uint32{u32(), u32()}
 	}
+	for i := range p.choices {
+		p.choices[i] = [2]uint32{u32(), u32()}
+	}
+	for i := 0; i < 15+4; i++ { // reputations (15), POI (4)
+		u32()
+	}
+	p.title, p.summary, p.details = readCString(r), readCString(r), readCString(r)
+	readCString(r) // area description
+	p.completed = readCString(r)
 	for i := 0; i < 4; i++ {
 		p.npcOrGo[i], p.needKill[i] = u32(), u32()
 		u32() // item drop

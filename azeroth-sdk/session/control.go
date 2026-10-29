@@ -168,6 +168,7 @@ func (b *Bot) setupControl() {
 	b.setupAgentAPI()
 	b.setupItems()
 	b.setupCombatLog()
+	b.setupNPC()
 	b.setupTalents()
 	b.setupTrade()
 	b.setupTravel()
@@ -230,7 +231,7 @@ func (b *Bot) setupControl() {
 				}
 				if o := w.GetObject(m.GUID); o != nil { // in sight: exact
 					u := b.worldObjToUnitInfo(o)
-					gm.InSight, gm.Level, gm.Alive = true, u.Level, u.IsAlive
+					gm.InRange, gm.Level, gm.Alive = true, u.Level, u.IsAlive
 					gm.Health = types.Resource{Current: u.Health, Max: u.MaxHealth}
 					gm.InCombat, gm.Target = u.Flags&0x80000 != 0, types.GUID(u.Target)
 					gm.Position = &types.Position{X: round1(u.PosX), Y: round1(u.PosY), Z: round1(u.PosZ), Map: mapID}
@@ -256,7 +257,7 @@ func (b *Bot) setupControl() {
 			loc, _ := e.Native("me.location").(types.Location)
 			pts := []pt{{b.config.CharacterName, float64(mx), float64(my)}}
 			for _, m := range g.Members {
-				if m.Position != nil && (m.InSight || (m.Zone != "" && m.Zone == loc.Zone)) {
+				if m.Position != nil && (m.InRange || (m.Zone != "" && m.Zone == loc.Zone)) {
 					pts = append(pts, pt{m.Name, m.Position.X, m.Position.Y})
 				}
 			}

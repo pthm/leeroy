@@ -28,6 +28,7 @@ const (
 	msgChannelStart       = 0x139
 	msgChannelUpdate      = 0x13A
 	msgCorpseQuery        = 0x216
+	cmsgResurrectResponse = 0x15C
 	cmsgSpiritHealerAct   = 0x21C
 	smsgCorpseReclaimWait = 0x269
 	cmsgQuestRequestRew   = 0x18C
@@ -63,11 +64,37 @@ type agentState struct {
 	achAsked  bool
 	zone      uint32 // from SMSG_INIT_WORLD_STATES, sent on login and every zone/area change
 	area      uint32
+	resFrom   uint64                 // who offered to resurrect us (SMSG_RESURRECT_REQUEST)
+	timers    map[uint32]mirrorTimer // breath, fatigue, fire
+}
+
+// mirrorTimer: SMSG_START_MIRROR_TIMER as received; value and scale in ms (scale < 0 counts down)
+type mirrorTimer struct {
+	value, max uint32
+	scale      int32
+	paused     bool
+	at         time.Time
+}
+
+var mirrorNames = map[uint32]string{0: "fatigue", 1: "breath", 2: "fire"}
+
+func (t mirrorTimer) view(id uint32) types.MirrorTimer {
+	left := float64(t.value)
+	state := "paused"
+	if !t.paused {
+		left += time.Since(t.at).Seconds() * 1000 * float64(t.scale)
+		state = "running"
+		if t.scale > 0 {
+			state = "recovering"
+		}
+	}
+	left = math.Max(0, math.Min(left, float64(t.max)))
+	return types.MirrorTimer{Timer: mirrorNames[id], State: state, SecondsLeft: math.Round(left/100) / 10, MaxS: float64(t.max / 1000)}
 }
 
 func (b *Bot) setupAgentAPI() {
 	s := &agentState{cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, earned: map[uint32]bool{},
-		criteria: map[uint32]uint64{}}
+		criteria: map[uint32]uint64{}, timers: map[uint32]mirrorTimer{}}
 	w := b.world
 	b.agent = s
 	spellsDir = b.config.DataDir
@@ -251,11 +278,35 @@ func (b *Bot) setupAgentAPI() {
 		wait := time.Until(s.reclaimAt)
 		s.mu.Unlock()
 		if wait > 0 {
-			return b.refuse("death.reclaim", nil, "not_yet", fmt.Sprintf("you can reclaim in %.0f s", wait.Seconds()))
+			return b.refuse("death.reclaim", nil, "not_yet", fmt.Sprintf("you can reclaim in %.0f s", math.Ceil(wait.Seconds())))
 		}
 		w.ReclaimCorpse()
 		return b.request("death.reclaim", nil, 5*time.Second, alive, nil)
 	})
+	e.Func("death.accept_res", "() → request", "accept a player's resurrection (after a resurrect_offered event): you come back where your body lies",
+		func() map[string]any {
+			s.mu.Lock()
+			from := s.resFrom
+			s.mu.Unlock()
+			if b.IsAlive() && !b.IsGhost() {
+				return b.refuse("death.accept_res", nil, "not_dead", "you're alive")
+			}
+			if from == 0 {
+				return b.refuse("death.accept_res", nil, "no_offer", "nobody has offered to resurrect you (wait for resurrect_offered)")
+			}
+			w.SendPacketRaw(cmsgResurrectResponse, append(binary.LittleEndian.AppendUint64(nil, from), 1))
+			return b.request("death.accept_res", nil, 5*time.Second, alive, nil)
+		})
+	e.Func("me.timers", "() → MirrorTimer[]", "your breath (underwater), fatigue (deep water) and fire timers while one runs: at 0 you take damage every few seconds until you surface or turn back",
+		func() []types.MirrorTimer {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			out := []types.MirrorTimer{}
+			for id, t := range s.timers {
+				out = append(out, t.view(id))
+			}
+			return out
+		})
 	e.Func("death.spirit_res", "(npc) → request", "as a ghost next to a spirit healer: resurrect there (resurrection sickness from level 11, and your gear loses durability)",
 		func(npc uint64) map[string]any {
 			args := map[string]any{"npc": gs(npc)}
@@ -271,6 +322,32 @@ func (b *Bot) setupAgentAPI() {
 
 	// ---------- quests ----------
 	e.Func("quests.log", "() → Quest[]", "your quests with their objectives and progress (titles fill in once the server answers)", b.questLog)
+	e.Func("quests.info", "(quest) → QuestInfo?", "any quest's text (the story, what to do, who to return to) and rewards, as the quest giver shows them; nil the first time (it asks the server: call again a moment later)",
+		func(id uint32) any {
+			p := questInfo(w, id)
+			if p == nil {
+				return nil
+			}
+			q := types.QuestInfo{ID: id, Title: p.title, Level: p.level, MinLevel: p.minLevel, Summary: b.gameText(p.summary),
+				Details: b.gameText(p.details), Completed: b.gameText(p.completed), Money: p.money, Spell: p.rewSpell, NextQuest: p.next}
+			for _, o := range p.objectives {
+				if o != "" {
+					q.Objectives = append(q.Objectives, b.gameText(o))
+				}
+			}
+			items := func(l [][2]uint32) (out []types.Item) {
+				for _, it := range l {
+					if it[0] != 0 {
+						t := itemTemplate(w, it[0])
+						t.Count = it[1]
+						out = append(out, t)
+					}
+				}
+				return out
+			}
+			q.Rewards, q.Choices = items(p.rewards[:]), items(p.choices[:])
+			return q
+		})
 	e.Func("quests.accept", "(npc, quest) → request<QuestDone>", "talk to a quest giver and accept a quest it offers", func(npc uint64, quest uint32) map[string]any {
 		args := map[string]any{"npc": gs(npc), "quest": quest}
 		if r := b.noNPC("quests.accept", args, npc); r != nil {
@@ -316,7 +393,7 @@ func (b *Bot) setupAgentAPI() {
 			return nil
 		}, nil)
 	})
-	e.Func("quests.turn_in", "(npc, quest [, reward = 0]) → request<QuestDone>", "hand a complete quest in (reward: the index of the item to choose, 0 = first; azworld quest <id> lists them)",
+	e.Func("quests.turn_in", "(npc, quest [, reward = 0]) → request<QuestDone>", "hand a complete quest in (reward: the index of the item to choose, 0 = first; quests.info lists the choices)",
 		func(npc uint64, quest, reward uint32) map[string]any {
 			if r := b.noNPC("quests.turn_in", map[string]any{"npc": gs(npc), "quest": quest}, npc); r != nil {
 				return r
@@ -762,13 +839,27 @@ func (r *reach) of(guid uint64, x, y, z float64, eye float32) (inSight *bool, pa
 	return inSight, path, &ok
 }
 
+// place fills a Place's sight and route (eye: how high above its base to look: 1.5 for units, 0.5 for objects on
+// the ground). Callers share one reach and go most important first: the time budget is per reach.
+func (r *reach) place(guid uint64, p *types.Place, eye float32) {
+	p.InSight, p.PathDistance, p.Reachable = r.of(guid, p.X, p.Y, p.Z, eye)
+}
+
 // annotateNearby: reach for every living creature (see reach)
 func (b *Bot) annotateNearby(cs []types.Creature) {
 	r := b.newReach()
 	for i := range cs {
 		if c := &cs[i]; c.Alive {
-			c.InSight, c.PathDistance, c.Reachable = r.of(uint64(c.GUID), c.X, c.Y, c.Z, 1.5)
+			r.place(uint64(c.GUID), &c.Place, 1.5)
 		}
+	}
+}
+
+// annotatePlayers: reach for players
+func (b *Bot) annotatePlayers(ps []types.Player) {
+	r := b.newReach()
+	for i := range ps {
+		r.place(uint64(ps[i].GUID), &ps[i].Place, 1.5)
 	}
 }
 
@@ -776,7 +867,6 @@ func (b *Bot) annotateNearby(cs []types.Creature) {
 func (b *Bot) annotateObjects(os []types.Object) {
 	r := b.newReach()
 	for i := range os {
-		o := &os[i]
-		o.InSight, o.PathDistance, o.Reachable = r.of(uint64(o.GUID), o.X, o.Y, o.Z, 0.5)
+		r.place(uint64(os[i].GUID), &os[i].Place, 0.5)
 	}
 }

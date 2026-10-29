@@ -72,6 +72,7 @@ type Bot struct {
 	wasGroupCombat bool                     // you or a party member in sight was in combat last tick
 	pathCache      map[uint64]pathEntry     // units.nearby routes, see annotateNearby
 	cinfo          *combatInfo              // casts, combo points, evades (combatinfo.go)
+	npc            *npcState                // gossip, quest giver markers, trainer lists (npc.go)
 	agent          *agentState              // Lua agent API state (cast tracking); nil outside sessions
 	playerName     func(guid uint64) string // name from the session's name-query cache ("" until the server answers)
 	notify         func(text string)        // a notice event (set by setupControl)
@@ -635,6 +636,36 @@ func (b *Bot) initNavigation() {
 		b.log("No pathfinding configured, movement will be direct")
 	}
 	b.attachNavigatorToMovementController()
+	go b.warmNavigation()
+}
+
+// warmNavigation loads the navmesh around the character in the background whenever it arrives somewhere new (login,
+// a teleport, a hearth, the end of a flight). The first route in an area loads every tile within ten grid cells of
+// it, about a second; done here, no agent call waits for it.
+// ponytail: polls position every 2 s; hook teleport events if that ever lags.
+func (b *Bot) warmNavigation() {
+	if b.nav == nil {
+		return
+	}
+	var warmMap uint32 = math.MaxUint32
+	var warmAt navigation.Point3D
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
+	for {
+		x, y, z, _, m := b.world.Position()
+		here := navigation.Point3D{X: x, Y: y, Z: z}
+		if (x != 0 || y != 0) && (m != warmMap || here.DistanceTo2D(warmAt) >= 500) { // in the world, somewhere new
+			start := time.Now()
+			b.nav.FindPath(m, here, navigation.Point3D{X: x + 5, Y: y, Z: z}) // the route itself doesn't matter: its tiles do
+			warmMap, warmAt = m, here
+			b.log("navmesh warmed for map %d in %s", m, time.Since(start).Round(time.Millisecond))
+		}
+		select {
+		case <-b.stopCh:
+			return
+		case <-tick.C:
+		}
+	}
 }
 
 func (b *Bot) attachNavigatorToMovementController() {

@@ -54,23 +54,32 @@ type Location struct {
 	AreaID uint32 `json:"area_id"`
 }
 
+// Place is where something is in the world, measured from you: anything around you in me.status, units.* and
+// objects.* has one.
+type Place struct {
+	X            float64  `json:"x"`
+	Y            float64  `json:"y"`
+	Z            float64  `json:"z"`
+	Distance     float64  `json:"distance" doc:"yards from you in a straight line"`
+	InSight      *bool    `json:"in_sight,omitempty" doc:"nothing solid (rock, walls) between you and it: a mob in a cave under you can be close but not in sight"`
+	PathDistance *float64 `json:"path_distance,omitempty" doc:"how far you'd walk to reach it (often much more than distance, across cliffs, floors and caves); worked out nearest first within a time budget, so the farthest may lack it"`
+	Reachable    *bool    `json:"reachable,omitempty" doc:"with path_distance: whether a walking route gets you there"`
+}
+
 // Unit is what creatures and players share.
 type Unit struct {
-	GUID      GUID     `json:"guid"`
-	Name      string   `json:"name" doc:"empty for a moment after a creature first comes into view"`
-	Level     uint32   `json:"level"`
-	Health    uint32   `json:"health"`
-	MaxHealth uint32   `json:"max_health"`
-	X         float64  `json:"x"`
-	Y         float64  `json:"y"`
-	Z         float64  `json:"z"`
-	Distance  float64  `json:"distance" doc:"yards from you"`
-	Alive     bool     `json:"alive"`
-	Reaction  string   `json:"reaction" doc:"toward you: hostile (attacks on sight), neutral (fights back) or friendly"`
-	Target    GUID     `json:"target" doc:"who it's targeting; null for nobody"`
-	InCombat  bool     `json:"in_combat"`
-	Casting   *Casting `json:"casting,omitempty" doc:"the spell it's casting or channelling now (interrupt it, or get out of the way)"`
-	States    []string `json:"states,omitempty" doc:"the game's aura states: health_below_20 (Execute, Hammer of Wrath), health_below_35, defense (it dodged, parried or blocked: Revenge), frozen, bleeding, enrage, ..."`
+	GUID      GUID   `json:"guid"`
+	Name      string `json:"name" doc:"empty for a moment after a creature first comes into view"`
+	Level     uint32 `json:"level"`
+	Health    uint32 `json:"health"`
+	MaxHealth uint32 `json:"max_health"`
+	Place
+	Alive    bool     `json:"alive"`
+	Reaction string   `json:"reaction" doc:"toward you: hostile (attacks on sight), neutral (fights back) or friendly"`
+	Target   GUID     `json:"target" doc:"who it's targeting; null for nobody"`
+	InCombat bool     `json:"in_combat"`
+	Casting  *Casting `json:"casting,omitempty" doc:"the spell it's casting or channelling now (interrupt it, or get out of the way)"`
+	States   []string `json:"states,omitempty" doc:"the game's aura states: health_below_20 (Execute, Hammer of Wrath), health_below_35, defense (it dodged, parried or blocked: Revenge), frozen, bleeding, enrage, ..."`
 }
 
 type Creature struct {
@@ -86,9 +95,8 @@ type Creature struct {
 	Attackable    bool     `json:"attackable" doc:"can be attacked at all (false for triggers, dummies, protected NPCs)"`
 	Lootable      bool     `json:"lootable" doc:"a corpse with loot for you"`
 	TappedByOther bool     `json:"tapped_by_other" doc:"someone else damaged it first: killing it gives you nothing"`
-	InSight       *bool    `json:"in_sight,omitempty" doc:"units.nearby, living units: nothing solid (rock, walls) between you and it. Distance is a straight line: a mob in a cave under you can be close but not in sight"`
-	PathDistance  *float64 `json:"path_distance,omitempty" doc:"units.nearby, living units, nearest first within a time budget: how far you'd walk to reach it (often much more than distance across cliffs, floors and caves)"`
-	Reachable     *bool    `json:"reachable,omitempty" doc:"with path_distance: whether a walking route gets you there"`
+	QuestStatus   string   `json:"quest_status,omitempty" doc:"the marker over a quest giver: available (yellow !: a quest for you), available_repeatable (blue !), available_low_level (only quests far below your level), unavailable (none for you yet: level or prerequisites), incomplete (grey ?: you're on its quest), reward (yellow ?: turn a quest in here)"`
+	ThreatPct     *float64 `json:"threat_pct,omitempty" doc:"your threat on it as a share of the top (100 = it attacks you; another unit pulls it off you past 110 in melee, 130 at range); only while it has you on its threat table"`
 }
 
 type Player struct {
@@ -108,23 +116,17 @@ type UnitRef struct {
 }
 
 type Object struct {
-	GUID         GUID     `json:"guid"`
-	Entry        uint32   `json:"entry" doc:"game object template id"`
-	Name         string   `json:"name" doc:"empty for a moment after it first comes into view"`
-	Type         string   `json:"type" doc:"chest, door, button, goober (quest objects), questgiver, portal (use it: you're teleported), ship (boats and zeppelins), elevator, mailbox, fishing_pool (fish here), fishing_bobber, ... Mining veins and herbs are chests: see gather"`
-	X            float64  `json:"x"`
-	Y            float64  `json:"y"`
-	Z            float64  `json:"z"`
-	Distance     float64  `json:"distance"`
-	Gather       string   `json:"gather,omitempty" doc:"the skill it takes: mining, herbalism, lockpicking, fishing or inscription"`
-	Skill        uint32   `json:"skill,omitempty" doc:"the skill level it needs"`
-	CanUse       *bool    `json:"can_use,omitempty" doc:"with gather: your skill is high enough (false without the skill: learn it from a trainer)"`
-	Key          uint32   `json:"key,omitempty" doc:"item entry of a key that opens it"`
-	Quest        uint32   `json:"quest,omitempty" doc:"the quest it's for"`
-	Lit          bool     `json:"lit,omitempty" doc:"the server marks it usable for you (it sparkles): a quest you have needs it (GM characters see every chest lit)"`
-	InSight      *bool    `json:"in_sight,omitempty" doc:"nothing solid (rock, walls) between you and it. Distance is a straight line: a chest in a mine under you can be close but not in sight"`
-	PathDistance *float64 `json:"path_distance,omitempty" doc:"nearest first within a time budget: how far you'd walk to reach it"`
-	Reachable    *bool    `json:"reachable,omitempty" doc:"with path_distance: whether a walking route gets you there"`
+	GUID  GUID   `json:"guid"`
+	Entry uint32 `json:"entry" doc:"game object template id"`
+	Name  string `json:"name" doc:"empty for a moment after it first comes into view"`
+	Type  string `json:"type" doc:"chest, door, button, goober (quest objects), questgiver, portal (use it: you're teleported), ship (boats and zeppelins), elevator, mailbox, fishing_pool (fish here), fishing_bobber, ... Mining veins and herbs are chests: see gather"`
+	Place
+	Gather string `json:"gather,omitempty" doc:"the skill it takes: mining, herbalism, lockpicking, fishing or inscription"`
+	Skill  uint32 `json:"skill,omitempty" doc:"the skill level it needs"`
+	CanUse *bool  `json:"can_use,omitempty" doc:"with gather: your skill is high enough (false without the skill: learn it from a trainer)"`
+	Key    uint32 `json:"key,omitempty" doc:"item entry of a key that opens it"`
+	Quest  uint32 `json:"quest,omitempty" doc:"the quest it's for"`
+	Lit    bool   `json:"lit,omitempty" doc:"the server marks it usable for you (it sparkles): a quest you have needs it (GM characters see every chest lit)"`
 }
 
 type Path struct {
@@ -237,6 +239,55 @@ type VendorItem struct {
 	Stock      int32  `json:"stock" doc:"-1 = unlimited"`
 }
 
+type Threat struct {
+	Unit   UnitRef `json:"unit"`
+	Threat float64 `json:"threat"`
+	Pct    float64 `json:"pct" doc:"share of the top threat"`
+}
+
+// ---------- NPC dialogue ----------
+
+type Gossip struct {
+	NPC     GUID           `json:"npc"`
+	Menu    uint32         `json:"menu"`
+	Text    string         `json:"text" doc:"what the NPC says (or, opening a quest giver with one quest for you, the quest's story)"`
+	TextID  uint32         `json:"text_id,omitempty"`
+	Options []GossipOption `json:"options"`
+	Quests  []GossipQuest  `json:"quests" doc:"quests it offers or takes (quests.accept / quests.turn_in)"`
+}
+
+type GossipOption struct {
+	Index   uint32 `json:"index" doc:"pass to gossip.select"`
+	Icon    string `json:"icon" doc:"chat, vendor, taxi, trainer, interact, banker, talk, tabard, battle, dot: what choosing it does"`
+	Text    string `json:"text"`
+	Coded   bool   `json:"coded,omitempty" doc:"asks for text: gossip.select(index, code)"`
+	Money   uint32 `json:"money,omitempty" doc:"copper it costs"`
+	Confirm string `json:"confirm,omitempty" doc:"the confirmation a real client would show"`
+}
+
+type GossipQuest struct {
+	Quest uint32 `json:"quest"`
+	Title string `json:"title"`
+	Level int32  `json:"level"`
+}
+
+type Trainer struct {
+	NPC      GUID           `json:"npc"`
+	Greeting string         `json:"greeting,omitempty"`
+	Spells   []TrainerSpell `json:"spells"`
+}
+
+type TrainerSpell struct {
+	Spell     uint32   `json:"spell" doc:"pass to trainer.learn"`
+	Name      string   `json:"name"`
+	State     string   `json:"state" doc:"available (learn it now), unavailable (level, skill or a prerequisite missing), known"`
+	Cost      uint32   `json:"cost" doc:"copper, after reputation discount"`
+	Level     uint32   `json:"level" doc:"required level"`
+	SkillLine uint32   `json:"skill_line,omitempty" doc:"professions: the skill it needs"`
+	SkillRank uint32   `json:"skill_rank,omitempty"`
+	Requires  []uint32 `json:"requires,omitempty" doc:"spells you must know first"`
+}
+
 // ---------- spells, quests, talents ----------
 
 type Spell struct {
@@ -271,6 +322,23 @@ type Quest struct {
 	Failed     bool        `json:"failed"`
 	Objectives []Objective `json:"objectives"`
 	NextQuest  uint32      `json:"next_quest,omitempty" doc:"the next in its chain"`
+}
+
+// QuestInfo: a quest's text and rewards, as the quest giver and the quest log show them.
+type QuestInfo struct {
+	ID         uint32   `json:"id"`
+	Title      string   `json:"title"`
+	Level      int32    `json:"level"`
+	MinLevel   uint32   `json:"min_level"`
+	Summary    string   `json:"summary" doc:"what to do (the quest log's objectives text)"`
+	Details    string   `json:"details" doc:"the story the quest giver tells: often names where to go and who to see"`
+	Completed  string   `json:"completed,omitempty" doc:"shown once the objectives are done: usually who to return to"`
+	Objectives []string `json:"objectives,omitempty" doc:"objective lines that aren't simple kill/collect counts (events, places to reach)"`
+	Money      uint32   `json:"money,omitempty" doc:"copper reward"`
+	Spell      uint32   `json:"spell,omitempty" doc:"a spell it teaches or casts on you"`
+	Rewards    []Item   `json:"rewards,omitempty" doc:"items you get, all of them"`
+	Choices    []Item   `json:"choices,omitempty" doc:"items to choose one of (quests.turn_in reward = its index, 0 = first)"`
+	NextQuest  uint32   `json:"next_quest,omitempty"`
 }
 
 type Talent struct {
@@ -309,23 +377,26 @@ type Group struct {
 // GroupMember is a party member as the real client's party frames show them: health, power, level and where they
 // are come from the server's party updates even when they're out of sight.
 type GroupMember struct {
-	Name     string    `json:"name"`
-	GUID     GUID      `json:"guid"`
-	Leader   bool      `json:"leader"`
-	Online   bool      `json:"online"`
-	Class    string    `json:"class,omitempty"`
-	Level    uint32    `json:"level,omitempty"`
-	Health   Resource  `json:"health"`
-	Power    Resource  `json:"power"`
-	Alive    bool      `json:"alive"`
-	Ghost    bool      `json:"ghost,omitempty"`
-	InCombat bool      `json:"in_combat,omitempty" doc:"only known while they're in sight"`
-	Zone     string    `json:"zone,omitempty"`
-	Position *Position `json:"position,omitempty" doc:"x, y (and z while in sight)"`
-	Distance *float64  `json:"distance,omitempty" doc:"yards from you"`
-	InSight  bool      `json:"in_sight" doc:"close enough to see (about 100 yd): units.get works on them"`
-	Target   GUID      `json:"target,omitempty" doc:"what they're targeting (in sight only)"`
-	Auras    []Aura    `json:"auras,omitempty" doc:"their buffs and debuffs (spell, name, harmful; details while in sight)"`
+	Name         string    `json:"name"`
+	GUID         GUID      `json:"guid"`
+	Leader       bool      `json:"leader"`
+	Online       bool      `json:"online"`
+	Class        string    `json:"class,omitempty"`
+	Level        uint32    `json:"level,omitempty"`
+	Health       Resource  `json:"health"`
+	Power        Resource  `json:"power"`
+	Alive        bool      `json:"alive"`
+	Ghost        bool      `json:"ghost,omitempty"`
+	InCombat     bool      `json:"in_combat,omitempty" doc:"only known while they're in sight"`
+	Zone         string    `json:"zone,omitempty"`
+	Position     *Position `json:"position,omitempty" doc:"x, y (and z while in sight)"`
+	Distance     *float64  `json:"distance,omitempty" doc:"yards from you"`
+	InRange      bool      `json:"in_range" doc:"close enough to see (about 100 yd): units.get works on them"`
+	InSight      *bool     `json:"in_sight,omitempty" doc:"in range and nothing solid between you"`
+	PathDistance *float64  `json:"path_distance,omitempty" doc:"how far you'd walk to reach them (in range only)"`
+	Reachable    *bool     `json:"reachable,omitempty"`
+	Target       GUID      `json:"target,omitempty" doc:"what they're targeting (in sight only)"`
+	Auras        []Aura    `json:"auras,omitempty" doc:"their buffs and debuffs (spell, name, harmful; details while in sight)"`
 }
 
 type TradeSide struct {
@@ -349,7 +420,7 @@ type Inspect struct {
 
 type CombatEntry struct {
 	T      int64   `json:"t" doc:"unix ms"`
-	Kind   string  `json:"kind" doc:"melee, spell, dot, heal, hot, kill"`
+	Kind   string  `json:"kind" doc:"melee, spell, dot, heal, hot, kill, environment (falls, drowning, lava: no src)"`
 	Src    UnitRef `json:"src"`
 	Dst    UnitRef `json:"dst"`
 	Spell  uint32  `json:"spell,omitempty"`
@@ -457,46 +528,90 @@ type MobSummary struct {
 	Elites   int    `json:"elites"`
 }
 
-// Status is a one-call snapshot of your character (me.status, `wow status`).
+// Status is what a player sees on screen, in one call (me.status, `wow status`): enough to decide what to do next.
+// Each part has a detail call for more.
 type Status struct {
-	Name        string       `json:"name"`
-	Class       string       `json:"class"`
-	Race        string       `json:"race"`
-	Level       uint32       `json:"level"`
-	XP          XP           `json:"xp"`
-	Health      Resource     `json:"health"`
-	Power       Resource     `json:"power"`
-	Money       uint32       `json:"money" doc:"copper"`
-	Position    Position     `json:"position"`
-	Location    Location     `json:"location"`
-	Alive       bool         `json:"alive"`
-	Ghost       bool         `json:"ghost"`
-	InCombat    bool         `json:"in_combat"`
-	Resting     bool         `json:"resting"`
-	Movement    Movement     `json:"movement" doc:"who's moving you (free, in_flight, feared...)"`
-	Gear        Gear         `json:"gear"`
-	Spellbook   Spellbook    `json:"spellbook"`
-	Talents     uint32       `json:"unspent_talents" doc:"talent points to spend (talents.list, talents.learn)"`
-	Auras       []Aura       `json:"auras" doc:"your buffs and debuffs"`
-	TargetAuras []Aura       `json:"target_auras,omitempty" doc:"your target's buffs and debuffs"`
-	States      []string     `json:"states,omitempty" doc:"your aura states (defense: you dodged/parried/blocked; health_below_20...)"`
-	ComboPoints *ComboPoints `json:"combo_points,omitempty" doc:"rogues: combo points on a target; warriors: Overpower is ready on that target"`
-	Threats     []Creature   `json:"threats" doc:"hostile creatures attacking you, your pet or a party member"`
-	Casting     *Casting     `json:"casting,omitempty"`
-	FreeSlots   int          `json:"free_slots"`
-	Stats       *Stats       `json:"stats,omitempty"`
-	Target      *Unit        `json:"target,omitempty"`
-	Attackers   []Creature   `json:"attackers"`
-	Mobs        MobSummary   `json:"mobs_nearby"`
-	Players     []Player     `json:"players" doc:"within 60 yd"`
-	Objects     []Object     `json:"objects" doc:"within 40 yd, nearest first, at most 5: chests, gathering nodes (see gather / can_use), fishing pools and objects lit up for your quests"`
-	Group       *Group       `json:"group,omitempty"`
-	Quests      []Quest      `json:"quests"`
-	Broken      []Item       `json:"broken_gear"`
-	BagUpgrades []Comparison `json:"bag_upgrades" doc:"items you carry that beat what you wear (by item level)"`
-	LastMinute  *Meter       `json:"last_minute,omitempty" doc:"your fighting over the last minute"`
-	Corpse      *Corpse      `json:"corpse,omitempty"`
-	Tasks       []TaskInfo   `json:"tasks"`
+	Name           string        `json:"name"`
+	Class          string        `json:"class"`
+	Race           string        `json:"race"`
+	Level          uint32        `json:"level"`
+	XP             XP            `json:"xp"`
+	Health         Resource      `json:"health"`
+	Power          Resource      `json:"power"`
+	Money          uint32        `json:"money" doc:"copper"`
+	Position       Position      `json:"position"`
+	Location       Location      `json:"location"`
+	Alive          bool          `json:"alive"`
+	Ghost          bool          `json:"ghost"`
+	InCombat       bool          `json:"in_combat"`
+	Resting        bool          `json:"resting"`
+	Movement       Movement      `json:"movement" doc:"who's moving you (free, in_flight, feared...)"`
+	Casting        *Casting      `json:"casting,omitempty"`
+	Auras          []Aura        `json:"auras" doc:"your buffs and debuffs"`
+	States         []string      `json:"states,omitempty" doc:"your aura states (defense: you dodged/parried/blocked; health_below_20...)"`
+	ComboPoints    *ComboPoints  `json:"combo_points,omitempty" doc:"rogues: combo points on a target; warriors: Overpower is ready on that target"`
+	Timers         []MirrorTimer `json:"timers,omitempty" doc:"breath, fatigue or fire running out: surface or turn back"`
+	ResurrectOffer *UnitRef      `json:"resurrect_offer,omitempty" doc:"a player is resurrecting you: death.accept_res()"`
+	Corpse         *Corpse       `json:"corpse,omitempty"`
+	Target         *Unit         `json:"target,omitempty"`
+	TargetAuras    []Aura        `json:"target_auras,omitempty" doc:"your target's buffs and debuffs"`
+	Threats        []Hostile     `json:"threats" doc:"hostile creatures fighting you, your pet or your group (combat.threat for a full threat table)"`
+	Mobs           MobSummary    `json:"mobs_nearby" doc:"units.nearby for each one"`
+	NPCs           []NearbyNPC   `json:"npcs" doc:"friendly NPCs within 40 yd that offer something: quest givers with a marker first, then nearest; at most 8"`
+	Objects        []Object      `json:"objects" doc:"within 40 yd, nearest first, at most 5: chests, gathering nodes (see gather / can_use), fishing pools and objects lit up for your quests"`
+	Players        []Player      `json:"players" doc:"within 60 yd, nearest first, at most 10 (units.players for all)"`
+	Group          *Group        `json:"group,omitempty"`
+	Quests         []Quest       `json:"quests"`
+	Gear           GearSummary   `json:"gear" doc:"me.gear() for every slot"`
+	Untrained      int           `json:"untrained_spells" doc:"class spells at your level you haven't learned: visit your trainer (trainer.list; me.spellbook() names them)"`
+	Talents        uint32        `json:"unspent_talents" doc:"talent points to spend (talents.list, talents.learn)"`
+	FreeSlots      int           `json:"free_slots"`
+	BagUpgrades    []Upgrade     `json:"bag_upgrades" doc:"items you carry that beat what you wear: items.equip(item.guid) (items.compare for the stats)"`
+	LastMinute     *Meter        `json:"last_minute,omitempty" doc:"your fighting over the last minute"`
+	Tasks          []TaskInfo    `json:"tasks"`
+}
+
+// Hostile: a creature in your fight, as a unit frame shows it.
+type Hostile struct {
+	GUID      GUID    `json:"guid"`
+	Name      string  `json:"name"`
+	Level     uint32  `json:"level"`
+	HealthPct float64 `json:"health_pct"`
+	Place
+	On        string   `json:"on" doc:"who it's attacking: you, pet, or a group member's name"`
+	ThreatPct *float64 `json:"threat_pct,omitempty" doc:"your threat on it as a share of the top (100 = it attacks you)"`
+	Elite     bool     `json:"elite,omitempty"`
+	Evading   bool     `json:"evading,omitempty" doc:"resetting: your attacks do nothing; leave it"`
+	Casting   *Casting `json:"casting,omitempty" doc:"interrupt it, or get out of the way"`
+}
+
+// NearbyNPC: a friendly NPC and what it offers.
+type NearbyNPC struct {
+	GUID GUID   `json:"guid"`
+	Name string `json:"name"`
+	Place
+	Roles       []string `json:"roles,omitempty" doc:"vendor, repair, trainer, quest_giver, flight_master, innkeeper, banker, spirit_healer, gossip"`
+	QuestStatus string   `json:"quest_status,omitempty" doc:"available (a quest for you), reward (turn one in here), incomplete, ... (see Creature)"`
+}
+
+type GearSummary struct {
+	Score        int      `json:"score" doc:"0-100: how well your gear suits your level"`
+	Grade        string   `json:"grade" doc:"poor, weak, ok, good"`
+	AvgItemLevel float64  `json:"avg_item_level"`
+	Weakest      []string `json:"weakest" doc:"the three slots holding you back most (empty ones included)"`
+	Broken       []string `json:"broken,omitempty" doc:"slots at 0 durability: they give nothing; repair at an armorer"`
+}
+
+type Upgrade struct {
+	Item      ItemRef `json:"item"`
+	Slot      string  `json:"slot"`
+	ItemLevel int32   `json:"item_level" doc:"gain over what you wear there"`
+}
+
+type ItemRef struct {
+	GUID  GUID   `json:"guid"`
+	Entry uint32 `json:"entry"`
+	Name  string `json:"name"`
 }
 
 // ---------- travel ----------

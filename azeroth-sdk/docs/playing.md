@@ -19,9 +19,9 @@ Your power comes from four things, and the first two matter most at low levels:
 3. **Talents.** One point per level from 10, in your spec's tree.
 4. **Level.** Each level adds stats, and you need levels to wear better gear and learn better spells.
 
-`me.status()` grades the first three: `gear` (a 0-100 score of your gear against your level, the weakest slots,
-empty and broken ones), `spellbook` (the class spells you could know at your level and which are missing) and
-`unspent_talents`.
+`me.status()` grades the first three: `gear` (a 0-100 score of your gear against your level and the weakest
+slots; `me.gear()` for every slot), `untrained_spells` (class spells at your level you haven't learned;
+`me.spellbook()` names them) and `unspent_talents`.
 
 ## Gear
 
@@ -31,7 +31,7 @@ empty and broken ones), `spellbook` (the class spells you could know at your lev
   purple (epic). A green item at your level usually beats a white one, but a better colour isn't always better for
   you: check the armor type, whether your class can use the weapon, and whether its stats are ones you need.
 - **Where to get it, early on:** quest rewards are the best source below level 20, and many quests let you choose
-  (`azworld quest <id>` lists the choices). Weaponsmiths and armorers sell white weapons and armor for a few silver
+  (`quests.info(id)` lists the choices). Weaponsmiths and armorers sell white weapons and armor for a few silver
   that are far better than starting gear. Mobs drop greens now and then. `azworld upgrades --class <yours> --level
   <yours>` lists what you could use and where it comes from; `items.compare(item)` tells you if something beats
   what you wear.
@@ -68,7 +68,7 @@ empty and broken ones), `spellbook` (the class spells you could know at your lev
 ## Spells, skills and items
 
 - **Train every time you can.** Visit your class trainer every two levels (`me.spellbook()` lists what's missing;
-  `azworld npc <trainer>` lists spells, levels and costs). Training is cheap compared with what it adds.
+  `trainer.list(trainer)` shows what it teaches you, at what level and cost, and what you can learn now). Training is cheap compared with what it adds.
 - **Ranks.** Most spells have ranks, each a separate spell id, learned at higher levels. Learning a new rank doesn't
   change what an old script casts: a script that casts the rank-1 id keeps casting rank 1. Cast the highest rank
   you know (`act.best({rank ids...})`, `spells.known`).
@@ -99,10 +99,12 @@ empty and broken ones), `spellbook` (the class spells you could know at your lev
 
 ## Quests
 
-- Quest givers offer quests (`quest_giver` role); the quest log holds 25. When it fills up, drop the quests you
+- Quest givers offer quests (`quest_giver` role). Their `quest_status` is the marker a real client draws over them:
+  `available` has a quest for you, `reward` takes one you've finished. `gossip.open(npc)` lists what they offer and
+  what they say. The quest log holds 25. When it fills up, drop the quests you
   won't do (`quests.abandon`): grey quests (far below your level) give little XP.
-- Read what a quest asks (`quests.log()` has its summary and objectives; `azworld quest <id>` has the details and
-  where its targets are) and what your spells do (`azworld spell <id>`): both often tell you how to do it well.
+- Read what a quest asks (`quests.log()` has its summary and objectives; `quests.info(id)` the quest giver's story,
+  which often says where to go; `azworld quest <id>` where its targets are) and what your spells do (`azworld spell <id>`): both often tell you how to do it well.
 - Quests that send you to the same area can be done together in one trip; turning several in at once saves the
   walk.
 - When a quest is too hard alone, ask for help: other players are on the same quests.
@@ -145,7 +147,8 @@ near their level.
 **Aggro and threat.** A mob attacks whoever it has the most threat on. Damage and healing both create threat
 (healing creates it on every mob fighting the target you heal), so a healer or a high-damage player can pull a mob
 off the tank. Tanks hold threat with abilities made for it (Taunt, Sunder Armor, Thunder Clap, Righteous Fury,
-Holy Shield...). Without a tank, the player taking the hits is the one doing the most damage or healing.
+Holy Shield...). Without a tank, the player taking the hits is the one doing the most damage or healing. A real client shows each
+mob's threat table: `combat.threat(guid)`, and `threat_pct` on units (yours as a share of the top).
 
 **Pulls.** Most deaths start with a bad pull:
 

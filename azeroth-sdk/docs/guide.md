@@ -5,8 +5,9 @@ API reference follows this section.
 
 ## What's built in, and what's yours
 
-`wow status` gives you a one-call snapshot of your character. Scripts run as tasks that can wait (`wait`, `await`,
-`events.wait`), every action reports its result, and everything that happens goes to an event log you and your
+`wow status` shows what a player would see on screen: you, your target and fight, the NPCs, mobs, objects and
+players around you, your quests, and what to improve; each part has a detail call. Scripts run as tasks that can
+wait (`wait`, `await`, `events.wait`), every action reports its result, and everything that happens goes to an event log you and your
 scripts both read ("The runtime" below). Write a script, start it as a task, then watch it: `wow wait` returns when
 something you subscribed to happens (`wow subscribe`), `wow events` shows what led up to it, `wow tasks` shows what each task is doing, and
 you can change globals or restart a task while the rest keep running. A script can also stop and ask you (`ask`).
@@ -68,8 +69,8 @@ to build.
   Selling also earns money (wealth is part of most scores).
 - Buy with `vendor.items(vendor)` (call it twice: the first call asks the vendor) then
   `vendor.buy(vendor, entry, count)`. Bags (more slots) are sold by general goods and bag vendors.
-- New class spells come from your class trainer every couple of levels: `azworld npc <trainer>` lists them with
-  level and cost, `trainer.learn(trainer, spell)` learns one (its result says if it didn't). The level-70
+- New class spells come from your class trainer every couple of levels: `trainer.list(trainer)` lists them with
+  level, cost and whether you can learn them now, `trainer.learn(trainer, spell)` learns one (its result says if it didn't). The level-70
   "<Class> Trainer" NPCs in Northshire are dummies; use the named trainers.
 - Gear wears down with every death. At 0 durability an item does nothing: a broken weapon means fighting bare-handed
   and weapon skills fail with `equipped_item_class`; a `gear_broken` event tells you after you revive. Check `items.broken()` and `items.list()` durability, and

@@ -92,7 +92,7 @@ func (b *Bot) object(o *client.WorldObject) types.Object {
 	}
 	creatures.Unlock()
 	ob := types.Object{GUID: types.GUID(o.GUID), Entry: entry, Name: goName, Type: name(goTypes, (o.Value(fieldGOBytes1)>>8)&0xFF),
-		X: round1(x), Y: round1(y), Z: round1(z), Distance: round1(float32(math.Sqrt(float64((x-mx)*(x-mx) + (y-my)*(y-my) + (z-mz)*(z-mz)))))}
+		Place: types.Place{X: round1(x), Y: round1(y), Z: round1(z), Distance: round1(float32(math.Sqrt(float64((x-mx)*(x-mx) + (y-my)*(y-my) + (z-mz)*(z-mz)))))}}
 	objectNeeds(b.world, o, &ob, tmpl)
 	return ob
 }
@@ -162,7 +162,7 @@ func (b *Bot) setupCoreAPI() {
 	e.Func("me.stance", "() → number", "warrior stance / druid form index (0 = none)", b.GetStance)
 	e.Func("me.pet", "() → GUID?", "your pet, nil for none", func() types.GUID { return types.GUID(b.GetPetGUID()) })
 
-	e.Func("me.status", "() → Status", "a one-call snapshot: level, xp, health, power, money, where you are, state, target, attackers, nearby mobs and players, group, quests, broken gear, bag upgrades, your last minute of fighting, corpse, tasks",
+	e.Func("me.status", "() → Status", "what you'd see on screen, in one call: you (health, power, auras, cast, breath), your target and every mob in your fight, the NPCs, objects, players and mobs around you, your group, quests, what to improve (gear, untrained spells, talents, bag upgrades), your last minute of fighting, your tasks. Each part has a detail call",
 		func() types.Status { return b.snapshot() })
 
 	e.Func("me.gear", "() → Gear", "your gear graded against your level: average item level, a 0-100 score, the weakest slots, empty and broken ones", b.gear)
@@ -182,14 +182,21 @@ func (b *Bot) setupCoreAPI() {
 			return cs
 		})
 	e.Func("units.players", "([dist = 30]) → Player[]", "players within dist yards, nearest first", func(d float32) []types.Player {
-		return b.players(b.GetNearbyPlayers(dist(d)))
+		ps := b.players(b.GetNearbyPlayers(dist(d)))
+		b.annotatePlayers(ps)
+		return ps
 	})
 	e.Func("units.get", "(guid) → (Creature | Player)?", "one unit by GUID; nil if it's out of sight", func(g uint64) any {
 		if u := b.GetUnitInfo(g); u != nil {
+			r := b.newReach()
 			if u.IsPlayer {
-				return b.player(*u)
+				p := b.player(*u)
+				r.place(g, &p.Place, 1.5)
+				return p
 			}
-			return b.creature(*u)
+			c := b.creature(*u)
+			r.place(g, &c.Place, 1.5)
+			return c
 		}
 		return nil
 	})
@@ -200,6 +207,7 @@ func (b *Bot) setupCoreAPI() {
 				out = append(out, c)
 			}
 		}
+		b.annotateNearby(out)
 		return out
 	})
 	e.Func("units.has_aura", "(guid, spell) → bool", "whether the unit has that aura (buff or debuff)", b.HasAuraOn)
@@ -352,9 +360,10 @@ func castTimeout(id uint32) time.Duration {
 	return 5 * time.Second
 }
 
-// snapshot builds me.status() (called with the engine lock held: Lua is calling it).
+// snapshot builds me.status() (called with the engine lock held: Lua is calling it): what a player sees on screen.
 func (b *Bot) snapshot() types.Status {
 	w := b.world
+	me := w.CharGUID()
 	hc, hm := b.GetHealth()
 	pc, pm := b.GetPower()
 	x, y, z, o, m := w.Position()
@@ -363,59 +372,86 @@ func (b *Bot) snapshot() types.Status {
 		Power: types.Resource{Current: pc, Max: pm, Type: name(powerNames, b.GetPowerType())},
 		Money: w.Money(), Position: types.Position{X: round1(x), Y: round1(y), Z: round1(z), O: math.Round(float64(o)*1000) / 1000, Map: m},
 		Alive: b.IsAlive(), Ghost: b.IsGhost(), InCombat: b.InCombat(), FreeSlots: freeSlots(w),
-		Quests: b.questLog(), Attackers: []types.Creature{}, Broken: []types.Item{}, BagUpgrades: []types.Comparison{},
+		Quests: b.questLog(), Threats: []types.Hostile{}, NPCs: []types.NearbyNPC{}, BagUpgrades: []types.Upgrade{},
 		Tasks: b.lua.TasksHeld()}
-	if me := w.GetObject(w.CharGUID()); me != nil {
-		st.XP = types.XP{Current: me.Value(0x027A), Next: me.Value(0x027B)}
-		st.Resting = me.Value(fieldPlayerFlags)&0x20 != 0
+	if o := w.GetObject(me); o != nil {
+		st.XP = types.XP{Current: o.Value(0x027A), Next: o.Value(0x027B)}
+		st.Resting = o.Value(fieldPlayerFlags)&0x20 != 0
 	}
 	e := b.lua
 	st.Location, _ = e.Native("me.location").(types.Location)
 	st.Movement, _ = e.Native("me.movement").(types.Movement)
-	st.Gear, st.Spellbook, st.Talents = b.gear(), b.spellbook(), unspentTalents(w)
-	st.Auras = b.aurasOf(w.CharGUID())
-	st.States = auraStates(w.GetObject(w.CharGUID()))
-	if c, ok := e.Native("me.combo_points").(types.ComboPoints); ok {
-		st.ComboPoints = &c
-	}
-	st.Threats = b.threats()
-	if t := b.GetTargetGUID(); t != 0 {
-		st.TargetAuras = b.aurasOf(t)
-	}
+	st.Auras, st.States = b.aurasOf(me), auraStates(w.GetObject(me))
 	if c, ok := e.Native("me.casting").(types.Casting); ok {
 		st.Casting = &c
 	}
-	if v, ok := e.Native("me.stats").(types.Stats); ok {
-		st.Stats = &v
+	if c, ok := e.Native("me.combo_points").(types.ComboPoints); ok {
+		st.ComboPoints = &c
+	}
+	st.Timers, _ = e.Native("me.timers").([]types.MirrorTimer)
+	var res uint64
+	if b.agent != nil {
+		b.agent.mu.Lock()
+		res = b.agent.resFrom
+		b.agent.mu.Unlock()
+	}
+	if res != 0 && (!st.Alive || st.Ghost) {
+		r := b.ref(res)
+		st.ResurrectOffer = &r
 	}
 	if c, ok := e.Native("death.corpse").(types.Corpse); ok {
 		st.Corpse = &c
 	}
-	if g, ok := e.Native("group.info").(types.Group); ok {
-		st.Group = &g
-	}
+
+	// target and fight
 	if t := b.GetTargetGUID(); t != 0 {
 		if u := b.GetUnitInfo(t); u != nil {
 			bu := b.baseUnit(*u)
 			st.Target = &bu
 		}
+		st.TargetAuras = b.aurasOf(t)
 	}
-	for _, c := range b.creatures(b.GetNearbyUnits(30)) {
-		if !c.Alive || !c.Attackable {
-			continue
+	pet := b.GetPetGUID()
+	for _, c := range b.threats() {
+		h := types.Hostile{GUID: c.GUID, Name: c.Name, Level: c.Level, Place: c.Place, ThreatPct: c.ThreatPct,
+			Elite: c.Elite, Evading: c.Evading, Casting: c.Casting}
+		if c.MaxHealth > 0 {
+			h.HealthPct = math.Round(float64(c.Health) / float64(c.MaxHealth) * 100)
 		}
-		if uint64(c.Target) == w.CharGUID() {
-			st.Attackers = append(st.Attackers, c)
+		switch uint64(c.Target) {
+		case me:
+			h.On = "you"
+		case pet:
+			h.On = "pet"
+		default:
+			h.On = b.unitName(uint64(c.Target))
 		}
-		if c.Reaction == "hostile" && c.Level+5 >= st.Level {
+		st.Threats = append(st.Threats, h)
+	}
+
+	// the world around you
+	for _, c := range b.creatures(b.GetNearbyUnits(40)) {
+		if c.Alive && c.Reaction == "hostile" && c.Attackable && c.Distance <= 30 && c.Level+5 >= st.Level {
 			st.Mobs.Count++
 			st.Mobs.MaxLevel = max(st.Mobs.MaxLevel, c.Level)
 			if c.Elite {
 				st.Mobs.Elites++
 			}
 		}
+		if c.Alive && c.Reaction != "hostile" && (len(c.Roles) > 0 || c.QuestStatus != "") {
+			st.NPCs = append(st.NPCs, types.NearbyNPC{GUID: c.GUID, Name: c.Name, Place: c.Place, Roles: c.Roles, QuestStatus: c.QuestStatus})
+		}
 	}
-	st.Players = b.players(b.GetNearbyPlayers(60))
+	sortBy(st.NPCs, func(n types.NearbyNPC) float64 { // quest givers with something for you first
+		switch n.QuestStatus {
+		case "available", "available_repeatable", "reward":
+			return n.Distance
+		}
+		return 1000 + n.Distance
+	})
+	if len(st.NPCs) > 8 {
+		st.NPCs = st.NPCs[:8]
+	}
 	st.Objects = []types.Object{}
 	for _, o := range w.GameObjects() {
 		ob := b.object(o)
@@ -427,14 +463,58 @@ func (b *Bot) snapshot() types.Status {
 	if len(st.Objects) > 5 {
 		st.Objects = st.Objects[:5]
 	}
-	b.annotateObjects(st.Objects)
-	for _, it := range bagItems(w) {
-		if it.Equipped && it.Broken {
-			st.Broken = append(st.Broken, it)
+	st.Players = b.players(b.GetNearbyPlayers(60))
+	sortBy(st.Players, func(p types.Player) float64 { return p.Distance })
+	if len(st.Players) > 10 {
+		st.Players = st.Players[:10]
+	}
+	if g, ok := e.Native("group.info").(types.Group); ok {
+		st.Group = &g
+	}
+	// sight and walking routes for everything around you, from one time budget: your fight first, then your target,
+	// the NPCs, objects, players and your group
+	r := b.newReach()
+	for i := range st.Threats {
+		r.place(uint64(st.Threats[i].GUID), &st.Threats[i].Place, 1.5)
+	}
+	if st.Target != nil {
+		r.place(uint64(st.Target.GUID), &st.Target.Place, 1.5)
+	}
+	for i := range st.NPCs {
+		r.place(uint64(st.NPCs[i].GUID), &st.NPCs[i].Place, 1.5)
+	}
+	for i := range st.Objects {
+		r.place(uint64(st.Objects[i].GUID), &st.Objects[i].Place, 0.5)
+	}
+	for i := range st.Players {
+		r.place(uint64(st.Players[i].GUID), &st.Players[i].Place, 1.5)
+	}
+	if st.Group != nil {
+		for i := range st.Group.Members {
+			if m := &st.Group.Members[i]; m.InRange && m.Position != nil {
+				m.InSight, m.PathDistance, m.Reachable = r.of(uint64(m.GUID), m.Position.X, m.Position.Y, m.Position.Z, 1.5)
+			}
 		}
-		if inBags(it) && it.Usable && it.Slot != "" {
+	}
+
+	// your character: what to improve
+	g := b.gear()
+	st.Gear = types.GearSummary{Score: g.Score, Grade: g.Grade, AvgItemLevel: g.AvgItemLevel, Broken: g.Broken, Weakest: []string{}}
+	for _, ws := range g.Weakest[:min(3, len(g.Weakest))] {
+		st.Gear.Weakest = append(st.Gear.Weakest, ws.Slot)
+	}
+	for _, sp := range b.spellbook().Missing {
+		if sp.Level <= st.Level {
+			st.Untrained++
+		}
+	}
+	st.Talents = unspentTalents(w)
+	seen := map[uint32]bool{} // one per item: two copies of the same upgrade are one decision
+	for _, it := range bagItems(w) {
+		if inBags(it) && it.Usable && it.Slot != "" && !seen[it.Entry] {
+			seen[it.Entry] = true
 			if c := b.compareItem(uint64(it.GUID)); c != nil && c.ItemLevel > 0 {
-				st.BagUpgrades = append(st.BagUpgrades, *c)
+				st.BagUpgrades = append(st.BagUpgrades, types.Upgrade{Item: types.ItemRef{GUID: it.GUID, Entry: it.Entry, Name: it.Name}, Slot: it.Slot, ItemLevel: c.ItemLevel})
 			}
 		}
 	}

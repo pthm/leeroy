@@ -50,14 +50,14 @@ usual.
 
 ## The raw protocol
 
-The client doesn't implement gossip menus, trainer lists, mail or the auction house. You can add them:
+The client doesn't implement mail or the auction house. You can add them:
 `client.watch(opcode)` captures a server opcode, `client.packets()` drains the captured packets as
 `{opcode, hex, time_ms}`, `client.send(opcode, "hex body")` sends a client packet (header and encryption are
 handled), and `client.call("Method", ...)` calls any exported method of the underlying `WorldClient`
 (`client/world.go`). Opcode numbers are in the client's `opcodes.go` and the server's `Server/Protocol/Opcodes.h`;
 packet layouts in the server's `Handlers/*.cpp`; enums in `shared/SharedDefines.h` (paths in your task prompt).
-For example a trainer's list: `CMSG_TRAINER_LIST` (0x1B0, body = trainer guid as u64 LE), reply
-`SMSG_TRAINER_LIST` (0x1B1). All numbers are little-endian. Write parsers once and keep them in your lib.
+For example the mailbox: `CMSG_GET_MAIL_LIST` (0x23A, body = mailbox guid as u64 LE), reply
+`SMSG_MAIL_LIST_RESULT` (0x23B). All numbers are little-endian. Write parsers once and keep them in your lib.
 
 **GM commands:** `chat.command(".cmd")` only works on GM accounts. Scored runs use non-GM accounts.
 

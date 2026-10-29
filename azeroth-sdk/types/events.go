@@ -11,6 +11,7 @@ type Damage struct {
 	SpellName string  `json:"spell_name,omitempty"`
 	Taken     bool    `json:"taken" doc:"you're dst"`
 	Outcome   string  `json:"outcome,omitempty" doc:"hit, crit, miss, dodge, parry, block, resist, absorb, evade (it's resetting: unreachable), immune, deflect, reflect; misses have amount 0"`
+	Cause     string  `json:"cause,omitempty" doc:"environmental damage (no src): fall, drowning, lava, slime, fire, fatigue (swimming too far out)"`
 }
 
 // UnitCast: a unit started casting at you or a party member.
@@ -29,6 +30,21 @@ type Kill struct {
 
 type Death struct {
 	Killer *UnitRef `json:"killer,omitempty" doc:"who last hit you"`
+	Cause  string   `json:"cause,omitempty" doc:"when the environment killed you: fall, drowning, lava, slime, fire, fatigue"`
+}
+
+// ResurrectOffer: another player cast a resurrection on you.
+type ResurrectOffer struct {
+	From     UnitRef `json:"from"`
+	Sickness bool    `json:"sickness" doc:"accepting gives resurrection sickness (offers from NPCs)"`
+}
+
+// MirrorTimer: breath underwater, fatigue in deep water, or fire.
+type MirrorTimer struct {
+	Timer       string  `json:"timer" doc:"breath, fatigue or fire"`
+	State       string  `json:"state" doc:"running (counting down: you take damage at 0), recovering (refilling), paused, stopped"`
+	SecondsLeft float64 `json:"seconds_left"`
+	MaxS        float64 `json:"max_s"`
 }
 
 type XPGain struct {
@@ -215,55 +231,57 @@ type Progress struct {
 
 // EventTypes: every event the runtime emits.
 var EventTypes = map[string]EventType{
-	"damage":           {Damage{}, "a hit involving you (melee or spell)"},
-	"heal":             {Damage{}, "a heal involving you"},
-	"kill":             {Kill{}, "you killed something"},
-	"party_kill":       {Kill{}, "a party member killed something"},
-	"death":            {Death{}, "you died"},
-	"fight_end":        {FightSummary{}, "a fight ended (you or a party member in sight left combat, or you died): its summary, with the group's numbers when you're in a party"},
-	"resurrected":      {None{}, "you're alive again"},
-	"combat_start":     {None{}, "you entered combat"},
-	"combat_end":       {None{}, "you left combat"},
-	"aura_gained":      {AuraChange{}, "a buff or debuff landed on you, or one you cast landed on another unit"},
-	"aura_faded":       {AuraChange{}, "a buff or debuff on you, or one you cast on another unit, ended (expired, dispelled, cancelled)"},
-	"xp":               {XPGain{}, "you gained XP"},
-	"level_up":         {LevelUp{}, "you reached a new level"},
-	"cast_start":       {Cast{}, "a cast with a cast time began"},
-	"cast_done":        {Cast{}, "a spell went off"},
-	"cast_failed":      {Cast{}, "a cast failed or was interrupted"},
-	"unit_cast_start":  {UnitCast{}, "an enemy started casting at you or a party member (an interrupt or a stun stops it)"},
-	"attack_start":     {AttackStart{}, "your auto-attack started"},
-	"attack_failed":    {AttackFailed{}, "the server refused a swing"},
-	"item_received":    {ItemReceived{}, "an item went into your bags"},
-	"money":            {Money{}, "you looted money"},
-	"quest_progress":   {QuestProgress{}, "a quest kill/object counter went up"},
-	"quest_complete":   {QuestDone{}, "a quest's objectives are done: turn it in"},
-	"quest_turned_in":  {QuestDone{}, "you turned a quest in"},
-	"learned":          {Learned{}, "you learned a spell from a trainer"},
-	"achievement":      {AchievementEarned{}, "you earned an achievement"},
-	"area_changed":     {Location{}, "you entered another zone or area"},
-	"teleported":       {Teleport{}, "you were teleported: a portal, hearthstone, summon, the graveyard, an instance"},
-	"flight_start":     {Flight{}, "you took off: the server flies you, and move.to is refused until you land"},
-	"flight_end":       {Flight{}, "you landed"},
-	"flight_learned":   {FlightLearned{}, "you discovered a flight point"},
-	"home_changed":     {Home{}, "your hearthstone now takes you here (innkeeper.bind)"},
-	"movement_changed": {MovementChanged{}, "who moves you changed: a flight, a teleport, fear, a stun or a root began or ended"},
-	"gear_broken":      {GearBroken{}, "you revived with equipped items at 0 durability"},
-	"chat":             {Chat{}, "a message to you, near you or in your channels"},
-	"party_invite":     {PartyInvite{}, "someone invited you to their group"},
-	"party_changed":    {PartyChanged{}, "your group changed"},
-	"notice":           {Notice{}, "a server notice (\"Inventory is full\")"},
-	"trade":            {Trade{}, "the trade window changed: someone asked (requested: trade.open), opened, accepted, completed or cancelled"},
-	"error":            {ErrorEvent{}, "the server refused something"},
-	"result":           {Result{}, "an action finished (its result)"},
-	"log":              {Log{}, "log(msg) from a script"},
-	"task_started":     {TaskEvent{}, "a task started"},
-	"task_finished":    {TaskEvent{}, "a task ended (done, failed or stopped)"},
-	"script_error":     {ScriptError{}, "a script raised an error"},
-	"attention":        {Attention{}, "a script asks the agent (ask)"},
-	"stall":            {Stall{}, "no XP for a while, or the XP rate fell below your threshold (events.watch); once until progress resumes"},
-	"progress":         {Progress{}, "a periodic digest of your progress (events.watch{every_s = ...}; off by default)"},
-	"answer":           {Answer{}, "the agent answered (answer)"},
+	"damage":            {Damage{}, "a hit involving you (melee or spell)"},
+	"heal":              {Damage{}, "a heal involving you"},
+	"kill":              {Kill{}, "you killed something"},
+	"party_kill":        {Kill{}, "a party member killed something"},
+	"death":             {Death{}, "you died"},
+	"fight_end":         {FightSummary{}, "a fight ended (you or a party member in sight left combat, or you died): its summary, with the group's numbers when you're in a party"},
+	"resurrected":       {None{}, "you're alive again"},
+	"resurrect_offered": {ResurrectOffer{}, "a player is resurrecting you: death.accept_res() (works dead or as a ghost)"},
+	"mirror_timer":      {MirrorTimer{}, "your breath, fatigue or fire timer started, paused or stopped: surface or turn back before it runs out (me.timers)"},
+	"combat_start":      {None{}, "you entered combat"},
+	"combat_end":        {None{}, "you left combat"},
+	"aura_gained":       {AuraChange{}, "a buff or debuff landed on you, or one you cast landed on another unit"},
+	"aura_faded":        {AuraChange{}, "a buff or debuff on you, or one you cast on another unit, ended (expired, dispelled, cancelled)"},
+	"xp":                {XPGain{}, "you gained XP"},
+	"level_up":          {LevelUp{}, "you reached a new level"},
+	"cast_start":        {Cast{}, "a cast with a cast time began"},
+	"cast_done":         {Cast{}, "a spell went off"},
+	"cast_failed":       {Cast{}, "a cast failed or was interrupted"},
+	"unit_cast_start":   {UnitCast{}, "an enemy started casting at you or a party member (an interrupt or a stun stops it)"},
+	"attack_start":      {AttackStart{}, "your auto-attack started"},
+	"attack_failed":     {AttackFailed{}, "the server refused a swing"},
+	"item_received":     {ItemReceived{}, "an item went into your bags"},
+	"money":             {Money{}, "you looted money"},
+	"quest_progress":    {QuestProgress{}, "a quest kill/object counter went up"},
+	"quest_complete":    {QuestDone{}, "a quest's objectives are done: turn it in"},
+	"quest_turned_in":   {QuestDone{}, "you turned a quest in"},
+	"learned":           {Learned{}, "you learned a spell from a trainer"},
+	"achievement":       {AchievementEarned{}, "you earned an achievement"},
+	"area_changed":      {Location{}, "you entered another zone or area"},
+	"teleported":        {Teleport{}, "you were teleported: a portal, hearthstone, summon, the graveyard, an instance"},
+	"flight_start":      {Flight{}, "you took off: the server flies you, and move.to is refused until you land"},
+	"flight_end":        {Flight{}, "you landed"},
+	"flight_learned":    {FlightLearned{}, "you discovered a flight point"},
+	"home_changed":      {Home{}, "your hearthstone now takes you here (innkeeper.bind)"},
+	"movement_changed":  {MovementChanged{}, "who moves you changed: a flight, a teleport, fear, a stun or a root began or ended"},
+	"gear_broken":       {GearBroken{}, "you revived with equipped items at 0 durability"},
+	"chat":              {Chat{}, "a message to you, near you or in your channels"},
+	"party_invite":      {PartyInvite{}, "someone invited you to their group"},
+	"party_changed":     {PartyChanged{}, "your group changed"},
+	"notice":            {Notice{}, "a server notice (\"Inventory is full\")"},
+	"trade":             {Trade{}, "the trade window changed: someone asked (requested: trade.open), opened, accepted, completed or cancelled"},
+	"error":             {ErrorEvent{}, "the server refused something"},
+	"result":            {Result{}, "an action finished (its result)"},
+	"log":               {Log{}, "log(msg) from a script"},
+	"task_started":      {TaskEvent{}, "a task started"},
+	"task_finished":     {TaskEvent{}, "a task ended (done, failed or stopped)"},
+	"script_error":      {ScriptError{}, "a script raised an error"},
+	"attention":         {Attention{}, "a script asks the agent (ask)"},
+	"stall":             {Stall{}, "no XP for a while, or the XP rate fell below your threshold (events.watch); once until progress resumes"},
+	"progress":          {Progress{}, "a periodic digest of your progress (events.watch{every_s = ...}; off by default)"},
+	"answer":            {Answer{}, "the agent answered (answer)"},
 }
 
 // Action results: the data of an ok result, per op (ops not listed have none).
