@@ -394,7 +394,7 @@ function bot.status()
   local s = { name = bot.get_name(), level = bot.get_level(), xp = xp, xp_next = xpn, hp = h, hp_max = hm, power = p, power_max = pm,
     money = bot.money(), pos = { math.floor(x), math.floor(y), math.floor(z) }, where = bot.location(),
     alive = bot.is_alive(), ghost = bot.is_ghost(), combat = bot.in_combat(), resting = bot.is_resting(),
-    free_slots = bot.free_slots(), chat_pending = bot.chat_pending(), quests = {} }
+    free_slots = bot.free_slots(), chat_pending = bot.chat_pending(), quests = {}, stats = bot.stats() }
   local c = bot.is_casting()
   if c then s.casting = c end
   local broken = {}

@@ -75,6 +75,37 @@ func (b *Bot) setupAgentAPI() {
 
 	e.RegisterFunc("is_ghost", b.IsGhost)
 	e.RegisterFunc("get_name", func() string { return b.config.CharacterName }) // your character's name
+	// stats() -> your character sheet: primary stats, armor, attack power, weapon damage and speed, crit/dodge/parry %,
+	// spell power and bonus healing (what gear, buffs and talents actually add up to)
+	e.RegisterFunc("stats", func() map[string]any {
+		o := w.GetObject(w.CharGUID())
+		if o == nil {
+			return nil
+		}
+		f := func(i uint16) float64 { return math.Round(float64(math.Float32frombits(o.Value(i)))*100) / 100 }
+		maxOf := func(base uint16, n uint16, float bool) float64 {
+			best := 0.0
+			for k := uint16(1); k < n; k++ { // schools 1-6 (holy..arcane); 0 is physical
+				v := float64(o.Value(base + k))
+				if float {
+					v = f(base + k)
+				}
+				best = math.Max(best, v)
+			}
+			return best
+		}
+		speed := float64(o.Value(0x3E)) / 1000
+		minD, maxD := f(0x46), f(0x47)
+		st := map[string]any{"strength": o.Value(0x54), "agility": o.Value(0x55), "stamina": o.Value(0x56), "intellect": o.Value(0x57),
+			"spirit": o.Value(0x58), "armor": o.Value(0x63), "attack_power": o.Value(0x7B), "ranged_attack_power": o.Value(0x7E),
+			"weapon_damage": []float64{minD, maxD}, "weapon_speed": speed, "crit_pct": f(0x405), "dodge_pct": f(0x401),
+			"parry_pct": f(0x402), "spell_crit_pct": maxOf(0x408, 7, true), "spell_power": maxOf(0x493, 7, false),
+			"bonus_healing": o.Value(0x4A8)}
+		if speed > 0 {
+			st["melee_dps"] = math.Round((minD+maxD)/2/speed*10) / 10 // white damage per second, attack power included
+		}
+		return st
+	})
 	// is_resting() -> true in an inn or city (rested XP builds up; set by the area trigger you walked into)
 	e.RegisterFunc("is_resting", func() bool {
 		o := w.GetObject(w.CharGUID())

@@ -18,7 +18,7 @@
 //   score        (rate + best_window) / 2: the headline for score goals. Sustained progress counts, and so does
 //                finding a better strategy: time spent trying one lowers the rate but not the best window. Deaths
 //                and stalls cost through the time they lose. For score goals, progress is the game's own rewards:
-//                XP earned and gear (average item level), weighted in score.json; money is reported, not scored.
+//                XP earned (score.json); gear, money and the rest are reported, not scored.
 // --board <dir> writes <dir>/<character>.json with the latest result each poll (the agents' `standings` tool reads them).
 // --resume <samples.jsonl> continues a paused run from its samples.
 import { appendFileSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";

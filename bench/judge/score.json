@@ -1,8 +1,7 @@
 {
-  "version": 5,
-  "about": "Composite progress for `score:<n>` goals: the game's own rewards. Sum of weight x (signal now - signal when the judge started): XP earned (1 per XP) and gear (800 per +1 average item level over the 17 slots). Money and the value of what you own are reported (wealth_copper, money_copper) but not scored: spend them on whatever helps. The run's score is (overall rate + best 15-minute window rate) / 2 in progress points per hour.",
+  "version": 6,
+  "about": "Progress for `score:<n>` goals is XP earned since the judge started (1 point per XP). Gear (avg_item_level), money and everything else are reported but not scored: they're means to earning XP faster. The run's score is (overall XP rate + best 15-minute XP rate) / 2, in XP per hour.",
   "weights": {
-    "xp_earned": 1,
-    "avg_item_level": 800
+    "xp_earned": 1
   }
 }

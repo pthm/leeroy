@@ -49,11 +49,9 @@ names, points and criteria are in worlddb (see AGENTS.md); bot.achievements() sh
   stop_text="Do not stop early: keep earning points until the time runs out." ;;
 score:*)
   score_text="HOW YOU ARE JUDGED: every 15 seconds the judge reads your character from the server database. Your
-progress is what the game itself rewards, gained since the start:
-  XP earned: 1 point per XP (from kills, quests, exploring: the game already gives more for harder content)
-  gear: 800 points per +1 average item level of what you wear (over your 17 gear slots)
-Money isn't scored: it's a means. Spend it on whatever makes you progress faster (gear, training, food, repairs).
-YOUR SCORE is the average of two rates, in progress points per hour: your rate over the whole $mins minutes, and
+progress is the XP you've earned since the start (kills, quests, exploring: the game already gives more for harder
+content). Gear, money, talents and everything else aren't scored: they're how you earn XP faster.
+YOUR SCORE is the average of two rates, in XP per hour: your rate over the whole $mins minutes, and
 your best rate over any 15-minute stretch. Sustained progress counts, and so does finding a better way to play:
 time spent trying a new strategy lowers your overall rate but not your best stretch. Deaths, stalls and time spent
 stuck cost you through the time they lose. There is no finish line.
