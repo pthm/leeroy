@@ -452,9 +452,14 @@ func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
 		if len(data) >= 16 {
 			spell := binary.LittleEndian.Uint32(data[8:])
 			reason := binary.LittleEndian.Uint32(data[12:])
+			// the server's reason rarely says why: the usual one is level, which Spell.dbc knows
+			if sp := spellInfo(spell); sp != nil && reason != 1 && sp.Level > b.GetLevel() {
+				fail("trainer.learn", "level_too_low", fmt.Sprintf("can't learn %s (spell %d) yet: it needs level %d, you're %d", sp.Name, spell, sp.Level, b.GetLevel()))
+				break
+			}
 			fail("trainer.learn", map[uint32]string{0: "unavailable", 1: "not_enough_money", 2: "skill_too_low"}[reason],
-				fmt.Sprintf("can't learn spell %d: %s", spell, map[uint32]string{0: "not available to you (level, class or already known)",
-					1: "not enough money", 2: "skill too low"}[reason]))
+				fmt.Sprintf("can't learn spell %d: %s", spell, map[uint32]string{0: "not available to you (class, or already known; trainer.list says)",
+					1: "not enough money", 2: "not available to you now (trainer.list shows what you can learn and when)"}[reason]))
 		}
 	case 0x1B3: // SMSG_TRAINER_BUY_SUCCEEDED: trainer, spell
 		if len(data) >= 12 {

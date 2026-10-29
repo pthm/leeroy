@@ -1,0 +1,22 @@
+name: models-frost
+description: >
+  Ten brand-new Frost Mages, one per model, in one world for an hour: three sizes each of Claude, GPT and Gemini, and
+  DeepSeek, all on opencode through OpenRouter (OPENROUTER_API_KEY), so the model is the only thing that differs. Same
+  class, spec and start for everyone; neutral character names, so no one can tell from chat who is which model.
+  Compare with `azbench compare`.
+goal: score:100000
+minutes: 60
+require_fresh: true
+runtime: opencode
+provider: openrouter
+agents:
+  - {name: a31, char: Aldwen, class: mage, spec: frost, model: anthropic/claude-opus-5.5}
+  - {name: a32, char: Brisca, class: mage, spec: frost, model: anthropic/claude-sonnet-5.5}
+  - {name: a33, char: Corvin, class: mage, spec: frost, model: anthropic/claude-haiku-5.5}
+  - {name: a34, char: Odalric, class: mage, spec: frost, model: openai/gpt-6.1-sol}
+  - {name: a35, char: Emeric, class: mage, spec: frost, model: openai/gpt-6.1-terra}
+  - {name: a36, char: Fennick, class: mage, spec: frost, model: openai/gpt-6-luna}
+  - {name: a37, char: Perrine, class: mage, spec: frost, model: google/gemini-4-argon}
+  - {name: a38, char: Hadrien, class: mage, spec: frost, model: google/gemini-3.8-flash}
+  - {name: a39, char: Ilsabet, class: mage, spec: frost, model: google/gemini-3.5-flash-lite}
+  - {name: a40, char: Jorund, class: mage, spec: frost, model: deepseek/deepseek-v4-pro}

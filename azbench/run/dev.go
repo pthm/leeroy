@@ -6,24 +6,40 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/pthm/leeroy/azbench/config"
 )
 
-// GM starts the GM test character (Devgm, account devgm, gm level 3) on port 8112 with GM mode (mobs ignore you) and
-// god mode, optionally teleported to x y z [map]. For testing SDK changes without walking or dying; never use a GM
-// account in a scored run. Query it with WOW_PORT=8112 wow '...'.
-func GM(repo string, at []string) error {
-	if out, err := exec.Command(filepath.Join(repo, "bin/account"), "devgm", "devgm", "3").CombinedOutput(); err != nil {
+// GM starts a GM test character (gm level 3) with GM mode (mobs ignore you) and god mode, optionally
+// teleported to x y z [map]: Devgm (account devgm), a warrior, on port 8112, or for another class Dev<class> (account
+// dev<class>) on port 8113 (a mage
+// for spells and mana). For testing SDK changes without walking or dying (.gm off and .cheat god off to fight and
+// die for real); never use a GM account in a scored run. Query it with WOW_PORT=8112 wow '...'.
+func GM(repo, class string, at []string) error {
+	id, err := config.ID(config.Classes, class)
+	if err != nil {
+		return fmt.Errorf("class: %v", err)
+	}
+	// its own account: an account has one character online, so a second GM character on devgm would log Devgm out
+	char, account, port := "Devgm", "devgm", 8112
+	if id != 1 {
+		name := strings.ReplaceAll(strings.ToLower(class), " ", "")
+		char, account, port = "Dev"+name, "dev"+name, 8113
+	}
+	if out, err := exec.Command(filepath.Join(repo, "bin/account"), account, account, "3").CombinedOutput(); err != nil {
 		return fmt.Errorf("account: %v: %s", err, out)
 	}
-	exec.Command("pkill", "-f", "--", "-char Devgm").Run()
+	exec.Command("pkill", "-f", "--", "-char "+char+" ").Run()
 	time.Sleep(time.Second)
-	log, err := os.Create("/tmp/devgm.log")
+	logf := "/tmp/" + strings.ToLower(char) + ".log"
+	log, err := os.Create(logf)
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(filepath.Join(repo, "bin/azsdk"), "-char", "Devgm", "-account", "devgm", "-race", "1", "-class", "1",
-		"-listen", "127.0.0.1:8112", "-data", filepath.Join(repo, "data"), "-events", "/tmp/devgm-events")
+	cmd := exec.Command(filepath.Join(repo, "bin/azsdk"), "-char", char, "-account", account, "-race", "1", "-class", fmt.Sprint(id),
+		"-listen", fmt.Sprintf("127.0.0.1:%d", port), "-data", filepath.Join(repo, "data"), "-events", "/tmp/"+strings.ToLower(char)+"-events")
 	cmd.Stdout, cmd.Stderr = log, log
 	if err := cmd.Start(); err != nil {
 		return err
@@ -31,23 +47,23 @@ func GM(repo string, at []string) error {
 	cmd.Process.Release() // it outlives this command
 	ctx := context.Background()
 	for i := 0; ; i++ {
-		if _, err := eval(ctx, 8112, "return 1"); err == nil {
+		if _, err := eval(ctx, port, "return 1"); err == nil {
 			break
 		}
 		if i >= 60 {
-			return fmt.Errorf("Devgm didn't come up, see /tmp/devgm.log")
+			return fmt.Errorf("%s didn't come up, see %s", char, logf)
 		}
 		time.Sleep(time.Second)
 	}
-	eval(ctx, 8112, `chat.command(".gm on") chat.command(".cheat god on") return 1`)
+	eval(ctx, port, `chat.command(".gm on") chat.command(".cheat god on") return 1`)
 	if len(at) >= 3 {
 		m := "0"
 		if len(at) > 3 {
 			m = at[3]
 		}
-		eval(ctx, 8112, fmt.Sprintf(`chat.command(".go xyz %s %s %s %s") return 1`, at[0], at[1], at[2], m))
+		eval(ctx, port, fmt.Sprintf(`chat.command(".go xyz %s %s %s %s") return 1`, at[0], at[1], at[2], m))
 	}
-	fmt.Println("Devgm up on 8112 (log /tmp/devgm.log)")
+	fmt.Printf("%s up on %d (log %s)\n", char, port, logf)
 	return nil
 }
 
@@ -57,7 +73,7 @@ func APIDoc(repo string) error {
 	if err := Build(repo); err != nil {
 		return err
 	}
-	if err := GM(repo, nil); err != nil {
+	if err := GM(repo, "warrior", nil); err != nil {
 		return err
 	}
 	cmd := exec.Command("go", "run", "./cmd/apigen", "-rpc", "http://127.0.0.1:8112/rpc")

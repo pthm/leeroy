@@ -224,7 +224,7 @@ func (e *Engine) Eval(code string) (any, error) {
 	base := e.L.GetTop()
 	if err := e.L.CallByParam(lua.P{Fn: fn, NRet: lua.MultRet, Protect: true}); err != nil {
 		e.L.SetTop(base)
-		return nil, err
+		return nil, explain(err)
 	}
 	n := e.L.GetTop() - base
 	out := make([]any, n)
@@ -396,7 +396,39 @@ func (e *Engine) Func(name, sig, desc string, fn any) {
 	defer e.mu.Unlock()
 	e.doc(name, sig, desc)
 	e.natives[name] = v
-	e.set(name, func(L *lua.LState) int { return callReflect(L, v, 1) })
+	need := requiredArgs(sig)
+	e.set(name, func(L *lua.LState) int {
+		// an argument left out would arrive as its zero value: spells.known() asking about spell 0 answers false
+		if L.GetTop() < need {
+			L.RaiseError("%s%s: called with %d argument(s), needs %d", name, sig, L.GetTop(), need)
+		}
+		return callReflect(L, v, 1)
+	})
+}
+
+// explain adds what Lua's terser errors usually mean here (it doesn't name what it tried to call)
+func explain(err error) error {
+	if strings.Contains(err.Error(), "attempt to call a non-function object") {
+		return fmt.Errorf("%w (the name called isn't a function: misspelled, or not in the API; help(\"units\") lists a namespace, api-reference.md all of them)", err)
+	}
+	return err
+}
+
+// requiredArgs counts the parameters a signature like "(npc, quest [, reward = 0]) → result" lists before its first
+// optional one; 0 for an options table or a signature that isn't a parameter list.
+func requiredArgs(sig string) int {
+	if !strings.HasPrefix(sig, "(") {
+		return 0
+	}
+	params, _, _ := strings.Cut(sig[1:], ")")
+	params, _, _ = strings.Cut(params, "[")
+	n := 0
+	for _, p := range strings.Split(params, ",") {
+		if p = strings.TrimSpace(p); p != "" && p != "..." {
+			n++
+		}
+	}
+	return n
 }
 
 // Methods exposes name("Method", ...) calling any exported method of target.
@@ -412,6 +444,14 @@ func (e *Engine) Methods(name, sig, desc string, target any) {
 		}
 		return callReflect(L, m, 2)
 	})
+}
+
+// CurrentTask is the name of the task running now ("" outside one); call it from a registered function.
+func (e *Engine) CurrentTask() string {
+	if e.cur != nil {
+		return e.cur.Name
+	}
+	return ""
 }
 
 // TasksHeld lists the tasks; call it with the engine lock held (from a registered function).
@@ -782,6 +822,7 @@ func (e *Engine) resume(t *Task, args []lua.LValue) {
 		if strings.Contains(msg, "context deadline exceeded") {
 			msg = strings.Replace(msg, "context deadline exceeded", fmt.Sprintf("ran %v without waiting: a loop in a task must wait(), await() or events.wait() on every pass", executionLimit), 1)
 		}
+		msg = explain(errors.New(msg)).Error()
 		if t.trace != "" {
 			msg += "\n" + t.trace
 		}
@@ -1188,7 +1229,16 @@ func (e *Engine) registerRuntime() {
 			L.Push(lua.LNumber(id))
 			return 1
 		},
+		// events.off(id or name): remove a handler by the id events.on returned or the name it was given
 		"off": func(L *lua.LState) int {
+			if name, ok := L.Get(1).(lua.LString); ok {
+				for id, h := range e.handlers {
+					if h.name == string(name) {
+						delete(e.handlers, id)
+					}
+				}
+				return 0
+			}
 			delete(e.handlers, int(L.CheckNumber(1)))
 			return 0
 		},
@@ -1285,7 +1335,7 @@ var runtimeDocs = [][3]string{
 	{"task.pause", "(id) → bool", "take a waiting task off the schedule until task.resume; false if it isn't waiting (a task can't pause itself)"},
 	{"task.resume", "(id) → bool", "put a paused task back on its wait"},
 	{"events.on", "(type or {types}, fn [, name]) → id", "run fn(event) as a task for each matching event; the same name replaces a handler"},
-	{"events.off", "(id)", "remove a handler"},
+	{"events.off", "(id or name)", "remove a handler: by the id events.on returned, or the name you gave it"},
 	{"events.handlers", "() → {{id, types, name}}", "your event handlers"},
 	{"events.wait", "(type or {types} [, timeout_s]) → event", "the next matching event, nil on timeout (tasks only)"},
 	{"events.query", "{since, types, match, last = 50, limit} → {events}", "past events; types may end in * (\"quest_*\"), match searches the data"},

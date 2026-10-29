@@ -263,6 +263,13 @@ var commands = []command{
 			objectives = append(objectives, newObj("use_object", newObj("object", -t, "name", q1("SELECT name FROM gameobject_template WHERE entry = "+jsStr(-t)).get("name")),
 				"count", count, "text", text, "spawns", spawns("gameobject_spawn", -t, nil, 5)))
 		}
+		// exploration objectives ("explore Fargodeep Mine"): the area trigger you have to walk into
+		for _, t := range q(`SELECT t.entry, t.map, t.x, t.y, t.z, t.radius FROM areatrigger_involvedrelation r
+            JOIN areatrigger t ON t.entry = r.id WHERE r.quest = ` + ids) {
+			objectives = append(objectives, newObj("explore", newObj("trigger", t.get("entry"), "map", t.get("map"),
+				"x", t.get("x"), "y", t.get("y"), "z", t.get("z"), "radius", t.get("radius")),
+				"text", "walk into this spot (within radius yards of x, y, z): the objective completes as you arrive"))
+		}
 		needItems := []*obj{}
 		for i := 1; i <= 6; i++ {
 			if !truthy(f("RequiredItemId%d", i)) {

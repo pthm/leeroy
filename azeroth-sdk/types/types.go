@@ -295,12 +295,13 @@ type Spell struct {
 	ID                 uint32  `json:"id"`
 	Name               string  `json:"name"`
 	Rank               string  `json:"rank"`
+	Level              uint32  `json:"level" doc:"the level you can learn it at (a trainer teaches it from then)"`
 	CastMS             uint32  `json:"cast_ms" doc:"0 = instant"`
 	CooldownMS         uint32  `json:"cooldown_ms"`
 	CategoryCooldownMS uint32  `json:"category_cooldown_ms"`
 	GCDMS              uint32  `json:"gcd_ms"`
 	Range              float32 `json:"range" doc:"yards against hostile targets (melee ~5)"`
-	Cost               uint32  `json:"cost"`
+	Cost               uint32  `json:"cost" doc:"what a cast costs you now, in power_type (most mana costs are a share of your base mana)"`
 	PowerType          string  `json:"power_type"`
 	Known              bool    `json:"known"`
 }

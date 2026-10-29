@@ -127,7 +127,7 @@ Reported, not scored. Last run: 0.61 while grouped vs 0.02 solo; the healer led 
 ## azbench report
 
 `azbench report <run dir | team dir>` writes `report.json` and prints a table; for a team dir it also writes
-`team.json` (each judge's result ranked by score, `faction_score`, `by_runtime`, `team_s`). `azbench run` and `resume`
+`team.json` (each judge's result ranked by score, `faction_score`, `by_model`, `team_s`). `azbench run` and `resume`
 run it at the end. Per agent:
 
 | Field | |
@@ -137,7 +137,9 @@ run it at the end. Per agent:
 | `progress_per_hour_by_state`, `time_pct_by_state` | progress while the agent waited (`wow wait`, sleep), thought, was in a call, or had no script |
 | `wakes` | waits, early wakes per hour, what woke them and whether a script restart followed |
 | `restarts` | restart calls, script starts per hour, progress in a script's first minute vs settled |
-| `deaths`, `stalls`, `calls`, `think_s`, `tokens`, `cost_usd` | |
+| `deaths`, `stalls`, `calls`, `think_s` | |
+| `tokens` | input, output (reasoning included), cache read and write, from the transcript and the runtime's own logs |
+| `cost_usd` | the tokens at the model's list price ([models.dev](https://models.dev), `prices.json`; `azbench prices` refreshes it), the same way for every runtime and plan. Claude Code's cache writes are its 1-hour ones (2x input) from Anthropic, the 5-minute rate through OpenRouter. Null for a model not in the table |
 | `combat` | `metrics.Combat`: damage dealt and taken, healing, kills, party kills, deaths, XP |
 | `coop` | `metrics.Team`: `assist_share`, `assists`, `useful`, `hits`, `contested_hits` |
 | `time_use` | `metrics.Use` from the position samples: fighting, travelling, idle, dead, with the group (%) |

@@ -15,15 +15,16 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `act.buff(id [, guid]) → result` | cast it unless the target already has the aura (nil then) |
 | `act.cast(id [, guid]) → result` | face the target and cast if ready (waits for the result in a task) |
 | `act.consume("Food" \| "Drink") → bool` | eat or drink the first such item you carry (sit still after) |
-| `act.corpse_run() → result` | as a ghost, walk to your corpse and reclaim it |
+| `act.corpse_run{[safe = true]} → result` | as a ghost, walk to your corpse and reclaim it; with hostiles at the corpse it reclaims from the far side of the ~30 yd reclaim circle (safe = false: on the spot) |
+| `act.danger(x, y [, r = 25]) → Creature[]` | living hostile creatures within r yards of a point: check a spot before you go there or come back to life there |
 | `act.dist(x, y [, z]) → yards` | distance from you (2D without z) |
 | `act.fail(code, message) → result` | a failed result |
 | `act.fly{to = node id or name [, npc = entry]} → result<Flight>` | walk to a flight master nearby, fly to a known destination and wait until you land |
 | `act.follow{name [, distance = 5, until = fn]} → result` | stay near a player until until() is true |
-| `act.go_to{x, y [, z, tolerance = 4, tries = 3, unstuck = false]} → result` | walk there; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs |
+| `act.go_to{x, y [, z, tolerance = 4, tries = 3, unstuck = false, on_attacked = fn]} → result` | walk there; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs. Without on_attacked it walks on while mobs hit you and drags them along; with it, it stops whenever something targets you, calls on_attacked(attackers) (your fighting) and then carries on |
 | `act.hp() → 0..1` | your health fraction |
 | `act.in_range(id, guid) → bool` | within the spell's range of the unit |
-| `act.loot_nearby{[dist = 8]} → result<Item[]>` | loot every lootable corpse nearby |
+| `act.loot_nearby{[dist = 8]} → result<Item[]>` | walk to and loot every lootable corpse within dist; with full bags it destroys your cheapest grey for room (error bags_full when there's none) |
 | `act.make_room() → bool` | destroy your cheapest grey item to free a bag slot |
 | `act.mana() → 0..1` | your mana fraction (1 for rage/energy users) |
 | `act.must(result) → result` | the result if ok, else raise its error (ends the task) |
@@ -32,13 +33,13 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `act.player(name) → Player` | a player by name (nearby or in your group) |
 | `act.reach_npc{npc [, x, y, z]} → result<Creature>` | find an NPC by entry (walking to x, y, z first) and stand next to it |
 | `act.ready(id [, guid]) → bool` | known, off cooldown, affordable, and you're not casting |
-| `act.recover{[spirit = false, rest = true]} → result` | back to life: release, corpse run (spirit healer if that fails, or with spirit = true), then rest |
+| `act.recover{[spirit = false, rest = true, safe = true]} → result` | back to life: release, corpse run (reclaiming away from hostiles at the corpse), the spirit healer if that fails or with spirit = true (unless hostiles camp the graveyard: then the corpse run), then rest |
 | `act.release() → result` | release your spirit |
 | `act.rest{[hp = 0.95, mana = 0.9, max_s = 40]} → result` | eat/drink if you carry food/water and wait until topped up; fails if attacked |
 | `act.spirit_res() → result` | as a ghost, resurrect at the nearest spirit healer in sight (costs durability) |
 | `act.talk{npc, fn [, x, y, z]} → result` | walk to an NPC and run fn(npc) |
 | `act.train{npc, spells [, x, y, z]} → result` | learn spells at a trainer; data = {learned, failed} |
-| `act.travel{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false]} → result` | go_to each waypoint (e.g. from azworld route) |
+| `act.travel{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false, on_attacked = fn]} → result` | go_to each waypoint (e.g. from azworld route) |
 | `act.turn_in{npc, quest [, reward = 0, x, y, z]} → result` | walk to the quest ender and turn the quest in |
 | `act.use_object{entry [, count = 1, quest, x, y, z, radius = 80]} → result` | use objects (crates, chests, quest objects) count times or until the quest is complete |
 | `act.vendor{npc [, x, y, z, buy = {{entry, count}, ...}]} → result` | sell greys, repair if it can, buy; data = {sold, repaired, bought} |
@@ -107,7 +108,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 |---|---|
 | `events.emit(name, data) → seq` | an event of your own, type "script.<name>" |
 | `events.handlers() → {{id, types, name}}` | your event handlers |
-| `events.off(id)` | remove a handler |
+| `events.off(id or name)` | remove a handler: by the id events.on returned, or the name you gave it |
 | `events.on(type or {types}, fn [, name]) → id` | run fn(event) as a task for each matching event; the same name replaces a handler |
 | `events.query{since, types, match, last = 50, limit} → {events}` | past events; types may end in * ("quest_*"), match searches the data |
 | `events.seq() → seq` | the latest event's sequence number |
@@ -605,12 +606,13 @@ Everything in [Item](#item), plus:
 | `id` | number |  |
 | `name` | string |  |
 | `rank` | string |  |
+| `level` | number | the level you can learn it at (a trainer teaches it from then) |
 | `cast_ms` | number | 0 = instant |
 | `cooldown_ms` | number |  |
 | `category_cooldown_ms` | number |  |
 | `gcd_ms` | number |  |
 | `range` | number | yards against hostile targets (melee ~5) |
-| `cost` | number |  |
+| `cost` | number | what a cast costs you now, in power_type (most mana costs are a share of your base mana) |
 | `power_type` | string |  |
 | `known` | bool |  |
 

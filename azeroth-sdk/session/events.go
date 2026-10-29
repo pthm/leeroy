@@ -6,11 +6,13 @@ package session
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"fmt"
 	"github.com/pthm/leeroy/azeroth-sdk/metrics"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -123,13 +125,46 @@ func (b *Bot) refuse(op string, args map[string]any, code, msg string) map[strin
 	return b.lua.Reqs.Now(script.Spec{Op: op, Args: args}, script.Fail(code, msg, nil))
 }
 
-// noNPC refuses a call whose npc isn't an object in sight: most often an entry passed where the guid belongs,
-// which the server would ignore without a reply.
-func (b *Bot) noNPC(op string, args map[string]any, guid uint64) map[string]any {
-	if b.world.GetObject(guid) != nil {
+func taskLabel(name string) string {
+	if name == "" {
+		return "a wow call"
+	}
+	return "task " + strconv.Quote(name)
+}
+
+// noNPC resolves an action's npc argument and refuses the call when there's no such NPC in sight (the server would
+// ignore it without a reply). It takes a guid or an entry, as the act helpers do: an entry becomes the nearest
+// living creature with it.
+func (b *Bot) noNPC(op string, args map[string]any, npc *uint64) map[string]any {
+	if b.world.GetObject(*npc) != nil {
 		return nil
 	}
-	return b.refuse(op, args, "npc_not_found", "no such NPC in sight: pass its guid from units.nearby, not its entry")
+	if *npc > 0 && *npc < 1<<24 { // creature entries are small; guids never are
+		for _, u := range b.GetNearbyUnits(100) { // nearest first
+			if uint64(u.Entry) == *npc && u.IsAlive {
+				*npc = u.GUID
+				return nil
+			}
+		}
+		return b.refuse(op, args, "npc_not_found", fmt.Sprintf("no creature with entry %d within 100 yd", *npc))
+	}
+	return b.refuse(op, args, "npc_not_found", "no such NPC in sight (out of range, or gone)")
+}
+
+// npc roles (UNIT_NPC_FLAGS) an action needs: a trainer that isn't one, or a vendor that isn't, says nothing at all
+const (
+	roleTrainer = 0x10
+	roleVendor  = 0xF80 // vendor, or an ammo, food, poison or reagent vendor
+	roleRepair  = 0x1000
+)
+
+// noRole refuses an action at an NPC (in sight: after noNPC) without the role it needs, naming the NPC.
+func (b *Bot) noRole(op string, args map[string]any, npc uint64, role uint32, what string) map[string]any {
+	o := b.world.GetObject(npc)
+	if o == nil || o.Value(client.UnitNPCFlags)&role != 0 {
+		return nil
+	}
+	return b.refuse(op, args, "wrong_npc", fmt.Sprintf("%s isn't %s (act.npc(entry).roles says what an NPC does)", cmp.Or(b.objName(o), "that NPC"), what))
 }
 
 func (b *Bot) done(op string, args map[string]any, data any) map[string]any {
@@ -340,7 +375,10 @@ func (b *Bot) watchEvents() {
 				killer = me
 			}
 			if killer == me {
-				b.emit("kill", types.Kill{Victim: b.ref(victim)})
+				b.kills++ // every kill of yours, spells included (OnKill only sees melee killing blows)
+				v := b.ref(victim)
+				b.addEvent("kill", "Killed %s (entry %d)", cmp.Or(v.Name, "a creature"), v.Entry)
+				b.emit("kill", types.Kill{Victim: v})
 			} else if victim != me {
 				k := b.ref(killer)
 				b.emit("party_kill", types.Kill{Victim: b.ref(victim), Killer: &k})
@@ -622,6 +660,7 @@ func (b *Bot) setupActions() {
 		x, y, z           float32
 		started, deadline time.Time
 		straight          bool
+		task              string      // the task that asked for it
 		planned, cancel   atomic.Bool // route worked out (started/deadline/straight set); superseded or stopped
 	}
 	var cur *move // ponytail: guarded by the engine lock (Lua calls) and only read in Check (tick goroutine)
@@ -658,9 +697,14 @@ func (b *Bot) setupActions() {
 					return b.lua.Reqs.Result(m.id)
 				}
 				m.cancel.Store(true)
-				b.lua.Reqs.Resolve(m.id, script.Fail("superseded", "a newer move.to replaced this one", nil))
+				msg := "a newer move.to replaced this one"
+				if by := b.lua.CurrentTask(); by != m.task {
+					// two tasks steering at once cancel each other's walks: say which, or it looks like a bug
+					msg = fmt.Sprintf("a move.to from %s replaced this one from %s: two tasks moving you cancel each other", taskLabel(by), taskLabel(m.task))
+				}
+				b.lua.Reqs.Resolve(m.id, script.Fail("superseded", msg, nil))
 			}
-			m := &move{x: x, y: y, z: z}
+			m := &move{x: x, y: y, z: z, task: b.lua.CurrentTask()}
 			cur = m
 			go func() {
 				planMu.Lock()

@@ -36,6 +36,7 @@ type Matrix struct {
 	Classes  []string          `yaml:"classes"`
 	Runtime  string            `yaml:"runtime"`
 	Models   map[string]string `yaml:"models"`
+	Provider string            `yaml:"provider"`
 	Tasks    []Task            `yaml:"tasks"`
 }
 
@@ -133,7 +134,7 @@ func pickS(a, b []string) []string {
 func (b *Bench) CellScenario(m *Matrix, c Cell, agent, char string) (*Scenario, error) {
 	s := &Scenario{Name: fmt.Sprintf("%s-%s", m.Name, c.Key), Goal: c.Goal, Minutes: c.Minutes, Start: c.Task.Start,
 		Level: c.Task.Level, Money: c.Task.Money, Channel: c.Task.Channel, Hint: c.Task.Hint, RequireFresh: true,
-		Models: m.Models, Runtime: m.Runtime,
+		Models: m.Models, Runtime: m.Runtime, Provider: m.Provider,
 		Agents: []Agent{{Name: agent, Char: char, Race: fmt.Sprint(c.Race), Class: fmt.Sprint(c.Class)}}}
 	return s, b.Check(s)
 }

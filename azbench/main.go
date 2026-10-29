@@ -10,10 +10,12 @@
 //	azbench restart <run dir> <agent> --message <file>       bring one agent back mid-run
 //	azbench judge <Char> <goal> [flags]                      score one character (judge/README.md)
 //	azbench report <run dir>                                 the report card and team.json
+//	azbench compare <run dir>...                             players of several runs by runtime and model
 //	azbench signals <Char>                                   a character's progress signals
 //	azbench reset <Char>...                                  delete characters for a fresh run (restarts the worldserver)
-//	azbench gm [x y z [map]]                                 the GM dev character on port 8112
+//	azbench gm [x y z [map]] [--class mage]                  a GM dev character: Devgm on 8112, Dev<class> on 8113
 //	azbench apidoc                                           regenerate the API reference from a live session
+//	azbench prices                                           refresh the price table (judge/prices.json) from models.dev
 //	azbench standings                                        the agents' standings
 package main
 
@@ -38,7 +40,7 @@ func main() {
 	switch cmd {
 	case "judge":
 		os.Exit(judge.Main(args))
-	case "report", "signals":
+	case "report", "signals", "compare":
 		os.Exit(judge.Main(append([]string{cmd}, args...)))
 	case "standings":
 		os.Exit(tools.Standings(args))
@@ -50,6 +52,6 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: azbench run|matrix|resume|pause|status|restart|judge|report|signals|reset|gm|apidoc|standings ...")
+	fmt.Fprintln(os.Stderr, "usage: azbench run|matrix|resume|pause|status|restart|judge|report|compare|signals|reset|gm|apidoc|prices|standings ...")
 	os.Exit(2)
 }

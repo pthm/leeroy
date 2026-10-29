@@ -263,19 +263,9 @@ func (b *Bot) Run() BotResult {
 			}
 		}
 	}
-	b.world.OnKill = func(victimGUID uint64) {
-		b.kills++
+	b.world.OnKill = func(victimGUID uint64) { // melee killing blows only: b.kills counts every kill (the kill event)
+		// the kill line in the log comes from the kill event (events.go), spells included
 		victim := b.world.GetObject(victimGUID)
-		name := fmt.Sprintf("GUID:%d", victimGUID)
-		if victim != nil {
-			name = fmt.Sprintf("entry %d", victim.Entry)
-			if n := b.objName(victim); n != "" {
-				name = fmt.Sprintf("%s (entry %d)", n, victim.Entry)
-			}
-		}
-		b.addEvent("kill", "Killed %s (total kills: %d)", name, b.kills)
-		b.logDecision("Killed %s (kills=%d)", name, b.kills)
-		// detailed OnKill debug removed from console (use chat decisions)
 
 		// Immediately mark dead in cache so IsAlive() and finders see death without waiting for update packets.
 		b.world.MarkObjectDead(victimGUID)

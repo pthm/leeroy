@@ -16,6 +16,7 @@ bin/azbench run bench/scenarios/hogger-from-1.yaml --minutes 60
 | `goldshire-rerun.yaml` | 120 | the same characters again (gear and libraries kept, fresh conversations), moved to Goldshire, revived and repaired |
 | `stormwind-roles.yaml` | 60 | the same characters, each with a spec (two tanks, two healers, six DPS), talents reset, in Stormwind's Trade District, with `stormwind-roles.notice.md` |
 | `fresh-split.yaml` | 120 | ten new agents a11-a20 from level 1: five on Claude Code, five on Codex, each side one of each class with mirrored specs. Refuses to start if any of their workspaces exists |
+| `models-frost.yaml` | 60 | ten new Frost Mages a31-a40, one per model, all on opencode through OpenRouter: Claude Opus, Sonnet and Haiku, three sizes of GPT and of Gemini, and DeepSeek |
 
 ## Fields
 
@@ -34,7 +35,7 @@ Unknown fields are errors, so a typo doesn't silently change a run.
 | `hint` | appended to the goal in the prompt |
 | `notice` | added to the prompt: text, or a `.md` file next to the scenario (e.g. what changed since the agents' last run) |
 | `require_fresh` | refuse to start if any agent's workspace exists |
-| `runtime`, `race` | defaults for agents without their own: `claude`, `human` |
+| `runtime`, `race`, `provider` | defaults for agents without their own: `claude`, `human`, the runtime's own |
 | `models` | runtime to model, e.g. `{claude: claude-opus-5-5}`; default the runtime's own |
 | `agents` | the players (below) |
 
@@ -50,8 +51,14 @@ Each agent:
 | `class` | warrior, paladin, hunter, rogue, priest, death knight, shaman, mage, warlock, druid |
 | `race` | human, dwarf, night elf, gnome, orc, undead, tauren, troll, blood elf, draenei |
 | `spec` | a key from [`specs.yaml`](../specs.yaml): the prompt states class, spec, role, what to optimise and key stats, lists the other players' specs, and the judge puts the role on the board |
-| `runtime` | `claude` (Claude Code), `codex` (Codex CLI), or `none` (no agent: the session and judge only, for testing the harness) |
-| `model` | overrides `models` |
+| `runtime` | `claude` (Claude Code), `codex` (Codex CLI), `opencode` ([opencode](https://opencode.ai), any provider), or `none` (no agent: the session and judge only, for testing the harness) |
+| `model` | overrides `models`. For opencode, `provider/model` as `opencode models` lists them (`anthropic/claude-opus-5-5`, `openrouter/moonshotai/kimi-k3`) |
+| `provider` | `openrouter`: the model through [OpenRouter](https://openrouter.ai), with `OPENROUTER_API_KEY`, and the model is its slug (`anthropic/claude-opus-5.5`, `deepseek/deepseek-v4-flash`). For `claude` (its Anthropic-compatible endpoint) and `opencode` (`openrouter/` is added to the model) |
+
+opencode runs with its own empty config (`<run>/<agent>/opencode/`, not `~/.config/opencode`) and the same sandbox as
+Claude Code's allowed tools: it writes only in its workspace, reads the SDK and server source, and runs only `wow`,
+`azworld`, `standings` and `sleep`, `tail`, `cat`, `ls`, `grep`, `mkdir`. `smoke-openrouter.yaml` checks both
+OpenRouter paths for a few cents.
 
 ## Matrices
 

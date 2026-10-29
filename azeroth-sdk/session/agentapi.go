@@ -283,7 +283,7 @@ func (b *Bot) setupAgentAPI() {
 				return nil
 			}
 			return types.Corpse{X: round1(s.corpse[0]), Y: round1(s.corpse[1]), Z: round1(s.corpse[2]), Map: uint32(s.corpse[3]),
-				ReclaimIn: math.Max(0, math.Round(time.Until(s.reclaimAt).Seconds()))}
+				ReclaimIn: math.Max(0, math.Ceil(time.Until(s.reclaimAt).Seconds()))} // up: 0 means reclaim now works
 		})
 	alive := func() *script.Outcome {
 		if b.IsAlive() && !b.IsGhost() {
@@ -349,7 +349,7 @@ func (b *Bot) setupAgentAPI() {
 			if !b.IsGhost() {
 				return b.refuse("death.spirit_res", args, "not_a_ghost", "release first (death.release)")
 			}
-			if r := b.noNPC("death.spirit_res", args, npc); r != nil {
+			if r := b.noNPC("death.spirit_res", args, &npc); r != nil {
 				return r
 			}
 			w.SendPacketRaw(cmsgSpiritHealerAct, binary.LittleEndian.AppendUint64(nil, npc))
@@ -386,7 +386,7 @@ func (b *Bot) setupAgentAPI() {
 		})
 	e.Func("quests.accept", "(npc, quest) → request<QuestDone>", "talk to a quest giver and accept a quest it offers", func(npc uint64, quest uint32) map[string]any {
 		args := map[string]any{"npc": gs(npc), "quest": quest}
-		if r := b.noNPC("quests.accept", args, npc); r != nil {
+		if r := b.noNPC("quests.accept", args, &npc); r != nil {
 			return r
 		}
 		has := func() bool {
@@ -432,7 +432,7 @@ func (b *Bot) setupAgentAPI() {
 	e.Func("quests.turn_in", "(npc, quest [, reward = 0]) → request<QuestDone>", "hand a complete quest in (reward: the index of the item to choose, 0 = first; quests.info lists the choices)",
 		func(npc uint64, quest, reward uint32) map[string]any {
 			args := map[string]any{"npc": gs(npc), "quest": quest, "reward": reward}
-			if r := b.noNPC("quests.turn_in", args, npc); r != nil {
+			if r := b.noNPC("quests.turn_in", args, &npc); r != nil {
 				return r
 			}
 			if p := questInfo(w, quest); reward >= 6 || p != nil && p.choices[0][0] != 0 && p.choices[reward][0] == 0 {
@@ -802,6 +802,7 @@ type spellRec struct {
 	Cost             uint32  `json:"cost"`    // rage/runic are x10, as in get_power()
 	CastMS           uint32  `json:"cast_ms"` // base cast time (0 = instant)
 	Level            uint32  `json:"level"`   // the level you can learn it at (base level)
+	costPct          uint32  // ManaCostPercentage: most 3.3.5 spells cost a percentage of base mana, with Cost 0
 	attrs            uint32  // Attributes (passive 0x40, hidden 0x80)
 	dispel           uint32  // 1 magic, 2 curse, 3 disease, 4 poison
 	casterState      uint32  // the aura state you need (Victory Rush: victory_rush), 0 = none
@@ -840,7 +841,7 @@ func loadSpells() {
 			// field indices per AzerothCore DBCStructure.h SpellEntry
 			spells[f(0)] = &spellRec{Name: str(f(136)), Rank: str(f(153)), Category: f(1), Cooldown: f(29),
 				CategoryCooldown: f(30), GCDCategory: f(205), GCD: f(206), PowerType: f(41), Cost: f(42),
-				Range: ranges[f(46)], CastMS: castTimes[f(28)], Level: f(38), attrs: f(4), dispel: f(2),
+				Range: ranges[f(46)], CastMS: castTimes[f(28)], Level: f(38), costPct: f(204), attrs: f(4), dispel: f(2),
 				casterState: f(20), targetState: f(21)}
 		}
 	})

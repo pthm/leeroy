@@ -245,3 +245,60 @@ func TestTaskErrorWhere(t *testing.T) {
 		}
 	}
 }
+
+// a Func called with an argument left out says so instead of using the zero value (spells.known() was false)
+func TestFuncRequiredArgs(t *testing.T) {
+	e := NewEngine(nolog, nil)
+	e.Func("spells.known", "(id) → bool", "", func(id uint32) bool { return id == 133 })
+	e.Func("units.nearby", "([dist = 60]) → Unit[]", "", func(d float64) float64 { return d })
+	e.Func("quests.turn_in", "(npc, quest [, reward = 0]) → request", "", func(npc string, q, r int) int { return q + r })
+	if _, err := e.Eval(`return spells.known()`); err == nil || !strings.Contains(err.Error(), "spells.known(id) → bool: called with 0 argument(s), needs 1") {
+		t.Fatalf("spells.known(): %v", err)
+	}
+	if v, err := e.Eval(`return spells.known(133), spells.known(nil), units.nearby(), quests.turn_in("n", 7)`); err != nil || fmt.Sprint(v) != "[true false 0 7]" {
+		t.Fatalf("calls with their required arguments: %v, %v", v, err)
+	}
+	if _, err := e.Eval(`return quests.turn_in("n")`); err == nil {
+		t.Fatal("quests.turn_in with one of two required arguments didn't fail")
+	}
+	for sig, want := range map[string]int{"(id) → bool": 1, "() → x": 0, "([dist]) → x": 0, "(x, y [, z])": 2, "{x, y}": 0, "(name, fn, ...)": 2} {
+		if got := requiredArgs(sig); got != want {
+			t.Errorf("requiredArgs(%q) = %d, want %d", sig, got, want)
+		}
+	}
+}
+
+// calling something that doesn't exist says what that usually means
+func TestExplainNonFunction(t *testing.T) {
+	e := NewEngine(nolog, nil)
+	e.DoString(`units = {}`)
+	if _, err := e.Eval(`return units.nearbyy()`); err == nil || !strings.Contains(err.Error(), "the name called isn't a function") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// await and events.wait inside pcall in a task wait like anywhere else and return their result (they used to fault
+// with a nil pointer when the nested wait was resumed)
+func TestPcallAwait(t *testing.T) {
+	e := NewEngine(nolog, nil)
+	for _, code := range []string{
+		`task.spawn("a", function() R1 = {pcall(function() wait(0.05) return 5 end)} end)`,
+		`task.spawn("b", function() R2 = {pcall(function() return await({id = 999999, pending = true}, 0.1).error.code end)} end)`,
+		`task.spawn("c", function() R3 = {pcall(await, {id = 999997, pending = true}, 0.1)} end)`,
+		`task.spawn("d", function() R4 = {pcall(function() return events.wait("never", 0.1) end)} end)`,
+	} {
+		if _, err := e.Eval(code); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tick(e, 100)
+	v, err := e.Eval(`return R1[1], R1[2], R2[1], R2[2], R3[1], R3[2].error.code, R4[1], R4[2]`)
+	if fmt.Sprint(v) != "[true 5 true wait_timeout true wait_timeout true <nil>]" || err != nil {
+		t.Fatalf("results: %v, %v", v, err)
+	}
+	for _, x := range e.TasksHeld() {
+		if x.State == "failed" {
+			t.Errorf("task %s failed: %s", x.Name, x.Error)
+		}
+	}
+}

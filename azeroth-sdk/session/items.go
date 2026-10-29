@@ -701,7 +701,10 @@ func (b *Bot) setupItems() {
 	e.Func("vendor.buy", "(npc, entry [, count = 1]) → request<ItemReceived>", "buy from a vendor within ~5 yd (count in purchases of buy_count each). Call vendor.items first",
 		func(vendor uint64, entry, count uint32) map[string]any {
 			args := map[string]any{"npc": gs(vendor), "item": entry, "count": max(count, 1)}
-			if r := b.noNPC("vendor.buy", args, vendor); r != nil {
+			if r := b.noNPC("vendor.buy", args, &vendor); r != nil {
+				return r
+			}
+			if r := b.noRole("vendor.buy", args, vendor, roleVendor, "a vendor"); r != nil {
 				return r
 			}
 			s.mu.Lock()
@@ -750,7 +753,10 @@ func (b *Bot) setupItems() {
 	}
 	e.Func("vendor.sell", "(npc, item [, count = all]) → request<Sold>", "sell an item you carry (entry or guid) to a vendor within ~5 yd", func(vendor, item uint64, count uint32) map[string]any {
 		args := map[string]any{"npc": gs(vendor), "item": gs(item)}
-		if r := b.noNPC("vendor.sell", args, vendor); r != nil {
+		if r := b.noNPC("vendor.sell", args, &vendor); r != nil {
+			return r
+		}
+		if r := b.noRole("vendor.sell", args, vendor, roleVendor, "a vendor"); r != nil {
 			return r
 		}
 		it := findItem(w, item)
@@ -769,7 +775,10 @@ func (b *Bot) setupItems() {
 	})
 	e.Func("vendor.sell_junk", "(npc) → request<Sold>", "sell every grey (poor) item you carry. Items whose info hasn't loaded are skipped", func(vendor uint64) map[string]any {
 		args := map[string]any{"npc": gs(vendor)}
-		if r := b.noNPC("vendor.sell_junk", args, vendor); r != nil {
+		if r := b.noNPC("vendor.sell_junk", args, &vendor); r != nil {
+			return r
+		}
+		if r := b.noRole("vendor.sell_junk", args, vendor, roleVendor, "a vendor"); r != nil {
 			return r
 		}
 		before, sold := w.Money(), map[types.GUID]bool{}
@@ -815,7 +824,10 @@ func (b *Bot) setupItems() {
 	e.Func("vendor.repair", "(npc) → request<Repaired>", "repair everything you wear and carry at an NPC that repairs (role repair: armorers, weaponsmiths) within ~5 yd",
 		func(npc uint64) map[string]any {
 			args := map[string]any{"npc": gs(npc)}
-			if r := b.noNPC("vendor.repair", args, npc); r != nil {
+			if r := b.noNPC("vendor.repair", args, &npc); r != nil {
+				return r
+			}
+			if r := b.noRole("vendor.repair", args, npc, roleRepair, "an NPC that repairs"); r != nil {
 				return r
 			}
 			damaged := func() int {
@@ -851,7 +863,10 @@ func (b *Bot) setupItems() {
 	// ---------- trainer ----------
 	e.Func("trainer.learn", "(npc, spell) → request<Learned>", "learn a spell from a trainer within ~5 yd (costs money; trainer.list shows what it teaches you and what you can learn now)",
 		func(trainer uint64, spell uint32) map[string]any {
-			if r := b.noNPC("trainer.learn", map[string]any{"npc": gs(trainer), "spell": spell}, trainer); r != nil {
+			if r := b.noNPC("trainer.learn", map[string]any{"npc": gs(trainer), "spell": spell}, &trainer); r != nil {
+				return r
+			}
+			if r := b.noRole("trainer.learn", map[string]any{"npc": gs(trainer), "spell": spell}, trainer, roleTrainer, "a trainer"); r != nil {
 				return r
 			}
 			body := binary.LittleEndian.AppendUint64(nil, trainer)

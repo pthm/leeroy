@@ -219,7 +219,7 @@ func (b *Bot) setupNPC() {
 	e.Func("gossip.open", "(npc) → request<Gossip?>", "talk to an NPC within ~5 yd: what it says, its dialogue options, and the quests it offers or takes (quests.info for their text). nil when it opened something else instead (a vendor, a trainer, a flight map: use their calls)",
 		func(npc uint64) map[string]any {
 			args := map[string]any{"npc": gs(npc)}
-			if r := b.noNPC("gossip.open", args, npc); r != nil {
+			if r := b.noNPC("gossip.open", args, &npc); r != nil {
 				return r
 			}
 			asked := time.Now()
@@ -255,7 +255,10 @@ func (b *Bot) setupNPC() {
 	e.Func("trainer.list", "(npc) → request<Trainer>", "what a trainer within ~5 yd teaches you: every spell for your class with its cost, level and whether you can learn it now (available), later (unavailable) or already know it",
 		func(npc uint64) map[string]any {
 			args := map[string]any{"npc": gs(npc)}
-			if r := b.noNPC("trainer.list", args, npc); r != nil {
+			if r := b.noNPC("trainer.list", args, &npc); r != nil {
+				return r
+			}
+			if r := b.noRole("trainer.list", args, npc, roleTrainer, "a trainer"); r != nil {
 				return r
 			}
 			asked := time.Now()

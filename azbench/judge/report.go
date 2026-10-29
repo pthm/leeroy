@@ -180,8 +180,9 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 		session string
 	}{}
 	results := map[string]tokens{} // Claude's result line per session: its real totals (none if it was killed)
-	cost, costSeen := 0.0, false
-	var threads []string // Codex threads: their usage is only in the session log (~/.codex/sessions)
+	var threads []string           // Codex threads: their usage is only in the session log (~/.codex/sessions)
+	var oc tokens                  // opencode: each step's final usage, in its step_finish
+	ocSeen := false
 	for _, e := range jsonl(filepath.Join(ar.run, "agent.jsonl")) {
 		t := isoMs(str(e["timestamp"]))
 		typ := str(e["type"])
@@ -224,10 +225,22 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 				calls = append(calls, call{p.t, t, p.cmd})
 				delete(pending, str(item["id"]))
 			}
+		case typ == "tool_use": // opencode: one event per finished call, with its own start and end
+			st := get(e["part"], "state")
+			cmd := str(get(get(st, "input"), "command"))
+			if cmd == "" {
+				cmd = str(get(e["part"], "tool"))
+			}
+			calls = append(calls, call{int64(fnum(get(get(st, "time"), "start"))), int64(fnum(get(get(st, "time"), "end"))), cmd})
+		case typ == "step_finish":
+			tk := get(e["part"], "tokens")
+			oc.in += fnum(get(tk, "input"))
+			oc.out += fnum(get(tk, "output")) + fnum(get(tk, "reasoning"))
+			oc.cr += fnum(get(get(tk, "cache"), "read"))
+			oc.cw += fnum(get(get(tk, "cache"), "write"))
+			ocSeen = true
 		case typ == "result":
-			if c, ok := e["total_cost_usd"].(float64); ok {
-				cost += c
-				costSeen = true
+			if _, ok := e["total_cost_usd"].(float64); ok {
 				var tk tokens // per model; usage is partial
 				if mu, ok := e["modelUsage"].(map[string]any); ok {
 					for _, m := range mu {
@@ -469,6 +482,10 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 			parts++
 		}
 	}
+	if ocSeen {
+		tok.in, tok.out, tok.cr, tok.cw = tok.in+oc.in, tok.out+oc.out, tok.cr+oc.cr, tok.cw+oc.cw
+		parts++
+	}
 	for _, u := range usage {
 		if _, ok := results[u.session]; !ok && !logged[u.session] {
 			tok.in, tok.cr, tok.cw = tok.in+u.u.in, tok.cr+u.u.cr, tok.cw+u.u.cw
@@ -493,6 +510,12 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 			stalls++
 		}
 	}
+	// the judge's count from the character database is the right one: the run's window only (no death after the
+	// clock), each death once (a relogin replays the death event of a character logged in dead)
+	if s := jsonl(filepath.Join(ar.run, "samples.jsonl")); len(s) > 1 {
+		dead := func(m map[string]any) float64 { return fnum(get(m["signals"], "deaths")) }
+		deaths = int(dead(s[len(s)-1]) - dead(s[0]))
+	}
 	for _, c := range calls {
 		if restartRe.MatchString(c.cmd) {
 			restarts++
@@ -502,9 +525,10 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 	for i := 1; i < len(calls); i++ {
 		thinks = append(thinks, float64(calls[i].s-calls[i-1].e)/1000)
 	}
+	// cost at list price (models.dev, prices.json), the same way for every runtime: a subscription's runs too
 	var costOut any
-	if costSeen {
-		costOut = r1(cost)
+	if usd, ok := cost(str(meta["runtime"]), str(meta["provider"]), str(meta["model"]), tok.in, tok.out, tok.cr, tok.cw); ok && parts > 0 && outputKnown {
+		costOut = r1(usd)
 	}
 	progress := 0.0
 	if by["all"] != nil {
@@ -525,7 +549,7 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 	co, use := coop[char], metrics.Use(char, pos)
 
 	return obj{
-		{"agent", ar.agent}, {"char", char}, {"runtime", meta["runtime"]}, {"model", meta["model"]},
+		{"agent", ar.agent}, {"char", char}, {"runtime", meta["runtime"]}, {"model", meta["model"]}, {"provider", meta["provider"]},
 		{"hours", r1(H)}, {"progress", progress}, {"progress_per_hour", rate(by["all"])},
 		{"score", final},
 		{"duty_cycle_pct", share("script")}, // time with a script task running
@@ -555,6 +579,7 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 }
 
 func round3(v float64) float64 { return math.Round(v*1000) / 1000 }
+func round2(v float64) float64 { return math.Round(v*100) / 100 }
 
 func sum(a []float64) (s float64) {
 	for _, v := range a {
@@ -608,8 +633,9 @@ func truthy(v any) bool {
 	return v != nil
 }
 
-// teamResults: team.json from each agent's judge result (the last JSON line of <agent>.out).
-func teamResults(dir string, n int) obj {
+// teamResults: team.json from each agent's judge result (the last JSON line of <agent>.out), and the report cards
+// grouped by runtime and model.
+func teamResults(dir string, n int, cards []map[string]any) obj {
 	var res []map[string]any
 	outs, _ := filepath.Glob(filepath.Join(dir, "*.out"))
 	sort.Strings(outs)
@@ -643,33 +669,13 @@ func teamResults(dir string, n int) obj {
 		return fnum(a) > fnum(b)
 	})
 	faction := 0.0
-	byRT := map[string][]map[string]any{}
-	var rts []string
 	allMet, maxS := len(res) == n, 0.0
 	for _, r := range res {
 		faction += sc(r)
-		rt := str(r["runtime"])
-		if rt == "" {
-			rt = "claude"
-		}
-		if byRT[rt] == nil {
-			rts = append(rts, rt)
-		}
-		byRT[rt] = append(byRT[rt], r)
 		if r["met"] != true {
 			allMet = false
 		}
 		maxS = math.Max(maxS, fnum(r["elapsed_s"]))
-	}
-	sort.Strings(rts)
-	var groups []obj
-	for _, rt := range rts {
-		s, best := 0.0, 0.0
-		for _, r := range byRT[rt] {
-			s += sc(r)
-			best = math.Max(best, sc(r))
-		}
-		groups = append(groups, obj{{"runtime", rt}, {"players", len(byRT[rt])}, {"score", round1(s)}, {"best", best}})
 	}
 	var teamS any
 	if allMet {
@@ -679,7 +685,18 @@ func teamResults(dir string, n int) obj {
 	for i, r := range res {
 		agents[i] = r
 	}
-	return obj{{"agents", agents}, {"faction_score", round1(faction)}, {"by_runtime", groups}, {"team_s", teamS}}
+	team := obj{{"agents", agents}, {"faction_score", round1(faction)}, {"by_model", byModel(cards)}, {"team_s", teamS}}
+	// what OpenRouter billed for the run (the key's spend from start to finish), against the token-priced estimate
+	if or := readJSON(filepath.Join(dir, "openrouter.json")); or["start"] != nil && or["end"] != nil {
+		est := 0.0
+		for _, c := range cards {
+			if c["provider"] == "openrouter" {
+				est += fnum(c["cost_usd"])
+			}
+		}
+		team = append(team, kv{"openrouter", obj{{"billed_usd", round2(fnum(or["end"]) - fnum(or["start"]))}, {"estimated_usd", round2(est)}}})
+	}
+	return team
 }
 
 func Report(dir string) {
@@ -707,7 +724,10 @@ func Report(dir string) {
 	report := obj{{"agents", cards}}
 	if _, err := os.Stat(filepath.Join(dir, "go")); err == nil {
 		recs, _ := filepath.Glob(filepath.Join(dir, "*.record.jsonl"))
-		team := teamResults(dir, len(recs))
+		var cardMaps []map[string]any // the cards as JSON reads them, as compare does
+		cj, _ := json.Marshal(cards)
+		json.Unmarshal(cj, &cardMaps)
+		team := teamResults(dir, len(recs), cardMaps)
 		report = append(report, kv{"team", team})
 		j, _ := json.MarshalIndent(team, "", "  ")
 		os.WriteFile(filepath.Join(dir, "team.json"), append(j, '\n'), 0o644)

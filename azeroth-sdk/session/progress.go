@@ -143,11 +143,13 @@ func loadClassSpells() {
 		for i := uint32(0); i < n; i++ {
 			r := recs[i*rs:]
 			line, spell, race, class, acquire := le.Uint32(r[4:]), le.Uint32(r[8:]), le.Uint32(r[12:]), le.Uint32(r[16:]), le.Uint32(r[36:])
-			if !classLines[line] || acquire != 0 || class == 0 || talentSpell[spell] {
+			// acquire 0: a trainer teaches it; 2: you get it with the class skill (Fireball and Frost Armor at level 1)
+			if !classLines[line] || (acquire != 0 && acquire != 2) || class == 0 || talentSpell[spell] {
 				continue
 			}
 			sp := spellInfo(spell)
-			if sp == nil || sp.Level == 0 || sp.Name == "" || sp.attrs&0xC0 != 0 { // passive or hidden: not trained
+			// passive, hidden or not logged (a talent's effect, like Chilled): not something you learn
+			if sp == nil || sp.Level == 0 || sp.Name == "" || sp.attrs&0x1C0 != 0 {
 				continue
 			}
 			classSpells.list = append(classSpells.list, classSpell{id: spell, level: sp.Level, classMask: class, raceMask: race,

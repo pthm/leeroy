@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/pthm/leeroy/azbench/config"
+	"github.com/pthm/leeroy/azbench/judge"
 	"github.com/pthm/leeroy/azbench/run"
 )
 
@@ -63,6 +64,7 @@ func benchCommand(cmd string, args []string) bool {
 	dry := fs.Bool("dry-run", false, "print the plan (and the first prompt) without starting anything")
 	message := fs.String("message", "", "file: the message an agent's resumed conversation starts with ($LEFT = minutes left)")
 	noBuild := fs.Bool("no-build", false, "don't rebuild bin/ first")
+	class := fs.String("class", "warrior", "gm: the GM character's class (warrior: Devgm on 8112; another class: Dev<class> on 8113)")
 	parse := func(n int, usage string) []string {
 		var pos []string // positional arguments, flags anywhere
 		for len(args) > 0 {
@@ -144,10 +146,12 @@ func benchCommand(cmd string, args []string) bool {
 		pos := parse(1, "<Character>...")
 		check(run.Reset(pos))
 	case "gm":
-		pos := parse(0, "[x y z [map]]")
-		check(run.GM(repoRoot(), pos))
+		pos := parse(0, "[x y z [map]] [--class mage]")
+		check(run.GM(repoRoot(), *class, pos))
 	case "apidoc":
 		check(run.APIDoc(repoRoot()))
+	case "prices":
+		check(judge.Prices(filepath.Join(repoRoot(), "azbench/judge/prices.json")))
 	default:
 		return false
 	}

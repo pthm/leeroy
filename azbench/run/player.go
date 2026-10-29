@@ -3,6 +3,7 @@ package run
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -210,21 +214,73 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 		}
 		args = append(args, "--add-dir", repo+"/azeroth-sdk/client", repo+"/azeroth-sdk/session", repo+"/azeroth-sdk/script",
 			repo+"/server/azerothcore/src/server/game", repo+"/server/azerothcore/src/server/shared",
-			"--allowedTools", "Bash(wow:*)", "Bash(azworld:*)", "Bash(standings:*)", "Bash(sleep:*)", "Bash(tail:*)",
-			"Bash(cat:*)", "Bash(ls:*)", "Bash(grep:*)", "Bash(mkdir:*)", "Edit(./**)",
-			"--disallowedTools", "Edit(~/.claude/**)", "Read(~/.claude/**)")
+			"--allowedTools")
+		for _, c := range agentCommands {
+			args = append(args, "Bash("+c+":*)")
+		}
+		args = append(args, "Edit(./**)", "--disallowedTools", "Edit(~/.claude/**)", "Read(~/.claude/**)")
 		cmd = exec.Command("claude", args...)
+	case "opencode":
+		args := []string{"run", "--pure", "--format", "json", "-m", a.Model, "--dir", p.ws}
+		if resume != "" {
+			args = append(args, "--session", resume)
+		}
+		cmd = exec.Command("opencode", append(args, text)...)
 	}
 	cmd.Dir = p.ws
-	cmd.Env = append(os.Environ(), "PATH="+filepath.Join(repo, "bench/agent/bin")+":"+os.Getenv("PATH"),
+	env := os.Environ()
+	if a.Provider == "openrouter" && a.Runtime == "claude" {
+		// OpenRouter's Anthropic-compatible endpoint; the model is its slug (anthropic/claude-opus-5.5), also for
+		// Claude Code's background calls, which would otherwise ask for a Haiku id OpenRouter may not route
+		env = slices.DeleteFunc(env, func(kv string) bool {
+			return strings.HasPrefix(kv, "ANTHROPIC_AUTH_TOKEN=") || strings.HasPrefix(kv, "CLAUDE_CODE_OAUTH_TOKEN=")
+		})
+		env = append(env, "ANTHROPIC_BASE_URL=https://openrouter.ai/api", "ANTHROPIC_API_KEY="+os.Getenv("OPENROUTER_API_KEY"),
+			"ANTHROPIC_DEFAULT_HAIKU_MODEL="+a.Model)
+	}
+	if a.Runtime == "opencode" {
+		// its own empty config dir, so the user's opencode config (plugins, providers, AGENTS.md) stays out of the run
+		cfg := filepath.Join(p.dir, "opencode")
+		os.MkdirAll(cfg, 0o755)
+		env = append(env, "XDG_CONFIG_HOME="+cfg, "OPENCODE_CONFIG_CONTENT="+opencodeConfig(repo, p.ws))
+	}
+	cmd.Env = append(env, "PATH="+filepath.Join(repo, "bench/agent/bin")+":"+os.Getenv("PATH"),
 		"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "WOWBENCH_BOARD="+filepath.Join(p.r.dir, "board"),
 		"WOWBENCH_CHAR="+a.Char, fmt.Sprintf("WOW_PORT=%d", p.port))
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // so stopping it stops its tools too
 	return cmd
 }
 
+// agentCommands: the shell commands an agent may run (bench/agent/AGENTS.md lists them): its three tools and
+// read-only file and text commands, so output can be piped through head or grep
+var agentCommands = []string{"wow", "azworld", "standings", "sleep", "tail", "cat", "ls", "grep", "mkdir", "head", "wc",
+	"sort", "uniq", "cut"}
+
+// opencodeConfig is the same sandbox as Claude's allowed tools: write only in the workspace, read the SDK and server
+// source, and run only the agent's tools and a few read-only commands. "ask" can't be answered in opencode run, so
+// everything is allow or deny; doom_loop (the same call three times in a row) is allowed, since wow wait is that.
+// No snapshots: they're for undo, and copy the repo's state at every step.
+func opencodeConfig(repo, ws string) string {
+	bash := map[string]string{"*": "deny"}
+	for _, c := range agentCommands {
+		bash[c], bash[c+" *"] = "allow", "allow"
+	}
+	ext := map[string]string{"*": "deny"}
+	for _, d := range []string{"azeroth-sdk/client", "azeroth-sdk/session", "azeroth-sdk/script",
+		"server/azerothcore/src/server/game", "server/azerothcore/src/server/shared"} {
+		ext[filepath.Join(repo, d)+"/**"] = "allow"
+	}
+	// edit rules match paths relative to the git root (the repo), not absolute ones
+	rel, _ := filepath.Rel(repo, ws)
+	b, _ := json.Marshal(map[string]any{"autoupdate": false, "share": "disabled", "snapshot": false, "permission": map[string]any{
+		"bash": bash, "external_directory": ext, "edit": map[string]string{"*": "deny", rel + "/**": "allow"},
+		"webfetch": "deny", "websearch": "deny", "codesearch": "deny", "doom_loop": "allow"}})
+	return string(b)
+}
+
 // startAgent runs the agent until end, appending its output to agent.jsonl. Codex's JSONL events have no
-// timestamps, so each line is stamped as it arrives (the viewer and the report place them on the timeline).
+// timestamps, so each line is stamped as it arrives (the viewer and the report place them on the timeline);
+// opencode's have their own, in unix ms, which become the same ISO time.
 func (p *player) startAgent(text, resume string, end time.Time) error {
 	p.mu.Lock()
 	p.agentEnd = end
@@ -243,7 +299,7 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 	cmd := p.agentCmd(text, resume)
 	cmd.Stdin = nil
 	var stamp *io.PipeWriter
-	if p.a.Runtime == "codex" {
+	if p.a.Runtime != "claude" {
 		pr, pw := io.Pipe()
 		stamp = pw
 		cmd.Stdout, cmd.Stderr = pw, pw
@@ -281,7 +337,10 @@ func stampLines(r io.Reader, w io.WriteCloser) {
 		ts := `"timestamp":"` + time.Now().UTC().Format("2006-01-02T15:04:05Z") + `"`
 		var obj map[string]json.RawMessage
 		if len(line) > 1 && line[0] == '{' && json.Unmarshal(line, &obj) == nil {
-			if len(obj) > 0 {
+			if ms, err := strconv.ParseInt(string(obj["timestamp"]), 10, 64); err == nil {
+				obj["timestamp"], _ = json.Marshal(time.UnixMilli(ms).UTC().Format("2006-01-02T15:04:05.000Z"))
+				line, _ = json.Marshal(obj)
+			} else if len(obj) > 0 {
 				line = append(append(line[:len(line)-1:len(line)-1], ','), ts+"}"...)
 			} else {
 				line = []byte("{" + ts + "}")
@@ -314,7 +373,10 @@ func (p *player) exited(cmd *exec.Cmd) {
 				IsError bool `json:"is_error"`
 				Message string
 				Result  string
-				Error   struct{ Message string }
+				Error   struct {
+					Message string
+					Data    struct{ Message string } // opencode
+				}
 			}
 			if json.Unmarshal(sc.Bytes(), &e) != nil {
 				continue
@@ -323,7 +385,7 @@ func (p *player) exited(cmd *exec.Cmd) {
 			case e.Type == "turn.failed":
 				why = e.Error.Message
 			case e.Type == "error":
-				why = e.Message
+				why = cmp.Or(e.Message, e.Error.Data.Message)
 			case e.Type == "result" && e.IsError:
 				why = e.Result
 			}
@@ -338,10 +400,10 @@ func (p *player) exited(cmd *exec.Cmd) {
 }
 
 // meta writes meta.json: who plays this character, for the report, the board and the viewer. The model is what
-// the runtime reports once it starts (Claude: its init event; Codex: its session file).
+// the runtime reports once it starts (Claude: its init event; Codex: its session file; opencode: as configured).
 func (p *player) meta(spec config.Spec) {
 	model := ""
-	for i := 0; i < 60 && model == "" && p.a.Runtime != "none"; i++ {
+	for i := 0; i < 60 && model == "" && p.a.Runtime != "none" && p.a.Runtime != "opencode"; i++ {
 		model = detectModel(p.a.Runtime, filepath.Join(p.dir, "agent.jsonl"))
 		if model == "" {
 			time.Sleep(2 * time.Second)
@@ -354,7 +416,7 @@ func (p *player) meta(spec config.Spec) {
 		model = "default"
 	}
 	b, _ := json.Marshal(map[string]any{"agent": p.a.Name, "char": p.a.Char, "runtime": p.a.Runtime, "model": model,
-		"spec": spec.Title, "role": spec.Role, "goal": p.r.s.Goal, "port": p.port})
+		"provider": p.a.Provider, "spec": spec.Title, "role": spec.Role, "goal": p.r.s.Goal, "port": p.port})
 	os.WriteFile(filepath.Join(p.dir, "meta.json"), b, 0o644)
 }
 
@@ -391,7 +453,7 @@ func detectModel(runtime, transcript string) string {
 	return ""
 }
 
-// conversation is the agent's earlier conversation to resume: Claude's session id or Codex's thread id.
+// conversation is the agent's earlier conversation to resume: Claude's or opencode's session id or Codex's thread id.
 func (p *player) conversation() string {
 	f, err := os.Open(filepath.Join(p.dir, "agent.jsonl"))
 	if err != nil {
@@ -405,9 +467,13 @@ func (p *player) conversation() string {
 			Type      string
 			SessionID string `json:"session_id"`
 			ThreadID  string `json:"thread_id"`
+			OpenCode  string `json:"sessionID"`
 		}
 		if json.Unmarshal(sc.Bytes(), &e) != nil {
 			continue
+		}
+		if p.a.Runtime == "opencode" && e.OpenCode != "" {
+			return e.OpenCode
 		}
 		if p.a.Runtime == "claude" && e.SessionID != "" {
 			return e.SessionID

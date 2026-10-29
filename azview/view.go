@@ -107,7 +107,8 @@ func parseTime(s string) (float64, bool) {
 }
 
 // TranscriptEvents is an agent transcript as "say" events: only the agent's visible text messages. Claude Code
-// stream-json (assistant messages), or Codex --json (agent_message items, timestamped by azbench as they arrive).
+// stream-json (assistant messages), Codex --json (agent_message items, timestamped by azbench as they arrive), or
+// opencode's json (text parts).
 func TranscriptEvents(text, name string) []Ev {
 	var out []Ev
 	for _, l := range lines(text) {
@@ -118,6 +119,7 @@ func TranscriptEvents(text, name string) []Ev {
 				Content []struct{ Type, Text string } `json:"content"`
 			} `json:"message"`
 			Item struct{ Type, Text string } `json:"item"`
+			Part struct{ Text string }       `json:"part"`
 		}
 		if json.Unmarshal([]byte(l), &m) != nil || m.Timestamp == "" {
 			continue
@@ -128,6 +130,10 @@ func TranscriptEvents(text, name string) []Ev {
 		}
 		if m.Type == "item.completed" && m.Item.Type == "agent_message" && strings.TrimSpace(m.Item.Text) != "" {
 			out = append(out, Ev{"t": t, "ev": "say", "n": name, "text": strings.TrimSpace(m.Item.Text)})
+			continue
+		}
+		if m.Type == "text" && strings.TrimSpace(m.Part.Text) != "" {
+			out = append(out, Ev{"t": t, "ev": "say", "n": name, "text": strings.TrimSpace(m.Part.Text)})
 			continue
 		}
 		if m.Type != "assistant" {

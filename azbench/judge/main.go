@@ -90,6 +90,10 @@ func Main(args []string) (code int) {
 		Report(args[1])
 		return 0
 	}
+	if len(args) >= 2 && args[0] == "compare" {
+		Compare(args[1:])
+		return 0
+	}
 	if len(args) == 2 && args[0] == "signals" {
 		b, _ := json.MarshalIndent(signals(args[1]), "", " ")
 		fmt.Println(string(b))

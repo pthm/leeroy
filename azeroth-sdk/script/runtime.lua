@@ -17,6 +17,7 @@ end
 -- runs as a nested coroutine whose waits are passed up to the scheduler.
 do
   local raw_pcall, raw_xpcall = pcall, xpcall
+  local handed -- the values a nested wait returns
   local create, resume, status, yield = coroutine.create, coroutine.resume, coroutine.status, coroutine.yield
   local function run(f, handler, ...)
     local co = create(f)
@@ -32,9 +33,22 @@ do
         task._release(co)
         return true, unpack(res, 2)
       end
-      res = { resume(co, yield(unpack(res, 2))) } -- f waited: wait in the task, then carry on
+      -- f waited: wait in the task, then carry on. What the wait returns (await's result, events.wait's event) is
+      -- handed down outside resume: gopher-lua faults resuming a native function's yield with values
+      handed = { yield(unpack(res, 2)) }
+      res = { resume(co) }
+      handed = nil
     end
   end
+  -- await and events.wait inside such a pcall come back with nothing: their answer is the one handed down
+  local function takes_handed(f)
+    return function(...)
+      local r = { f(...) }
+      if #r == 0 and handed then r, handed = handed, nil end
+      return unpack(r)
+    end
+  end
+  await, events.wait = takes_handed(await), takes_handed(events.wait)
   function pcall(f, ...)
     if not task.current() then return raw_pcall(f, ...) end
     return run(f, nil, ...)

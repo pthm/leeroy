@@ -50,7 +50,10 @@ standings                                        # the score, and the minutes le
   shows each task's `busy_ms`. sdk.md, "Seeing what your scripts do", has the rest: logging your own data, cost.
 - `wow wait` and `wow -w` take whole seconds, at most 600. If your shell tool returns before a long wait ends (some
   stop waiting after 30 s), use shorter waits in a loop.
-- Create and edit files with your file-editing tools (some setups block shell redirects, heredocs and `sed -i`).
+- The shell runs only these commands: `wow`, `azworld`, `standings`, `sleep`, `cat`, `ls`, `grep`, `head`, `tail`, `wc`,
+  `sort`, `uniq`, `cut`, `mkdir`. Pipes and `;` work when every command in them is one of these (`azworld quest 7 |
+  head -20`); anything else (`echo`, `sed`, `for` loops, `python`) is refused. Create and edit files with your
+  file-editing tools, not shell redirects or heredocs.
 
 ## How it fits together
 

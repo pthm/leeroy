@@ -78,6 +78,11 @@ function A.make_room()
   end
   return false
 end
+-- face: turn to a unit, waiting for the turn in a task (a cast sent mid-turn fails with unit_not_infront)
+local function face(guid)
+  local f = move.face(guid)
+  if task.current() then await(f, 2) end
+end
 -- cast(id [, guid]): face the target and cast if ready; in a task it waits for the result
 function A.cast(id, guid)
   guid = guid or me.guid()
@@ -85,8 +90,14 @@ function A.cast(id, guid)
     if task.current() then wait(0.2) end -- a loop that retries can't spin past the execution limit
     return result("act.cast", false, nil, "not_ready", "on cooldown, casting, not enough power, or its condition isn't met (spells.usable)")
   end
-  if guid ~= me.guid() then move.face(guid) end
-  return await(spells.cast(id, guid))
+  if guid == me.guid() then return await(spells.cast(id, guid)) end
+  face(guid)
+  local r = await(spells.cast(id, guid))
+  if task.current() and r.ok == false and r.error and r.error.code == "unit_not_infront" then -- it moved: once more
+    face(guid)
+    r = await(spells.cast(id, guid))
+  end
+  return r
 end
 function A.buff(id, guid)
   guid = guid or me.guid()
@@ -108,6 +119,25 @@ local function sidestep(o, n)
   wait(1.5)
 end
 
+-- walk: move.to and wait; with o.on_attacked, stop whenever something targets you on the way, call
+-- o.on_attacked(attackers) (your fighting), then carry on
+local function walk(o, x, y, z)
+  local req = move.to(x, y, z)
+  if not o.on_attacked then return await(req, 600) end
+  local deadline = now() + 600000
+  while now() < deadline do
+    local r = await(req, 0.5)
+    if not (r.error and r.error.code == "wait_timeout") then return r end
+    local foes = units.attackers(30)
+    if #foes > 0 then
+      move.stop()
+      o.on_attacked(foes)
+      req = move.to(x, y, z)
+    end
+  end
+  return await(req, 1)
+end
+
 function A.go_to(o)
   local tol = o.tolerance or 4
   -- no z given: the floor nearest your own height when it's close by (in a cave or a building, not the ground above)
@@ -116,7 +146,7 @@ function A.go_to(o)
   local r
   for n = 1, o.tries or 3 do
     if A.dist(o.x, o.y) <= tol then move.stop() return result("act.go_to", true, { distance = A.dist(o.x, o.y) }) end
-    r = await(move.to(o.x, o.y, z), 600)
+    r = walk(o, o.x, o.y, z)
     if A.dist(o.x, o.y) <= tol then return result("act.go_to", true, { distance = A.dist(o.x, o.y) }) end
     if r.ok and r.data and r.data.stopped then return result("act.go_to", false, nil, "stopped", "move.stop() was called on the way") end
     if not r.ok and r.error.code == "superseded" then return result("act.go_to", false, nil, "superseded", r.error.message) end
@@ -134,7 +164,8 @@ function A.go_to(o)
 end
 function A.travel(o)
   for i, p in ipairs(o.points) do
-    local r = A.go_to{ x = p[1] or p.x, y = p[2] or p.y, z = p[3] or p.z, tolerance = o.tolerance or 6, unstuck = o.unstuck }
+    local r = A.go_to{ x = p[1] or p.x, y = p[2] or p.y, z = p[3] or p.z, tolerance = o.tolerance or 6, unstuck = o.unstuck,
+      on_attacked = o.on_attacked }
     if not r.ok then return result("act.travel", false, { waypoint = i }, r.error.code, "waypoint " .. i .. ": " .. tostring(r.error.message)) end
   end
   return result("act.travel", true)
@@ -192,8 +223,16 @@ function A.turn_in(o)
   if not in_log(o.quest) then return result("act.turn_in", false, nil, "not_in_log", "quest " .. o.quest .. " isn't in your quest log") end
   return at_npc("act.turn_in", o, function(npc) return await(quests.turn_in(npc.guid, o.quest, o.reward or 0)) end)
 end
+local function has_role(npc, ...)
+  for _, role in ipairs(npc.roles or {}) do
+    for _, want in ipairs({ ... }) do if role == want then return true end end
+  end
+end
 function A.vendor(o)
   return at_npc("act.vendor", o, function(npc)
+    if not has_role(npc, "vendor", "repair") then
+      return A.fail("wrong_npc", tostring(npc.name) .. " doesn't sell or repair (roles: " .. table.concat(npc.roles or {}, ", ") .. ")")
+    end
     local out = { sold = await(vendor.sell_junk(npc.guid)), bought = {} }
     vendor.items(npc.guid)
     wait(1.5)
@@ -241,11 +280,18 @@ function A.use_object(o)
     end
   end
 end
+-- loot_nearby: walk to each lootable corpse within dist (looting reaches ~5 yd) and loot it; with full bags it
+-- destroys your cheapest grey to make room, and stops (bags_full) when there's none
 function A.loot_nearby(o)
   local got = {}
   for _, u in ipairs(units.nearby((o and o.dist) or 8)) do
     if not u.alive and u.lootable then
+      if u.distance > 4 then A.approach{ unit = u.guid, range = 4, timeout = 10 } end
       local r = await(items.loot(u.guid))
+      if not r.ok and r.error and r.error.code == "inventory_full" then
+        if not A.make_room() then return result("act.loot_nearby", false, got, "bags_full", "bags full and no grey item to destroy: sell or destroy something") end
+        r = await(items.loot(u.guid))
+      end
       for _, it in ipairs(r.ok and r.data.items or {}) do got[#got + 1] = it end
     end
   end
@@ -299,15 +345,55 @@ function A.release()
   if r.ok then graveyard = me.position() end
   return r
 end
-function A.corpse_run()
+-- danger: living hostile creatures within r yards of a point (what attacks you the moment you come back there)
+function A.danger(x, y, r)
+  local out = {}
+  for _, u in ipairs(units.nearby(80)) do
+    if u.alive and u.reaction == "hostile" and u.attackable ~= false and math.sqrt((u.x - x) ^ 2 + (u.y - y) ^ 2) <= (r or 25) then
+      out[#out + 1] = u
+    end
+  end
+  return out
+end
+-- safe_spot: of the points on a ring around (x, y), the one farthest from danger; nil when nothing hostile is near
+local function safe_spot(x, y, radius)
+  local foes = A.danger(x, y, radius + 30)
+  if #foes == 0 then return nil end
+  local best, far = nil, -1
+  for k = 0, 11 do
+    local a = k * math.pi / 6
+    local px, py = x + radius * math.cos(a), y + radius * math.sin(a)
+    local near = math.huge
+    for _, u in ipairs(foes) do near = math.min(near, math.sqrt((u.x - px) ^ 2 + (u.y - py) ^ 2)) end
+    if near > far then best, far = { x = px, y = py }, near end
+  end
+  return best
+end
+-- corpse_run: walk to the corpse and reclaim it; with hostiles around the corpse (usually what killed you), reclaim
+-- from the side of the reclaim circle farthest from them instead of on top of them (safe = false: on the spot)
+function A.corpse_run(o)
+  o = o or {}
+  local moved = false
   while not me.alive() do
     local c = death.corpse()
     if not c then wait(1) -- asked the server
-    elseif A.dist(c.x, c.y) > 20 then
+    elseif A.dist(c.x, c.y) > 25 and not moved then
       local r = A.go_to{ x = c.x, y = c.y, z = c.z, tolerance = 15 }
       if not r.ok then r.op = "act.corpse_run" return r end
+    elseif o.safe ~= false and not moved then
+      moved = true
+      -- the edge of the reclaim circle (the server allows ~39 yd; 32 leaves room): at 24 yd a mob five levels up
+      -- still had you in its ~25 yd aggro radius
+      local spot = safe_spot(c.x, c.y, 32)
+      if spot then
+        log("act.corpse_run: hostiles at the corpse, reclaiming from " .. math.floor(spot.x) .. "," .. math.floor(spot.y))
+        A.go_to{ x = spot.x, y = spot.y, tolerance = 3 }
+      end
     elseif c.reclaim_in > 0 then wait(c.reclaim_in)
-    else await(death.reclaim()) end
+    else
+      local r = await(death.reclaim())
+      if r.ok == false then wait(1) end
+    end
   end
   return result("act.corpse_run", true)
 end
@@ -331,6 +417,12 @@ end
 -- recover: back to life however it takes: release, run to the corpse (the spirit healer if that fails, or with
 -- spirit = true), then rest unless rest = false. Pair it with a death handler:
 --   events.on("death", function() act.recover() end, "recover")
+-- the spirit healer brings you back where you stand: no use when hostiles are camping the graveyard
+local function graveyard_camped()
+  local p = me.position()
+  local foes = A.danger(p.x, p.y, 30)
+  return #foes > 0, foes
+end
 function A.recover(o)
   o = o or {}
   if me.alive() then return result("act.recover", true) end
@@ -338,8 +430,17 @@ function A.recover(o)
     local r = A.release()
     if not r.ok then r.op = "act.recover" return r end
   end
-  local r = o.spirit and A.spirit_res() or A.corpse_run()
-  if not r.ok and not o.spirit then r = A.spirit_res() end
+  local spirit = o.spirit
+  if spirit and o.safe ~= false then
+    local camped, foes = graveyard_camped()
+    if camped then
+      log("act.recover: " .. #foes .. " hostile creature(s) at the graveyard (" .. tostring(foes[1].name) .. ", level " ..
+        tostring(foes[1].level) .. "): running to the corpse instead of the spirit healer")
+      spirit = false
+    end
+  end
+  local r = spirit and A.spirit_res() or A.corpse_run(o)
+  if not r.ok and not spirit then r = A.spirit_res() end
   r.op = "act.recover"
   if r.ok and o.rest ~= false then A.rest() end
   return r
@@ -368,14 +469,21 @@ end
 doc("task.keep", "(name, fn, ...) → id", "run fn as a task and run it again whenever it finishes or fails (backing off while it fails fast, waiting while you're dead); task.stop(name) ends it")
 
 -- the functions above that wait need a task: say so plainly instead of failing deep inside
+-- and the ones that take an options table check they got one (act.loot_nearby(10) means act.loot_nearby{dist = 10})
+local takes_options = { go_to = true, travel = true, approach = true, follow = true, reach_npc = true, accept = true,
+  turn_in = true, vendor = true, train = true, talk = true, use_object = true, rest = true, corpse_run = true,
+  recover = true, loot_nearby = true, fly = true }
 for _, n in ipairs({ "go_to", "travel", "approach", "follow", "reach_npc", "accept", "turn_in", "vendor", "train", "talk",
   "use_object", "rest", "release", "corpse_run", "spirit_res", "recover", "loot_nearby", "fly" }) do
   local f = A[n]
-  A[n] = function(...)
+  A[n] = function(o, ...)
     if not task.current() then
       error("act." .. n .. " waits for the game, so it runs inside a task: task.spawn(\"" .. n .. "\", function() act." .. n .. "{...} end)", 2)
     end
-    return f(...)
+    if takes_options[n] and o ~= nil and type(o) ~= "table" then
+      error("act." .. n .. " takes an options table, act." .. n .. "{...}, not a " .. type(o) .. ": help(\"act." .. n .. "\") lists its fields", 2)
+    end
+    return f(o, ...)
   end
 end
 
@@ -396,8 +504,9 @@ for name, d in pairs({
   make_room = { "() → bool", "destroy your cheapest grey item to free a bag slot" },
   cast = { "(id [, guid]) → result", "face the target and cast if ready (waits for the result in a task)" },
   buff = { "(id [, guid]) → result", "cast it unless the target already has the aura (nil then)" },
-  go_to = { "{x, y [, z, tolerance = 4, tries = 3, unstuck = false]} → result", "walk there; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs" },
-  travel = { "{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false]} → result", "go_to each waypoint (e.g. from azworld route)" },
+  go_to = { "{x, y [, z, tolerance = 4, tries = 3, unstuck = false, on_attacked = fn]} → result", "walk there; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs. Without on_attacked it walks on while mobs hit you and drags them along; with it, it stops whenever something targets you, calls on_attacked(attackers) (your fighting) and then carries on" },
+  travel = { "{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false, on_attacked = fn]} → result", "go_to each waypoint (e.g. from azworld route)" },
+  danger = { "(x, y [, r = 25]) → Creature[]", "living hostile creatures within r yards of a point: check a spot before you go there or come back to life there" },
   approach = { "{unit [, range = 4, timeout = 60]} → result<Creature>", "move within range of a unit and face it" },
   follow = { "{name [, distance = 5, until = fn]} → result", "stay near a player until until() is true" },
   reach_npc = { "{npc [, x, y, z]} → result<Creature>", "find an NPC by entry (walking to x, y, z first) and stand next to it" },
@@ -407,11 +516,11 @@ for name, d in pairs({
   train = { "{npc, spells [, x, y, z]} → result", "learn spells at a trainer; data = {learned, failed}" },
   talk = { "{npc, fn [, x, y, z]} → result", "walk to an NPC and run fn(npc)" },
   use_object = { "{entry [, count = 1, quest, x, y, z, radius = 80]} → result", "use objects (crates, chests, quest objects) count times or until the quest is complete" },
-  loot_nearby = { "{[dist = 8]} → result<Item[]>", "loot every lootable corpse nearby" },
+  loot_nearby = { "{[dist = 8]} → result<Item[]>", "walk to and loot every lootable corpse within dist; with full bags it destroys your cheapest grey for room (error bags_full when there's none)" },
   rest = { "{[hp = 0.95, mana = 0.9, max_s = 40]} → result", "eat/drink if you carry food/water and wait until topped up; fails if attacked" },
   fly = { "{to = node id or name [, npc = entry]} → result<Flight>", "walk to a flight master nearby, fly to a known destination and wait until you land" },
   release = { "() → result", "release your spirit" },
-  corpse_run = { "() → result", "as a ghost, walk to your corpse and reclaim it" },
+  corpse_run = { "{[safe = true]} → result", "as a ghost, walk to your corpse and reclaim it; with hostiles at the corpse it reclaims from the far side of the reclaim circle, 32 yd out (safe = false: on the spot)" },
   spirit_res = { "() → result", "as a ghost, resurrect at the nearest spirit healer in sight (costs durability)" },
-  recover = { "{[spirit = false, rest = true]} → result", "back to life: release, corpse run (spirit healer if that fails, or with spirit = true), then rest" },
+  recover = { "{[spirit = false, rest = true, safe = true]} → result", "back to life: release, corpse run (reclaiming away from hostiles at the corpse), the spirit healer if that fails or with spirit = true (unless hostiles camp the graveyard: then the corpse run), then rest" },
 }) do doc("act." .. name, d[1], d[2]) end

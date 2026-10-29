@@ -22,7 +22,7 @@ const wowUsage = `wow 'return me.level()'              evaluate Lua in the live 
 wow < snippet.lua                   same, from stdin
 wow -f grind.lua                    (re)load a script file
 wow status                          what you'd see on screen: you, your fight, NPCs and mobs around you, quests, what to improve
-wow tasks                           your running script tasks: state, status, what each is waiting for
+wow tasks [--all]                   your running script tasks (state, status, what each waits for) and each name's latest failure; --all: finished ones too
 wow events [--types chat,quest_*] [--last 50] [--since seq] [--match text]
                                     the event log (chat, combat, loot, quests, action results, errors, script logs)
 wow wait [--types chat:whisper,death] [--match text] [seconds]
@@ -196,7 +196,18 @@ func run(args []string) int {
 	case "status":
 		return evalLua("return me.status()")
 	case "tasks":
-		return evalLua("return task.list()")
+		if arg(1) == "--all" {
+			return evalLua("return task.list()")
+		}
+		// the live tasks and, per name, the latest one that failed (its error); finished history is --all
+		return evalLua(`local out, failed = {}, {}
+			for _, t in ipairs(task.list()) do
+				if t.state == "failed" then failed[t.name] = t
+				elseif t.state ~= "done" and t.state ~= "stopped" then out[#out + 1] = t end
+			end
+			for _, t in pairs(failed) do out[#out + 1] = t end
+			table.sort(out, function(a, b) return a.id < b.id end)
+			return out`)
 	case "answer":
 		return evalLua("return answer(" + arg(1) + ", " + jqjson.Compact(arg(2)) + ")")
 	case "events":

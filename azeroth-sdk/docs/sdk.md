@@ -50,10 +50,15 @@ across reloads, and functions defined in the file are replaced, so a loop that c
 the new one on its next call, and a loop that reads a settings table sees changes on its next pass:
 
 ```lua
-G = G or { rest_hp = 0.5 }                                    -- keeps its values on reload
+G = G or {}                                                   -- keeps its values on reload
+G.rest_hp = G.rest_hp or 0.5                                  -- a default per field: new fields arrive on reload
 function step() ... end                                       -- replaced on reload
 task.keep("main", function() while true do step() end end)
 ```
+
+Give defaults field by field. `G = G or {rest_hp = 0.5, ...}` keeps whatever `G` already is, so a field you add
+later (or a `G` you created earlier with `wow 'G = {}'`) never gets its default; the same goes for `state = {...}`,
+which on the other hand wipes your progress on every reload.
 
 ```sh
 wow 'G.rest_hp = 0.6'                                         # seen on the next pass
@@ -76,6 +81,8 @@ local req = items.loot(guid)                   -- anywhere: {id = 8, op = "items
 result(req.id)                                 -- later: the result once it's in
 ```
 
+A pending result is a table too (`{id, op, pending = true}`), so test `r.ok` or `r.pending`, never just `r`.
+
 Refusals the client can detect (an unknown spell, an item you don't have) resolve at once. If the server stays
 silent, the request ends with `timeout` and a hint about the usual cause. `await` gives up after 30 s by default
 (`await(r, 120)`), returning `error.code = "wait_timeout"`; the request may still finish. Every failure, and every
@@ -95,7 +102,7 @@ log.
 **In scripts:**
 
 - `events.on(types, fn [, name])` → id: runs `fn(event)` as its own task for each matching event. A handler
-  registered again under the same name (default `"on <types>"`) replaces the old one. `events.off(id)`,
+  registered again under the same name (default `"on <types>"`) replaces the old one. `events.off(id or name)`,
   `events.handlers()`.
 - `events.wait(types [, timeout_s])`, inside a task: the next matching event after now.
 - `events.query{since = seq, types = {...}, match = "text", last = 50}` → past events (`limit = n`: the first n
@@ -220,8 +227,11 @@ me.level()`). `goto` is reserved, so it can't name a function.
 - Indoors and upstairs, pass the point's z to get the right floor: `move.to(x, y, world.ground_z(x, y, z))`.
   `act.go_to` without a z uses your own height for points within 80 yards, so it stays on your floor in a cave or a
   building; for anywhere else, pass the z (azworld gives spawn and quest points with theirs).
-- Walking doesn't fight: `move.to`, `act.go_to` and `act.travel` keep walking while something attacks you. Watch
-  for it (`combat_start`, `me.in_combat()`, `me.status().threats`) if you travel through hostile ground.
+- Walking doesn't fight: `move.to`, `act.go_to` and `act.travel` keep walking while something attacks you, and drag
+  it into your next fight. Give `act.go_to` and `act.travel` an `on_attacked = function(attackers) ... end` (your
+  fighting) and they stop for whoever attacks you on the way, then carry on.
+- Two tasks moving you at once cancel each other's walks: the older `move.to` resolves `superseded`, naming the
+  task that took over. Let one task own movement (stop the other, or pause it, while a death handler runs).
 - `units.nearby` leaves out units nobody can select: the invisible triggers the server uses for events and scripts.
 - Entering a place triggers it as in the game: exploration objectives complete, inns and cities make you rest.
 - While the server moves you (a flight, a teleport, fear, confusion) the client sends no movement of its own:
@@ -294,6 +304,11 @@ me.level()`). `goto` is reserved, so it can't name a function.
 - `death.release()`, `death.corpse()` (where it is and when you can reclaim), `death.reclaim()` within ~30 yards,
   `death.spirit_res(npc)`. `act.recover()` does release, corpse run (spirit healer if that fails) and rest. A
   `gear_broken` event follows a revive with broken gear.
+- Coming back to life where you died puts you next to what killed you. `act.corpse_run` and `act.recover` reclaim
+  from the far side of the reclaim circle (32 yards out) when hostiles stand by the corpse, and `act.recover{spirit =
+  true}` runs to the corpse instead when hostiles camp the graveyard (the spirit healer revives you where you stand).
+  `act.danger(x, y [, r])` lists the hostile creatures near any point. The wait before you can reclaim grows with
+  deaths in quick succession.
 - A `travel_refused` event: a portal or instance turned you away (`reason`, `message`: level, group, full, lockout).
 - `me.reputation()`: your standing with each faction (`rank`: hated ... exalted).
 

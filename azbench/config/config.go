@@ -30,9 +30,10 @@ type Scenario struct {
 	Notice  string   `yaml:"notice"`  // added to the prompt: text, or a .md file next to the YAML
 	// RequireFresh refuses to start if any agent's workspace exists (a run for new agents)
 	RequireFresh bool              `yaml:"require_fresh"`
-	Models       map[string]string `yaml:"models"`  // runtime -> model (default: the runtime's own)
-	Runtime      string            `yaml:"runtime"` // default runtime for agents without one: claude
-	Race         string            `yaml:"race"`    // default race: human
+	Models       map[string]string `yaml:"models"`   // runtime -> model (default: the runtime's own)
+	Runtime      string            `yaml:"runtime"`  // default runtime for agents without one: claude
+	Provider     string            `yaml:"provider"` // default provider for agents without one: the runtime's own
+	Race         string            `yaml:"race"`     // default race: human
 	Agents       []Agent           `yaml:"agents"`
 
 	Dir string `yaml:"-"` // the YAML's directory (for notice files)
@@ -45,8 +46,11 @@ type Agent struct {
 	Race    string `yaml:"race"`    // human, dwarf, night elf, gnome, orc, undead, tauren, troll, blood elf, draenei
 	Class   string `yaml:"class"`   // warrior, paladin, hunter, rogue, priest, death knight, shaman, mage, warlock, druid
 	Spec    string `yaml:"spec"`    // a key from specs.yaml: the prompt states class, spec, role and key stats
-	Runtime string `yaml:"runtime"` // claude, codex, or none (no agent: the session and judge only, for testing)
-	Model   string `yaml:"model"`
+	Runtime string `yaml:"runtime"` // claude, codex, opencode, or none (no agent: the session and judge only, for testing)
+	Model   string `yaml:"model"`   // opencode: provider/model, e.g. openrouter/moonshotai/kimi-k3
+	// Provider is who serves the model: "" (the runtime's own: Anthropic for claude, OpenAI for codex, the model's
+	// prefix for opencode) or openrouter (OPENROUTER_API_KEY), for claude and opencode
+	Provider string `yaml:"provider"`
 }
 
 // Place is a starting position: x y z map zone.
@@ -250,6 +254,12 @@ func (b *Bench) Check(s *Scenario) error {
 		if a.Model == "" {
 			a.Model = s.Models[a.Runtime]
 		}
+		if a.Provider == "" {
+			a.Provider = s.Provider
+		}
+		if a.Runtime == "opencode" && a.Provider == "openrouter" && !strings.HasPrefix(a.Model, "openrouter/") {
+			a.Model = "openrouter/" + a.Model
+		}
 		switch {
 		case !agentRe.MatchString(a.Name):
 			return fmt.Errorf("%s: agent name %q: lowercase letters, digits and -, up to 16", s.Name, a.Name)
@@ -257,8 +267,12 @@ func (b *Bench) Check(s *Scenario) error {
 			return fmt.Errorf("%s: character name %q: 2-12 letters", s.Name, a.Char)
 		case seen[a.Name] || seen["char:"+a.Char]:
 			return fmt.Errorf("%s: %s/%s appears twice", s.Name, a.Name, a.Char)
-		case a.Runtime != "claude" && a.Runtime != "codex" && a.Runtime != "none":
-			return fmt.Errorf("%s: %s: runtime %q (claude, codex or none)", s.Name, a.Name, a.Runtime)
+		case a.Runtime != "claude" && a.Runtime != "codex" && a.Runtime != "opencode" && a.Runtime != "none":
+			return fmt.Errorf("%s: %s: runtime %q (claude, codex, opencode or none)", s.Name, a.Name, a.Runtime)
+		case a.Runtime == "opencode" && !strings.Contains(a.Model, "/"):
+			return fmt.Errorf("%s: %s: opencode needs a provider/model, got %q", s.Name, a.Name, a.Model)
+		case a.Provider != "" && (a.Provider != "openrouter" || a.Runtime == "codex" || a.Runtime == "none"):
+			return fmt.Errorf("%s: %s: provider %q: openrouter, for claude or opencode", s.Name, a.Name, a.Provider)
 		}
 		seen[a.Name], seen["char:"+a.Char] = true, true
 		if _, err := ID(Races, a.Race); err != nil {

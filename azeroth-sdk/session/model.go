@@ -209,9 +209,27 @@ func spellOf(w *client.WorldClient, id uint32) *types.Spell {
 	if sp == nil {
 		return nil
 	}
-	return &types.Spell{ID: id, Name: sp.Name, Rank: sp.Rank, CastMS: sp.CastMS, CooldownMS: sp.Cooldown,
-		CategoryCooldownMS: sp.CategoryCooldown, GCDMS: sp.GCD, Range: sp.Range, Cost: sp.Cost,
+	return &types.Spell{ID: id, Name: sp.Name, Rank: sp.Rank, Level: sp.Level, CastMS: sp.CastMS, CooldownMS: sp.Cooldown,
+		CategoryCooldownMS: sp.CategoryCooldown, GCDMS: sp.GCD, Range: sp.Range, Cost: spellCost(sp, baseMana(w)),
 		PowerType: name(powerNames, uint8(sp.PowerType)), Known: w.KnowsSpell(id)}
+}
+
+// unitFieldBaseMana: UNIT_FIELD_BASE_MANA (OBJECT_END + 0x0072), your mana without intellect
+const unitFieldBaseMana = 0x0078
+
+func baseMana(w *client.WorldClient) uint32 {
+	if me := w.GetObject(w.CharGUID()); me != nil {
+		return me.Value(unitFieldBaseMana)
+	}
+	return 0
+}
+
+// spellCost: a spell's flat cost, or its percentage of base mana (what the client shows for most 3.3.5 spells)
+func spellCost(sp *spellRec, base uint32) uint32 {
+	if sp.Cost == 0 && sp.costPct > 0 {
+		return sp.costPct * base / 100
+	}
+	return sp.Cost
 }
 
 // ---------- quests ----------

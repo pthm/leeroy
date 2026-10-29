@@ -4,6 +4,7 @@
 package run
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -119,6 +120,9 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 				return fmt.Errorf("%s: workspace %s exists: this scenario is for fresh agents", p.a.Name, p.ws)
 			}
 		}
+		if p.a.Provider == "openrouter" && os.Getenv("OPENROUTER_API_KEY") == "" {
+			return fmt.Errorf("%s: provider openrouter needs OPENROUTER_API_KEY", p.a.Name)
+		}
 	}
 	if err := grantReader(); err != nil {
 		return fmt.Errorf("database (is the server up?): %v", err)
@@ -199,6 +203,7 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 	if !resume {
 		os.WriteFile(filepath.Join(r.dir, "go"), []byte(fmt.Sprintf("%d\n", r.start.Unix())), 0o644)
 	}
+	r.noteOpenrouter(false)
 	left := time.Duration(r.minutesLeft() * float64(time.Minute))
 	r.logf("go: %d/%d sessions up, %.0f minutes", r.count("ready"), len(r.players), left.Minutes())
 
@@ -338,6 +343,7 @@ func (r *Runner) stopAll() {
 
 // finish: the report card and team.json (judge report), and the replay.
 func (r *Runner) finish() {
+	r.noteOpenrouter(true)
 	judge.Report(r.dir)
 	cmd := exec.Command(filepath.Join(r.repo, "bin/azview"), "replay", r.dir)
 	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
@@ -353,8 +359,8 @@ func (r *Runner) Plan() string {
 	ps := append([]*player(nil), r.players...)
 	sort.SliceStable(ps, func(i, j int) bool { return ps[i].port < ps[j].port })
 	for _, p := range ps {
-		fmt.Fprintf(&b, "  %-6s %-12s %-6s %-12s %-14s %-6s port %d\n", p.a.Name, p.a.Char, config.RaceName(p.race),
-			config.ClassName(p.class), p.a.Spec, p.a.Runtime, p.port)
+		fmt.Fprintf(&b, "  %-6s %-12s %-6s %-12s %-14s %-8s port %d  %s\n", p.a.Name, p.a.Char, config.RaceName(p.race),
+			config.ClassName(p.class), p.a.Spec, p.a.Runtime, p.port, cmp.Or(p.a.Model, "default"))
 	}
 	if len(ps) > 0 {
 		text, err := prompt(r.s, r.b, ps[0].a, r.repo)

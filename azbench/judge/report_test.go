@@ -1,7 +1,10 @@
 package judge
 
 import (
+	"cmp"
 	"encoding/json"
+	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -77,4 +80,88 @@ func min64(a, b int64) int64 {
 		return a
 	}
 	return b
+}
+
+// an opencode transcript: tool calls from tool_use events, tokens from step_finish, cost at the models.dev price
+func TestReportOpencode(t *testing.T) {
+	dir := t.TempDir()
+	t0 := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC).UnixMilli()
+	iso := func(t int64) string { return time.UnixMilli(t).UTC().Format(time.RFC3339Nano) }
+	model := "openrouter/moonshotai/kimi-k2"
+	os.WriteFile(filepath.Join(dir, "meta.json"), []byte(`{"agent":"a1","char":"Tester","runtime":"opencode","model":"`+model+`","provider":"openrouter"}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "record.jsonl"), []byte(`{"t":`+fmt.Sprint(t0)+`,"ev":"score","n":"Tester","value":0}`+"\n"), 0o644)
+	var b []byte
+	for _, x := range []any{
+		map[string]any{"type": "tool_use", "timestamp": iso(t0 + 1000), "part": map[string]any{"tool": "bash",
+			"state": map[string]any{"input": map[string]any{"command": "wow wait 60"}, "time": map[string]any{"start": t0, "end": t0 + 60_000}}}},
+		map[string]any{"type": "step_finish", "timestamp": iso(t0 + 61_000), "part": map[string]any{
+			"tokens": map[string]any{"input": 10_000, "output": 100_000, "reasoning": 50_000, "cache": map[string]any{"read": 20_000_000, "write": 1_000_000}}}},
+		map[string]any{"type": "step_finish", "timestamp": iso(t0 + 62_000), "part": map[string]any{
+			"tokens": map[string]any{"input": 5_000, "output": 50_000, "reasoning": 0, "cache": map[string]any{"read": 21_000_000, "write": 0}}}},
+	} {
+		j, _ := json.Marshal(x)
+		b = append(append(b, j...), '\n')
+	}
+	os.WriteFile(filepath.Join(dir, "agent.jsonl"), b, 0o644)
+	// deaths come from the judge's samples (the character database), not the death events: 2 -> 5 is 3, although
+	// the event stream has one more (a death after the clock)
+	os.WriteFile(filepath.Join(dir, "samples.jsonl"), []byte(`{"elapsed_s":0,"signals":{"deaths":2}}`+"\n"+`{"elapsed_s":60,"signals":{"deaths":5}}`+"\n"), 0o644)
+	ev := ""
+	for i := 0; i < 4; i++ {
+		ev += `{"t":` + fmt.Sprint(t0+int64(i)*1000) + `,"type":"death","data":{}}` + "\n"
+	}
+	os.WriteFile(filepath.Join(dir, "Tester.events.jsonl"), []byte(ev), 0o644)
+
+	Report(dir)
+	var rep struct{ Agents []map[string]any }
+	j, _ := os.ReadFile(filepath.Join(dir, "report.json"))
+	json.Unmarshal(j, &rep)
+	c := rep.Agents[0]
+	if c["deaths"] != 3.0 {
+		t.Errorf("deaths = %v, want 3 from the samples", c["deaths"])
+	}
+	if c["calls"] != 1.0 {
+		t.Errorf("calls = %v, want 1", c["calls"])
+	}
+	if g, _ := json.Marshal(c["tokens"]); string(g) != `{"cache_read":41000000,"cache_write":1000000,"input":15000,"output":200000}` {
+		t.Errorf("tokens = %s", g)
+	}
+	var table map[string]Price
+	json.Unmarshal(pricesJSON, &table)
+	p, ok := table[model]
+	if !ok {
+		t.Fatalf("%s not in prices.json", model)
+	}
+	want := (0.015*p.Input + 0.2*p.Output + 41*p.CacheRead + cmp.Or(p.CacheWrite, p.Input))
+	if got, _ := c["cost_usd"].(float64); math.Abs(got-want) > 0.051 { // r1: dollars to 1 decimal
+		t.Errorf("cost_usd = %v, want %.4f", c["cost_usd"], want)
+	}
+}
+
+// players grouped by runtime and model: the same model on two harnesses is two rows; cost null if any is unknown
+func TestByModel(t *testing.T) {
+	card := func(rt, model string, score float64, cost any) map[string]any {
+		return map[string]any{"runtime": rt, "model": model, "score": map[string]any{"score": score}, "cost_usd": cost, "hours": 1.0}
+	}
+	g, _ := json.Marshal(byModel([]map[string]any{card("claude", "m", 100, 2.0), card("opencode", "m", 50, nil),
+		card("claude", "m", 300, 4.0)}))
+	want := `[{"runtime":"claude","model":"m","players":2,"score":{"mean":200,"se":100},"best":300,"total":400,"cost_usd":6,"cost_per_agent_hour":3},` +
+		`{"runtime":"opencode","model":"m","players":1,"score":{"mean":50,"se":null},"best":50,"total":50,"cost_usd":null,"cost_per_agent_hour":null}]`
+	if string(g) != want {
+		t.Errorf("byModel = %s", g)
+	}
+}
+
+// team.json shows what OpenRouter billed for the run (openrouter.json, start to finish) next to the estimate for the
+// agents that went through it
+func TestTeamOpenrouterBilled(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "openrouter.json"), []byte(`{"start":10.5,"end":14.25}`), 0o644)
+	cards := []map[string]any{{"provider": "openrouter", "cost_usd": 3.0}, {"provider": "", "cost_usd": 9.0}}
+	j, _ := json.Marshal(teamResults(dir, 0, cards))
+	var team struct{ Openrouter map[string]float64 }
+	json.Unmarshal(j, &team)
+	if team.Openrouter["billed_usd"] != 3.75 || team.Openrouter["estimated_usd"] != 3 {
+		t.Fatalf("openrouter = %v, want billed 3.75, estimated 3", team.Openrouter)
+	}
 }

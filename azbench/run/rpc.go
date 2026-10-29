@@ -35,19 +35,46 @@ func eval(ctx context.Context, port int, code string) (json.RawMessage, error) {
 	return r.Result.Result, nil
 }
 
-// calm, before a session is stopped: stop its scripts and wait up to 90 s for it to leave combat. A connection
-// dropped in combat leaves the character in the world, where it can die with nobody logged in. Call it after the
-// agent is stopped, so nothing starts a new fight.
+// calm, before a session is stopped: get the character out of combat, then stop its scripts. A connection dropped in
+// combat leaves the character in the world, where it can die with nobody logged in; and a character whose scripts
+// are stopped mid-fight stands still until it dies. So while it's fighting its own scripts keep fighting, and they're
+// stopped at the first moment it's out of combat (before they can pull again). If it's still in combat after a
+// minute, its scripts aren't winning: they're stopped and it auto-attacks whatever attacks it until the fight ends.
+// Call it after the agent is stopped, so nothing new is written to the session.
 func calm(port int) {
 	ctx := context.Background()
-	if _, err := eval(ctx, port, `for _, t in ipairs(task.list()) do task.stop(t.id) end; on_tick = nil; move.stop()`); err != nil {
-		return
-	}
-	for range 45 {
+	const stop = `for _, t in ipairs(task.list()) do task.stop(t.id) end; on_tick = nil; move.stop()`
+	inCombat := func() (bool, error) {
 		r, err := eval(ctx, port, `return me.in_combat()`)
-		if err != nil || string(r) != "true" {
+		return string(r) == "true", err
+	}
+	for end := time.Now().Add(calmFight); ; time.Sleep(calmPoll) {
+		fighting, err := inCombat()
+		if err != nil {
 			return
 		}
-		time.Sleep(2 * time.Second)
+		if !fighting {
+			eval(ctx, port, stop)
+			return
+		}
+		if time.Now().After(end) {
+			break
+		}
 	}
+	eval(ctx, port, stop+`; task.spawn("calm", function()
+		while me.in_combat() do
+			local a = units.attackers(40)[1]
+			if a then combat.attack(a.guid) end
+			wait(1)
+		end
+	end)`)
+	for end := time.Now().Add(calmFight); time.Now().Before(end); time.Sleep(calmPoll) {
+		if fighting, err := inCombat(); err != nil || !fighting {
+			break
+		}
+	}
+	eval(ctx, port, stop)
 }
+
+// calm's timing (variables for the test)
+var calmFight, calmPoll = time.Minute, 500 * time.Millisecond

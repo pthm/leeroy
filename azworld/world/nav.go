@@ -153,7 +153,7 @@ func route(m float64, from, to [2]float64, level float64, horde bool) *obj {
 	}
 	// A* over 8 neighbours; a step is blocked if steeper than ~45 degrees or off the map
 	start, goal := idx(from[0], from[1]), idx(to[0], to[1])
-	dist, prev := make([]float32, W*H), make([]int32, W*H)
+	dist, prev, closed := make([]float32, W*H), make([]int32, W*H), make([]bool, W*H)
 	for i := range dist {
 		dist[i], prev[i] = float32(math.Inf(1)), -1
 	}
@@ -201,6 +201,12 @@ func route(m float64, from, to [2]float64, level float64, horde bool) *obj {
 	steps := [][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}}
 	for len(heap) > 0 {
 		i := pop().i
+		// each cell is expanded once: without this, stale heap entries (a cell queued again with a shorter distance,
+		// which mob costs make common) were expanded every time, and a 500-yard route took minutes
+		if closed[i] {
+			continue
+		}
+		closed[i] = true
 		if i == goal {
 			break
 		}
@@ -211,6 +217,9 @@ func route(m float64, from, to [2]float64, level float64, horde bool) *obj {
 				continue
 			}
 			j, step := nr*W+nc, float64(math.Hypot(float64(s[0]), float64(s[1]))*navCell)
+			if closed[j] {
+				continue
+			}
 			if math.IsNaN(float64(h[j])) || math.Abs(float64(h[j])-float64(h[i])) > step {
 				continue
 			}

@@ -1,0 +1,12 @@
+name: smoke-openrouter
+description: >
+  Two agents for 5 minutes on cheap models through OpenRouter (OPENROUTER_API_KEY): Claude Code on its
+  Anthropic-compatible endpoint, and opencode. Checks both paths end to end (sandbox, transcript, resume, tokens,
+  cost) for a few cents.
+goal: score:100000
+minutes: 5
+start: goldshire
+provider: openrouter
+agents:
+  - {name: or1, char: Routerone, class: warrior, runtime: claude, model: anthropic/claude-haiku-4.5}
+  - {name: or2, char: Routertwo, class: mage, runtime: opencode, model: deepseek/deepseek-v4-flash}

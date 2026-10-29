@@ -3,7 +3,6 @@ package run
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pthm/leeroy/azbench/config"
+	"github.com/pthm/leeroy/azbench/judge"
 )
 
 // cellName: a character name from a number unique to the cell: consonant-vowel syllables (letters only, at most 12).
@@ -164,25 +164,6 @@ func summary(results string) (map[string]any, error) {
 			rs = append(rs, r)
 		}
 	}
-	stats := func(v []float64) any {
-		if len(v) == 0 {
-			return nil
-		}
-		mean := 0.0
-		for _, x := range v {
-			mean += x
-		}
-		mean /= float64(len(v))
-		out := map[string]any{"mean": mean, "se": nil}
-		if len(v) > 1 {
-			ss := 0.0
-			for _, x := range v {
-				ss += (x - mean) * (x - mean)
-			}
-			out["se"] = math.Sqrt(ss / float64(len(v)-1) / float64(len(v)))
-		}
-		return out
-	}
 	group := func(keys ...string) []map[string]any {
 		groups := map[string][]res{}
 		var order []string
@@ -214,7 +195,7 @@ func summary(results string) (map[string]any, error) {
 				values, scores = append(values, r.Value), append(scores, r.Score)
 			}
 			out = append(out, map[string]any{"group": gk(g[0]), "goal": g[0].Cell["goal"], "n": len(g), "met": met,
-				"time_to_goal_s": stats(times), "value": stats(values), "score": stats(scores)})
+				"time_to_goal_s": judge.MeanSE(times), "value": judge.MeanSE(values), "score": judge.MeanSE(scores)})
 		}
 		return out
 	}

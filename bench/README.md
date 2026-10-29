@@ -26,10 +26,12 @@ commands below run from the repo root; server and client setup is in the [repo R
 | `azbench resume <run dir> --message <file>` | continue a paused run |
 | `azbench restart <run dir> <agent> --message <file>` | mid-run, bring back one agent whose session or conversation ended |
 | `azbench report <run dir>` | the report card (`report.json`) and `team.json`; written at the end of every run |
+| `azbench compare <run dir>...` | the players of several runs pooled by runtime and model, as `by_model`: a table, then JSON |
+| `azbench prices` | refresh the price table for `cost_usd` from [models.dev](https://models.dev) |
 | `azbench judge <Char> <goal> [flags]` | score one character by hand ([judge](../azbench/judge/README.md)) |
 | `azbench signals <Char>` | a character's progress signals |
 | `azbench reset <Char>...` | delete characters so a fresh run can reuse their names |
-| `azbench gm [x y z [map]]` | the GM dev character, for SDK work |
+| `azbench gm [x y z [map]] [--class mage]` | a GM dev character, for SDK work |
 | `azbench apidoc` | regenerate the API reference from a live session |
 
 `run`, `matrix` and `resume` rebuild `bin/` first (`--no-build` skips it).
@@ -109,7 +111,7 @@ restarts on the current build and its conversation resumes. Its judge keeps runn
 |---|---|
 | `agents` | each judge's result, best `score` first |
 | `faction_score` | sum of every player's score (everyone is Alliance) |
-| `by_runtime` | per runtime: `players`, `score` (sum), `best` |
+| `by_model` | per runtime and model (the same model on two harnesses is two rows): `players`, `score` (mean ± standard error), `best`, `total`, `cost_usd`, `cost_per_agent_hour` |
 | `team_s` | time until the last agent met the goal; null unless every agent did |
 
 ## Goals and scoring
@@ -210,3 +212,13 @@ Accounts are non-GM.
 `WOW_PORT=8112 bench/agent/bin/wow '...'`. Never use a GM account in a scored run. `azbench apidoc` rebuilds
 everything, restarts Devgm on the new build and regenerates `azeroth-sdk/docs/api-reference.md` from its function
 registry: run it after changing the Lua API or package types.
+
+`--class mage` (any class but warrior) starts a second GM character, Dev<class> (Devmage), on port 8113, for what a
+warrior can't test: spells, mana, a caster's spellbook. `bench/e2e/sdk-fixes.md` is an end-to-end checklist for the
+SDK, written for an agent to run against it:
+
+```sh
+bin/azbench gm --class mage
+cd bench/e2e && WOW_PORT=8113 PATH=$PWD/../agent/bin:$PATH claude -p "$(cat sdk-fixes.md)" \
+  --allowedTools "Bash(wow:*)" "Bash(azworld:*)" "Bash(sleep:*)" "Bash(time:*)" "Bash(cat:*)" "Bash(grep:*)" "Read"
+```
