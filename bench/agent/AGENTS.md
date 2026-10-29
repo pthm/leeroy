@@ -32,6 +32,8 @@ party [10]                                       # your party over the last 10 m
   between your scripts' steps on the same state, so it sees exactly what they see, and it can't wait: start a
   task for anything that takes time. Every reply carries `"events"`: what happened since your last call (counts,
   plus chat, deaths, errors, failed actions and tasks in full), and `"script_errors"` if a script failed.
+  Messages from other players and the minutes left in the run (`wow: 42 min left`) also go to stderr;
+  `standings` has `minutes_left` on its last line.
 - `wow wait`/`-w` take whole seconds (max 600). Create and edit files with your file-editing tools; your working
   directory is the only place you can write (some setups block shell redirects, heredocs and `sed -i`).
 - Scripts and Lua globals persist until you replace them. Keep state you want to inspect in globals

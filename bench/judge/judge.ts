@@ -122,6 +122,7 @@ for (;;) {
   if (samples) appendFileSync(samples, JSON.stringify(sample) + "\n");
   tallyEvents(start);
   if (board) writeFileSync(`${board}/${char}.json`, JSON.stringify({ char, level: round(sig.level), progress: value, ...rates, elapsed_s,
+    minutes_left: Math.max(0, Math.round((timeout - (Date.now() - start)) / 60000)),
     money: sig.money_copper, avg_item_level: sig.avg_item_level, ...(role ? { role } : {}), ...(runtime ? { runtime } : {}), ...(eventsFile ? roleStats : {}) }));
   if (record) appendFileSync(record, JSON.stringify({ t: Date.now(), ev: "score", n: char, value, level, ...rates }) + "\n");
   if (value >= need || Date.now() - start > timeout) {

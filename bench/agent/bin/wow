@@ -11,7 +11,8 @@
 # wow answer <id> <choice>            answer a script's ask() (an "attention" event)
 # wow -w 60 'lua'                     sleep 60s first, then evaluate
 # Every eval reply carries "events": what happened since your last call (counts by type, important ones in full).
-# Chat from other players, invites, trades and script questions are also printed to stderr ("wow: chat ...").
+# Chat from other players, invites, trades and script questions are also printed to stderr ("wow: chat ..."),
+# with the minutes left in the run ("wow: 42 min left").
 # Session: the azsdk daemon on port $WOW_PORT (default 8090).
 rpc() { # method, params JSON
   jq -n --arg m "$1" --argjson p "$2" '{jsonrpc: "2.0", id: 1, method: $m, params: $p}' |
@@ -25,6 +26,8 @@ eval_() {
   printf '%s\n' "$out" | jq -r '.events.important[]? |
     select((.type == "chat" and (.data.kind | test("^npc|_sent$|^system$") | not)) or .type == "party_invite" or .type == "trade" or .type == "attention") |
     "wow: \(.type) " + (if .type == "chat" then "\(.data.kind) from \(.data.from): \(.data.text)" else (.data | tojson) end)' >&2
+  [ -n "$WOWBENCH_BOARD" ] && jq -r '"wow: \(.minutes_left // empty) min left"' "$WOWBENCH_BOARD/$WOWBENCH_CHAR.json" >&2 2>/dev/null
+  return 0
 }
 # --types a,b --last n --since n --match s [seconds] -> query params JSON (seconds -> timeout_s)
 params() {

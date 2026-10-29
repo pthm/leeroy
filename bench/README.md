@@ -124,7 +124,8 @@ bun server/recorder/live.ts bench/runs/<ts>-team/*.record.jsonl   # http://local
 | `<agent>.out` | that agent's `bench.sh` output; its last JSON line is the judge's result |
 | `<agent>.record.jsonl` | client-side event log for replays (positions, combat, chat, API calls) |
 | `<Char>.events.jsonl` | the character's event stream; the judge reads role stats from it |
-| `board/<Char>.json` | each judge's latest result, read by `standings` |
+| `board/<Char>.json` | each judge's latest result (with `minutes_left`), read by `standings` and `wow` |
+| `alerts.log` | agents that exited with 2+ minutes left, with the runtime's last error (e.g. a Codex usage limit) |
 | `team.json` | the results, see below |
 | `replay.html` | the replay |
 | `AGENTS.md` | written by `resume.sh`: the docs it gave every agent |
@@ -156,20 +157,22 @@ not scored. The faction score is the sum of all players' scores. Agents see all 
 
 ## Pause and resume a team run
 
-Stop `team.sh`, then every `bench.sh` (their exit traps stop each agent, judge and session). Then:
+Stop `team.sh`, then every `bench.sh`. Their exit traps stop the agent, then run `agent/calm.sh` (stop the
+character's scripts and wait up to 90 s for it to leave combat: a character dropped mid-fight stays in the world and
+can die there), then stop the judge and the session, which logs out. Then:
 
 ```sh
 bench/resume.sh bench/runs/<ts>-team <total-minutes> <message-file>
 ```
 
 For each `<agent>.record.jsonl` in the team directory it takes the agent's latest `runs/*-<agent>/`, logs the
-character back in on port 8090 + its position in that list (5 s apart), restarts the judge with `--resume` (same
+character back in on its port from `meta.json` (5 s apart), restarts the judge with `--resume` and its goal from `meta.json` (same
 baseline and curve; the pause doesn't count), and resumes the agent's conversation (Claude `--resume <session_id>`,
 or `agent/codex-resume.sh` when `meta.json` says codex) with the message under a `timeout` of the minutes left.
 `$LEFT` in the message file is replaced with the minutes left. It also refreshes every workspace's `AGENTS.md` and
 writes `team.json` at the end.
 
-Note: the resumed judge always uses `score:100000`, and the `team.json` it writes has no `by_runtime`.
+Runs from before `meta.json` had `port` and `goal` fall back to 8090 + position in that list and `$GOAL`.
 
 ## Restart one agent
 
@@ -177,10 +180,10 @@ Note: the resumed judge always uses `score:100000`, and the `team.json` it write
 bench/restart-agent.sh bench/runs/<ts>-team <agent> <message-file>
 ```
 
-For one agent whose session died or whose conversation ended while the rest keep playing: kills its `azsdk`, waits
-for the character to go offline, starts a new session on its port, joins `CHANNEL` (default here:
-`General - Stormwind City`), and resumes its conversation with the message (`$LEFT` = minutes left, from `go` and
-the minutes in `prompt.md`). The judge in the original `bench.sh` keeps running.
+For one agent whose session died or whose conversation ended while the rest keep playing: runs `agent/calm.sh`, kills its
+`azsdk`, waits for the character to go offline, starts a new session on its port, joins `CHANNEL` (default here:
+`General - Elwynn Forest`), and resumes its conversation with the message (`$LEFT` = minutes left on its judge's
+clock). The judge in the original `bench.sh` keeps running.
 
 ## Reset characters for a fresh run
 

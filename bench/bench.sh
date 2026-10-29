@@ -97,7 +97,7 @@ if [ -n "$LEVEL$MONEY$START" ]; then
     ${START:+, position_x = $1, position_y = $2, position_z = $3, map = $4, zone = $5}
     WHERE name = '$char'"
 fi
-trap 'kill $agent $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM
+trap 'kill $agent $watch 2>/dev/null; "$root/agent/calm.sh"; kill $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM
 [ -n "$LEVEL$MONEY$START" ] || : > "$ws/session.log" # the workspace (and old log) persists
 for try in 1 2 3; do # the auth server sometimes times out the logon proof
   ACCOUNT=$acct WORKSPACE="$ws" RECORD="$record" EVENTS="$events" client/play.sh "$char" --race "$race" --class "$class" >> "$ws/session.log" 2>&1 &
@@ -192,7 +192,7 @@ codex)
     jq --unbuffered -cR 'fromjson? // {type: "stderr", text: .} | . + {timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ"))}' \
     > "$root/$dir/agent.jsonl") &
   agent=$!
-  trap 'kill $agent $judge $session 2>/dev/null; pkill -f -- "-C $ws " 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM ;;
+  trap 'kill $agent $watch 2>/dev/null; pkill -f -- "-C $ws " 2>/dev/null; "$root/agent/calm.sh"; kill $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM ;;
 *)
   (cd "$ws" && PATH="$root/agent/bin:$PATH" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 WOWBENCH_BOARD="$board" WOWBENCH_CHAR="$char" exec timeout "${mins}m" claude -p "$(cat "$root/$dir/prompt.md")" \
     --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
@@ -202,6 +202,8 @@ codex)
     > "$root/$dir/agent.jsonl" 2>&1) &
   agent=$! ;;
 esac
+"$root/agent/watch-exit.sh" $agent "$root/$dir/agent.jsonl" "$board/$char.json" "$name ($char)" "$(dirname "$board")/alerts.log" &
+watch=$!
 # meta.json: who plays this character (runtime, model, spec, role), for team.json, the board and the viewer. The
 # model is what the runtime reports once it starts (Claude: its init event; Codex: its session file).
 (
@@ -218,8 +220,8 @@ esac
     sleep 2
   done
   jq -n --arg a "$name" --arg c "$char" --arg rt "${RUNTIME:-claude}" --arg m "${model:-${MODEL:-${CODEX_MODEL:-default}}}" \
-    --arg sp "${spec_title:-}" --arg ro "${role:-}" \
-    '{agent: $a, char: $c, runtime: $rt, model: $m, spec: $sp, role: $ro}' > "$dir/meta.json"
+    --arg sp "${spec_title:-}" --arg ro "${role:-}" --arg g "$goal" --argjson port "$WOW_PORT" \
+    '{agent: $a, char: $c, runtime: $rt, model: $m, spec: $sp, role: $ro, goal: $g, port: $port}' > "$dir/meta.json"
 ) &
 
 wait $judge || true

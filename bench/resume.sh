@@ -2,8 +2,8 @@
 # bench/resume.sh <team-dir> <total-minutes> <message-file>
 # Resumes a paused team run (stop team.sh, then every bench.sh): each agent's character logs back in with the
 # current SDK, its judge continues from its samples (same baseline and curve; the pause doesn't count), and its
-# Claude Code conversation is resumed with the message (use $LEFT in it for the minutes left). Same ports
-# (8090 + agent order), records, transcripts and run dirs as before; writes team.json at the end like team.sh.
+# Claude Code conversation is resumed with the message (use $LEFT in it for the minutes left). Same ports and goal
+# (from meta.json; older runs: 8090 + agent order, and $GOAL), records, transcripts and run dirs as before; writes team.json at the end like team.sh.
 set -e
 team=$(cd "$1" && pwd) mins=$2 msg=$(cd "$(dirname "$3")" && pwd)/$(basename "$3") # absolute: agents run in their workspace
 cd "$(dirname "$0")" # relative to bench/
@@ -19,6 +19,9 @@ resume_one() { # <agent> <port>
   sid=$(head -1 "$dir/agent.jsonl" | jq -r .session_id)
   acct=$(printf %s "$name" | tr -cd 'a-zA-Z0-9' | cut -c1-16)
   left=$(( mins - $(tail -1 "$dir/samples.jsonl" | jq .elapsed_s) / 60 ))
+  [ "$left" -ge 1 ] || left=1 # timeout 0m would mean no timeout
+  port=$(jq -r ".port // $port" "$dir/meta.json")
+  goal=$(jq -r '.goal // empty' "$dir/meta.json"); goal=${goal:-${GOAL:?$name: no goal in meta.json; set GOAL}}
   export WOW_PORT=$port
   cp "$team/AGENTS.md" "$ws/AGENTS.md"
   [ -f "$ws/NOTES.md" ] || printf '# Notes\n\nYour own notes: what worked, what killed you, where things are. Kept between runs.\n' > "$ws/NOTES.md"
@@ -32,8 +35,8 @@ resume_one() { # <agent> <port>
     sleep $((try * 5))
   done
   agent/bin/wow "LIB = '$ws/'; chat.join('${CHANNEL:-General - Elwynn Forest}', 1)" >/dev/null
-  trap 'kill $agent $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM
-  bun judge/judge.ts "$char" score:100000 --timeout "${mins}m" --resume "$dir/samples.jsonl" --samples "$dir/samples.jsonl" \
+  trap 'kill $agent $watch 2>/dev/null; "$root/agent/calm.sh"; kill $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM
+  bun judge/judge.ts "$char" "$goal" --timeout "${mins}m" --resume "$dir/samples.jsonl" --samples "$dir/samples.jsonl" \
     --record "$record" --board "$team/board" --events "$team/$char.events.jsonl" \
     $(jq -r 'if .role != "" then "--role \(.role)" else empty end, "--runtime \(.runtime)"' "$dir/meta.json" 2>/dev/null) > "$dir/judge.json" &
   judge=$!
@@ -50,6 +53,8 @@ resume_one() { # <agent> <port>
       >> "$dir/agent.jsonl" 2>&1) &
   fi
   agent=$!
+  "$root/agent/watch-exit.sh" $agent "$dir/agent.jsonl" "$team/board/$char.json" "$name ($char)" "$team/alerts.log" &
+  watch=$!
   wait $judge || true
   cat "$dir/judge.json"
 }
@@ -62,5 +67,7 @@ for r in "$team"/*.record.jsonl; do
 done
 wait
 n=$(ls "$team"/*.record.jsonl | wc -l)
-for f in "$team"/*.out; do grep '^{' "$f" | tail -n 1; done | jq -s --argjson n $n '{agents: sort_by(-(.score // .value)), faction_score: (map(.score // 0) | add), team_s: (if length == $n and all(.met) then map(.elapsed_s) | max else null end)}' | tee "$team/team.json"
+for f in "$team"/*.out; do grep '^{' "$f" | tail -n 1; done | jq -s --argjson n $n '{agents: sort_by(-(.score // .value)), faction_score: (map(.score // 0) | add),
+  by_runtime: (group_by(.runtime // "claude") | map({runtime: (.[0].runtime // "claude"), players: length, score: (map(.score // 0) | add), best: (map(.score // 0) | max)})),
+  team_s: (if length == $n and all(.met) then map(.elapsed_s) | max else null end)}' | tee "$team/team.json"
 bun ../server/recorder/replay.ts "$team" || true
