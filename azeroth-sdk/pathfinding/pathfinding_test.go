@@ -489,3 +489,19 @@ func TestFindPath_ZMatchesACReference(t *testing.T) {
 		t.Fatal("TestFindPath_ZMatchesACReference timed out after 10s")
 	}
 }
+
+// Warsong Gulch, Horde graveyard to the Alliance flag: a failed poly-height lookup during smoothing once left a
+// waypoint at z=0, a 325-yard drop and climb in the middle of the path.
+func TestFindPath_Map489_NoZeroHeightWaypoint(t *testing.T) {
+	dataDir := requireACData(t)
+	svc := NewPathFindingService(dataDir+"/mmaps", dataDir+"/maps")
+	res, err := svc.FindPath(489, Point3D{X: 1029.14, Y: 1387.49, Z: 340.8}, Point3D{X: 1540.4, Y: 1481.3, Z: 351.8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, p := range res.Points {
+		if p.Z < 250 { // the map's floor is around 300
+			t.Fatalf("point %d at z=%.1f", i, p.Z)
+		}
+	}
+}

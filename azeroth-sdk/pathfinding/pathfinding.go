@@ -475,10 +475,11 @@ func (pf *PathFinder) findSmoothPath(startPos, endPos []float32, polyPath []deto
 
 		npolys = pf.fixupCorridor(polys, npolys, maxPathLength, visited, uint32(nvisited))
 
-		// Get the real surface height.
+		// Get the real surface height. AC writes it in place, so a failed lookup keeps MoveAlongSurface's height.
 		var h float32
-		pf.query.GetPolyHeight(polys[0], result[:], &h)
-		result[1] = h
+		if detour.DtStatusSucceed(pf.query.GetPolyHeight(polys[0], result[:], &h)) {
+			result[1] = h
+		}
 		result[1] += 0.5 // temp lift matches AC FindSmoothPath for steering iterations (Normalize fixes later)
 		copy(iterPos[:], result[:])
 
