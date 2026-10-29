@@ -246,6 +246,31 @@ func (b *Bot) setupControl() {
 				}
 				g.Members = append(g.Members, gm)
 			}
+			// spread: the widest gap between any two of you on the ground (out of sight there's no z, and party
+			// updates don't say the map, so only members in your zone count)
+			type pt struct {
+				name string
+				x, y float64
+			}
+			loc, _ := e.Native("me.location").(types.Location)
+			pts := []pt{{b.config.CharacterName, float64(mx), float64(my)}}
+			for _, m := range g.Members {
+				if m.Position != nil && (m.InSight || (m.Zone != "" && m.Zone == loc.Zone)) {
+					pts = append(pts, pt{m.Name, m.Position.X, m.Position.Y})
+				}
+			}
+			if len(pts) > 1 {
+				best := -1.0
+				for i := range pts {
+					for j := i + 1; j < len(pts); j++ {
+						if d := math.Hypot(pts[i].x-pts[j].x, pts[i].y-pts[j].y); d > best {
+							best, g.SpreadPair = d, []string{pts[i].name, pts[j].name}
+						}
+					}
+				}
+				best = math.Round(best)
+				g.Spread = &best
+			}
 			return g
 		})
 	e.Func("group.invite", "(name) → request", "invite a player (by exact character name) to your group: ok once the invite is sent; they answer with group.accept", func(name string) map[string]any {

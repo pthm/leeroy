@@ -321,6 +321,10 @@ export interface Group {
   me_leader: boolean;
   /** the others, not you */
   members: GroupMember[];
+  /** yards between the two of you farthest apart (you included), across the ground: how clustered the party is. Counts whoever's position is known and in your zone */
+  spread?: number;
+  /** who those two are */
+  spread_pair?: string[];
 }
 
 /** GroupMember is a party member as the real client's party frames show them: health, power, level and where they are come from the server's party updates even when they're out of sight. */

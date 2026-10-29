@@ -629,6 +629,8 @@ Everything in [Item](#item), plus:
 | `leader` | string |  |
 | `me_leader` | bool | you lead the group |
 | `members` | GroupMember[] | the others, not you |
+| `spread?` | number | yards between the two of you farthest apart (you included), across the ground: how clustered the party is. Counts whoever's position is known and in your zone |
+| `spread_pair?` | string[] | who those two are |
 
 ### GroupMember
 

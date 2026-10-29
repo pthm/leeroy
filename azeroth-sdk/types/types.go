@@ -290,9 +290,11 @@ type Talents struct {
 // ---------- others ----------
 
 type Group struct {
-	Leader   string        `json:"leader"`
-	MeLeader bool          `json:"me_leader" doc:"you lead the group"`
-	Members  []GroupMember `json:"members" doc:"the others, not you"`
+	Leader     string        `json:"leader"`
+	MeLeader   bool          `json:"me_leader" doc:"you lead the group"`
+	Members    []GroupMember `json:"members" doc:"the others, not you"`
+	Spread     *float64      `json:"spread,omitempty" doc:"yards between the two of you farthest apart (you included), across the ground: how clustered the party is. Counts whoever's position is known and in your zone"`
+	SpreadPair []string      `json:"spread_pair,omitempty" doc:"who those two are"`
 }
 
 // GroupMember is a party member as the real client's party frames show them: health, power, level and where they
