@@ -29,7 +29,8 @@ export function runSources(dir: string) {
   const transcripts: { name: string; path: string }[] = [];
   const charOf = (runDir: string) => {
     const p = join(runDir, "prompt.md");
-    return existsSync(p) ? readFileSync(p, "utf8").match(/Your\s+character (\w+)/)?.[1] : undefined;
+    const m = existsSync(p) ? readFileSync(p, "utf8").match(/Your\s+character (\w+)|You are (\w+), an? /) : null;
+    return m?.[1] ?? m?.[2]; // "Your character X is..." or, with a spec, "You are X, a Human Warrior..."
   };
   if (existsSync(join(dir, "agent.jsonl"))) { // a single run
     const name = charOf(dir);

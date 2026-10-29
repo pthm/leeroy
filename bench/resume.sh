@@ -15,7 +15,7 @@ cat agent/AGENTS.md ../azeroth-sdk/docs/guide.md ../azeroth-sdk/docs/runtime.md 
 resume_one() { # <agent> <port>
   name=$1 port=$2
   dir=$(ls -d "$root"/runs/*-"$name" | tail -1) ws="$root/workspaces/$name" record="$team/$name.record.jsonl"
-  char=$(sed -n 's/.*Your character \([A-Za-z]*\).*/\1/p; s/^character \([A-Za-z]*\) is already.*/\1/p' "$dir/prompt.md" | head -1)
+  char=$(sed -n 's/.*Your character \([A-Za-z]*\).*/\1/p; s/^character \([A-Za-z]*\) is already.*/\1/p; s/^You are \([A-Za-z]*\), an* .*/\1/p' "$dir/prompt.md" | head -1)
   sid=$(head -1 "$dir/agent.jsonl" | jq -r .session_id)
   acct=$(printf %s "$name" | tr -cd 'a-zA-Z0-9' | cut -c1-16)
   left=$(( mins - $(tail -1 "$dir/samples.jsonl" | jq .elapsed_s) / 60 ))
