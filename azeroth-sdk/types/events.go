@@ -5,7 +5,8 @@ package types
 type Damage struct {
 	Src       UnitRef `json:"src"`
 	Dst       UnitRef `json:"dst"`
-	Amount    uint32  `json:"amount"`
+	Amount    uint32  `json:"amount" doc:"for heals: what it actually healed (overheal excluded)"`
+	Overheal  uint32  `json:"overheal,omitempty" doc:"heals: the part that healed past full health"`
 	Spell     uint32  `json:"spell,omitempty" doc:"0 for melee"`
 	SpellName string  `json:"spell_name,omitempty"`
 	Taken     bool    `json:"taken" doc:"you're dst"`
@@ -153,16 +154,18 @@ type Answer struct {
 	Choice string `json:"choice"`
 }
 
-// FightSummary: one fight, from entering combat to leaving it (or dying).
+// FightSummary: one fight, from you or a party member in sight entering combat until all of you are out of it (or
+// you die). Your numbers are yours; group has everyone's.
 type FightSummary struct {
-	Outcome       string         `json:"outcome" doc:"won (you killed something and left combat), died, or ended (left combat without a kill: it fled, evaded or you got away)"`
+	Outcome       string         `json:"outcome" doc:"won (you or your party killed something), died, or ended (combat ended without a kill: it fled, evaded or you got away)"`
 	Seconds       float64        `json:"seconds"`
 	Enemies       []UnitRef      `json:"enemies" doc:"everything that hit you or that you hit"`
-	Kills         []UnitRef      `json:"kills"`
+	Kills         []UnitRef      `json:"kills" doc:"yours and your party's"`
 	DamageDealt   uint32         `json:"damage_dealt"`
 	DamageTaken   uint32         `json:"damage_taken"`
 	HealingDone   uint32         `json:"healing_done"`
 	HealingTaken  uint32         `json:"healing_taken"`
+	Overhealing   uint32         `json:"overhealing,omitempty" doc:"your heals' part past full health (wasted mana)"`
 	DPS           float64        `json:"dps" doc:"damage dealt per second of the fight"`
 	HealthStart   float64        `json:"health_start" doc:"fraction 0-1"`
 	HealthEnd     float64        `json:"health_end"`
@@ -175,6 +178,9 @@ type FightSummary struct {
 	AurasSuffered map[string]int `json:"auras_suffered,omitempty" doc:"debuffs that landed on you, by name"`
 	SwingsRefused int            `json:"swings_refused,omitempty" doc:"melee swings the server refused (not_in_range, bad_facing)"`
 	Outcomes      map[string]int `json:"outcomes,omitempty" doc:"how your attacks landed: hit, crit, miss, dodge, parry, block, resist, evade, immune..."`
+	Group         []Meter        `json:"group,omitempty" doc:"in a party: you and each member in sight over this fight (zeros for whoever did nothing), from the combat log: damage dealt, healing done, damage taken (taken), healing received (healed), dps, hps, kills"`
+	DamageShare   *float64       `json:"damage_share,omitempty" doc:"in a party: your fraction (0-1) of the group's damage this fight"`
+	HealingShare  *float64       `json:"healing_share,omitempty" doc:"in a party: your fraction (0-1) of the group's healing this fight"`
 }
 
 // AuraChange: an aura on you, or one you cast on another unit, began or ended.
@@ -198,6 +204,7 @@ var EventTypes = map[string]EventType{
 	"kill":             {Kill{}, "you killed something"},
 	"party_kill":       {Kill{}, "a party member killed something"},
 	"death":            {Death{}, "you died"},
+	"fight_end":        {FightSummary{}, "a fight ended (you or a party member in sight left combat, or you died): its summary, with the group's numbers when you're in a party"},
 	"resurrected":      {None{}, "you're alive again"},
 	"combat_start":     {None{}, "you entered combat"},
 	"combat_end":       {None{}, "you left combat"},

@@ -195,18 +195,10 @@ func (b *Bot) setupAgentAPI() {
 			return nil
 		})
 	los := func(to navigation.Point3D) any {
-		l, ok := b.nav.(interface {
-			InLineOfSight(mapID uint32, a, b navigation.Point3D) (bool, bool)
-		})
-		if !ok {
-			return nil
+		if clear, ok := b.inSight(to); ok {
+			return clear
 		}
-		px, py, pz, _, m := w.Position()
-		clear, ok := l.InLineOfSight(m, navigation.Point3D{X: px, Y: py, Z: pz + 1.8}, to)
-		if !ok {
-			return nil
-		}
-		return clear
+		return nil
 	}
 	e.Func("world.in_sight", "(x, y, z) → bool?", "nothing solid (walls, rock, buildings) between your eyes and the point, as the server checks spells; nil without collision data",
 		func(x, y, z float32) any { return los(navigation.Point3D{X: x, Y: y, Z: z + 1.5}) })
@@ -676,4 +668,73 @@ func dbcRows(name string) map[uint32][]byte {
 		out[le.Uint32(rec)] = rec
 	}
 	return out
+}
+
+// inSight: line of sight from your eyes to a point, against world models (ok = false without collision data).
+func (b *Bot) inSight(to navigation.Point3D) (clear, ok bool) {
+	l, has := b.nav.(interface {
+		InLineOfSight(mapID uint32, a, b navigation.Point3D) (bool, bool)
+	})
+	if !has {
+		return false, false
+	}
+	px, py, pz, _, m := b.world.Position()
+	return l.InLineOfSight(m, navigation.Point3D{X: px, Y: py, Z: pz + 1.8}, to)
+}
+
+type pathEntry struct {
+	from, to navigation.Point3D
+	at       time.Time
+	dist     float64
+	ok       bool
+}
+
+// annotateNearby adds in_sight to every living creature and, nearest first, path_distance and reachable until the
+// time budget runs out (a route costs a few ms; this runs inside a script step). Routes are cached per unit while
+// neither end has moved much.
+// ponytail: 60 ms budget and a 5 s / 3 yd cache; a background path worker if agents need it for every unit
+func (b *Bot) annotateNearby(cs []types.Creature) {
+	if b.nav == nil {
+		return
+	}
+	if b.pathCache == nil {
+		b.pathCache = map[uint64]pathEntry{}
+	}
+	px, py, pz, _, m := b.world.Position()
+	from := navigation.Point3D{X: px, Y: py, Z: pz}
+	deadline := time.Now().Add(60 * time.Millisecond)
+	for i := range cs {
+		c := &cs[i]
+		if !c.Alive {
+			continue
+		}
+		to := navigation.Point3D{X: float32(c.X), Y: float32(c.Y), Z: float32(c.Z)}
+		if clear, ok := b.inSight(navigation.Point3D{X: to.X, Y: to.Y, Z: to.Z + 1.5}); ok {
+			c.InSight = &clear
+		}
+		e, hit := b.pathCache[uint64(c.GUID)]
+		if !hit || time.Since(e.at) > 5*time.Second || dist3(e.from, from) > 3 || dist3(e.to, to) > 3 {
+			if time.Now().After(deadline) {
+				continue
+			}
+			e = pathEntry{from: from, to: to, at: time.Now()}
+			if res, err := b.nav.FindPath(m, from, to); err == nil && res != nil && len(res.Points) > 0 {
+				prev := from
+				for _, p := range res.Points {
+					e.dist += dist3(prev, p)
+					prev = p
+				}
+				e.ok = dist3(prev, to) <= 5
+			}
+			b.pathCache[uint64(c.GUID)] = e
+		}
+		d, ok := math.Round(e.dist*10)/10, e.ok
+		c.Reachable = &ok
+		if ok {
+			c.PathDistance = &d
+		}
+	}
+	if len(b.pathCache) > 500 {
+		b.pathCache = nil // ponytail: crude bound; units come and go
+	}
 }

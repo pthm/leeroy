@@ -86,6 +86,9 @@ type Creature struct {
 	Attackable    bool     `json:"attackable" doc:"can be attacked at all (false for triggers, dummies, protected NPCs)"`
 	Lootable      bool     `json:"lootable" doc:"a corpse with loot for you"`
 	TappedByOther bool     `json:"tapped_by_other" doc:"someone else damaged it first: killing it gives you nothing"`
+	InSight       *bool    `json:"in_sight,omitempty" doc:"units.nearby, living units: nothing solid (rock, walls) between you and it. Distance is a straight line: a mob in a cave under you can be close but not in sight"`
+	PathDistance  *float64 `json:"path_distance,omitempty" doc:"units.nearby, living units, nearest first within a time budget: how far you'd walk to reach it (often much more than distance across cliffs, floors and caves)"`
+	Reachable     *bool    `json:"reachable,omitempty" doc:"with path_distance: whether a walking route gets you there"`
 }
 
 type Player struct {

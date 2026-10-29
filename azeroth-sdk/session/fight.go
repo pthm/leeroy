@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pthm/wowbench/azeroth-sdk/client"
 	"github.com/pthm/wowbench/azeroth-sdk/script"
 	"github.com/pthm/wowbench/azeroth-sdk/types"
 )
@@ -45,6 +46,7 @@ func (f *fightState) count(ev script.Event) {
 		if ev.Type == "heal" {
 			if d.Src.Me {
 				f.sum.HealingDone += d.Amount
+				f.sum.Overhealing += d.Overheal
 			}
 			if d.Taken {
 				f.sum.HealingTaken += d.Amount
@@ -70,7 +72,7 @@ func (f *fightState) count(ev script.Event) {
 			f.sum.FailedCasts[d.Code]++
 		}
 	case types.Kill:
-		if ev.Type == "kill" {
+		if ev.Type == "kill" || ev.Type == "party_kill" {
 			f.sum.Kills = append(f.sum.Kills, d.Victim)
 		}
 	case types.XPGain:
@@ -156,7 +158,56 @@ func (b *Bot) fightTransitions(enteredCombat, leftCombat, died bool) {
 	if len(s.AurasSuffered) == 0 {
 		s.AurasSuffered = nil
 	}
+	if g, ok := b.lua.Native("group.info").(types.Group); ok && len(g.Members) > 0 {
+		in := map[types.GUID]bool{}
+		for _, m := range g.Members {
+			in[m.GUID] = true
+		}
+		var dmg, heal uint32
+		seen := map[types.GUID]bool{}
+		for _, m := range b.meter(s.Seconds + 1) {
+			if m.Unit.Me || in[m.Unit.GUID] {
+				m.BySpell = nil // yours are in abilities
+				s.Group = append(s.Group, m)
+				dmg, heal, seen[m.Unit.GUID] = dmg+m.Damage, heal+m.Healing, true
+			}
+		}
+		// whoever in sight did nothing this fight (you included) is listed with zeros; out of sight, nothing is known
+		present := []uint64{b.world.CharGUID()}
+		for _, m := range g.Members {
+			if b.world.GetObject(uint64(m.GUID)) != nil {
+				present = append(present, uint64(m.GUID))
+			}
+		}
+		for _, guid := range present {
+			if !seen[types.GUID(guid)] {
+				s.Group = append(s.Group, types.Meter{Unit: b.ref(guid)})
+			}
+		}
+		share := func(v, total uint32) *float64 {
+			x := 0.0
+			if total > 0 {
+				x = math.Round(float64(v)/float64(total)*100) / 100
+			}
+			return &x
+		}
+		s.DamageShare, s.HealingShare = share(s.DamageDealt, dmg), share(s.HealingDone, heal)
+	}
 	f.active = false
 	f.reset()
 	go b.emit("fight_end", s) // not under f.mu: the bus calls f.count
+}
+
+// partyInCombat: a party member in sight has the server's in-combat flag (out of sight the server doesn't say).
+func (b *Bot) partyInCombat() bool {
+	g, ok := b.lua.Native("group.info").(types.Group)
+	if !ok {
+		return false
+	}
+	for _, m := range g.Members {
+		if o := b.world.GetObject(uint64(m.GUID)); o != nil && o.Value(client.UnitFieldFlags)&0x80000 != 0 {
+			return true
+		}
+	}
+	return false
 }

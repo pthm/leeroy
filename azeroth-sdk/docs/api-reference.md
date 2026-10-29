@@ -395,6 +395,9 @@ Everything in [Unit](#unit), plus:
 | `attackable` | bool | can be attacked at all (false for triggers, dummies, protected NPCs) |
 | `lootable` | bool | a corpse with loot for you |
 | `tapped_by_other` | bool | someone else damaged it first: killing it gives you nothing |
+| `in_sight?` | bool | units.nearby, living units: nothing solid (rock, walls) between you and it. Distance is a straight line: a mob in a cave under you can be close but not in sight |
+| `path_distance?` | number | units.nearby, living units, nearest first within a time budget: how far you'd walk to reach it (often much more than distance across cliffs, floors and caves) |
+| `reachable?` | bool | with path_distance: whether a walking route gets you there |
 
 ### Player
 
@@ -1093,7 +1096,8 @@ AuraChange: an aura on you, or one you cast on another unit, began or ended.
 |---|---|---|
 | `src` | UnitRef |  |
 | `dst` | UnitRef |  |
-| `amount` | number |  |
+| `amount` | number | for heals: what it actually healed (overheal excluded) |
+| `overheal?` | number | heals: the part that healed past full health |
 | `spell?` | number | 0 for melee |
 | `spell_name?` | string |  |
 | `taken` | bool | you're dst |
@@ -1112,6 +1116,37 @@ AuraChange: an aura on you, or one you cast on another unit, began or ended.
 | `op` | string | items, vendor.buy, vendor.sell, trainer.learn, group, quests |
 | `code` | string |  |
 | `message` | string |  |
+
+### FightSummary
+
+FightSummary: one fight, from you or a party member in sight entering combat until all of you are out of it (or you die). Your numbers are yours; group has everyone's.
+
+| Field | Type | |
+|---|---|---|
+| `outcome` | string | won (you or your party killed something), died, or ended (combat ended without a kill: it fled, evaded or you got away) |
+| `seconds` | number |  |
+| `enemies` | UnitRef[] | everything that hit you or that you hit |
+| `kills` | UnitRef[] | yours and your party's |
+| `damage_dealt` | number |  |
+| `damage_taken` | number |  |
+| `healing_done` | number |  |
+| `healing_taken` | number |  |
+| `overhealing?` | number | your heals' part past full health (wasted mana) |
+| `dps` | number | damage dealt per second of the fight |
+| `health_start` | number | fraction 0-1 |
+| `health_end` | number |  |
+| `power_start` | number | fraction 0-1 (mana, rage, energy) |
+| `power_end` | number |  |
+| `xp` | number |  |
+| `abilities` | {[string]: number} | casts that went off, by spell |
+| `failed_casts?` | {[string]: number} | by reason (out_of_range, no_power, not_ready...) |
+| `auras_applied?` | {[string]: number} | buffs and debuffs you put on others, by name |
+| `auras_suffered?` | {[string]: number} | debuffs that landed on you, by name |
+| `swings_refused?` | number | melee swings the server refused (not_in_range, bad_facing) |
+| `outcomes?` | {[string]: number} | how your attacks landed: hit, crit, miss, dodge, parry, block, resist, evade, immune... |
+| `group?` | Meter[] | in a party: you and each member in sight over this fight (zeros for whoever did nothing), from the combat log: damage dealt, healing done, damage taken (taken), healing received (healed), dps, hps, kills |
+| `damage_share?` | number | in a party: your fraction (0-1) of the group's damage this fight |
+| `healing_share?` | number | in a party: your fraction (0-1) of the group's healing this fight |
 
 ### FlightLearned
 
@@ -1248,6 +1283,7 @@ An event is an [Event](#event) whose `data` is the type below.
 | `damage` | Damage | a hit involving you (melee or spell) |
 | `death` | Death | you died |
 | `error` | ErrorEvent | the server refused something |
+| `fight_end` | FightSummary | a fight ended (you or a party member in sight left combat, or you died): its summary, with the group's numbers when you're in a party |
 | `flight_end` | Flight | you landed |
 | `flight_learned` | FlightLearned | you discovered a flight point |
 | `flight_start` | Flight | you took off: the server flies you, and move.to is refused until you land |

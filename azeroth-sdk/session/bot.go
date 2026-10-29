@@ -62,18 +62,20 @@ type Bot struct {
 	err              error
 	mu               sync.Mutex
 
-	world      *client.WorldClient
-	nav        navigation.Navigator
-	wasCombat  bool // stateEvents: last tick's combat / alive
-	wasAlive   *bool
-	clog       *combatLog               // combat.log / combat.meter
-	travel     *travelState             // flights, teleports, who moves you
-	fight      *fightState              // the running fight, for fight_end
-	cinfo      *combatInfo              // casts, combo points, evades (combatinfo.go)
-	agent      *agentState              // Lua agent API state (cast tracking); nil outside sessions
-	playerName func(guid uint64) string // name from the session's name-query cache ("" until the server answers)
-	notify     func(text string)        // a notice event (set by setupControl)
-	lua        *script.Engine
+	world          *client.WorldClient
+	nav            navigation.Navigator
+	wasCombat      bool // stateEvents: last tick's combat / alive
+	wasAlive       *bool
+	clog           *combatLog               // combat.log / combat.meter
+	travel         *travelState             // flights, teleports, who moves you
+	fight          *fightState              // the running fight, for fight_end
+	wasGroupCombat bool                     // you or a party member in sight was in combat last tick
+	pathCache      map[uint64]pathEntry     // units.nearby routes, see annotateNearby
+	cinfo          *combatInfo              // casts, combo points, evades (combatinfo.go)
+	agent          *agentState              // Lua agent API state (cast tracking); nil outside sessions
+	playerName     func(guid uint64) string // name from the session's name-query cache ("" until the server answers)
+	notify         func(text string)        // a notice event (set by setupControl)
+	lua            *script.Engine
 
 	// Stats
 	kills  int

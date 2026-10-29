@@ -274,8 +274,11 @@ func (b *Bot) watchEvents() {
 			}
 		case smsgSpellHealLog: // target, caster, spell, heal, overheal
 			dst, src := readPackedGUID(r), readPackedGUID(r)
-			spell := u32()
-			hit(src, dst, u32(), spell, "heal")
+			spell, heal, over := u32(), u32(), u32()
+			if (src == me || dst == me) && heal > 0 {
+				b.emit("heal", types.Damage{Src: b.ref(src), Dst: b.ref(dst), Amount: heal - min(heal, over), Overheal: min(heal, over),
+					Spell: spell, SpellName: spellName(spell), Taken: dst == me})
+			}
 		case smsgLogXPGain: // victim (u64), amount, 0 = kill / 1 = other
 			victim, amount := u64(), u32()
 			typ, _ := r.ReadByte()
@@ -398,8 +401,9 @@ func (b *Bot) watchEvents() {
 // stateEvents emits transitions only visible in client state (each AI tick, before scripts run).
 func (b *Bot) stateEvents() {
 	combat, alive := b.InCombat(), b.IsAlive() && !b.IsGhost()
+	groupCombat := combat || b.partyInCombat()
 	if b.wasAlive != nil {
-		b.fightTransitions(combat && !b.wasCombat, !combat && b.wasCombat, !alive && *b.wasAlive && !b.IsGhost())
+		b.fightTransitions(groupCombat && !b.wasGroupCombat, !groupCombat && b.wasGroupCombat, !alive && *b.wasAlive && !b.IsGhost())
 		if combat != b.wasCombat {
 			b.emit(map[bool]string{true: "combat_start", false: "combat_end"}[combat], types.None{})
 		}
@@ -416,7 +420,7 @@ func (b *Bot) stateEvents() {
 			}
 		}
 	}
-	b.wasCombat, b.wasAlive = combat, &alive
+	b.wasCombat, b.wasGroupCombat, b.wasAlive = combat, groupCombat, &alive
 	b.travelEvents(b.ConsumeTeleport())
 }
 

@@ -159,7 +159,11 @@ func (b *Bot) setupCoreAPI() {
 		return d
 	}
 	e.Func("units.nearby", "([dist = 30]) → Creature[]", "creatures within dist yards (alive and dead), nearest first",
-		func(d float32) []types.Creature { return b.creatures(b.GetNearbyUnits(dist(d))) })
+		func(d float32) []types.Creature {
+			cs := b.creatures(b.GetNearbyUnits(dist(d)))
+			b.annotateNearby(cs)
+			return cs
+		})
 	e.Func("units.players", "([dist = 30]) → Player[]", "players within dist yards, nearest first", func(d float32) []types.Player {
 		return b.players(b.GetNearbyPlayers(dist(d)))
 	})

@@ -76,6 +76,12 @@ export interface Creature extends Unit {
   lootable: boolean;
   /** someone else damaged it first: killing it gives you nothing */
   tapped_by_other: boolean;
+  /** units.nearby, living units: nothing solid (rock, walls) between you and it. Distance is a straight line: a mob in a cave under you can be close but not in sight */
+  in_sight?: boolean;
+  /** units.nearby, living units, nearest first within a time budget: how far you'd walk to reach it (often much more than distance across cliffs, floors and caves) */
+  path_distance?: number;
+  /** with path_distance: whether a walking route gets you there */
+  reachable?: boolean;
 }
 
 export interface Player extends Unit {
@@ -755,7 +761,10 @@ export interface None {
 export interface Damage {
   src: UnitRef;
   dst: UnitRef;
+  /** for heals: what it actually healed (overheal excluded) */
   amount: number;
+  /** heals: the part that healed past full health */
+  overheal?: number;
   /** 0 for melee */
   spell?: number;
   spell_name?: string;
@@ -775,6 +784,50 @@ export interface ErrorEvent {
   op: string;
   code: string;
   message: string;
+}
+
+/** FightSummary: one fight, from you or a party member in sight entering combat until all of you are out of it (or you die). Your numbers are yours; group has everyone's. */
+export interface FightSummary {
+  /** won (you or your party killed something), died, or ended (combat ended without a kill: it fled, evaded or you got away) */
+  outcome: string;
+  seconds: number;
+  /** everything that hit you or that you hit */
+  enemies: UnitRef[];
+  /** yours and your party's */
+  kills: UnitRef[];
+  damage_dealt: number;
+  damage_taken: number;
+  healing_done: number;
+  healing_taken: number;
+  /** your heals' part past full health (wasted mana) */
+  overhealing?: number;
+  /** damage dealt per second of the fight */
+  dps: number;
+  /** fraction 0-1 */
+  health_start: number;
+  health_end: number;
+  /** fraction 0-1 (mana, rage, energy) */
+  power_start: number;
+  power_end: number;
+  xp: number;
+  /** casts that went off, by spell */
+  abilities: Record<string, number>;
+  /** by reason (out_of_range, no_power, not_ready...) */
+  failed_casts?: Record<string, number>;
+  /** buffs and debuffs you put on others, by name */
+  auras_applied?: Record<string, number>;
+  /** debuffs that landed on you, by name */
+  auras_suffered?: Record<string, number>;
+  /** melee swings the server refused (not_in_range, bad_facing) */
+  swings_refused?: number;
+  /** how your attacks landed: hit, crit, miss, dodge, parry, block, resist, evade, immune... */
+  outcomes?: Record<string, number>;
+  /** in a party: you and each member in sight over this fight (zeros for whoever did nothing), from the combat log: damage dealt, healing done, damage taken (taken), healing received (healed), dps, hps, kills */
+  group?: Meter[];
+  /** in a party: your fraction (0-1) of the group's damage this fight */
+  damage_share?: number;
+  /** in a party: your fraction (0-1) of the group's healing this fight */
+  healing_share?: number;
 }
 
 export interface FlightLearned {
@@ -902,6 +955,8 @@ export interface EventMap {
   death: Death;
   /** the server refused something */
   error: ErrorEvent;
+  /** a fight ended (you or a party member in sight left combat, or you died): its summary, with the group's numbers when you're in a party */
+  fight_end: FightSummary;
   /** you landed */
   flight_end: Flight;
   /** you discovered a flight point */
