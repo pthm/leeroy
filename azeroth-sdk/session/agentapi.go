@@ -16,6 +16,7 @@ import (
 
 	"github.com/pthm/wowbench/azeroth-sdk/client"
 	"github.com/pthm/wowbench/azeroth-sdk/navigation"
+	"github.com/pthm/wowbench/azeroth-sdk/script"
 )
 
 const (
@@ -310,15 +311,21 @@ func (b *Bot) setupAgentAPI() {
 	// turn_in(npc, quest, reward_index): complete -> request reward -> choose reward in one go.
 	// Check quest_log()/has_item first; the server silently ignores an incomplete turn-in. Returns a warning when
 	// your bags are full: the server refuses quests with item rewards then ("Inventory is full" in read_chat).
-	e.RegisterFunc("turn_in", func(npc uint64, quest, reward uint32) any {
+	e.RegisterFunc("turn_in", func(npc uint64, quest, reward uint32) map[string]any {
 		w.QuestgiverCompleteQuest(npc, quest)
 		body := binary.LittleEndian.AppendUint64(nil, npc)
 		w.SendPacketRaw(cmsgQuestRequestRew, binary.LittleEndian.AppendUint32(body, quest))
 		w.QuestgiverChooseReward(npc, quest, reward)
-		if freeSlots(w) == 0 {
-			return "bags full: item rewards will be refused; sell or destroy something first"
-		}
-		return nil
+		return b.request("turn_in", map[string]any{"npc": fmt.Sprint(npc), "quest": quest, "reward": reward}, 5*time.Second,
+			nil, func(ev script.Event) *script.Outcome {
+				switch {
+				case ev.Type == "quest_turned_in" && same(ev.Data["quest"], quest):
+					return script.Ok(ev.Data)
+				case ev.Type == "error" && ev.Data["op"] == "inventory":
+					return script.Fail("bags_full", "bags full: the item reward was refused; sell or destroy something", nil)
+				}
+				return failOn(ev, "quest")
+			})
 	})
 }
 

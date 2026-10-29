@@ -14,45 +14,58 @@ character: `bot.log()` output, script errors, kills, level-ups. `example.lua` is
 fight-loot-repeat loop to start from.
 
 ```sh
-wow 'return bot.get_level(), bot.get_health()'   # query -> {"result":[3,72,72]}
+wow 'return bot.get_level(), bot.get_health()'   # query -> {"result":[3,72,72], "events": {...}}
 wow 'return bot.get_nearby_units(40)'            # what's around you
-wow -f grind.lua                                 # load/replace a script; its on_tick() starts running
-wow 'on_tick = nil'                              # stop the running script
-wow -w 60 'return bot.get_level(), bot.get_xp()' # wait 60s (max 600), then query: use this to poll
-wow -c 60 'return bot.read_chat()'               # same, but returns as soon as another player messages you
+wow status                                       # one-call snapshot of your character
+wow -f grind.lua                                 # load a script file (it starts its tasks)
+wow tasks                                        # your running tasks: state, status, what each waits for
+wow 'task.stop("grind")'                         # stop one
+wow wait 300                                     # block until something important happens (chat, death, failure...)
+wow events --types chat,death --last 20          # the event log: what happened, in order, for the whole run
+wow answer 812 sell                              # answer a script's ask()
 tail -20 session.log
 standings                                        # where everyone in this run stands (rank, score, recent rate)
 party [10]                                       # your party over the last 10 min: each member's XP/hour, time fighting/travelling/idle/dead/with the group
 ```
 
-- `wow` runs Lua in the session and prints the returned values as JSON (`{"error": ...}` on failure).
-  It shares a lock with `on_tick`, so don't block in it. Return data rather than printing it. If your
-  running script raised errors since the last call, the reply also has
-  `"script_errors": {"count": n, "last": "..."}`. When other players have messaged you (chat, whispers, party, invites) and you
-  haven't read it yet, every reply also carries `"chat_pending": n`: read it with `bot.read_chat()`.
-- `-w`/`-c` take whole seconds. Create and edit files with your Edit/Write tools: shell redirects,
+- `wow` runs Lua in the session and prints the returned values as JSON (`{"error": ...}` on failure). It runs
+  between your scripts' steps on the same state, so it sees exactly what they see, and it can't wait: start a
+  task for anything that takes time. Every reply carries `"events"`: what happened since your last call (counts,
+  plus chat, deaths, errors, failed actions and tasks in full), and `"script_errors"` if a script failed.
+- `wow wait`/`-w` take whole seconds (max 600). Create and edit files with your Edit/Write tools: shell redirects,
   heredocs, `sed -i` and `python` are blocked.
-- A loaded script stays active until you replace it, and Lua globals persist across calls. Keep shared
-  state in globals if you want to inspect it later (`wow 'return my_state'`).
+- Scripts and Lua globals persist until you replace them. Keep state you want to inspect in globals
+  (`wow 'return my_state'`), and change a running script's behaviour by setting them.
 - Inside Lua, the global `LIB` is the absolute path of your workspace (ending in `/`). Load your own
   modules with `dofile(LIB .. "lib/combat.lua")`.
 
 `NOTES.md` is your notebook: read it at the start, and add what you learn (what worked, what killed you, good
 spots, NPC and quest gotchas) as you go. It's kept between runs, so your next run starts from it.
 
-Factor reusable pieces into `lib/` (combat rotation, death handling, navigation, quest and vendor helpers,
-packet parsers...), with a top-level script per activity. A script defines `on_tick()`, which is called
-every 200ms. Calls like `move_to` don't block: they start an action, and you re-check the world on the next
-tick.
+Factor reusable pieces into `lib/` (combat, death handling, navigation, quest and vendor helpers, packet
+parsers...), with a top-level script per activity. A script starts **tasks**: functions that run alongside
+everything else and wait without blocking (`wait(2)`, `await(action)`, `events.wait("kill", 30)`). Actions return
+requests that resolve to `{ok, data}` or `{ok = false, error = {code, message}}`, so a script knows whether a move,
+cast, loot or turn-in worked and why not. Event handlers react to what happens (`events.on("death", fn)`).
 
 ```lua
 local combat = dofile(LIB .. "lib/combat.lua")
-function on_tick()
-  if bot.in_combat() then return combat.tick() end
-  local mob = combat.pick_target(80)
-  if mob then bot.move_to(mob.x, mob.y, mob.z) end
-end
+task.stop("grind")                                   -- reloading: replace the old one
+task.spawn("grind", function()
+  while true do
+    local mob = combat.pick_target(80)
+    if not mob then wait(3) else
+      task.status("fighting " .. mob.name)
+      local r = act.approach(mob.guid, 4)
+      if r.ok then combat.fight(mob) else bot.log("can't reach " .. mob.name .. ": " .. r.error.code) end
+    end
+  end
+end)
+events.on("death", function() act.release() act.corpse_run() end)
 ```
+
+While it runs, you're watching: `wow wait` wakes you for anything important, `wow events` shows what led up to it,
+and a script can hand a decision to you with `ask(question, options)`.
 
 The rest of this file: a guide to playing well with the SDK (bags, vendors, trainers, death, unreachable
 targets, other players), then the reference for the Lua runtime and `bot` API, then the world data tools

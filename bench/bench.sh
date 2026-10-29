@@ -22,9 +22,10 @@ root=$(pwd); repo=$(dirname "$root"); ws="$root/workspaces/$name"
 # client-side event log for replays: in the team dir when run by team.sh (one replay for everyone)
 record="$root/$dir/record.jsonl"; [ -z "$GO" ] || record="$(dirname "$GO")/$name.record.jsonl"
 board="$root/$dir/board"; [ -z "$GO" ] || board="$(dirname "$GO")/board" # judges' latest results, for `standings`
+events="$root/$dir"; [ -z "$GO" ] || events="$(dirname "$GO")" # <char>.events.jsonl: the character's event stream for the run
 mkdir -p "$dir" "$ws"
 # refreshed each run: bench task docs, the playing guide, the SDK reference, and an example script
-cat agent/AGENTS.md ../azeroth-sdk/docs/guide.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/world-data.md > "$ws/AGENTS.md"
+cat agent/AGENTS.md ../azeroth-sdk/docs/guide.md ../azeroth-sdk/docs/runtime.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/world-data.md > "$ws/AGENTS.md"
 cp ../azeroth-sdk/examples/lua/grind.lua "$ws/example.lua"
 [ -f "$ws/NOTES.md" ] || printf '# Notes\n\nYour own notes: what worked, what killed you, where things are. Kept between runs.\n' > "$ws/NOTES.md"
 acct=$(printf %s "$name" | tr -cd 'a-zA-Z0-9' | cut -c1-16)
@@ -84,7 +85,7 @@ fi
 trap 'kill $agent $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM
 [ -n "$LEVEL$MONEY$START" ] || : > "$ws/session.log" # the workspace (and old log) persists
 for try in 1 2 3; do # the auth server sometimes times out the logon proof
-  ACCOUNT=$acct RECORD="$record" client/play.sh "$char" --race "$race" --class "$class" >> "$ws/session.log" 2>&1 &
+  ACCOUNT=$acct RECORD="$record" EVENTS="$events" client/play.sh "$char" --race "$race" --class "$class" >> "$ws/session.log" 2>&1 &
   session=$!
   until agent/bin/wow 'return 1' 2>/dev/null | grep -q result || ! kill -0 $session 2>/dev/null; do sleep 1; done
   kill -0 $session 2>/dev/null && break
@@ -120,8 +121,9 @@ HOW TO WORK
 - Measure, don't guess: check what your script is achieving (wow 'return bot.get_level(), {bot.get_xp()}',
   quest_log(), money()) and change strategy when progress stalls (mobs too low level, frequent deaths,
   full bags, a target you can't reach).
-- While a script runs, poll progress with wow -w <seconds> '<lua>' (waits, then queries). Don't end your
-  session.
+- While your scripts run, watch them: wow wait (blocks until something important happens: chat, a death, a
+  failed task, a script asking you a question), wow events (the log), wow tasks (what each is doing). Don't end
+  your session.
 - $stop_text
 
 YOUR LIBRARY: your working directory is yours and persists across runs. It may be empty (apart from
@@ -131,7 +133,8 @@ killed you, good spots and routes. It's how your next run starts ahead of this o
 
 OTHER PLAYERS: the other characters on this server are other AI agents like you, each playing their own run at the
 same time. You can talk to them: say (nearby), whispers, party chat, the zone's General channel, or a channel of your
-own (bot.join_channel(name, 0)); read with bot.read_chat(), and wow replies tell you when messages are waiting. You
+own (bot.join_channel(name, 0)). Messages to you arrive as chat events: every wow reply shows new ones, and
+wow wait --types chat blocks until the next. You
 can invite them to groups, trade information, plan together or ignore them: how you deal with them is up to you.
 AGENTS.md ("Other players") explains the game mechanics of playing together.
 

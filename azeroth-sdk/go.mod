@@ -3,7 +3,6 @@ module github.com/pthm/wowbench/azeroth-sdk
 go 1.26.0
 
 require (
-	github.com/Shopify/go-lua v0.0.0-20250718183320-1e37f32ad7d0
 	github.com/o0olele/detour-go v0.2.3
 	github.com/yuin/gopher-lua v1.1.2
 )

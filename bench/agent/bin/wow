@@ -1,41 +1,57 @@
 #!/bin/sh
-# wow 'return bot.get_level()'        evaluate Lua in the live session, print JSON result
+# wow 'return bot.get_level()'        evaluate Lua in the live session (shared with your running scripts), print JSON
 # wow < snippet.lua                   same, from stdin
-# wow -f grind.lua                    (re)load a script file, e.g. to replace on_tick
-# wow -w 60 'return bot.get_xp()'     wait 60s first (max 600), then evaluate — use this to poll progress
-# wow -c 60 'return bot.read_chat()'  same, but returns early as soon as another player messages you
-# wow status                          one-call snapshot: level, xp, hp, position, state, bags, quests, group, nearby, act
-# Session: the azsdk daemon on port $WOW_PORT (default 8090); prints {"result": ...} (+ "script_errors"
-# when the running script failed since the last call) or {"error": "..."}.
-eval_() {
-  jq -n --arg code "$1" '{jsonrpc: "2.0", id: 1, method: "script.eval", params: {code: $code}}' |
+# wow -f grind.lua                    (re)load a script file
+# wow status                          one-call snapshot: level, xp, hp, position, state, bags, quests, group, nearby
+# wow tasks                           your running script tasks: state, status, what each is waiting for
+# wow events [--types chat,quest_*] [--last 50] [--since seq] [--match text]
+#                                     the event log (chat, combat, loot, quests, action results, errors, script logs)
+# wow wait [--types chat,attention] [--match text] [seconds]
+#                                     block until a matching event happens (default: any important one), max 600s
+# wow answer <id> <choice>            answer a script's ask() (an "attention" event)
+# wow -w 60 'lua'                     sleep 60s first, then evaluate
+# Every eval reply carries "events": what happened since your last call (counts by type, important ones in full).
+# Session: the azsdk daemon on port $WOW_PORT (default 8090).
+rpc() { # method, params JSON
+  jq -n --arg m "$1" --argjson p "$2" '{jsonrpc: "2.0", id: 1, method: $m, params: $p}' |
     curl -sS "127.0.0.1:${WOW_PORT:-8090}/rpc" --data-binary @- |
     jq -c 'if .error then {error: .error.message} else .result end'
 }
-if [ "$1" = "-w" ] || [ "$1" = "-c" ]; then
-  case "$2" in ''|*[!0-9]*) echo "usage: wow $1 <seconds> <lua>"; exit 1 ;; esac
-  t=$(( $2 > 600 ? 600 : $2 ))
-  if [ "$1" = "-w" ]; then sleep "$t"; else
-    jq -n --argjson t "$t" '{jsonrpc: "2.0", id: 1, method: "wait.chat", params: {timeout_s: $t}}' |
-      curl -sS "127.0.0.1:${WOW_PORT:-8090}/rpc" --data-binary @- >/dev/null # long-polls until a message arrives
-  fi
-  shift 2
-fi
-if [ "$1" = "status" ]; then
-  code="return bot.status()"
-elif [ "$1" = "-f" ]; then
+eval_() { rpc script.eval "$(jq -n --arg code "$1" '{code: $code}')"; }
+# --types a,b --last n --since n --match s [seconds] -> query params JSON (seconds -> timeout_s)
+params() {
+  p='{}'
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --types) p=$(printf '%s' "$p" | jq -c --arg v "$2" '. + {types: ($v | split(","))}'); shift 2 ;;
+      --last|--since|--limit) p=$(printf '%s' "$p" | jq -c --arg k "${1#--}" --argjson v "$2" '. + {($k): $v}'); shift 2 ;;
+      --match) p=$(printf '%s' "$p" | jq -c --arg v "$2" '. + {match: $v}'); shift 2 ;;
+      *[!0-9]*) echo "unknown option $1" >&2; exit 1 ;;
+      *) p=$(printf '%s' "$p" | jq -c --argjson v "$1" '. + {timeout_s: $v}'); shift ;;
+    esac
+  done
+  printf '%s' "$p"
+}
+# one event per line: {seq, ago_s, type, ...data}
+lines() { jq -c 'if type == "array" then .[] else . end | if .seq then {seq, ago_s: ((now * 1000 - .t) / 1000 | floor), type} + (.data // {}) else . end'; }
+case "$1" in
+  status) eval_ "return bot.status()"; exit ;;
+  tasks) eval_ "return task.list()"; exit ;;
+  answer) eval_ "return answer($2, $(jq -n --arg v "$3" '$v'))"; exit ;;
+  events) shift; rpc events.query "$(params "$@")" | lines; exit ;;
+  wait) shift
+    p=$(params "$@")
+    printf '%s' "$p" | jq -e .types >/dev/null || p=$(printf '%s' "$p" | jq -c '. + {types: ["chat","attention","death","level_up","script_error","task_finished","party_invite","error","gear_broken","trade_*"]}')
+    out=$(rpc events.wait "$p")
+    printf '%s\n' "$out" | jq -c '{timed_out, seq}'
+    printf '%s\n' "$out" | jq -c '.events // []' | lines
+    exit ;;
+  -w) case "$2" in ''|*[!0-9]*) echo "usage: wow -w <seconds> <lua>"; exit 1 ;; esac
+    sleep $(( $2 > 600 ? 600 : $2 )); shift 2 ;;
+  -c) case "$2" in ''|*[!0-9]*) echo "usage: wow -c <seconds> <lua>"; exit 1 ;; esac # legacy: wait for chat
+    rpc events.wait "{\"types\":[\"chat\"],\"timeout_s\":$2}" >/dev/null; shift 2 ;;
+esac
+if [ "$1" = "-f" ]; then
   code="return dofile(\"$(cd "$(dirname "$2")" && pwd)/$(basename "$2")\")"
 elif [ -n "$1" ]; then code="$1"; else code="$(cat)"; fi
-out=$(eval_ "$code")
-# unread messages from other players (chat, whispers, party, invites) and broken gear ride along on every reply
-extra=$(eval_ 'local b = 0 if bot.broken_gear then local ok, g = pcall(bot.broken_gear) if ok then b = #g end end return {bot.chat_pending(), b}' | jq -c '.result // [0, 0]' 2>/dev/null)
-n=$(printf '%s' "$extra" | jq -r '.[0] // 0' 2>/dev/null) broken=$(printf '%s' "$extra" | jq -r '.[1] // 0' 2>/dev/null)
-if [ "${n:-0}" -gt 0 ] 2>/dev/null; then
-  out=$(printf '%s\n' "$out" | jq -c --argjson n "$n" --arg hint "$n unread message(s) from other players: wow 'return bot.read_chat()'" \
-    '. + {chat_pending: $n, chat: $hint}')
-fi
-if [ "${broken:-0}" -gt 0 ] 2>/dev/null; then
-  out=$(printf '%s\n' "$out" | jq -c --argjson b "$broken" --arg hint "$broken equipped item(s) broken (0 durability: no stats; a broken weapon means fighting bare-handed): repair at an armorer or weaponsmith (npc_flags 0x1000) with bot.repair(npc); see bot.broken_gear()" \
-    '. + {broken_gear: $b, gear: $hint}')
-fi
-printf '%s\n' "$out"
+eval_ "$code"

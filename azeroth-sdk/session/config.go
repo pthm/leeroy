@@ -16,6 +16,7 @@ type Config struct {
 	Gender uint8 `json:"gender"`
 
 	// Navigation
+	EventsFile         string `json:"events_file"`         // the event stream (JSONL), kept across restarts; empty = memory only
 	DataDir            string `json:"data_dir"`            // root containing mmaps/, maps/, vmaps/
 	PathfindingAddress string `json:"pathfinding_address"` // optional remote (deprioritized)
 

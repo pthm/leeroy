@@ -67,7 +67,7 @@ var actLua string // the built-in `act` routines and bot.status() (Lua, on top o
 func (b *Bot) setupControl() {
 	c := &controlState{watched: map[uint16]bool{}, names: map[uint64]string{}}
 	w := b.world
-	w.AddPacketHook(func(op uint16, data []byte) { c.onPacket(w, op, data) })
+	w.AddPacketHook(func(op uint16, data []byte) { c.onPacket(b, op, data) })
 
 	// player names for get_nearby_players/get_unit: the client only knows names it asked for
 	asked := map[uint64]time.Time{}
@@ -88,6 +88,7 @@ func (b *Bot) setupControl() {
 		defer c.mu.Unlock()
 		c.chat = capAppend(c.chat, ChatMessage{Time: time.Now().UnixMilli(), GUID: "0", Text: text})
 		c.unread++
+		b.emit("notice", map[string]any{"message": text})
 	}
 	b.setupAgentAPI()
 	b.setupItems()
@@ -95,6 +96,7 @@ func (b *Bot) setupControl() {
 	b.setupTalents()
 	b.setupTrade(b.notify)
 	b.watchAreaTriggers()
+	b.watchEvents()
 	b.startRecording()
 	e := b.lua
 	e.RegisterCall("call", w) // bot.call("QuestgiverHello", guid) etc. — any exported WorldClient method
@@ -165,6 +167,7 @@ func (b *Bot) setupControl() {
 		c.chat = capAppend(c.chat, ChatMessage{Time: time.Now().UnixMilli(), From: name, GUID: "0",
 			Text: name + " invites you to a group: bot.accept_invite() or bot.decline_invite()"})
 		c.unread++
+		b.emit("party_invite", map[string]any{"from": name})
 	})
 	e.RegisterFunc("invite", func(name string) error { return w.GroupInvite(name) })
 	e.RegisterFunc("accept_invite", func() error { return w.GroupAccept() })
@@ -215,42 +218,57 @@ func (b *Bot) setupControl() {
 	}
 }
 
-func (c *controlState) onPacket(w *client.WorldClient, op uint16, data []byte) {
+func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
+	w := b.world
 	now := time.Now().UnixMilli()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.watched[op] {
 		c.packets = capAppend(c.packets, RawPacket{now, op, hex.EncodeToString(data)})
 	}
-	sys := func(text string) { c.chat = capAppend(c.chat, ChatMessage{Time: now, GUID: "0", Text: text}) }
+	// sys: a system line in read_chat and an "error" event {op, code, message} that requests resolve on
+	sys := func(op, code, text string, extra ...any) {
+		c.chat = capAppend(c.chat, ChatMessage{Time: now, GUID: "0", Text: text})
+		d := map[string]any{"op": op, "code": code, "message": text}
+		for i := 0; i+1 < len(extra); i += 2 {
+			d[extra[i].(string)] = extra[i+1]
+		}
+		b.emit("error", d)
+	}
 	switch op {
 	case smsgInvChangeFail: // bag errors, e.g. a loot or quest reward that doesn't fit
 		if len(data) > 0 && data[0] != 0 {
 			if msg, ok := equipErrors[data[0]]; ok {
-				sys(msg)
+				sys("inventory", slug(msg), msg)
 			} else {
-				sys(fmt.Sprintf("inventory error %d", data[0]))
+				sys("inventory", fmt.Sprintf("inventory_%d", data[0]), fmt.Sprintf("inventory error %d", data[0]))
 			}
 		}
 	case 0x1A5: // SMSG_BUY_FAILED: vendor, item, reason
 		if len(data) >= 13 {
-			sys("buy failed: " + map[byte]string{0: "vendor doesn't have that item", 2: "not enough money", 5: "too far from the vendor",
-				7: "sold out", 8: "you can't carry more of that"}[data[12]])
+			code := map[byte]string{0: "not_sold_here", 2: "not_enough_money", 5: "out_of_range", 7: "sold_out", 8: "cant_carry_more"}[data[12]]
+			sys("buy", code, "buy failed: "+map[byte]string{0: "vendor doesn't have that item", 2: "not enough money", 5: "too far from the vendor",
+				7: "sold out", 8: "you can't carry more of that"}[data[12]], "item", binary.LittleEndian.Uint32(data[8:]))
 		}
 	case 0x1A1: // SMSG_SELL_ITEM: vendor, item, error (0 = sold)
 		if len(data) >= 17 && data[16] != 0 {
-			sys("sell failed: " + map[byte]string{1: "item not found", 2: "the vendor won't buy that", 3: "vendor not found",
+			code := map[byte]string{1: "item_not_found", 2: "wont_buy", 3: "vendor_not_found", 4: "not_yours"}[data[16]]
+			sys("sell", code, "sell failed: "+map[byte]string{1: "item not found", 2: "the vendor won't buy that", 3: "vendor not found",
 				4: "you don't own that"}[data[16]])
 		}
 	case 0x1B4: // SMSG_TRAINER_BUY_FAILED: trainer, spell, reason
 		if len(data) >= 16 {
 			spell := binary.LittleEndian.Uint32(data[8:])
-			sys(fmt.Sprintf("can't learn spell %d: %s", spell, map[uint32]string{0: "not available to you (level, class or already known)",
-				1: "not enough money", 2: "skill too low"}[binary.LittleEndian.Uint32(data[12:])]))
+			reason := binary.LittleEndian.Uint32(data[12:])
+			sys("train", map[uint32]string{0: "unavailable", 1: "not_enough_money", 2: "skill_too_low"}[reason],
+				fmt.Sprintf("can't learn spell %d: %s", spell, map[uint32]string{0: "not available to you (level, class or already known)",
+					1: "not enough money", 2: "skill too low"}[reason]), "spell", spell)
 		}
 	case 0x1B3: // SMSG_TRAINER_BUY_SUCCEEDED: trainer, spell
 		if len(data) >= 12 {
-			sys(fmt.Sprintf("learned spell %d", binary.LittleEndian.Uint32(data[8:])))
+			spell := binary.LittleEndian.Uint32(data[8:])
+			c.chat = capAppend(c.chat, ChatMessage{Time: now, GUID: "0", Text: fmt.Sprintf("learned spell %d", spell)})
+			b.emit("learned", map[string]any{"spell": spell})
 		}
 	case smsgPartyResult: // operation, member name, result
 		r := bytes.NewReader(data)
@@ -260,13 +278,15 @@ func (c *controlState) onPacket(w *client.WorldClient, op uint16, data []byte) {
 		var res uint32
 		binary.Read(r, binary.LittleEndian, &res)
 		if res != 0 {
-			sys(fmt.Sprintf("group command failed for %q: %s (%d)", name, partyErrors[res], res))
+			sys("party", slug(partyErrors[res]), fmt.Sprintf("group command failed for %q: %s (%d)", name, partyErrors[res], res), "name", name)
 			c.unread++
 		}
 	case 0x0077, 0x007D: // SMSG_GROUP_UNINVITE, SMSG_GROUP_LIST: no invite pending any more
 		c.invitedBy = ""
 	case smsgNotification: // server feedback like "Inventory is full" -> system chat
-		c.chat = capAppend(c.chat, ChatMessage{Time: now, Type: 0, From: "", GUID: "0", Text: readCString(bytes.NewReader(data))})
+		text := readCString(bytes.NewReader(data))
+		c.chat = capAppend(c.chat, ChatMessage{Time: now, Type: 0, From: "", GUID: "0", Text: text})
+		b.emit("notice", map[string]any{"message": text})
 	case smsgNameQueryResp:
 		r := bytes.NewReader(data)
 		guid := readPackedGUID(r)
@@ -284,6 +304,9 @@ func (c *controlState) onPacket(w *client.WorldClient, op uint16, data []byte) {
 				}
 			}
 			c.chat = capAppend(c.chat, m)
+			if guid != w.CharGUID() || m.Type == 8 || m.Type == 9 {
+				c.chatEvent(b, m, guid)
+			}
 			if m.Type != 0 && m.Type != 9 && !monsterChat(m.Type) && guid != w.CharGUID() { // not system, echo, NPC or self
 				c.unread++
 			}
@@ -382,3 +405,32 @@ var equipErrors = map[byte]string{4: "Bag is full", 17: "You can't carry any mor
 
 var partyErrors = map[uint32]string{1: "no player by that name online", 2: "not in your group", 4: "group is full",
 	5: "already in a group", 6: "you aren't in a group", 7: "you aren't the leader", 8: "wrong faction", 9: "they're ignoring you"}
+
+// chatEvent emits "chat" {kind, from, guid, channel?, text}. A player's name may need a name query first: the
+// event waits for it (up to a second) on its own goroutine.
+func (c *controlState) chatEvent(b *Bot, m ChatMessage, guid uint64) {
+	ev := func(from string) {
+		d := map[string]any{"kind": chatKind(m.Type), "from": from, "guid": m.GUID, "text": m.Text}
+		if m.Channel != "" {
+			d["channel"] = m.Channel
+		}
+		b.emit("chat", d)
+	}
+	if m.From != "" || guid == 0 || guid>>48 != 0 {
+		ev(m.From)
+		return
+	}
+	go func() {
+		for i := 0; i < 10; i++ {
+			c.mu.Lock()
+			n := c.names[guid]
+			c.mu.Unlock()
+			if n != "" {
+				ev(n)
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		ev("")
+	}()
+}

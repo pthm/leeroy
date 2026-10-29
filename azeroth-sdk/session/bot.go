@@ -64,6 +64,8 @@ type Bot struct {
 
 	world      *client.WorldClient
 	nav        navigation.Navigator
+	wasCombat  bool // stateEvents: last tick's combat / alive
+	wasAlive   *bool
 	agent      *agentState              // Lua agent API state (cast tracking); nil outside sessions
 	playerName func(guid uint64) string // name from the session's name-query cache ("" until the server answers)
 	notify     func(text string)        // post a system message to read_chat (set by setupControl)
@@ -557,7 +559,11 @@ func (b *Bot) Run() BotResult {
 	}
 
 	// Step 8: Initialize Lua engine
-	eng := script.NewEngine(b)
+	var bus *script.Bus
+	if b.config.EventsFile != "" {
+		bus = script.NewBus(b.config.EventsFile)
+	}
+	eng := script.NewEngine(b, bus)
 	b.mu.Lock()
 	b.lua = eng
 	b.mu.Unlock()
@@ -728,6 +734,7 @@ func (b *Bot) runAILoop(worldErrCh chan error) {
 			// The agent's on_tick is the only AI: the client never plays on its own.
 			tickStart := time.Now()
 			if b.lua != nil {
+				b.stateEvents()
 				b.lua.CallTick()
 			}
 			if elapsed := time.Since(tickStart); elapsed > 300*time.Millisecond {
@@ -1512,7 +1519,7 @@ func (b *Bot) worldObjToUnitInfo(obj *client.WorldObject) script.UnitInfo {
 		IsAlive:   obj.IsAlive(),
 		IsPlayer:  obj.IsPlayer,
 		Distance:  dist,
-		Name:      obj.Name,
+		Name:      b.objName(obj),
 		Faction:   obj.Value(client.UnitFieldFaction),
 		NPCFlags:  obj.Value(client.UnitNPCFlags),
 		Flags:     obj.Value(client.UnitFieldFlags),

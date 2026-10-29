@@ -8,10 +8,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/pthm/wowbench/azeroth-sdk/script"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
+	"time"
 )
 
 const (
@@ -155,19 +157,25 @@ func (b *Bot) setupTalents() {
 	})
 	// learn_talent(id): spend a point on the next rank of a talent (see talents() for ids and what's available).
 	// bot.spell_info(talents' spell) says what a talent does by name; wowdb spell <id> has the description.
-	e.RegisterFunc("learn_talent", func(id uint32) error {
+	e.RegisterFunc("learn_talent", func(id uint32) map[string]any {
+		args := map[string]any{"talent": id}
 		loadTalents()
 		for _, t := range talentList {
 			if t.id == id {
 				r := rank(t)
 				if r >= len(t.ranks) {
-					return fmt.Errorf("already at max rank")
+					return b.refuse("learn_talent", args, "max_rank", "already at max rank")
 				}
 				body := binary.LittleEndian.AppendUint32(nil, id)
 				w.SendPacketRaw(cmsgLearnTalent, binary.LittleEndian.AppendUint32(body, uint32(r)))
-				return nil
+				return b.request("learn_talent", args, 3*time.Second, func() *script.Outcome {
+					if rank(t) > r {
+						return script.Ok(map[string]any{"rank": r + 1})
+					}
+					return nil
+				}, func(script.Event) *script.Outcome { return nil })
 			}
 		}
-		return fmt.Errorf("no talent %d", id)
+		return b.refuse("learn_talent", args, "no_such_talent", fmt.Sprintf("no talent %d", id))
 	})
 }

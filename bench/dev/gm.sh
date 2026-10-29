@@ -6,7 +6,7 @@ cd "$(dirname "$0")/../.." || exit 1
 bun server/account.ts devgm devgm 3 >/dev/null
 bin=azeroth-sdk/azsdk-dev; [ -x "$bin" ] || bin=azeroth-sdk/azsdk
 pkill -f -- "-char Devgm" 2>/dev/null; sleep 1
-"$bin" -char Devgm -account devgm -race 1 -class 1 -listen 127.0.0.1:8112 -data "$PWD/data" > /tmp/devgm.log 2>&1 &
+"$bin" -char Devgm -account devgm -race 1 -class 1 -listen 127.0.0.1:8112 -data "$PWD/data" -events /tmp/devgm-events > /tmp/devgm.log 2>&1 &
 export WOW_PORT=8112
 i=0; until bench/agent/bin/wow 'return 1' 2>/dev/null | grep -q result || [ $i -ge 60 ]; do sleep 2; i=$((i+2)); done
 bench/agent/bin/wow 'bot.send_command(".gm on") bot.send_command(".cheat god on") return 1' >/dev/null

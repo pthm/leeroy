@@ -10,7 +10,7 @@ cd "$(dirname "$0")" # relative to bench/
 [ -f "$msg" ] || { sed -n 2,6p "$0"; exit 1; }
 root=$(pwd); repo=$(dirname "$root")
 sql() { docker exec ac-database mysql -uroot -ppassword -N acore_characters -e "$1" 2>/dev/null; }
-cat agent/AGENTS.md ../azeroth-sdk/docs/guide.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/world-data.md > "$team/AGENTS.md"
+cat agent/AGENTS.md ../azeroth-sdk/docs/guide.md ../azeroth-sdk/docs/runtime.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/world-data.md > "$team/AGENTS.md"
 
 resume_one() { # <agent> <port>
   name=$1 port=$2
@@ -24,7 +24,7 @@ resume_one() { # <agent> <port>
   [ -f "$ws/NOTES.md" ] || printf '# Notes\n\nYour own notes: what worked, what killed you, where things are. Kept between runs.\n' > "$ws/NOTES.md"
   until [ "$(sql "SELECT online FROM characters WHERE name = '$char'")" = 0 ]; do sleep 2; done
   for try in 1 2 3; do
-    ACCOUNT=$acct RECORD="$record" client/play.sh "$char" >> "$ws/session.log" 2>&1 &
+    ACCOUNT=$acct RECORD="$record" EVENTS="$team" client/play.sh "$char" >> "$ws/session.log" 2>&1 &
     session=$!
     until agent/bin/wow 'return 1' 2>/dev/null | grep -q result || ! kill -0 $session 2>/dev/null; do sleep 1; done
     kill -0 $session 2>/dev/null && break

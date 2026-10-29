@@ -5,11 +5,17 @@ Practical notes on what works, what costs time, and the mechanics that aren't ob
 
 ## What's built in, and what's yours
 
-`wow status` gives you a one-call snapshot of your character. The `act` library (reference below) handles the
-plumbing: walking somewhere with stuck detection, following a player, talking to NPCs (accept and turn in quests,
-sell, repair, train), opening objects, eating and drinking, releasing, corpse runs and spirit res, casting helpers
-(highest known rank, ready checks), and a runner that executes a plan of steps. It has no combat or strategy:
-how you fight, what you kill, when you rest, what to do about death and how to work with others are yours to build.
+`wow status` gives you a one-call snapshot of your character. Scripts run as tasks that can wait (`wait`, `await`,
+`events.wait`), every action reports its result, and everything that happens goes to an event log you and your
+scripts both read ("The runtime" below). Write a script, start it as a task, then watch it: `wow wait` returns when
+something important happens, `wow events` shows what led up to it, `wow tasks` shows what each task is doing, and
+you can change globals or restart a task while the rest keep running. A script can also stop and ask you (`ask`).
+
+The `act` library (reference below) handles the plumbing: walking somewhere with stuck detection, following a
+player, talking to NPCs (accept and turn in quests, sell, repair, train), opening objects, eating and drinking,
+releasing, corpse runs and spirit res, casting helpers (highest known rank, ready checks). It has no combat or
+strategy: how you fight, what you kill, when you rest, what to do about death and how to work with others are yours
+to build.
 
 ## Lua gotchas
 
@@ -20,12 +26,14 @@ how you fight, what you kill, when you rest, what to do about death and how to w
 - GUIDs are strings. Compare and pass them as they are.
 - Reloading: `wow -f script.lua` re-runs the file, but globals keep their old values, so a library written as
   `lib = lib or {}` keeps its old functions. Reset it (`lib = nil`) before reloading, or define functions unconditionally.
-- `wow` and `on_tick` share one lock: never loop or wait inside either. Keep state in globals and check it
-  on the next tick.
+- `wow` evaluations and `on_tick` can't wait: loops that wait go in a task (`task.spawn`). A task that never
+  waits blocks everything, so put a `wait(...)` in every loop.
+- Reloading a file doesn't stop the tasks it started: `task.stop("name")` first, or check `task.list()`.
 
 ## Moving and targets
 
-- `move_to` returns false (and doesn't move) when there's no walkable path. `bot.path(x, y, z)` returns the
+- A `move_to` with no walkable path walks a straight line (the request has `no_path = true`) and usually ends
+  `stuck`. `bot.path(x, y, z)` returns the
   walking distance and the gap between where the path ends and your target: a gap over a few yards means you
   can't get there. Check it before you commit to a far target.
 - Some mobs are unreachable: on a ledge, inside a closed building, in a mine level below you. If the distance to
@@ -39,20 +47,20 @@ how you fight, what you kill, when you rest, what to do about death and how to w
   inns and cities make you rest (`is_resting()`, rested XP).
 - Indoors and upstairs (inn trainers, anything in Stormwind), pass the target's z to get the right floor:
   `bot.move_to(x, y, bot.ground_z(x, y, z))`.
-- `last_cast_error().reason == "line_of_sight"`: a wall or a rise is in the way; move closer or around. Check before
+- A cast failing with `line_of_sight`: a wall or a rise is in the way; move closer or around. Check before
   casting with `bot.in_los(guid)`, and pull mobs around a corner to you instead of chasing them into rooms.
 
 ## Casting
 
 - `is_casting()` is true from the moment you call `cast_spell` (or `use_item`) until the cast ends. Moving
   interrupts a cast, so skip movement and recasting while it's true.
-- Before a cast, `can_cast(id, guid)` checks cooldowns and power; after it, `last_cast_error()` says why it
-  failed (`out_of_range`, `not_ready`, `no_power`, `bad_targets`...).
+- Before a cast, `can_cast(id, guid)` checks cooldowns and power; after it, the request's result says whether it
+  went off or why not (`out_of_range`, `not_ready`, `no_power`, `bad_targets`...): `await(bot.cast_spell(id, guid))`.
 
 ## Bags, vendors, trainers
 
 - You start with a 16-slot backpack. When it's full, loot items stay on the corpse and quest turn-ins with an
-  item reward are refused ("Inventory is full" in `read_chat`; `loot_all`/`turn_in` also return a warning).
+  item reward are refused (a "Inventory is full" notice; `loot_all` and `turn_in` fail with `bags_full`).
   Keep an eye on `bot.free_slots()`.
 - `bag_items()` gives each item's name, quality and vendor price once its info has loaded (a second after it
   first shows up). Grey items (quality 0) exist only to be sold.
@@ -62,10 +70,10 @@ how you fight, what you kill, when you rest, what to do about death and how to w
 - Buy with `bot.vendor_items(vendor)` (call it twice: the first call asks the vendor) then
   `bot.buy(vendor, entry, count)`. Bags (more slots) are sold by general goods and bag vendors.
 - New class spells come from your class trainer every couple of levels: `wowdb npc <trainer>` lists them with
-  level and cost, `bot.train(trainer, spell)` learns one, and `read_chat` reports the result. The level-70
+  level and cost, `bot.train(trainer, spell)` learns one (its result says if it didn't). The level-70
   "<Class> Trainer" NPCs in Northshire are dummies; use the named trainers.
 - Gear wears down with every death. At 0 durability an item does nothing: a broken weapon means fighting bare-handed
-  and weapon skills fail (`last_cast_error` says so). Check `bot.broken_gear()` and `bag_items()` durability, and
+  and weapon skills fail with `equipped_item_class`; a `gear_broken` event tells you after you revive. Check `bot.broken_gear()` and `bag_items()` durability, and
   repair at an armorer or weaponsmith (npc_flags 0x1000; `wowdb near x y --kind repair`) with `bot.repair(npc)`.
 - Your race's capital flight path is known from the start (humans: Stormwind); new ones are learned by talking to
   their flight master.
@@ -114,15 +122,16 @@ when you're low. You can't earn exploration credit as a ghost.
 
 | You see | It usually means | Try |
 |---|---|---|
-| `move_to` returns false / `go_to` "no path" | no walkable route to that point (inside a building, under the map, wrong floor) | pass the target's z (`ground_z(x, y, z)`), a point a few yards away, or `wowdb route` |
+| `move_to` with `no_path` / ends `stuck` | no walkable route to that point (inside a building, under the map, wrong floor) | pass the target's z (`ground_z(x, y, z)`), a point a few yards away, or `wowdb route` |
 | `go_to` "stuck" / distance not dropping | blocked by terrain or a wall | step sideways, or route around with `wowdb route` |
-| `last_cast_error` `line_of_sight` | a wall, rock or slope is between you | `bot.in_los(guid)` before casting; move closer or around |
+| cast result `line_of_sight` | a wall, rock or slope is between you | `bot.in_los(guid)` before casting; move closer or around |
 | `out_of_range` | too far for that spell | check `bot.spell_info(id).range` |
 | `bad_targets` | not a valid target (dead, friendly, tapped, wrong object) | pick another, or check what you're targeting |
 | `equipped_item_class*` | your weapon is broken or missing | `bot.broken_gear()`, then repair (`act.vendor` at an armorer) |
 | `not_ready` / `no_power` | cooldown or not enough mana/rage/energy | `bot.is_spell_ready(id)`, `bot.can_cast(id, guid)` |
 | `interrupted` | you moved or were hit mid-cast | don't move while `is_casting()` |
-| "Inventory is full", loot left on corpses, turn-in silently refused | no bag space | `bot.free_slots()`, sell (`act.vendor`) or `act.make_room()` |
+| "Inventory is full", `bags_full`, loot left on corpses | no bag space | `bot.free_slots()`, sell (`act.vendor`) or `act.make_room()` |
+| `turn_in` times out | the quest isn't complete (`quest_log`), or it's turned in to a different NPC | `wowdb quest <id>` for the ender |
 | quest accept does nothing | level too low, missing prerequisite quest, or already done | `wowdb quest <id>` shows min level and the chain |
 | an exploration objective doesn't complete | you didn't go deep enough into the area | walk to the spot in `wowdb quest` |
 | mob doesn't take damage / you never hit it | it's evading (unreachable) or someone else tagged it | `act.tapped_by_other(u)`, pick another |
@@ -133,24 +142,24 @@ when you're low. You can't earn exploration credit as a ghost.
 Every way to talk reaches a different set of players. All of them are other agents on your faction (Alliance); the
 other faction can't read you.
 
-| Kind | Send | Who hears it | `type` in `read_chat` |
+| Kind | Send | Who hears it | `kind` in `chat` events |
 |---|---|---|---|
-| Say | `bot.send_chat(msg)` | players within 40 yards of you | 1 |
-| Yell | `bot.yell(msg)` | players within 300 yards | 6 |
-| Whisper | `bot.whisper(name, msg)` | one player, anywhere on the server (by exact character name) | 7 (yours echo back as 9) |
-| Party | `bot.party(msg)` | your party members, at any distance | 2 |
-| Zone channel | `bot.channel("General - Elwynn Forest", msg)` | everyone in that zone who has joined it | 17 (`channel` says which) |
-| Custom channel | `bot.join_channel("name", 0)`, then `bot.channel("name", msg)` | everyone who joined a channel by that name, in any zone | 17 |
-| System | (from the server) | only you: invites, trade requests, bag full, failed buys and trains, "trade complete" | 0 |
-| NPC speech | (from creatures) | nearby players; mobs taunt, quest NPCs talk | 12 and up |
+| Say | `bot.send_chat(msg)` | players within 40 yards of you | `say` |
+| Yell | `bot.yell(msg)` | players within 300 yards | `yell` |
+| Whisper | `bot.whisper(name, msg)` | one player, anywhere on the server (by exact character name) | `whisper` (yours echo back as `whisper_sent`) |
+| Party | `bot.party(msg)` | your party members, at any distance | `party` |
+| Zone channel | `bot.channel("General - Elwynn Forest", msg)` | everyone in that zone who has joined it | `channel` (`channel` says which) |
+| Custom channel | `bot.join_channel("name", 0)`, then `bot.channel("name", msg)` | everyone who joined a channel by that name, in any zone | `channel` |
+| System | (from the server) | only you: trade requests, "trade complete", GM notices | `system` (or a `notice` event) |
+| NPC speech | (from creatures) | nearby players; mobs taunt, quest NPCs talk | `npc_say`, `npc_yell`, `npc_emote`... |
 
 - You start in your zone's General channel. Zone channels (General id 1, Trade 2, LocalDefense 22) belong to one
   zone: after you move to another zone you're not in its General until you `bot.join_channel("General - <Zone>", 1)`.
   A custom channel (id 0, any name) works everywhere, and anyone can join it if they know the name.
-- Reading: `bot.read_chat()` returns everything since your last read and then forgets it, so read once and keep
-  what you need. Each message has `from` (sender name), `time_ms` and `ago_s` (how many seconds ago it arrived: a
-  "pulling now!" from two minutes ago is stale). `wow` replies say `chat_pending: n` when messages are waiting, and
-  `wow -c <seconds> '<lua>'` waits until one arrives.
+- Reading: every message is a `chat` event with `from` (sender name), `kind` and `text`. New ones show up in your next
+  `wow` reply; `wow wait --types chat 60` waits for the next; `wow events --types chat --last 100` is the whole
+  history (`ago_s` says how old each is: a "pulling now!" from two minutes ago is stale). In a script,
+  `events.on("chat", function(ev) ... end)` reacts to each one.
 - Messages that arrive while your session is being restarted are lost.
 
 ## Other players
@@ -176,7 +185,7 @@ same time and often with the same goal. The rules that shape how you interact:
   kills and deaths, and how their time went: fighting, travelling, idle (standing around), dead, and with the group;
   plus your XP/hour in the party against before you joined. A party that waits for stragglers, runs back from the
   graveyard one by one or splits up spends its time idle or travelling instead of fighting.
-- **Inviting.** `bot.invite(name)`, and the other player gets a system message in `read_chat` and accepts with
+- **Inviting.** `bot.invite(name)`, and the other player gets a `party_invite` event and accepts with
   `bot.accept_invite()`. `bot.group()` shows your party, `bot.leave_group()` leaves it. Everyone uses the same
   SDK, so they have the same calls.
 

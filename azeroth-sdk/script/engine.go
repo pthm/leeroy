@@ -1,0 +1,859 @@
+// Package script is the Lua runtime for an agent's character: one gopher-lua state shared by the agent's live
+// evaluations and its running scripts, a coroutine scheduler for tasks, the event stream and action requests.
+// See docs/runtime.md.
+package script
+
+import (
+	"bytes"
+	_ "embed"
+	"encoding/json"
+	"fmt"
+	"reflect"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	lua "github.com/yuin/gopher-lua"
+)
+
+//go:embed runtime.lua
+var runtimeLua string
+
+// Engine owns the Lua state. Everything that touches it holds mu: the game loop's Tick and the agent's Eval are
+// serialized, so both always see the same world and the same script state.
+type Engine struct {
+	mu   sync.Mutex
+	L    *lua.LState
+	bot  BotAPI
+	Bus  *Bus
+	Reqs *Requests
+
+	tasks    map[int]*Task
+	byThread map[*lua.LState]*Task
+	nextTask int
+	handlers map[int]*handler
+	nextH    int
+
+	inboxMu sync.Mutex
+	inbox   []Event
+
+	tickErrs int
+	tickErr  string
+	cur      *Task // the task being resumed (nil on the main state)
+}
+
+type handler struct {
+	id    int
+	types []string
+	fn    *lua.LFunction
+	name  string
+}
+
+// NewEngine creates the runtime. bus may be nil (an in-memory stream).
+func NewEngine(bot BotAPI, bus *Bus) *Engine {
+	if bus == nil {
+		bus = NewBus("")
+	}
+	e := &Engine{bot: bot, Bus: bus, tasks: map[int]*Task{}, byThread: map[*lua.LState]*Task{}, handlers: map[int]*handler{}}
+	e.Reqs = NewRequests(bus)
+	bus.Listen(func(ev Event) {
+		e.inboxMu.Lock()
+		e.inbox = append(e.inbox, ev)
+		e.inboxMu.Unlock()
+	})
+	e.L = lua.NewState()
+	e.L.SetGlobal("bot", e.L.NewTable())
+	e.registerBindings()
+	e.registerRuntime()
+	e.registerCompat()
+	if err := e.L.DoString(runtimeLua); err != nil {
+		panic("runtime.lua: " + err.Error())
+	}
+	return e
+}
+
+// Emit records an event (any goroutine). Use it for everything scripts and the agent should be able to see.
+func (e *Engine) Emit(typ string, data map[string]any) Event { return e.Bus.Emit(typ, data) }
+
+// ---------- running code ----------
+
+// DoString runs a chunk on the main state.
+func (e *Engine) DoString(code string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.L.DoString(code)
+}
+
+// DoFile runs a file on the main state.
+func (e *Engine) DoFile(path string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.L.DoFile(path)
+}
+
+// Eval runs a chunk and returns its results as Go values (nil for none, the value for one, a slice for several).
+// It runs between ticks on the shared state, so it sees exactly what scripts see.
+func (e *Engine) Eval(code string) (any, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	fn, err := e.L.LoadString(code)
+	if err != nil {
+		return nil, err
+	}
+	base := e.L.GetTop()
+	if err := e.L.CallByParam(lua.P{Fn: fn, NRet: lua.MultRet, Protect: true}); err != nil {
+		e.L.SetTop(base)
+		return nil, err
+	}
+	n := e.L.GetTop() - base
+	out := make([]any, n)
+	for i := range out {
+		out[i] = toGo(e.L.Get(base+i+1), 0)
+	}
+	e.L.SetTop(base)
+	switch n {
+	case 0:
+		return nil, nil
+	case 1:
+		return out[0], nil
+	}
+	return out, nil
+}
+
+// CallTick is one step of the runtime: deliver events (wake waiting tasks, start handlers), poll requests, resume
+// tasks that can run, then call on_tick.
+func (e *Engine) CallTick() bool {
+	e.Reqs.Poll()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.dispatchEvents()
+	e.runTasks()
+	fn, ok := e.L.GetGlobal("on_tick").(*lua.LFunction)
+	if !ok {
+		return false
+	}
+	if err := e.L.CallByParam(lua.P{Fn: fn, NRet: 0, Protect: true}); err != nil {
+		e.noteError("on_tick", err)
+	}
+	return true
+}
+
+func (e *Engine) noteError(where string, err error) {
+	e.tickErrs++
+	e.tickErr = err.Error()
+	e.bot.Log("[Lua] %s error: %v", where, err)
+	go e.Emit("script_error", map[string]any{"where": where, "error": err.Error()})
+}
+
+// TakeScriptErrors returns the script errors since the last call ({count, last}), or nil.
+func (e *Engine) TakeScriptErrors() map[string]any {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.tickErrs == 0 {
+		return nil
+	}
+	out := map[string]any{"count": e.tickErrs, "last": e.tickErr}
+	e.tickErrs = 0
+	return out
+}
+
+func (e *Engine) Close() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.L.Close()
+}
+
+// ---------- binding Go to Lua ----------
+
+func (e *Engine) setBot(name string, fn lua.LGFunction) {
+	e.L.SetField(e.L.GetGlobal("bot"), name, e.L.NewFunction(fn))
+}
+
+// RegisterFunc exposes a Go func as bot.<name>(...) with reflected argument and result conversion. Tables convert
+// to map[string]any / []any parameters; error results become nil or the error's text.
+func (e *Engine) RegisterFunc(name string, fn any) {
+	v := reflect.ValueOf(fn)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.setBot(name, func(L *lua.LState) int { return callReflect(L, v, 1) })
+}
+
+// RegisterCall exposes bot.<name>("Method", ...) calling any exported method of target.
+func (e *Engine) RegisterCall(name string, target any) {
+	v := reflect.ValueOf(target)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.setBot(name, func(L *lua.LState) int {
+		m := v.MethodByName(L.CheckString(1))
+		if !m.IsValid() {
+			L.RaiseError("no client method '%s'", L.CheckString(1))
+		}
+		return callReflect(L, m, 2)
+	})
+}
+
+var errType = reflect.TypeOf((*error)(nil)).Elem()
+
+func callReflect(L *lua.LState, fn reflect.Value, first int) int {
+	t := fn.Type()
+	if t.IsVariadic() {
+		L.RaiseError("variadic functions are not supported")
+	}
+	args := make([]reflect.Value, t.NumIn())
+	for i := range args {
+		args[i] = fromLua(L, L.Get(first+i), t.In(i))
+	}
+	results := fn.Call(args)
+	for _, r := range results {
+		if r.Type() == errType {
+			if r.IsNil() {
+				L.Push(lua.LNil)
+			} else {
+				L.Push(lua.LString(r.Interface().(error).Error()))
+			}
+			continue
+		}
+		L.Push(toLua(L, jsonish(r.Interface())))
+	}
+	return len(results)
+}
+
+func fromLua(L *lua.LState, lv lua.LValue, t reflect.Type) reflect.Value {
+	v := reflect.New(t).Elem()
+	switch t.Kind() {
+	case reflect.String:
+		if lv != lua.LNil {
+			v.SetString(lua.LVAsString(lv))
+		}
+	case reflect.Bool:
+		v.SetBool(lua.LVAsBool(lv))
+	case reflect.Uint64:
+		v.SetUint(guidOf(lv))
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32:
+		v.SetUint(uint64(lua.LVAsNumber(lv)))
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		v.SetInt(int64(lua.LVAsNumber(lv)))
+	case reflect.Float32, reflect.Float64:
+		v.SetFloat(float64(lua.LVAsNumber(lv)))
+	case reflect.Slice, reflect.Map, reflect.Interface:
+		if t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8 {
+			v.SetBytes([]byte(lua.LVAsString(lv)))
+			break
+		}
+		g := toGo(lv, 0)
+		if g == nil {
+			break
+		}
+		gv := reflect.ValueOf(g)
+		if gv.Type().AssignableTo(t) {
+			v.Set(gv)
+		} else if t.Kind() == reflect.Slice && gv.Kind() == reflect.Map && gv.Len() == 0 { // {} is an empty list too
+			v.Set(reflect.MakeSlice(t, 0, 0))
+		} else {
+			L.RaiseError("expected %s, got %s", t, lv.Type())
+		}
+	default:
+		L.RaiseError("unsupported argument type %s", t)
+	}
+	return v
+}
+
+// guidOf accepts a GUID as a string (exact) or a number.
+func guidOf(lv lua.LValue) uint64 {
+	switch x := lv.(type) {
+	case lua.LString:
+		g, _ := strconv.ParseUint(strings.TrimSpace(string(x)), 10, 64)
+		return g
+	case lua.LNumber:
+		return uint64(x)
+	}
+	return 0
+}
+
+// toGo converts a Lua value: tables become map[string]any, or []any when they're a sequence.
+func toGo(lv lua.LValue, depth int) any {
+	switch x := lv.(type) {
+	case lua.LBool:
+		return bool(x)
+	case lua.LNumber:
+		return float64(x)
+	case lua.LString:
+		return string(x)
+	case *lua.LTable:
+		if depth > 12 {
+			return "<table>"
+		}
+		if n := x.Len(); n > 0 {
+			count := 0
+			x.ForEach(func(_, _ lua.LValue) { count++ })
+			if count == n {
+				arr := make([]any, n)
+				for i := 1; i <= n; i++ {
+					arr[i-1] = toGo(x.RawGetInt(i), depth+1)
+				}
+				return arr
+			}
+		}
+		m := map[string]any{}
+		x.ForEach(func(k, v lua.LValue) { m[lua.LVAsString(k)] = toGo(v, depth+1) })
+		return m
+	case *lua.LNilType:
+		return nil
+	}
+	return "<" + lv.Type().String() + ">"
+}
+
+// toLua converts JSON-shaped Go values (after jsonish) to Lua.
+func toLua(L *lua.LState, v any) lua.LValue {
+	switch x := v.(type) {
+	case nil:
+		return lua.LNil
+	case string:
+		return lua.LString(x)
+	case bool:
+		return lua.LBool(x)
+	case float64:
+		return lua.LNumber(x)
+	case int:
+		return lua.LNumber(x)
+	case int64:
+		return lua.LNumber(x)
+	case uint64:
+		return lua.LNumber(x)
+	case uint32:
+		return lua.LNumber(x)
+	case float32:
+		return lua.LNumber(x)
+	case map[string]any:
+		t := L.NewTable()
+		for k, vv := range x {
+			t.RawSetString(k, toLua(L, vv))
+		}
+		return t
+	case []any:
+		t := L.CreateTable(len(x), 0)
+		for i, vv := range x {
+			t.RawSetInt(i+1, toLua(L, vv))
+		}
+		return t
+	case lua.LValue:
+		return x
+	}
+	return toLua(L, jsonish(v))
+}
+
+// jsonish flattens structs, slices and maps via JSON; integers beyond 2^53 (GUIDs) become strings.
+func jsonish(v any) any {
+	switch v.(type) {
+	case nil, string, bool, float64:
+		return v
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprintf("%v", v)
+	}
+	var out any
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	if dec.Decode(&out) != nil {
+		return nil
+	}
+	return fixNumbers(out)
+}
+
+func fixNumbers(v any) any {
+	switch x := v.(type) {
+	case json.Number:
+		if s := x.String(); len(s) > 15 && !strings.ContainsAny(s, ".eE") {
+			return s
+		}
+		f, _ := x.Float64()
+		return f
+	case map[string]any:
+		for k, vv := range x {
+			x[k] = fixNumbers(vv)
+		}
+	case []any:
+		for i, vv := range x {
+			x[i] = fixNumbers(vv)
+		}
+	}
+	return v
+}
+
+// ---------- tasks ----------
+
+// Task is a coroutine the scheduler runs.
+type Task struct {
+	ID      int
+	Name    string
+	co      *lua.LState
+	fn      *lua.LFunction
+	args    []lua.LValue
+	State   string // new, running, waiting, paused, done, failed, stopped
+	Status  string // what the task says it's doing (task.status)
+	wait    waitCond
+	resume  []lua.LValue // values to resume with once the wait is over
+	Err     string
+	Started time.Time
+	Ended   time.Time
+	Handler bool
+}
+
+type waitCond struct {
+	kind  string // sleep, await, event
+	until time.Time
+	req   int
+	types []string
+	since uint64
+	got   *Event
+}
+
+func (e *Engine) spawn(name string, fn *lua.LFunction, args []lua.LValue, isHandler bool) *Task {
+	e.nextTask++
+	co, _ := e.L.NewThread()
+	t := &Task{ID: e.nextTask, Name: name, co: co, fn: fn, args: args, State: "new", Started: time.Now(), Handler: isHandler}
+	e.tasks[t.ID] = t
+	e.byThread[co] = t
+	if !isHandler {
+		go e.Emit("task_started", map[string]any{"task": t.ID, "name": name})
+	}
+	return t
+}
+
+// runTasks resumes every task whose wait is over (called with mu held).
+func (e *Engine) runTasks() {
+	ids := make([]int, 0, len(e.tasks))
+	for id := range e.tasks {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+	now := time.Now()
+	for _, id := range ids {
+		t := e.tasks[id]
+		if t == nil {
+			continue
+		}
+		var args []lua.LValue
+		switch t.State {
+		case "new":
+			args = t.args
+		case "waiting":
+			w := &t.wait
+			switch w.kind {
+			case "sleep":
+				if now.Before(w.until) {
+					continue
+				}
+			case "await":
+				res := e.Reqs.Result(w.req)
+				if res != nil && res["pending"] == nil {
+					args = []lua.LValue{toLua(e.L, res)}
+				} else if now.After(w.until) {
+					args = []lua.LValue{toLua(e.L, map[string]any{"id": w.req, "pending": true, "ok": false,
+						"error": map[string]any{"code": "wait_timeout", "message": "stopped waiting; the request may still finish"}})}
+				} else {
+					continue
+				}
+			case "event":
+				if w.got != nil {
+					args = []lua.LValue{eventToLua(e.L, *w.got)}
+				} else if !w.until.IsZero() && now.After(w.until) {
+					args = []lua.LValue{lua.LNil}
+				} else {
+					continue
+				}
+			}
+		default:
+			continue
+		}
+		e.resume(t, args)
+	}
+}
+
+func (e *Engine) resume(t *Task, args []lua.LValue) {
+	t.State, t.wait = "running", waitCond{}
+	e.cur = t
+	st, err, _ := e.L.Resume(t.co, t.fn, args...)
+	e.cur = nil
+	switch {
+	case err != nil:
+		t.State, t.Err, t.Ended = "failed", err.Error(), time.Now()
+		e.finish(t)
+		e.noteError("task "+t.Name, err)
+	case st == lua.ResumeOK:
+		t.State, t.Ended = "done", time.Now()
+		e.finish(t)
+	default: // yielded: wait was set by the Go function that yielded
+		if t.State == "running" {
+			t.State = "waiting"
+		}
+	}
+}
+
+func (e *Engine) finish(t *Task) {
+	delete(e.byThread, t.co)
+	if !t.Handler {
+		data := map[string]any{"task": t.ID, "name": t.Name, "state": t.State, "seconds": int(t.Ended.Sub(t.Started).Seconds())}
+		if t.Err != "" {
+			data["error"] = t.Err
+		}
+		go e.Emit("task_finished", data)
+	}
+	// keep finished tasks around briefly for task.list(); handlers go at once
+	if t.Handler {
+		delete(e.tasks, t.ID)
+	}
+	var old []int
+	for id, x := range e.tasks {
+		if (x.State == "done" || x.State == "failed" || x.State == "stopped") && time.Since(x.Ended) > 10*time.Minute {
+			old = append(old, id)
+		}
+	}
+	for _, id := range old {
+		delete(e.tasks, id)
+	}
+}
+
+// dispatchEvents wakes tasks waiting for events and starts handlers (called with mu held).
+func (e *Engine) dispatchEvents() {
+	e.inboxMu.Lock()
+	evs := e.inbox
+	e.inbox = nil
+	e.inboxMu.Unlock()
+	for _, ev := range evs {
+		for _, t := range e.tasks {
+			if t.State == "waiting" && t.wait.kind == "event" && t.wait.got == nil && ev.Seq > t.wait.since && typeIn(ev.Type, t.wait.types) {
+				evc := ev
+				t.wait.got = &evc
+			}
+		}
+		hs := make([]*handler, 0, len(e.handlers))
+		for _, h := range e.handlers {
+			hs = append(hs, h)
+		}
+		sort.Slice(hs, func(i, j int) bool { return hs[i].id < hs[j].id })
+		for _, h := range hs {
+			if typeIn(ev.Type, h.types) && ev.Data["task"] != h.name { // not its own output (a "*" handler that logs)
+				e.spawn(h.name, h.fn, []lua.LValue{eventToLua(e.L, ev)}, true)
+			}
+		}
+	}
+}
+
+func eventToLua(L *lua.LState, ev Event) lua.LValue {
+	return toLua(L, map[string]any{"seq": float64(ev.Seq), "t": float64(ev.T), "type": ev.Type, "data": jsonish(ev.Data)})
+}
+
+// taskOf is the task L belongs to, or nil on the main state.
+func (e *Engine) taskOf(L *lua.LState) *Task { return e.byThread[L] }
+
+func strList(lv lua.LValue) []string {
+	switch x := lv.(type) {
+	case lua.LString:
+		return []string{string(x)}
+	case *lua.LTable:
+		out := []string{}
+		x.ForEach(func(_, v lua.LValue) { out = append(out, lua.LVAsString(v)) })
+		return out
+	}
+	return nil
+}
+
+func (e *Engine) registerRuntime() {
+	L := e.L
+	tbl := func(name string, fns map[string]lua.LGFunction) {
+		t := L.NewTable()
+		for k, f := range fns {
+			L.SetField(t, k, L.NewFunction(f))
+		}
+		L.SetGlobal(name, t)
+	}
+	needTask := func(L *lua.LState, what string) *Task {
+		t := e.taskOf(L)
+		if t == nil {
+			L.RaiseError("%s only works inside a task: run your code with task.spawn(name, function() ... end)", what)
+		}
+		return t
+	}
+	// wait(seconds)
+	L.SetGlobal("wait", L.NewFunction(func(L *lua.LState) int {
+		t := needTask(L, "wait()")
+		t.wait = waitCond{kind: "sleep", until: time.Now().Add(time.Duration(float64(L.OptNumber(1, 0)) * float64(time.Second)))}
+		return L.Yield()
+	}))
+	// await(request or id [, timeout_s]) -> result; outside a task: the result if it's in, else the pending request
+	L.SetGlobal("await", L.NewFunction(func(L *lua.LState) int {
+		id := 0
+		switch x := L.Get(1).(type) {
+		case lua.LNumber:
+			id = int(x)
+		case *lua.LTable:
+			id = int(lua.LVAsNumber(x.RawGetString("id")))
+			if x.RawGetString("pending") == lua.LNil { // already a result
+				L.Push(x)
+				return 1
+			}
+		}
+		t := e.taskOf(L)
+		if t == nil {
+			L.Push(toLua(L, e.Reqs.Result(id)))
+			return 1
+		}
+		if res := e.Reqs.Result(id); res != nil && res["pending"] == nil {
+			L.Push(toLua(L, res))
+			return 1
+		}
+		t.wait = waitCond{kind: "await", req: id, until: time.Now().Add(time.Duration(float64(L.OptNumber(2, 30)) * float64(time.Second)))}
+		return L.Yield()
+	}))
+	e.setBot("result", func(L *lua.LState) int {
+		L.Push(toLua(L, e.Reqs.Result(int(L.CheckNumber(1)))))
+		return 1
+	})
+	tbl("task", map[string]lua.LGFunction{
+		// task.spawn([name,] fn, ...) -> id
+		"spawn": func(L *lua.LState) int {
+			name, fi := "task", 1
+			if s, ok := L.Get(1).(lua.LString); ok {
+				name, fi = string(s), 2
+			}
+			fn := L.CheckFunction(fi)
+			var args []lua.LValue
+			for i := fi + 1; i <= L.GetTop(); i++ {
+				args = append(args, L.Get(i))
+			}
+			L.Push(lua.LNumber(e.spawn(name, fn, args, false).ID))
+			return 1
+		},
+		"list": func(L *lua.LState) int {
+			ids := []int{}
+			for id, t := range e.tasks {
+				if !t.Handler {
+					ids = append(ids, id)
+				}
+			}
+			sort.Ints(ids)
+			out := []any{}
+			for _, id := range ids {
+				t := e.tasks[id]
+				m := map[string]any{"id": t.ID, "name": t.Name, "state": t.State, "seconds": int(time.Since(t.Started).Seconds())}
+				if t.Status != "" {
+					m["status"] = t.Status
+				}
+				if t.Err != "" {
+					m["error"] = t.Err
+				}
+				if t.State == "waiting" {
+					switch t.wait.kind {
+					case "sleep":
+						m["waiting_for"] = fmt.Sprintf("%.1fs", time.Until(t.wait.until).Seconds())
+					case "await":
+						m["waiting_for"] = fmt.Sprintf("request %d", t.wait.req)
+					case "event":
+						m["waiting_for"] = "event " + strings.Join(t.wait.types, ",")
+					}
+				}
+				out = append(out, m)
+			}
+			L.Push(toLua(L, out))
+			return 1
+		},
+		// task.status(text): what the current task is doing (shown in task.list and wow tasks)
+		"status": func(L *lua.LState) int {
+			if t := e.taskOf(L); t != nil {
+				t.Status = L.OptString(1, "")
+			}
+			return 0
+		},
+		"current": func(L *lua.LState) int {
+			if t := e.taskOf(L); t != nil {
+				L.Push(lua.LNumber(t.ID))
+				return 1
+			}
+			return 0
+		},
+		"stop": func(L *lua.LState) int {
+			ids := []int{}
+			if s, ok := L.Get(1).(lua.LString); ok { // by name
+				for id, t := range e.tasks {
+					if t.Name == string(s) {
+						ids = append(ids, id)
+					}
+				}
+			} else {
+				ids = append(ids, int(L.CheckNumber(1)))
+			}
+			n := 0
+			for _, id := range ids {
+				if t := e.tasks[id]; t != nil && t.State != "done" && t.State != "failed" && t.State != "stopped" {
+					if t == e.taskOf(L) {
+						L.RaiseError("a task can't stop itself; return from it instead")
+					}
+					t.State, t.Ended = "stopped", time.Now()
+					e.finish(t)
+					n++
+				}
+			}
+			L.Push(lua.LNumber(n))
+			return 1
+		},
+		"pause": func(L *lua.LState) int {
+			if t := e.tasks[int(L.CheckNumber(1))]; t != nil && (t.State == "waiting" || t.State == "new") {
+				t.Status = "paused (" + t.State + ")"
+				t.State = "paused"
+			}
+			return 0
+		},
+		"resume": func(L *lua.LState) int {
+			if t := e.tasks[int(L.CheckNumber(1))]; t != nil && t.State == "paused" {
+				t.State, t.wait = "waiting", waitCond{kind: "sleep"}
+			}
+			return 0
+		},
+	})
+	tbl("events", map[string]lua.LGFunction{
+		// events.on(type or {types}, fn [, name]) -> id: fn(event) runs as its own task for each matching event.
+		// A handler with the same name (default "on <types>") is replaced, so reloading a script doesn't stack them.
+		"on": func(L *lua.LState) int {
+			name := L.OptString(3, "on "+strings.Join(strList(L.Get(1)), ","))
+			id := 0
+			for hid, h := range e.handlers {
+				if h.name == name {
+					id = hid
+				}
+			}
+			if id == 0 {
+				e.nextH++
+				id = e.nextH
+			}
+			e.handlers[id] = &handler{id: id, types: strList(L.Get(1)), fn: L.CheckFunction(2), name: name}
+			L.Push(lua.LNumber(id))
+			return 1
+		},
+		"off": func(L *lua.LState) int {
+			delete(e.handlers, int(L.CheckNumber(1)))
+			return 0
+		},
+		"handlers": func(L *lua.LState) int {
+			out := []any{}
+			for _, h := range e.handlers {
+				out = append(out, map[string]any{"id": h.id, "types": h.types, "name": h.name})
+			}
+			L.Push(toLua(L, out))
+			return 1
+		},
+		// events.wait(type or {types} [, timeout_s]) -> the next matching event, or nil on timeout (in a task)
+		"wait": func(L *lua.LState) int {
+			t := needTask(L, "events.wait()")
+			w := waitCond{kind: "event", types: strList(L.Get(1)), since: e.Bus.Seq()}
+			if L.GetTop() >= 2 && L.Get(2) != lua.LNil {
+				w.until = time.Now().Add(time.Duration(float64(L.CheckNumber(2)) * float64(time.Second)))
+			}
+			t.wait = w
+			return L.Yield()
+		},
+		// events.query{since, types, match, last, limit} -> events (history; nothing is consumed)
+		"query": func(L *lua.LState) int {
+			q := Query{Last: 50}
+			if t, ok := L.Get(1).(*lua.LTable); ok {
+				q.Since = uint64(lua.LVAsNumber(t.RawGetString("since")))
+				q.Types = strList(t.RawGetString("types"))
+				q.Match = lua.LVAsString(t.RawGetString("match"))
+				if v := t.RawGetString("last"); v != lua.LNil {
+					q.Last = int(lua.LVAsNumber(v))
+				}
+				if v := t.RawGetString("limit"); v != lua.LNil {
+					q.Limit, q.Last = int(lua.LVAsNumber(v)), 0
+				}
+			}
+			out := L.NewTable()
+			for _, ev := range e.Bus.Query(q) {
+				out.Append(eventToLua(L, ev))
+			}
+			L.Push(out)
+			return 1
+		},
+		"seq": func(L *lua.LState) int { L.Push(lua.LNumber(e.Bus.Seq())); return 1 },
+		// events.emit(name, data): a script's own event, as type "script.<name>"
+		"emit": func(L *lua.LState) int {
+			data, _ := toGo(L.Get(2), 0).(map[string]any)
+			if data == nil {
+				data = map[string]any{}
+			}
+			if t := e.taskOf(L); t != nil {
+				data["task"] = t.Name
+			}
+			name := L.CheckString(1)
+			if !strings.HasPrefix(name, "attention") && name != "answer" {
+				name = "script." + name
+			}
+			ev := e.Emit(name, data)
+			L.Push(lua.LNumber(ev.Seq))
+			return 1
+		},
+	})
+	// bot.log(msg): a log event (tagged with the task) and a line in session.log
+	e.setBot("log", func(L *lua.LState) int {
+		msg := L.ToString(1)
+		data := map[string]any{"msg": msg}
+		if t := e.taskOf(L); t != nil {
+			data["task"] = t.Name
+		}
+		e.bot.Log("[Lua] %s", msg)
+		go e.Emit("log", data)
+		return 0
+	})
+}
+
+// registerCompat adds the Lua 5.2 pieces scripts were written against (gopher-lua is 5.1): bit32, table.unpack,
+// load(string). Lua side in runtime.lua.
+func (e *Engine) registerCompat() {
+	L := e.L
+	u := func(L *lua.LState, i int) uint32 { return uint32(int64(L.OptNumber(i, 0))) }
+	fold := func(op func(a, b uint32) uint32, init uint32) lua.LGFunction {
+		return func(L *lua.LState) int {
+			r := init
+			for i := 1; i <= L.GetTop(); i++ {
+				r = op(r, u(L, i))
+			}
+			L.Push(lua.LNumber(r))
+			return 1
+		}
+	}
+	shift := func(left bool) lua.LGFunction {
+		return func(L *lua.LState) int {
+			x, n := u(L, 1), int(L.CheckNumber(2))
+			if left == (n >= 0) {
+				x = x << uint(max(n, -n))
+			} else {
+				x = x >> uint(max(n, -n))
+			}
+			if n >= 32 || n <= -32 {
+				x = 0
+			}
+			L.Push(lua.LNumber(x))
+			return 1
+		}
+	}
+	t := L.NewTable()
+	for name, fn := range map[string]lua.LGFunction{
+		"band":   fold(func(a, b uint32) uint32 { return a & b }, 0xFFFFFFFF),
+		"bor":    fold(func(a, b uint32) uint32 { return a | b }, 0),
+		"bxor":   fold(func(a, b uint32) uint32 { return a ^ b }, 0),
+		"bnot":   func(L *lua.LState) int { L.Push(lua.LNumber(^u(L, 1))); return 1 },
+		"btest":  func(L *lua.LState) int { L.Push(lua.LBool(u(L, 1)&u(L, 2) != 0)); return 1 },
+		"lshift": shift(true),
+		"rshift": shift(false),
+		"extract": func(L *lua.LState) int {
+			w := int(L.OptNumber(3, 1))
+			L.Push(lua.LNumber((u(L, 1) >> uint(L.CheckNumber(2))) & (1<<uint(w) - 1)))
+			return 1
+		},
+	} {
+		L.SetField(t, name, L.NewFunction(fn))
+	}
+	L.SetGlobal("bit32", t)
+}

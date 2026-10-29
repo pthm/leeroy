@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pthm/wowbench/azeroth-sdk/script"
@@ -133,6 +134,9 @@ var methods = map[string]method{
 			return nil, err
 		}
 		out := map[string]any{"result": res}
+		if ev := news(e); ev != nil {
+			out["events"] = ev
+		}
 		if se := e.TakeScriptErrors(); se != nil {
 			out["script_errors"] = se
 			if b := session_(s, p.Char); b != nil {
@@ -140,6 +144,42 @@ var methods = map[string]method{
 			}
 		}
 		return out, nil
+	}),
+	// events.query: the event history (nothing is consumed). since = seq, types = {"chat", "quest_*"}, match =
+	// text in the event, last = n most recent (default 50), limit = first n after since.
+	"events.query": typed(func(s Sessions, p struct {
+		Char string `json:"char"`
+		script.Query
+	}) (any, error) {
+		e, err := engine(s, p.Char)
+		if err != nil {
+			return nil, err
+		}
+		if p.Last == 0 && p.Limit == 0 {
+			p.Last = 50
+		}
+		return e.Bus.Query(p.Query), nil
+	}),
+	// events.wait: blocks until an event matching types/match arrives after since (default: now), or timeout_s
+	"events.wait": typed(func(s Sessions, p struct {
+		Char    string  `json:"char"`
+		Timeout float64 `json:"timeout_s"`
+		Since   *uint64 `json:"since"`
+		script.Query
+	}) (any, error) {
+		e, err := engine(s, p.Char)
+		if err != nil {
+			return nil, err
+		}
+		if p.Timeout <= 0 || p.Timeout > 600 {
+			p.Timeout = 60
+		}
+		p.Query.Since = e.Bus.Seq()
+		if p.Since != nil {
+			p.Query.Since = *p.Since
+		}
+		evs := e.Bus.Wait(p.Query, time.Duration(p.Timeout*float64(time.Second)))
+		return map[string]any{"events": evs, "timed_out": len(evs) == 0, "seq": e.Bus.Seq()}, nil
 	}),
 	"move.to": typed(func(s Sessions, p struct {
 		Char string   `json:"char"`
@@ -232,6 +272,57 @@ var methods = map[string]method{
 	}) (any, error) {
 		return waitFor(s, p.Char, p.Timeout, "return not bot.is_moving()", `local x, y, z = bot.get_position(); return {x = x, y = y, z = z}`)
 	}),
+}
+
+// The agent's position in each character's event stream: every eval reply says what happened since the last one.
+var (
+	cursorMu sync.Mutex
+	cursors  = map[*script.Engine]uint64{}
+)
+
+// important event types are shown in full in eval replies; the rest are counted
+var important = []string{"chat", "attention", "death", "resurrected", "level_up", "script_error", "error", "notice",
+	"party_invite", "party_changed", "quest_complete", "quest_turned_in", "gear_broken", "trade_*"}
+
+// news summarises the events since the agent's last eval: {seq, counts by type, important events (last 20)}.
+func news(e *script.Engine) map[string]any {
+	cursorMu.Lock()
+	since, seen := cursors[e]
+	now := e.Bus.Seq()
+	cursors[e] = now
+	cursorMu.Unlock()
+	if !seen || now == since {
+		return nil
+	}
+	evs := e.Bus.Query(script.Query{Since: since})
+	counts, keep := map[string]int{}, []script.Event{}
+	for _, ev := range evs {
+		counts[ev.Type]++
+		failed := (ev.Type == "result" && ev.Data["ok"] == false) || (ev.Type == "task_finished" && ev.Data["state"] != "done")
+		if failed || matchAny(ev.Type, important) && !(ev.Type == "chat" && ev.Data["kind"] == "whisper_sent") {
+			keep = append(keep, ev)
+		}
+	}
+	if len(keep) > 20 {
+		keep = keep[len(keep)-20:]
+	}
+	out := map[string]any{"seq": now, "counts": counts}
+	if len(keep) > 0 {
+		out["important"] = keep
+	}
+	if len(evs) < int(now-since) {
+		out["note"] = "older events trimmed; wow events --since for the rest"
+	}
+	return out
+}
+
+func matchAny(t string, pats []string) bool {
+	for _, p := range pats {
+		if p == t || (strings.HasSuffix(p, "*") && strings.HasPrefix(t, strings.TrimSuffix(p, "*"))) {
+			return true
+		}
+	}
+	return false
 }
 
 // waitFor long-polls a Lua condition every 250 ms, then returns the result of `then`.

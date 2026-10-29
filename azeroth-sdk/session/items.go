@@ -16,6 +16,7 @@ import (
 
 	"github.com/pthm/wowbench/azeroth-sdk/client"
 	"github.com/pthm/wowbench/azeroth-sdk/navigation"
+	"github.com/pthm/wowbench/azeroth-sdk/script"
 )
 
 const (
@@ -246,12 +247,61 @@ func (b *Bot) setupItems() {
 	e := b.lua
 
 	// loot_all(guid): as before, plus a warning when there's no bag space (items stay on the corpse)
-	e.RegisterFunc("loot_all", func(guid uint64) any {
-		b.LootAll(guid)
-		if freeSlots(w) == 0 {
-			return "bags full: only money is looted; sell or destroy something"
+	// loot_all(guid) -> request "loot": {items = {{item, name, count}...}, money} after the loot window closes
+	e.RegisterFunc("loot_all", func(guid uint64) map[string]any {
+		args := map[string]any{"guid": fmt.Sprint(guid)}
+		full := freeSlots(w) == 0
+		u := b.GetUnitInfo(guid)
+		if u != nil && !u.IsPlayer && u.Distance > 5 {
+			return b.refuse("loot", args, "out_of_range", fmt.Sprintf("%.0f yd away: get within 5 yd", u.Distance))
 		}
-		return nil
+		if u != nil && !u.IsPlayer && u.IsAlive {
+			return b.refuse("loot", args, "not_lootable", "it's alive")
+		}
+		got, money, last, start, sent := []any{}, uint32(0), time.Now(), time.Now(), false
+		var mu sync.Mutex
+		send := func() { b.LootAll(guid); sent, last = true, time.Now() }
+		// a fresh corpse turns lootable a moment after it dies: wait up to 2s for the flag before asking
+		if u == nil || u.IsPlayer || u.Lootable {
+			send()
+		}
+		return b.request("loot", args, 10*time.Second, func() *script.Outcome {
+			mu.Lock()
+			defer mu.Unlock()
+			if !sent {
+				if v := b.GetUnitInfo(guid); v != nil && v.Lootable {
+					send()
+				} else if time.Since(start) > 2*time.Second {
+					return script.Fail("not_lootable", "nothing to loot on it for you (already looted, no drops, or someone else's kill)", nil)
+				}
+				return nil
+			}
+			if time.Since(last) < 1500*time.Millisecond {
+				return nil
+			}
+			switch {
+			case len(got) > 0 || money > 0:
+				return script.Ok(map[string]any{"items": got, "money": money})
+			case full:
+				return script.Fail("bags_full", "bags full: nothing looted; sell or destroy something", nil)
+			}
+			return script.Fail("nothing_looted", "no loot: too far (~5 yd), not lootable, already looted, or not yours", nil)
+		}, func(ev script.Event) *script.Outcome {
+			mu.Lock()
+			defer mu.Unlock()
+			switch {
+			case ev.Type == "item_received" && ev.Data["from"] == "loot":
+				got = append(got, ev.Data)
+			case ev.Type == "money" && ev.Data["source"] == "loot":
+				money += ev.Data["amount"].(uint32)
+			case ev.Type == "error" && ev.Data["op"] == "inventory":
+				return script.Fail(fmt.Sprint(ev.Data["code"]), fmt.Sprint(ev.Data["message"]), map[string]any{"items": got})
+			default:
+				return nil
+			}
+			last = time.Now()
+			return nil
+		})
 	})
 	e.RegisterFunc("item_info", func(entry uint32) any {
 		p := itemInfo(w, entry)
@@ -346,10 +396,11 @@ func (b *Bot) setupItems() {
 	// free_slots() -> empty slots in the backpack and equipped bags. At 0, loot and quest rewards are refused.
 	e.RegisterFunc("free_slots", func() int { return freeSlots(w) })
 	// sell(vendor, item [, count]): item = guid or entry; count defaults to the whole stack
-	e.RegisterFunc("sell", func(vendor, item uint64, count uint32) error {
+	e.RegisterFunc("sell", func(vendor, item uint64, count uint32) map[string]any {
+		args := map[string]any{"vendor": fmt.Sprint(vendor), "item": fmt.Sprint(item)}
 		it := findItem(w, item)
 		if it == nil {
-			return fmt.Errorf("no such item in your bags")
+			return b.refuse("sell", args, "item_not_found", "no such item in your bags")
 		}
 		if count == 0 {
 			count = it["count"].(uint32)
@@ -357,7 +408,13 @@ func (b *Bot) setupItems() {
 		body := binary.LittleEndian.AppendUint64(nil, vendor)
 		body = binary.LittleEndian.AppendUint64(body, guidOf(it))
 		w.SendPacketRaw(cmsgSellItem, binary.LittleEndian.AppendUint32(body, count))
-		return nil
+		money := w.Money()
+		return b.request("sell", args, 3*time.Second, func() *script.Outcome {
+			if w.Money() > money {
+				return script.Ok(map[string]any{"money": w.Money() - money})
+			}
+			return nil
+		}, func(ev script.Event) *script.Outcome { return failOn(ev, "sell") })
 	})
 	// sell_junk(vendor) -> number of stacks sold: everything grey (quality 0) with a sell price. Items whose
 	// info hasn't loaded yet are skipped; call again a second later to catch them.
@@ -393,13 +450,14 @@ func (b *Bot) setupItems() {
 		return list
 	})
 	// buy(vendor, entry [, count]): count is in vendor units (buy_count each). Needs vendor_items first.
-	e.RegisterFunc("buy", func(vendor uint64, entry, count uint32) error {
+	e.RegisterFunc("buy", func(vendor uint64, entry, count uint32) map[string]any {
+		args := map[string]any{"vendor": fmt.Sprint(vendor), "item": entry, "count": max(count, 1)}
 		s.mu.Lock()
 		list, ok := s.vendors[vendor]
 		s.mu.Unlock()
 		if !ok {
 			w.SendPacketRaw(cmsgListInventory, binary.LittleEndian.AppendUint64(nil, vendor))
-			return fmt.Errorf("vendor list not loaded yet: call bot.vendor_items(vendor), then buy again")
+			return b.refuse("buy", args, "vendor_list_not_loaded", "vendor list not loaded yet: call bot.vendor_items(vendor), then buy again")
 		}
 		for _, v := range list {
 			if v.Entry == entry {
@@ -408,36 +466,46 @@ func (b *Bot) setupItems() {
 				body = binary.LittleEndian.AppendUint32(body, v.Slot)
 				body = binary.LittleEndian.AppendUint32(body, max(count, 1))
 				w.SendPacketRaw(cmsgBuyItem, append(body, 0))
-				return nil
+				return b.request("buy", args, 5*time.Second, nil, func(ev script.Event) *script.Outcome {
+					if ev.Type == "item_received" && same(ev.Data["item"], entry) {
+						return script.Ok(ev.Data)
+					}
+					if o := failOn(ev, "buy"); o != nil {
+						return o
+					}
+					return failOn(ev, "inventory")
+				})
 			}
 		}
-		return fmt.Errorf("vendor doesn't sell item %d", entry)
+		return b.refuse("buy", args, "not_sold_here", fmt.Sprintf("vendor doesn't sell item %d", entry))
 	})
 	// destroy(item [, count]): item = guid or entry; gone for good
-	e.RegisterFunc("destroy", func(item uint64, count uint32) error {
+	e.RegisterFunc("destroy", func(item uint64, count uint32) map[string]any {
+		args := map[string]any{"item": fmt.Sprint(item)}
 		it := findItem(w, item)
 		if it == nil {
-			return fmt.Errorf("no such item in your bags")
+			return b.refuse("destroy", args, "item_not_found", "no such item in your bags")
 		}
 		if count == 0 {
 			count = it["count"].(uint32)
 		}
 		w.SendPacketRaw(cmsgDestroyItem, []byte{it["bag"].(uint8), it["slot"].(uint8), byte(min(count, 255)), 0, 0, 0})
-		return nil
+		return b.done("destroy", args, map[string]any{"count": count})
 	})
 	// use_item(item [, target guid]): item = guid or entry. Eat, drink, potions, quest items. Food and drink
 	// only work out of combat and you must sit still while they tick.
-	e.RegisterFunc("use_item", func(item, target uint64) error {
+	e.RegisterFunc("use_item", func(item, target uint64) map[string]any {
+		args := map[string]any{"item": fmt.Sprint(item)}
 		it := findItem(w, item)
 		if it == nil {
-			return fmt.Errorf("no such item in your bags")
+			return b.refuse("use_item", args, "item_not_found", "no such item in your bags")
 		}
 		p := itemInfo(w, it["entry"].(uint32))
 		if p == nil {
-			return fmt.Errorf("item info not loaded yet, try again")
+			return b.refuse("use_item", args, "not_loaded", "item info not loaded yet, try again")
 		}
 		if p.UseSpell == 0 {
-			return fmt.Errorf("%s has no use effect", p.Name)
+			return b.refuse("use_item", args, "no_use_effect", p.Name+" has no use effect")
 		}
 		var buf bytes.Buffer
 		buf.Write([]byte{it["bag"].(uint8), it["slot"].(uint8), 1})
@@ -448,21 +516,25 @@ func (b *Bot) setupItems() {
 		writeTarget(&buf, target)
 		b.agent.castSent(p.UseSpell)
 		w.SendPacketRaw(cmsgUseItem, buf.Bytes())
-		return nil
+		return b.request("use_item", args, 5*time.Second, nil, castMatch(p.UseSpell))
 	})
 	// use_object(guid [, spell]): interact with a game object (door, quest object, chest, herb). Chests and
 	// quest crates are opened with a spell like the real client does (default Opening, 6478); the loot is
 	// taken automatically. Stand within ~5 yards.
-	e.RegisterFunc("use_object", func(guid uint64, spell uint32) error {
+	e.RegisterFunc("use_object", func(guid uint64, spell uint32) map[string]any {
+		args := map[string]any{"guid": fmt.Sprint(guid)}
 		o := w.GetObject(guid)
 		if o == nil {
-			return fmt.Errorf("no such object nearby")
+			return b.refuse("use_object", args, "not_found", "no such object nearby")
 		}
 		if spell == 0 && (o.Value(fieldGOBytes1)>>8)&0xFF == goTypeChest {
 			spell = spellOpening
 		}
-		if spell == 0 {
-			return w.GameObjectUse(guid)
+		if spell == 0 { // the server doesn't confirm a plain use: watch for item_received / quest_progress
+			if err := w.GameObjectUse(guid); err != nil {
+				return b.refuse("use_object", args, "refused", err.Error())
+			}
+			return b.done("use_object", args, nil)
 		}
 		var buf bytes.Buffer
 		buf.WriteByte(0)
@@ -472,11 +544,12 @@ func (b *Bot) setupItems() {
 		buf.Write(packGUID(guid))
 		b.agent.castSent(spell)
 		w.SendPacketRaw(cmsgCastSpellOp, buf.Bytes())
-		return nil
+		return b.request("use_object", args, 10*time.Second, nil, castMatch(spell))
 	})
 	// repair(npc): repair everything you wear and carry at an NPC with npc_flags 0x1000 (armorers, weaponsmiths)
 	// The server says nothing when a repair fails, so the result is checked a moment later and reported in read_chat.
-	e.RegisterFunc("repair", func(npc uint64) {
+	e.RegisterFunc("repair", func(npc uint64) map[string]any {
+		args := map[string]any{"npc": fmt.Sprint(npc)}
 		damaged := func() int {
 			n := 0
 			for _, it := range bagItems(w) {
@@ -487,21 +560,24 @@ func (b *Bot) setupItems() {
 			return n
 		}
 		before, money := damaged(), w.Money()
+		if before == 0 {
+			return b.done("repair", args, map[string]any{"fixed": 0})
+		}
 		body := binary.LittleEndian.AppendUint64(nil, npc)
 		body = binary.LittleEndian.AppendUint64(body, 0) // 0 = all items
 		w.SendPacketRaw(0x2A8, append(body, 0))          // CMSG_REPAIR_ITEM; no guild bank
-		go func() {
-			time.Sleep(1500 * time.Millisecond)
-			after, spent := damaged(), int64(money)-int64(w.Money())
-			switch {
-			case before == 0:
-				b.notify("repair: nothing needed repairing")
-			case after < before:
-				b.notify(fmt.Sprintf("repair: fixed %d item(s) for %dc; %d still damaged", before-after, spent, after))
-			default:
-				b.notify(fmt.Sprintf("repair failed: %d item(s) still damaged (stand within ~5 yd of an NPC that repairs, npc_flags 0x1000, and have enough money: you have %dc)", after, w.Money()))
+		// the server says nothing about a repair: compare durability a moment later
+		start := time.Now()
+		return b.request("repair", args, 5*time.Second, func() *script.Outcome {
+			if time.Since(start) < 1500*time.Millisecond {
+				return nil
 			}
-		}()
+			after, spent := damaged(), int64(money)-int64(w.Money())
+			if after < before {
+				return script.Ok(map[string]any{"fixed": before - after, "cost": spent, "still_damaged": after})
+			}
+			return script.Fail("not_repaired", fmt.Sprintf("%d item(s) still damaged: stand within ~5 yd of an NPC that repairs (npc_flags 0x1000) with enough money (you have %dc)", after, w.Money()), nil)
+		}, nil)
 	})
 	// broken_gear() -> equipped items at 0 durability (they give no stats; a broken weapon means no weapon skills)
 	e.RegisterFunc("broken_gear", func() []map[string]any {
@@ -514,9 +590,19 @@ func (b *Bot) setupItems() {
 		return out
 	})
 	// train(trainer, spell): learn a spell from a trainer (costs money; ids from `wowdb npc <trainer>`)
-	e.RegisterFunc("train", func(trainer uint64, spell uint32) {
+	e.RegisterFunc("train", func(trainer uint64, spell uint32) map[string]any {
 		body := binary.LittleEndian.AppendUint64(nil, trainer)
 		w.SendPacketRaw(0x1B2, binary.LittleEndian.AppendUint32(body, spell)) // CMSG_TRAINER_BUY_SPELL
+		return b.request("train", map[string]any{"trainer": fmt.Sprint(trainer), "spell": spell}, 5*time.Second, nil,
+			func(ev script.Event) *script.Outcome {
+				if !same(ev.Data["spell"], spell) {
+					return nil
+				}
+				if ev.Type == "learned" {
+					return script.Ok(nil)
+				}
+				return failOn(ev, "train")
+			})
 	})
 	// path(x, y, z) -> walking distance, gap: gap is how far the best path ends from the target. A gap over a
 	// few yards means you can't get there (mob on a ledge, in a closed building, under the map); nil if no path.
