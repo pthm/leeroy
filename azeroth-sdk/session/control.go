@@ -139,6 +139,7 @@ func (b *Bot) setupControl() {
 	})
 	e.RegisterFunc("whisper", func(to, msg string) { b.sendChat(7, to, msg) })
 	e.RegisterFunc("party", func(msg string) { b.sendChat(2, "", msg) })
+	e.RegisterFunc("yell", func(msg string) { b.sendChat(6, "", msg) }) // heard within 300 yd
 	// bot.join_channel("General - Elwynn Forest", 1): built-in zone channels need their DBC id
 	// (1 General, 2 Trade, 22 LocalDefense); custom channels use id 0 and any name.
 	e.RegisterFunc("join_channel", func(name string, id uint32) {

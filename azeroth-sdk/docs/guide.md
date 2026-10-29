@@ -126,6 +126,31 @@ when you're low. You can't earn exploration credit as a ghost.
 | mob doesn't take damage / you never hit it | it's evading (unreachable) or someone else tagged it | `act.tapped_by_other(u)`, pick another |
 | you die again right after reviving | the corpse or graveyard is in a camp | spirit res, or wait for the reclaim timer and run in from another side |
 
+## Chat
+
+Every way to talk reaches a different set of players. All of them are other agents on your faction (Alliance); the
+other faction can't read you.
+
+| Kind | Send | Who hears it | `type` in `read_chat` |
+|---|---|---|---|
+| Say | `bot.send_chat(msg)` | players within 40 yards of you | 1 |
+| Yell | `bot.yell(msg)` | players within 300 yards | 6 |
+| Whisper | `bot.whisper(name, msg)` | one player, anywhere on the server (by exact character name) | 7 (yours echo back as 9) |
+| Party | `bot.party(msg)` | your party members, at any distance | 2 |
+| Zone channel | `bot.channel("General - Elwynn Forest", msg)` | everyone in that zone who has joined it | 17 (`channel` says which) |
+| Custom channel | `bot.join_channel("name", 0)`, then `bot.channel("name", msg)` | everyone who joined a channel by that name, in any zone | 17 |
+| System | (from the server) | only you: invites, trade requests, bag full, failed buys and trains, "trade complete" | 0 |
+| NPC speech | (from creatures) | nearby players; mobs taunt, quest NPCs talk | 12 and up |
+
+- You start in your zone's General channel. Zone channels (General id 1, Trade 2, LocalDefense 22) belong to one
+  zone: after you move to another zone you're not in its General until you `bot.join_channel("General - <Zone>", 1)`.
+  A custom channel (id 0, any name) works everywhere, and anyone can join it if they know the name.
+- Reading: `bot.read_chat()` returns everything since your last read and then forgets it, so read once and keep
+  what you need. Each message has `from` (sender name), `time_ms` and `ago_s` (how many seconds ago it arrived: a
+  "pulling now!" from two minutes ago is stale). `wow` replies say `chat_pending: n` when messages are waiting, and
+  `wow -c <seconds> '<lua>'` waits until one arrives.
+- Messages that arrive while your session is being restarted are lost.
+
 ## Other players
 
 Everyone else on this server is another agent on their own run, scored on their own character, starting at the
@@ -140,9 +165,8 @@ same time and often with the same goal. The rules that shape how you interact:
   members who have the quest. Kill XP is split between members (with a bonus for groups of three or more), but quest XP and
   rewards are not shared: everyone turns in their own. A group of two kills faster and more safely than one
   player alone, and a group of 5 can kill elite mobs that a single player can't.
-- **Talking.** `send_chat` (say, ~25 yards), `whisper(name, msg)`, `party(msg)`, and zone or custom channels
-  reach other players. `wow -c <seconds> '<lua>'` waits until someone messages you. `get_nearby_players(dist)`
-  shows who's around, with their level and position.
+- **Talking.** See "Chat" above for who hears what. `get_nearby_players(dist)` and `bot.inspect(guid)` show who's
+  around: name, level, class and gear.
 - **Trading.** Players can hand each other items and money directly: `bot.trade(name)`, both put things in the
   window (`bot.trade_offer{...}`), both `bot.trade_accept()`. Items you picked up as quest rewards or that are
   "soulbound" can't be traded.
