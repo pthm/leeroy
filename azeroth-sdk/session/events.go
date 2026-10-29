@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/pthm/leeroy/azeroth-sdk/metrics"
 	"math"
 	"strings"
 	"sync"
@@ -589,8 +590,8 @@ func (b *Bot) setupWatch() {
 	var (
 		mu                             sync.Mutex
 		stallS, below, everyS, windowS = 180.0, 0.0, 0.0, 300.0
-		gains                          []gain // ponytail: trimmed to the window each tick
-		kills, deaths                  int
+		gains                          []gain         // ponytail: trimmed to the window each tick
+		period                         metrics.Combat // kills and deaths since the last digest
 		lastXP, lastDigest             = time.Now(), time.Now()
 		stalled                        string // the reason of the stall reported, until it's over
 	)
@@ -605,11 +606,8 @@ func (b *Bot) setupWatch() {
 					stalled = ""
 				}
 			}
-		case "kill", "party_kill":
-			kills++
-		case "death":
-			deaths++
 		}
+		period.Add(metrics.Event{Type: ev.Type, Data: ev.Data})
 	})
 	b.lua.Func("events.watch", "{[stall_s = 180, below = 0, window_s = 300, every_s = 0]} → settings",
 		"when to emit stall (no XP for stall_s seconds, or fewer than below XP/hour over the last window_s; 0 = off) and progress (a digest every every_s; 0 = off) events. Subscribe to them to be woken",
@@ -642,7 +640,7 @@ func (b *Bot) setupWatch() {
 			}
 			rate := func(s float64) float64 { // XP/hour over the last s seconds (or since the start)
 				s = min(s, now.Sub(start).Seconds())
-				return math.Round(float64(sum(s)) / max(s, 60) * 3600)
+				return metrics.PerHour(float64(sum(s)), s, 60)
 			}
 			type out struct {
 				typ  string
@@ -663,8 +661,9 @@ func (b *Bot) setupWatch() {
 			}
 			if everyS > 0 && now.Sub(lastDigest).Seconds() >= everyS {
 				s := now.Sub(lastDigest).Seconds()
-				d := types.Progress{XP: sum(s), XPPerHour: rate(s), Kills: kills, Deaths: deaths, Seconds: int(s)}
-				lastDigest, kills, deaths = now, 0, 0
+				d := types.Progress{XP: sum(s), XPPerHour: rate(s), Kills: period.Kills + period.PartyKills,
+					Deaths: period.Deaths, Seconds: int(s)}
+				lastDigest, period = now, metrics.Combat{}
 				emit = append(emit, out{"progress", d})
 			}
 			mu.Unlock()

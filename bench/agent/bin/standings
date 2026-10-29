@@ -2,12 +2,15 @@
 # standings: where everyone in this run stands, best score first (score = (overall rate + best 15-min rate) / 2,
 # in progress points per hour), updated every 15s by the judges. "you": true marks your character. The last line is
 # the faction: the sum over all players. role, damage_dealt, damage_taken and healing_done (this run) show how each
-# plays their role: reported, not scored. minutes_left on the faction line is the time left in the run.
+# plays their role; assist_share (how much of your useful hits and heals also paid a teammate: shared kills, heals
+# on others) and contested_hits (hits on mobs whose XP went to someone outside your party) how you cooperate. All
+# reported, not scored. minutes_left on the faction line is the time left in the run.
 b=${WOWBENCH_BOARD:?standings: not available in this run}
 cat "$b"/*.json 2>/dev/null | jq -s -c --arg me "$WOWBENCH_CHAR" 'sort_by(-.score) | (map(.minutes_left // empty) | max) as $left | to_entries | map({rank: (.key + 1), char: .value.char,
   you: (.value.char == $me), score: .value.score, rate: .value.rate, best_window: .value.best_window, recent_rate: .value.recent_rate,
   progress: .value.progress, level: .value.level, role: .value.role, damage_dealt: .value.damage_dealt,
-  damage_taken: .value.damage_taken, healing_done: .value.healing_done, avg_item_level: .value.avg_item_level, money: .value.money,
+  damage_taken: .value.damage_taken, healing_done: .value.healing_done,
+  assist_share: .value.assist_share, contested_hits: .value.contested_hits, avg_item_level: .value.avg_item_level, money: .value.money,
   minutes: (.value.elapsed_s / 60 | floor)})
   | (.[], {faction: "Alliance", players: length, minutes_left: $left, score: (map(.score) | add * 10 | round / 10),
      progress: (map(.progress) | add * 10 | round / 10), recent_rate: (map(.recent_rate) | add * 10 | round / 10)})'

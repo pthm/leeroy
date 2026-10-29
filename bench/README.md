@@ -8,7 +8,7 @@ the repo root; server and client setup is in the [repo README](../README.md).
 |---|---|
 | `bench.sh` | one agent: account, character, session, judge, agent; results in `runs/<ts>-<agent>/` |
 | `matrix.sh` | a grid of solo runs (task × race × class × minutes × reps) from a config in `matrices/`; writes `summary.json` |
-| `report.ts` | the report card: how each agent spent a run (duty cycle, idle gaps, progress by what the agent was doing, wakes and what triggered them, restarts, deaths, tokens, cost); `report.json` in the run or team dir, written at the end of every run |
+| `bin/judge report` | the report card: how each agent spent a run (duty cycle, idle gaps, progress by what the agent was doing, wakes and what triggered them, restarts, deaths, tokens, cost), combat, cooperation and time use; `report.json` (and a team's `team.json`), written at the end of every run. See [judge/README.md](judge/README.md) |
 | `team.sh` | several `bench.sh` on one clock; writes `team.json` and one replay to `runs/<ts>-team/` |
 | `resume.sh` | resumes a paused team run |
 | `restart-agent.sh` | mid-run, brings back one agent whose session or conversation ended |
@@ -125,7 +125,7 @@ bin/azview live --run bench/runs/<ts>-team   # http://localhost:8800/
 | `go`, `go.<agent>.ready` | the start time (unix seconds) and each session's ready marker |
 | `<agent>.out` | that agent's `bench.sh` output; its last JSON line is the judge's result |
 | `<agent>.record.jsonl` | client-side event log for replays (positions, combat, chat, API calls) |
-| `<Char>.events.jsonl` | the character's event stream; the judge reads role stats from it |
+| `<Char>.events.jsonl` | the character's event stream; the judge reads combat and cooperation from it |
 | `board/<Char>.json` | each judge's latest result (with `minutes_left`), read by `standings` and `wow` |
 | `alerts.log` | agents that exited with 2+ minutes left, with the runtime's last error (e.g. a Codex usage limit) |
 | `team.json` | the results, see below |

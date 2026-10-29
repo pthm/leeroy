@@ -5,7 +5,7 @@
 # One bench.sh per agent (WOW_PORT 8090, 8091, ...), logins staggered. Every judge and agent starts at
 # the same moment once all sessions are up, so times are comparable. Writes runs/<id>/team.json:
 # per-agent judge results ranked by score, plus team_s = time until the last agent met the goal (null if any didn't),
-# and report.json (report.ts).
+# and report.json (bin/judge report).
 # With a spec (a key from specs.tsv), each agent's prompt says its class, spec, role and key stats, and lists the
 # other players with theirs.
 set -e
@@ -36,8 +36,5 @@ done
 i=0; until [ "$(ls "$dir"/go.*.ready 2>/dev/null | wc -l)" -ge $# ] || [ $i -ge 300 ]; do sleep 1; i=$((i + 1)); done
 date +%s > "$dir/go"; echo "go: $(ls "$dir"/go.*.ready | wc -l)/$# sessions up"
 wait
-for f in "$dir"/*.out; do grep '^{' "$f" | tail -n 1; done | jq -s --argjson n $# '{agents: sort_by(-(.score // .value)), faction_score: (map(.score // 0) | add),
-  by_runtime: (group_by(.runtime // "claude") | map({runtime: (.[0].runtime // "claude"), players: length, score: (map(.score // 0) | add), best: (map(.score // 0) | max)})),
-  team_s: (if length == $n and all(.met) then map(.elapsed_s) | max else null end)}' | tee "$dir/team.json"
-bun report.ts "$dir" || true # report.json: how each agent spent the run (duty cycle, wakes, restarts...)
+../bin/judge report "$dir" || true # team.json (scores) and report.json (how each agent spent the run, cooperation)
 ../bin/azview replay "$dir" || echo "no replay (is mod-recorder installed? see README)"

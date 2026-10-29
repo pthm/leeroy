@@ -67,9 +67,5 @@ for r in "$team"/*.record.jsonl; do
   port=$((port + 1)); sleep 5 # concurrent logins time out on the auth server
 done
 wait
-n=$(ls "$team"/*.record.jsonl | wc -l)
-for f in "$team"/*.out; do grep '^{' "$f" | tail -n 1; done | jq -s --argjson n $n '{agents: sort_by(-(.score // .value)), faction_score: (map(.score // 0) | add),
-  by_runtime: (group_by(.runtime // "claude") | map({runtime: (.[0].runtime // "claude"), players: length, score: (map(.score // 0) | add), best: (map(.score // 0) | max)})),
-  team_s: (if length == $n and all(.met) then map(.elapsed_s) | max else null end)}' | tee "$team/team.json"
-bun "$root/report.ts" "$team" || true
+"$repo/bin/judge" report "$team" || true # team.json and report.json
 "$repo/bin/azview" replay "$team" || true

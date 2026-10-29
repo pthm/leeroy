@@ -35,9 +35,10 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io"
+	"github.com/pthm/leeroy/azeroth-sdk/metrics"
 	"math"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -74,6 +75,14 @@ func appendLine(file string, v any) {
 
 func main() {
 	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "party" {
+		runParty(args[1:])
+		return
+	}
+	if len(args) == 2 && args[0] == "report" {
+		runReport(args[1])
+		return
+	}
 	if len(args) == 2 && args[0] == "signals" {
 		b, _ := json.MarshalIndent(signals(args[1]), "", " ")
 		fmt.Println(string(b))
@@ -96,54 +105,10 @@ func main() {
 	// --events <file> --role <DPS|Tank|Healer>: the character's event stream (client-side, azsdk -events); its damage
 	// dealt / taken and healing done since the start go on the board. Reported, not scored.
 	eventsFile, role, runtime := flag("events", ""), flag("role", ""), flag("runtime", "")
-	var dealt, taken, healed float64
-	var eventsAt int64
-	var eventsTail string
-	tallyEvents := func(since int64) {
-		if eventsFile == "" {
-			return
-		}
-		f, err := os.Open(eventsFile)
-		if err != nil {
-			return // not there yet
-		}
-		defer f.Close()
-		st, _ := f.Stat()
-		if st.Size() < eventsAt {
-			eventsAt = 0
-		}
-		f.Seek(eventsAt, io.SeekStart)
-		buf, _ := io.ReadAll(io.LimitReader(f, st.Size()-eventsAt))
-		eventsAt += int64(len(buf))
-		lines := strings.Split(eventsTail+string(buf), "\n")
-		eventsTail = lines[len(lines)-1]
-		for _, l := range lines[:len(lines)-1] {
-			if !strings.Contains(l, `"type":"damage"`) && !strings.Contains(l, `"type":"heal"`) {
-				continue
-			}
-			var e struct {
-				T    int64
-				Type string
-				Data struct {
-					Src    struct{ Me bool }
-					Taken  bool
-					Amount float64
-				}
-			}
-			if json.Unmarshal([]byte(l), &e) != nil || e.T < since {
-				continue
-			}
-			d := e.Data
-			if e.Type == "damage" && d.Src.Me {
-				dealt += d.Amount
-			}
-			if e.Type == "damage" && d.Taken {
-				taken += d.Amount
-			}
-			if e.Type == "heal" && d.Src.Me {
-				healed += d.Amount
-			}
-		}
+	// cooperation needs everyone's streams: the other <Char>.events.jsonl beside this one (a team dir)
+	var team *streams
+	if eventsFile != "" {
+		team = newStreams(filepath.Dir(eventsFile))
 	}
 	if board != "" {
 		os.MkdirAll(board, 0o755)
@@ -223,33 +188,9 @@ func main() {
 	if len(prior) > 0 {
 		start -= int64(prior[len(prior)-1].ElapsedS * 1000)
 	}
-	type pt struct{ h, v float64 }
-	var curve []pt // [elapsed h, value]
+	var curve metrics.Curve // a resumed run replays its samples: same curve, area and best window
 	for _, p := range prior {
-		curve = append(curve, pt{p.ElapsedS / 3600, p.Value})
-	}
-	area := 0.0 // integral of value dt, in value-hours
-	for i := 1; i < len(curve); i++ {
-		area += (curve[i-1].v + curve[i].v) / 2 * (curve[i].h - curve[i-1].h)
-	}
-	// best_window: the best rate over any window of the run (value gained in the window / its length). Trying a new
-	// strategy costs some average rate but not the best window, so the score rewards finding something better as
-	// well as sustaining it.
-	const window = 0.25 // hours
-	windowRate := func(k int) float64 {
-		hk, vk := curve[k].h, curve[k].v
-		if hk < window {
-			return vk / math.Max(hk, 1.0/6)
-		}
-		j := k
-		for j > 0 && curve[j-1].h >= hk-window {
-			j--
-		}
-		return (vk - curve[j].v) / math.Max(hk-curve[j].h, 1.0/60)
-	}
-	bestWindow := 0.0
-	for k := range curve {
-		bestWindow = math.Max(bestWindow, windowRate(k))
+		curve.Add(p.ElapsedS/3600, p.Value)
 	}
 	for {
 		sig := signals(char)
@@ -265,39 +206,14 @@ func main() {
 		}
 		level, xp, money := num(lxm[0]), num(lxm[1]), num(lxm[2])
 		elapsedS := math.Floor(float64(nowMs()-start)/1000 + 0.5)
-		h := elapsedS / 3600
-		if len(curve) > 0 {
-			prev := curve[len(curve)-1]
-			area += (prev.v + value) / 2 * (h - prev.h)
-		}
-		curve = append(curve, pt{h, value})
-		ago := curve[0] // ~10 minutes back
-		for _, c := range curve {
-			if c.h >= h-1.0/6 {
-				ago = c
-				break
-			}
-		}
-		pace := value
-		if h > 0 {
-			pace = area / h
-		}
-		// rate: progress points per hour over the run so far (the first 10 minutes count as 10, so a quick early
-		// quest doesn't read as a huge rate). score = (rate + best 15-minute window rate) / 2
-		rate := value / math.Max(h, 1.0/6)
-		bestWindow = math.Max(bestWindow, windowRate(len(curve)-1))
-		recent := 0.0
-		if h-ago.h > 0 {
-			recent = (value - ago.v) / (h - ago.h)
-		}
-		rates := obj{{"rate", round1(rate)}, {"recent_rate", round1(recent)}, {"best_window", round1(bestWindow)},
-			{"pace", round1(pace)}, {"score", round1((rate + bestWindow) / 2)}}
+		r := curve.Add(elapsedS/3600, value)
+		rates := obj{{"rate", round1(r.Rate)}, {"recent_rate", round1(r.Recent)}, {"best_window", round1(r.BestWindow)},
+			{"pace", round1(r.Pace)}, {"score", round1(r.Score)}}
 		smp := append(append(obj{{"elapsed_s", elapsedS}, {"level", level}, {"xp", xp}, {"money", money}, {"value", value}}, rates...),
 			kv{"signals", sig})
 		if samples != "" {
 			appendLine(samples, smp)
 		}
-		tallyEvents(start)
 		if board != "" {
 			left := math.Max(0, math.Floor(float64(timeout.Milliseconds()-(nowMs()-start))/60000+0.5))
 			b := append(append(obj{{"char", char}, {"level", round1(sig.get("level"))}, {"progress", value}}, rates...),
@@ -310,7 +226,16 @@ func main() {
 				b = append(b, kv{"runtime", runtime})
 			}
 			if eventsFile != "" {
-				b = append(b, kv{"damage_dealt", dealt}, kv{"damage_taken", taken}, kv{"healing_done", healed})
+				team.read()
+				mine := team.since(start)
+				var combat metrics.Combat
+				for _, e := range mine[char] {
+					combat.Add(e)
+				}
+				co := metrics.Team(mine)[char]
+				b = append(b, kv{"damage_dealt", combat.DamageDealt}, kv{"damage_taken", combat.DamageTaken},
+					kv{"healing_done", combat.HealingDone}, kv{"assist_share", round3(co.AssistShare)},
+					kv{"contested_hits", co.Contested})
 			}
 			j, _ := json.Marshal(b)
 			os.WriteFile(board+"/"+char+".json", j, 0o644)

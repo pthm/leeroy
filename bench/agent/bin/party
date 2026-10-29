@@ -1,5 +1,5 @@
 #!/bin/sh
 # party [minutes]: how your current party is doing over the last minutes (default 10): each member's XP/hour, kills,
 # deaths and how their time went (fighting, travelling, idle, dead, with the group), and your XP/hour in the party vs
-# before you joined. From the server's record. See bench/party.
-exec "$(dirname "$0")/../../../bin/party" "$@"
+# before you joined. From the server's record. See bench/judge/party.go.
+exec "$(dirname "$0")/../../../bin/judge" party "$@"

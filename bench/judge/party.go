@@ -1,4 +1,4 @@
-// party [minutes = 10]: how well your current party is working, from the server's record of the last few minutes.
+// judge party [minutes = 10] (the agents' `party`): how well your current party is working, from the server's record of the last few minutes.
 // Per member: XP/hour, kills, deaths, and how their time went: fighting, travelling, idle (alive, not fighting, not
 // moving: usually waiting), dead, and with the group (within 50 yd of another member). For you: XP/hour in this
 // party vs before you joined it. Reads the server's recorder log (positions every second, XP, deaths).
@@ -7,6 +7,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/pthm/leeroy/azeroth-sdk/metrics"
 	"io"
 	"math"
 	"os"
@@ -19,7 +20,7 @@ import (
 	"github.com/pthm/leeroy/azworld/world"
 )
 
-type ev struct {
+type partyEv struct {
 	T      int64   `json:"t"`
 	Ev     string  `json:"ev"`
 	N      string  `json:"n"`
@@ -32,19 +33,6 @@ type ev struct {
 	Combat any     `json:"combat"`
 	Amount float64 `json:"amount"`
 	Victim any     `json:"victim"`
-}
-
-// truthy is JS truthiness for the recorder's 0/1 or boolean flags.
-func truthy(v any) bool {
-	switch x := v.(type) {
-	case bool:
-		return x
-	case float64:
-		return x != 0
-	case string:
-		return x != ""
-	}
-	return v != nil
 }
 
 type member struct {
@@ -69,12 +57,12 @@ func out(v any) {
 
 func round(v float64) float64 { return math.Floor(v + 0.5) }
 
-func main() {
+func runParty(args []string) {
 	log := filepath.Join(filepath.Dir(world.DataDir()), "server/azerothcore/env/dist/logs/recorder.jsonl")
 	me := os.Getenv("WOWBENCH_CHAR")
 	mins := 10.0
-	if len(os.Args) > 1 {
-		mins, _ = strconv.ParseFloat(os.Args[1], 64)
+	if len(args) > 0 {
+		mins, _ = strconv.ParseFloat(args[0], 64)
 	}
 	now := time.Now().UnixMilli()
 	from := now - int64(math.Max(mins, 30)*60_000) // read 30 min back for the "before" comparison
@@ -89,18 +77,18 @@ func main() {
 	f.Seek(st.Size()-want, io.SeekStart)
 	buf, _ := io.ReadAll(f)
 	f.Close()
-	var evs []ev
+	var evs []partyEv
 	for _, l := range strings.Split(string(buf), "\n") {
 		if !strings.Contains(l, `"ev":"pos"`) && !strings.Contains(l, `"ev":"xp"`) && !strings.Contains(l, `"ev":"death"`) {
 			continue
 		}
-		var e ev
+		var e partyEv
 		if json.Unmarshal([]byte(l), &e) == nil && e.T >= from {
 			evs = append(evs, e)
 		}
 	}
-	var pos []ev
-	last := map[string]ev{}
+	var pos []partyEv
+	last := map[string]partyEv{}
 	var order []string // members in order of their last sample, like a JS Map
 	for _, e := range evs {
 		if e.Ev == "pos" {
@@ -139,67 +127,17 @@ func main() {
 	winFrom := max(now-int64(mins*60_000), joined)
 	hours := math.Max(1.0/60, float64(now-winFrom)/3_600_000)
 
-	// per second buckets of each member's position, for "with the group"
-	at := map[string]map[int64]ev{}
+	// each member's time use over the window (metrics.Use: fighting, travelling, idle, dead, with the group)
+	inWindow := map[string][]metrics.Pos{}
 	for _, p := range pos {
 		if slices.Contains(members, p.N) && p.T >= winFrom {
-			if at[p.N] == nil {
-				at[p.N] = map[int64]ev{}
-			}
-			at[p.N][p.T/1000] = p
+			inWindow[p.N] = append(inWindow[p.N], metrics.Pos{T: p.T, X: p.X, Y: p.Y, Map: p.M, Alive: truthy(p.Alive),
+				Combat: truthy(p.Combat), Group: p.Grp})
 		}
-	}
-	near := func(n string, sec int64, p ev) bool {
-		for _, m := range members {
-			if m == n {
-				continue
-			}
-			q, ok := at[m][sec]
-			if !ok {
-				q, ok = at[m][sec-1]
-			}
-			if !ok {
-				q, ok = at[m][sec+1]
-			}
-			if ok && q.M == p.M && math.Hypot(q.X-p.X, q.Y-p.Y) < 50 {
-				return true
-			}
-		}
-		return false
-	}
-	pct := func(a, b int) float64 {
-		if b == 0 {
-			return 0
-		}
-		return round(100 * float64(a) / float64(b))
 	}
 	var res []member
 	for _, n := range members {
-		secs := make([]int64, 0, len(at[n]))
-		for s := range at[n] {
-			secs = append(secs, s)
-		}
-		slices.Sort(secs)
-		var dead, combat, moving, idle, withGroup int
-		var prev *ev
-		for _, sec := range secs {
-			p := at[n][sec]
-			moved := prev != nil && math.Hypot(p.X-prev.X, p.Y-prev.Y) > 1.5
-			switch {
-			case !truthy(p.Alive):
-				dead++
-			case truthy(p.Combat):
-				combat++
-			case moved:
-				moving++
-			default:
-				idle++
-			}
-			if near(n, sec, p) {
-				withGroup++
-			}
-			prev = &p
-		}
+		u := metrics.Use(n, inWindow)
 		xp, kills, deaths := 0.0, 0, 0
 		for _, e := range evs {
 			if e.N != n || e.T < winFrom {
@@ -215,9 +153,8 @@ func main() {
 				deaths++
 			}
 		}
-		s := len(secs)
 		res = append(res, member{Name: n, You: n == me, Level: last[n].Lvl, XPPerHour: round(xp / hours), Kills: kills, Deaths: deaths,
-			WithGroupPct: pct(withGroup, s), FightingPct: pct(combat, s), TravellingPct: pct(moving, s), IdlePct: pct(idle, s), DeadPct: pct(dead, s)})
+			WithGroupPct: u.WithGroupPct, FightingPct: u.FightingPct, TravellingPct: u.TravellingPct, IdlePct: u.IdlePct, DeadPct: u.DeadPct})
 	}
 	myXPBefore := 0.0
 	for _, e := range evs {

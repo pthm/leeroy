@@ -1,12 +1,25 @@
 # judge
 
-Scores one character by polling the character database (the server's record, not the client's). The server saves
-characters every 15 s (`server/override.yml`), and the judge polls every 15 s by default.
+Scoring and reporting, in one place. The judge scores one character by polling the character database (the
+server's record, not the client's); `judge report` writes the report card and `team.json` after a run; `judge party`
+is the agents' `party` tool. Every measure they share (the score's rates, combat totals, cooperation, time use) is
+defined once, in [`azeroth-sdk/metrics`](../../azeroth-sdk/metrics), which the client's in-game progress events use
+too. The server saves characters every 15 s (`server/override.yml`), and the judge polls every 15 s by default.
+
+| Command | |
+|---|---|
+| `bin/judge <Char> <goal> [flags]` | score a character live: samples, rates, score, board; exits when the goal is met or time runs out |
+| `bin/judge report <run dir \| team dir>` | after a run: `report.json` (the report card) and, for a team, `team.json` |
+| `bin/judge party [minutes]` | the agents' `party`: how your current party is doing (`bench/agent/bin/party`) |
+| `bin/judge signals <Char>` | every progress signal for a character |
 
 | File | |
 |---|---|
-| `main.go` | the judge: samples, rates, score, board, exit when the goal is met or time runs out |
-| `signals.go` | every progress signal for a character; `bin/judge signals <Char>` prints them |
+| `main.go` | the live judge |
+| `signals.go` | the progress signals |
+| `report.go` | `judge report` |
+| `party.go` | `judge party` |
+| `streams.go` | tails the event streams in a run or team dir |
 | `score.json` | the weights for `score:` goals, and their version (built into the binary: rebuild with `./build.sh`) |
 
 ## The judge
@@ -40,7 +53,7 @@ n and read the value at timeout.
 | `--samples <file>` | append each sample as a JSON line |
 | `--record <file>` | append each sample as an `{"ev":"score"}` event to a recorder log, for the replay and live viewers |
 | `--board <dir>` | write `<dir>/<Char>.json` with the latest result each poll (read by `standings`) |
-| `--events <file>` | the character's event stream (`azsdk -events`); damage dealt, damage taken and healing done since the start go on the board |
+| `--events <file>` | the character's event stream (`azsdk -events`); its combat totals, and cooperation from every `<Char>.events.jsonl` beside it, go on the board |
 | `--role <DPS\|Tank\|Healer>` | added to the board |
 | `--runtime <name>` | added to the board and the result |
 | `--resume <samples.jsonl>` | continue a paused run: same baseline and curve, and the clock resumes at the last sample |
@@ -49,7 +62,7 @@ On exit it prints one JSON line and exits 0 if the goal was met, 1 if it timed o
 
 ## Rates and score
 
-Computed for every goal from the value curve, in value per hour:
+Computed for every goal from the value curve, in value per hour (`metrics.Curve`):
 
 | Field | |
 |---|---|
@@ -97,4 +110,36 @@ A sample (`--samples`, and the last one in the final result):
 
 The final line adds `char`, `goal`, `met`, `runtime` (if given) and `at` (ISO time). The board file has `char`,
 `level` (fractional), `progress` (the value), the rates, `elapsed_s`, `minutes_left` (on the run's clock), `money`, `avg_item_level`, and `role`,
-`runtime` and `damage_dealt`, `damage_taken`, `healing_done` when those flags are given.
+`runtime`, and `damage_dealt`, `damage_taken`, `healing_done`, `assist_share`, `contested_hits` when those flags are given.
+
+## Cooperation
+
+From every player's event stream (`metrics.Team`), after AgentWorld's causal collaboration effectiveness but traced
+by rules: success is XP, which every player who shares a kill logs, naming the victim. A hit is useful if its mob
+gave you XP; a heal is useful if its target lands a useful hit within 30 s.
+
+| Field | |
+|---|---|
+| `assist_share` | of your useful hits and heals, the share that also paid someone else: kills a teammate shared, heals on other players. Solo play is ~0 |
+| `contested_hits` | hits on mobs whose XP went only to players outside your party: fighting someone for the kill |
+
+Reported, not scored. Last run: 0.61 while grouped vs 0.02 solo; the healer led (0.37 overall).
+
+## judge report
+
+`bin/judge report <run dir | team dir>` writes `report.json` and prints a table; for a team dir it also writes
+`team.json` (each judge's result ranked by score, `faction_score`, `by_runtime`, `team_s`). `bench.sh`, `team.sh`
+and `resume.sh` run it at the end. Per agent:
+
+| Field | |
+|---|---|
+| `score` | the judge's last value and rates |
+| `duty_cycle_pct`, `idle_gaps` | time with a script task running; the gaps without one |
+| `progress_per_hour_by_state`, `time_pct_by_state` | progress while the agent waited (`wow wait`, sleep), thought, was in a call, or had no script |
+| `wakes` | waits, early wakes per hour, what woke them and whether a script restart followed |
+| `restarts` | restart calls, script starts per hour, progress in a script's first minute vs settled |
+| `deaths`, `stalls`, `calls`, `think_s`, `tokens`, `cost_usd` | |
+| `combat` | `metrics.Combat`: damage dealt and taken, healing, kills, party kills, deaths, XP |
+| `coop` | `metrics.Team`: `assist_share`, `assists`, `useful`, `hits`, `contested_hits` |
+| `time_use` | `metrics.Use` from the position samples: fighting, travelling, idle, dead, with the group (%) |
+

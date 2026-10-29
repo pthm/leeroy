@@ -131,6 +131,7 @@ AC_DATA_DIR=$PWD/../data go test ./pathfinding/ ./movement/   # tests that need 
 | [`script`](script) | the Lua runtime: engine, tasks, event bus, action requests |
 | [`api`](api) | JSON-RPC handler over a set of sessions |
 | [`types`](types) | the API's data model: every value, result and event payload |
+| [`metrics`](metrics) | the one definition of how a run is measured (the score's rates, combat totals, cooperation, time use), shared with the judge; pure, no I/O |
 | [`navigation`](navigation) | `Navigator` interface over the embedded pathfinder |
 | [`pathfinding`](pathfinding) | Detour navmesh paths, terrain and vmap heights, water levels, line of sight |
 | [`movement`](movement) | follows a path and sends client-like movement packets |

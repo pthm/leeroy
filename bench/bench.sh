@@ -230,6 +230,6 @@ watch=$!
 wait $judge || true
 cat "$dir/judge.json"
 [ -n "$GO" ] || "$repo/bin/azview" replay "$dir" >/dev/null 2>&1 || true # team.sh builds one replay for the whole team
-[ -n "$GO" ] || bun report.ts "$dir" >/dev/null 2>&1 || true # report card (team.sh writes the team's)
+[ -n "$GO" ] || "$repo/bin/judge" report "$dir" >/dev/null 2>&1 || true # report card (team.sh writes the team's)
 exit
 }
