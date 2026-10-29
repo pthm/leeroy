@@ -162,3 +162,8 @@ WOW_PORT=8090 ACCOUNT=agent1 bench/client/play.sh Agentone > bench/runs/agent1.l
 bun bench/judge/judge.ts Agentone level:10 --timeout 4h           # prints JSON + elapsed_s when met
 # ...give the agent the docs (see bench/README.md) + the goal; it drives the session with bench/agent/bin/wow
 ```
+
+## License
+
+MIT, see [LICENSE](LICENSE). `azeroth-sdk/` is derived from AzerothGhost, also MIT
+([`azeroth-sdk/LICENSE.AzerothGhost`](azeroth-sdk/LICENSE.AzerothGhost)).
