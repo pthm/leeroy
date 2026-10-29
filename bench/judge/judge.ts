@@ -21,7 +21,7 @@
 //                XP earned (score.json); gear, money and the rest are reported, not scored.
 // --board <dir> writes <dir>/<character>.json with the latest result each poll (the agents' `standings` tool reads them).
 // --resume <samples.jsonl> continues a paused run from its samples.
-import { appendFileSync, readFileSync, writeFileSync, mkdirSync, openSync, readSync, fstatSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync, mkdirSync, openSync, readSync, fstatSync, closeSync } from "node:fs";
 import { sql, signals, weights, composite } from "./signals.ts";
 
 const [char, goal, ...rest] = process.argv.slice(2);
@@ -38,8 +38,10 @@ const roleStats = { damage_dealt: 0, damage_taken: 0, healing_done: 0 };
 let eventsAt = 0, eventsTail = "";
 function tallyEvents(since: number) {
   if (!eventsFile) return;
+  let fd: number | undefined;
   try {
-    const fd = openSync(eventsFile, "r"), size = fstatSync(fd).size;
+    fd = openSync(eventsFile, "r");
+    const size = fstatSync(fd).size;
     if (size < eventsAt) eventsAt = 0;
     const buf = Buffer.alloc(size - eventsAt);
     readSync(fd, buf, 0, buf.length, eventsAt);
@@ -56,6 +58,7 @@ function tallyEvents(since: number) {
       if (e.type === "heal" && d.src?.me) roleStats.healing_done += d.amount;
     }
   } catch { /* not there yet */ }
+  finally { if (fd !== undefined) closeSync(fd); }
 }
 if (board) mkdirSync(board, { recursive: true });
 

@@ -65,3 +65,20 @@ function answer(id, choice)
   events.emit("answer", {id = id, choice = choice})
   return true
 end
+
+-- protect(names): the game API's globals can't be replaced by accident (a library named "combat" would otherwise
+-- overwrite the combat namespace). Reading works as before; assigning one raises an error that says what to do.
+function _protect(names)
+  local api = {}
+  for _, n in ipairs(names) do api[n] = rawget(_G, n); rawset(_G, n, nil) end
+  setmetatable(_G, {
+    __index = function(_, k) return api[k] end,
+    __newindex = function(t, k, v)
+      if api[k] ~= nil then
+        error("'" .. k .. "' is part of the game API (help(\"" .. k .. "\")): give your module another name, e.g. local my_" .. k .. " = ...", 2)
+      end
+      rawset(t, k, v)
+    end,
+  })
+  _protect = nil
+end

@@ -188,7 +188,7 @@ function drawTiles(w, h) {
   for (let gx = g(xa); gx <= g(xb); gx++) for (let gy = g(ya); gy <= g(yb); gy++) {
     if (gx < 0 || gy < 0 || gx > 63 || gy > 63) continue;
     const key = `${M.id}/${gx}/${gy}`;
-    if (!tiles.has(key)) { const im = new Image(); im.onload = () => drawMap(); im.src = `tile/${key}.png`; tiles.set(key, im); }
+    if (!tiles.has(key)) { const im = new Image(); im.onload = () => drawMap(); im.src = `tile/${key}.png?v=${D.tileVersion ?? 1}`; tiles.set(key, im); }
     const im = tiles.get(key); if (!im.complete || !im.naturalWidth) continue;
     const [sx, sy] = scr(GRID * (32 - gx), GRID * (32 - gy)), size = (GRID / M.res) * view.s;
     cx.drawImage(im, sx, sy, size + 0.5, size + 0.5);
@@ -205,6 +205,7 @@ function drawMap() {
   // labels
   cx.textAlign = "center";
   for (const l of D.labels) {
+    if (l.map !== undefined && l.map !== M.id) continue; // live mode has every continent's labels
     if (!l.zone && view.s < 0.9) continue;
     const [sx, sy] = scr(l.x, l.y);
     cx.font = l.zone ? "600 15px system-ui" : "12px system-ui";
@@ -312,6 +313,10 @@ tl.addEventListener("pointerup", () => (seeking = false));
 // ---------- side panes ----------
 const evIdx = (t) => { let lo = 0, hi = D.events.length; while (lo < hi) { const m = (lo + hi) >> 1; if (D.events[m].t <= t) lo = m + 1; else hi = m; } return lo; };
 const who = (n) => `<span class="who" style="color:${color[n] ?? "inherit"}">${esc(n)}</span>`;
+// who plays a character: runtime and model (bench meta.json), e.g. "claude · opus-5-5"
+const agentBadge = (n) => { const a = D.agents?.[n]; if (!a) return "";
+  const m = String(a.model ?? "").replace(/^claude-/, "");
+  return ` <span class="rt rt-${esc(a.runtime)}" title="${esc(a.runtime)} ${esc(a.model)}${a.spec ? " · " + esc(a.spec) : ""}">${esc(a.runtime)} · ${esc(m)}</span>`; };
 const unitName = (u) => (u ? (u.pl ? who(u.n) : esc(u.n) + (u.lvl ? ` <span class="muted">(${u.lvl})</span>` : "")) : "?");
 function line(e) {
   switch (e.ev) {
@@ -360,7 +365,7 @@ function renderPane() {
       const pp = at(p, t); if (!pp) { html += `<div class="card"><h3><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</h3><div class="muted">not logged in yet</div></div>`; continue; }
       const r = pp.r, [pname, pvar] = POWER[r[7]] ?? ["power", "--mana"];
       const state = !r[11] ? (r[12] ? "ghost" : "dead") : r[13] ? "in combat" : "";
-      html += `<div class="card"><h3><span class="dot" style="background:${p.color}"></span>${esc(p.name)} <span class="muted">${esc(p.cls)} · level ${r[8]}</span>${state ? ` <span style="color:var(--death)">${state}</span>` : ""}</h3>
+      html += `<div class="card"><h3><span class="dot" style="background:${p.color}"></span>${esc(p.name)} <span class="muted">${esc(D.agents?.[p.name]?.spec || p.cls)} · level ${r[8]}</span>${agentBadge(p.name)}${state ? ` <span style="color:var(--death)">${state}</span>` : ""}</h3>
         <div class="bar" title="health ${r[3]}/${r[4]}"><div style="width:${(100 * r[3]) / Math.max(1, r[4])}%;background:var(--hp)"></div></div>
         <div class="bar" title="${pname} ${r[5]}/${r[6]}"><div style="width:${(100 * r[5]) / Math.max(1, r[6])}%;background:var(${pvar})"></div></div>
         <div class="stats"><span>${r[3]}/${r[4]} hp</span><span>${r[9]} xp</span><span>${(r[10] / 100).toFixed(2)}s</span><span>${esc(D.zones[r[14]] ?? "")}</span></div>
@@ -435,7 +440,7 @@ document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("cli
 try { const saved = localStorage.getItem("replay-tab"); if (saved) document.querySelector(`.tabs [data-tab="${saved}"]`)?.click(); } catch {}
 
 function renderChips() {
-  $("chips").innerHTML = P.map((p) => `<button class="chip" aria-pressed="${sel === p.name}" data-n="${esc(p.name)}"><span class="dot" style="background:${p.color}"></span>${esc(p.name)} <span class="muted">${esc(p.cls)}${p.nth > 1 || P.some((q) => q !== p && q.cls === p.cls) ? " #" + p.nth : ""}</span></button>`).join("");
+  $("chips").innerHTML = P.map((p) => `<button class="chip" aria-pressed="${sel === p.name}" data-n="${esc(p.name)}"><span class="dot" style="background:${p.color}"></span>${esc(p.name)} <span class="muted">${esc(p.cls)}${p.nth > 1 || P.some((q) => q !== p && q.cls === p.cls) ? " #" + p.nth : ""}</span>${agentBadge(p.name)}</button>`).join("");
 }
 $("chips").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; sel = follow = sel === c.dataset.n ? null : c.dataset.n; if (follow) view.s = Math.max(view.s, 2.5); renderChips(); drawMap(); });
 

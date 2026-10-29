@@ -111,7 +111,7 @@ export function areas(mapId: number) {
 export const labels = (mapId: number, box?: [number, number, number, number]) =>
   sql("wowbench", `SELECT a.id, a.name, a.zone = 0, l.x, l.y FROM area_location l JOIN area a ON a.id = l.area AND a.map = l.map
     WHERE l.map = ${mapId} AND l.cells >= 8${box ? ` AND l.x BETWEEN ${box[0]} AND ${box[1]} AND l.y BETWEEN ${box[2]} AND ${box[3]}` : ""}`)
-    .map(([id, name, z, x, y]) => ({ id: +id, name, zone: z === "1", x: +x, y: +y }));
+    .map(([id, name, z, x, y]) => ({ id: +id, name, zone: z === "1", x: +x, y: +y, map: mapId }));
 
 // Fill in creature names the client couldn't resolve (SDK recordings carry only entry ids).
 const creatureCache = new Map<number, string>();

@@ -2,6 +2,7 @@ package script
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -67,6 +68,17 @@ func TestRuntime(t *testing.T) {
 	tick(e, 10)
 	if v, _ := e.Eval(`return pc.a, pc.b, pc.c`); fmt.Sprint(v) != "[42 true handled]" {
 		t.Fatalf("pcall in task: %v", v)
+	}
+	// API names are protected: reading works, assigning raises a clear error, locals are fine
+	e.Eval(`_protect{"t", "task"}`)
+	if _, err := e.Eval(`t = {}`); err == nil || !strings.Contains(err.Error(), "part of the game API") {
+		t.Fatalf("protect: %v", err)
+	}
+	if v, err := e.Eval(`local t = 5 return t, type(task.spawn), type(t)`); err != nil || fmt.Sprint(v) != "[5 function number]" {
+		t.Fatalf("protect read: %v %v", v, err)
+	}
+	if _, err := e.Eval(`mything = 1 return mything`); err != nil {
+		t.Fatalf("plain globals: %v", err)
 	}
 	if _, err := e.Eval(`wait(1)`); err == nil {
 		t.Fatal("wait outside a task should fail")

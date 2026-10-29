@@ -328,6 +328,12 @@ func (b *Bot) setupControl() {
 	if err := e.DoString(actLua); err != nil {
 		b.log("act.lua: %v", err)
 	}
+	// the API's namespaces and runtime functions can't be overwritten by a script's own globals
+	if err := e.DoString(`_protect{"me", "units", "objects", "world", "move", "combat", "spells", "items", "vendor", "trainer",
+		"quests", "death", "chat", "group", "trade", "talents", "flights", "innkeeper", "client", "task", "events", "act",
+		"wait", "await", "result", "log", "now", "help", "doc", "ask", "answer"}`); err != nil {
+		b.log("protect: %v", err)
+	}
 }
 
 func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {

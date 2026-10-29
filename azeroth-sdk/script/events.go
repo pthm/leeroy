@@ -154,12 +154,14 @@ func (b *Bus) Query(q Query) []Event {
 func (b *Bus) Wait(q Query, timeout time.Duration) []Event {
 	deadline := time.After(timeout)
 	for {
-		if out := b.Query(q); len(out) > 0 {
-			return out
-		}
+		// Subscribe before querying: an emit during or after the query closes
+		// this channel, so we cannot sleep past an event already in the buffer.
 		b.mu.Lock()
 		ch := b.changed
 		b.mu.Unlock()
+		if out := b.Query(q); len(out) > 0 {
+			return out
+		}
 		select {
 		case <-ch:
 		case <-deadline:
