@@ -56,25 +56,32 @@ type Location struct {
 
 // Unit is what creatures and players share.
 type Unit struct {
-	GUID      GUID    `json:"guid"`
-	Name      string  `json:"name" doc:"empty for a moment after a creature first comes into view"`
-	Level     uint32  `json:"level"`
-	Health    uint32  `json:"health"`
-	MaxHealth uint32  `json:"max_health"`
-	X         float64 `json:"x"`
-	Y         float64 `json:"y"`
-	Z         float64 `json:"z"`
-	Distance  float64 `json:"distance" doc:"yards from you"`
-	Alive     bool    `json:"alive"`
-	Reaction  string  `json:"reaction" doc:"toward you: hostile (attacks on sight), neutral (fights back) or friendly"`
-	Target    GUID    `json:"target" doc:"who it's targeting; null for nobody"`
-	InCombat  bool    `json:"in_combat"`
+	GUID      GUID     `json:"guid"`
+	Name      string   `json:"name" doc:"empty for a moment after a creature first comes into view"`
+	Level     uint32   `json:"level"`
+	Health    uint32   `json:"health"`
+	MaxHealth uint32   `json:"max_health"`
+	X         float64  `json:"x"`
+	Y         float64  `json:"y"`
+	Z         float64  `json:"z"`
+	Distance  float64  `json:"distance" doc:"yards from you"`
+	Alive     bool     `json:"alive"`
+	Reaction  string   `json:"reaction" doc:"toward you: hostile (attacks on sight), neutral (fights back) or friendly"`
+	Target    GUID     `json:"target" doc:"who it's targeting; null for nobody"`
+	InCombat  bool     `json:"in_combat"`
+	Casting   *Casting `json:"casting,omitempty" doc:"the spell it's casting or channelling now (interrupt it, or get out of the way)"`
+	States    []string `json:"states,omitempty" doc:"the game's aura states: health_below_20 (Execute, Hammer of Wrath), health_below_35, defense (it dodged, parried or blocked: Revenge), frozen, bleeding, enrage, ..."`
 }
 
 type Creature struct {
 	Unit
 	Entry         uint32   `json:"entry" doc:"creature template id (wowdb npc <entry>)"`
-	Elite         bool     `json:"elite" doc:"much stronger than its level suggests"`
+	Elite         bool     `json:"elite" doc:"much stronger than its level suggests: meant for groups"`
+	Rank          string   `json:"rank,omitempty" doc:"normal, elite, rare, rare_elite or boss"`
+	Type          string   `json:"type,omitempty" doc:"beast, humanoid, undead, demon, elemental, giant, dragonkin, mechanical, critter, totem, ... (spells like Polymorph only work on some types). Known a moment after first sight"`
+	Subname       string   `json:"subname,omitempty" doc:"the title under an NPC's name, e.g. Weapon Merchant"`
+	Skinnable     bool     `json:"skinnable,omitempty" doc:"a corpse that can be skinned"`
+	Evading       bool     `json:"evading,omitempty" doc:"it's evading (resetting, unreachable): your attacks do nothing; leave it"`
 	Roles         []string `json:"roles,omitempty" doc:"what it offers: vendor, repair, trainer, quest_giver, flight_master, innkeeper, banker, spirit_healer, gossip"`
 	Attackable    bool     `json:"attackable" doc:"can be attacked at all (false for triggers, dummies, protected NPCs)"`
 	Lootable      bool     `json:"lootable" doc:"a corpse with loot for you"`
@@ -458,6 +465,9 @@ type Status struct {
 	Talents     uint32       `json:"unspent_talents" doc:"talent points to spend (talents.list, talents.learn)"`
 	Auras       []Aura       `json:"auras" doc:"your buffs and debuffs"`
 	TargetAuras []Aura       `json:"target_auras,omitempty" doc:"your target's buffs and debuffs"`
+	States      []string     `json:"states,omitempty" doc:"your aura states (defense: you dodged/parried/blocked; health_below_20...)"`
+	ComboPoints *ComboPoints `json:"combo_points,omitempty" doc:"rogues: combo points on a target; warriors: Overpower is ready on that target"`
+	Threats     []Creature   `json:"threats" doc:"hostile creatures attacking you, your pet or a party member"`
 	Casting     *Casting     `json:"casting,omitempty"`
 	FreeSlots   int          `json:"free_slots"`
 	Stats       *Stats       `json:"stats,omitempty"`
@@ -545,4 +555,10 @@ type Aura struct {
 	Duration    *float64 `json:"duration,omitempty" doc:"its full duration, seconds"`
 	Caster      *UnitRef `json:"caster,omitempty"`
 	Mine        bool     `json:"mine" doc:"you cast it"`
+	Dispel      string   `json:"dispel,omitempty" doc:"what can remove it: magic, curse, disease, poison"`
+}
+
+type ComboPoints struct {
+	Target GUID  `json:"target"`
+	Points uint8 `json:"points"`
 }

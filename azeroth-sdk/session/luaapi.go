@@ -337,6 +337,11 @@ func (b *Bot) snapshot() types.Status {
 	st.Movement, _ = e.Native("me.movement").(types.Movement)
 	st.Gear, st.Spellbook, st.Talents = b.gear(), b.spellbook(), unspentTalents(w)
 	st.Auras = b.aurasOf(w.CharGUID())
+	st.States = auraStates(w.GetObject(w.CharGUID()))
+	if c, ok := e.Native("me.combo_points").(types.ComboPoints); ok {
+		st.ComboPoints = &c
+	}
+	st.Threats = b.threats()
 	if t := b.GetTargetGUID(); t != 0 {
 		st.TargetAuras = b.aurasOf(t)
 	}

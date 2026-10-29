@@ -66,11 +66,14 @@ func (b *Bot) creature(u UnitInfo) types.Creature {
 			c.Roles = append(c.Roles, r.role)
 		}
 	}
+	b.unitExtras(&c.Unit, u.GUID)
+	b.creatureExtras(&c, u)
 	return c
 }
 
 func (b *Bot) player(u UnitInfo) types.Player {
 	p := types.Player{Unit: b.baseUnit(u)}
+	b.unitExtras(&p.Unit, u.GUID)
 	if o := b.world.GetObject(u.GUID); o != nil {
 		b0 := o.Value(fieldUnitBytes0)
 		p.Race, p.Class = name(raceNames, uint8(b0&0xFF)), name(classNames, uint8(b0>>8&0xFF))

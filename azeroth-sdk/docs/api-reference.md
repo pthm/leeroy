@@ -20,7 +20,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `act.fail(code, message) → result` | a failed result |
 | `act.fly{to = node id or name [, npc = entry]} → result<Flight>` | walk to a flight master nearby, fly to a known destination and wait until you land |
 | `act.follow{name [, distance = 5, until = fn]} → result` | stay near a player until until() is true |
-| `act.go_to{x, y [, z, tolerance = 4, tries = 3]} → result` | walk there, retrying after getting stuck. Pass z indoors and upstairs |
+| `act.go_to{x, y [, z, tolerance = 4, tries = 3, unstuck = true]} → result` | walk there; when stuck it sidesteps and jumps between tries, and as a last resort (unstuck = true, out of combat) uses the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs |
 | `act.hp() → 0..1` | your health fraction |
 | `act.in_range(id, guid) → bool` | within the spell's range of the unit |
 | `act.loot_nearby{[dist = 8]} → result<Item[]>` | loot every lootable corpse nearby |
@@ -150,6 +150,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `items.count(entry) → number` | how many of an item you carry |
 | `items.destroy(item [, count = all]) → request` | destroy an item you carry (entry or guid): gone for good |
 | `items.equip(item) → request<Equipped>` | wear an item you carry (entry or guid) in its slot |
+| `items.find(name) → Item?` | an item you carry, by name (any case); count is how many you have in all |
 | `items.free_slots() → number` | empty bag slots; at 0, loot and item rewards are refused |
 | `items.info(entry) → Item?` | an item's template: stats, slot, prices, whether you can use it; nil the first time (it asks the server: call again a moment later) |
 | `items.list() → Item[]` | everything you wear and carry (equipped, bags, backpack) |
@@ -171,6 +172,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `me.auras() → Aura[]` | your buffs and debuffs: name, harmful, stacks, time left, who cast them |
 | `me.casting() → Casting?` | the cast or channel in progress (from the moment you send it); nil when idle. Moving interrupts it |
 | `me.class() → string` | warrior, paladin, hunter, rogue, priest, death_knight, shaman, mage, warlock, druid |
+| `me.combo_points() → ComboPoints?` | combo points and the unit they're on (rogues; for warriors, Overpower is ready on that unit after it dodged); nil when none |
 | `me.gear() → Gear` | your gear graded against your level: average item level, a 0-100 score, the weakest slots, empty and broken ones |
 | `me.ghost() → bool` | released and walking back as a ghost |
 | `me.guid() → GUID` | your GUID |
@@ -190,6 +192,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `me.resting() → bool` | in an inn or city: rested XP builds up |
 | `me.spellbook() → Spellbook` | the class spells you could know at your level against the ones you do, and what's missing (learn them at your trainer) |
 | `me.stance() → number` | warrior stance / druid form index (0 = none) |
+| `me.states() → string[]` | your aura states: defense (you dodged, parried or blocked: Revenge), health_below_20, ... (some abilities need one) |
 | `me.stats() → Stats?` | your character sheet: what gear, buffs and talents add up to |
 | `me.status() → Status` | a one-call snapshot: level, xp, health, power, money, where you are, state, target, attackers, nearby mobs and players, group, quests, broken gear, bag upgrades, your last minute of fighting, corpse, tasks |
 | `me.target() → GUID?` | your selected target, nil for none |
@@ -200,9 +203,11 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | Function | |
 |---|---|
 | `move.face(guid) → request` | turn to face a unit (melee and most spells need it) |
+| `move.jump() → request` | jump (over a low obstacle; part of getting unstuck) |
 | `move.stop() → request<MoveDone>` | stop walking (a pending move.to resolves ok with stopped = true) |
 | `move.to(x, y, z) → request<MoveDone>` | walk there along the navmesh: ok on arrival, else stuck or timeout. Calling it again near the same point (chasing) keeps the same request; a different point supersedes it. With no navmesh path it walks a straight line (no_path) |
 | `move.turn(o) → request` | face an angle (radians, as me.position().o) |
+| `move.unstuck() → request<Teleport>` | the failsafe when you're truly stuck: what the real client's "Character stuck" does: a 10 s cast that hearths you home (me.home()). Not in combat or on a flight; shares the hearthstone's cooldown |
 
 ### runtime
 
@@ -240,6 +245,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `spells.cast(id [, guid = you]) → request<CastDone>` | cast a spell on a unit: ok when it goes off, else the server's reason (out_of_range, line_of_sight, not_ready, no_power, bad_targets, moving, interrupted, not_infront, equipped_item_class, ...) or not_known |
 | `spells.cast_at(id, x, y, z) → request<CastDone>` | cast a ground-targeted spell (Blizzard, Flare...) |
 | `spells.cooldown(id) → ms` | milliseconds until it's ready (its cooldown, category cooldown and the global cooldown); 0 = ready |
+| `spells.find(name [, rank]) → Spell?` | a spell by name (any case): the highest rank you know, or that rank (a number, or "Rank 2"); nil if you know none |
 | `spells.info(id) → Spell?` | a spell's name, rank, cast time, cooldown, range and cost; nil if unknown |
 | `spells.known(id) → bool` | whether you know the spell (that rank) |
 | `spells.usable(id [, guid]) → bool` | known, off cooldown and affordable now (on that target) |
@@ -293,6 +299,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `units.inspect(guid) → Inspect?` | what you'd see inspecting a player: class, race, level and the gear they wear with item levels (names fill in a moment after the first call); nil if out of sight |
 | `units.nearby([dist = 30]) → Creature[]` | creatures within dist yards (alive and dead), nearest first |
 | `units.players([dist = 30]) → Player[]` | players within dist yards, nearest first |
+| `units.threats() → Creature[]` | hostile creatures attacking you, your pet or anyone in your group, nearest first: what a tank has to pick up and a healer has to watch |
 
 ### vendor
 
@@ -360,6 +367,16 @@ Unit is what creatures and players share.
 | `reaction` | string | toward you: hostile (attacks on sight), neutral (fights back) or friendly |
 | `target` | GUID | who it's targeting; null for nobody |
 | `in_combat` | bool |  |
+| `casting?` | Casting | the spell it's casting or channelling now (interrupt it, or get out of the way) |
+| `states?` | string[] | the game's aura states: health_below_20 (Execute, Hammer of Wrath), health_below_35, defense (it dodged, parried or blocked: Revenge), frozen, bleeding, enrage, ... |
+
+### Casting
+
+| Field | Type | |
+|---|---|---|
+| `spell` | number |  |
+| `name` | string |  |
+| `ms_left` | number |  |
 
 ### Creature
 
@@ -368,7 +385,12 @@ Everything in [Unit](#unit), plus:
 | Field | Type | |
 |---|---|---|
 | `entry` | number | creature template id (wowdb npc <entry>) |
-| `elite` | bool | much stronger than its level suggests |
+| `elite` | bool | much stronger than its level suggests: meant for groups |
+| `rank?` | string | normal, elite, rare, rare_elite or boss |
+| `type?` | string | beast, humanoid, undead, demon, elemental, giant, dragonkin, mechanical, critter, totem, ... (spells like Polymorph only work on some types). Known a moment after first sight |
+| `subname?` | string | the title under an NPC's name, e.g. Weapon Merchant |
+| `skinnable?` | bool | a corpse that can be skinned |
+| `evading?` | bool | it's evading (resetting, unreachable): your attacks do nothing; leave it |
 | `roles?` | string[] | what it offers: vendor, repair, trainer, quest_giver, flight_master, innkeeper, banker, spirit_healer, gossip |
 | `attackable` | bool | can be attacked at all (false for triggers, dummies, protected NPCs) |
 | `lootable` | bool | a corpse with loot for you |
@@ -430,14 +452,6 @@ UnitRef names a unit in events and results.
 |---|---|---|
 | `current` | number | into this level |
 | `next` | number | needed for the next level |
-
-### Casting
-
-| Field | Type | |
-|---|---|---|
-| `spell` | number |  |
-| `name` | string |  |
-| `ms_left` | number |  |
 
 ### Stats
 
@@ -651,6 +665,7 @@ Aura is a buff or debuff on a unit.
 | `duration?` | number | its full duration, seconds |
 | `caster?` | UnitRef |  |
 | `mine` | bool | you cast it |
+| `dispel?` | string | what can remove it: magic, curse, disease, poison |
 
 ### Trade
 
@@ -743,6 +758,9 @@ Status is a one-call snapshot of your character (me.status, `wow status`).
 | `unspent_talents` | number | talent points to spend (talents.list, talents.learn) |
 | `auras` | Aura[] | your buffs and debuffs |
 | `target_auras?` | Aura[] | your target's buffs and debuffs |
+| `states?` | string[] | your aura states (defense: you dodged/parried/blocked; health_below_20...) |
+| `combo_points?` | ComboPoints | rogues: combo points on a target; warriors: Overpower is ready on that target |
+| `threats` | Creature[] | hostile creatures attacking you, your pet or a party member |
 | `casting?` | Casting |  |
 | `free_slots` | number |  |
 | `stats?` | Stats |  |
@@ -835,6 +853,13 @@ Spellbook: the class spells you could know at your level (Spell.dbc and SkillLin
 | `name` | string |  |
 | `rank?` | string |  |
 | `level` | number |  |
+
+### ComboPoints
+
+| Field | Type | |
+|---|---|---|
+| `target` | GUID |  |
+| `points` | number |  |
 
 ### MobSummary
 
@@ -941,6 +966,14 @@ Home is where your hearthstone takes you (set by binding at an innkeeper).
 | `distance` | number | yards short of the point |
 | `stopped?` | bool | move.stop() ended it |
 | `no_path?` | bool | no navmesh path: it walked a straight line |
+
+### Teleport
+
+| Field | Type | |
+|---|---|---|
+| `from` | Position |  |
+| `to` | Position |  |
+| `far` | bool | to another map (a loading screen) |
 
 ### QuestDone
 
@@ -1064,6 +1097,7 @@ AuraChange: an aura on you, or one you cast on another unit, began or ended.
 | `spell?` | number | 0 for melee |
 | `spell_name?` | string |  |
 | `taken` | bool | you're dst |
+| `outcome?` | string | hit, crit, miss, dodge, parry, block, resist, absorb, evade (it's resetting: unreachable), immune, deflect, reflect; misses have amount 0 |
 
 ### Death
 
@@ -1171,13 +1205,17 @@ AuraChange: an aura on you, or one you cast on another unit, began or ended.
 | `seconds?` | number |  |
 | `error?` | string |  |
 
-### Teleport
+### UnitCast
+
+UnitCast: a unit started casting at you or a party member.
 
 | Field | Type | |
 |---|---|---|
-| `from` | Position |  |
-| `to` | Position |  |
-| `far` | bool | to another map (a loading screen) |
+| `unit` | UnitRef |  |
+| `spell` | number |  |
+| `name` | string |  |
+| `cast_ms` | number |  |
+| `target` | UnitRef |  |
 
 ### XPGain
 
@@ -1237,6 +1275,7 @@ An event is an [Event](#event) whose `data` is the type below.
 | `task_started` | TaskEvent | a task started |
 | `teleported` | Teleport | you were teleported: a portal, hearthstone, summon, the graveyard, an instance |
 | `trade` | Trade | the trade window changed: someone asked (requested: trade.open), opened, accepted, completed or cancelled |
+| `unit_cast_start` | UnitCast | an enemy started casting at you or a party member (an interrupt or a stun stops it) |
 | `xp` | XPGain | you gained XP |
 
 ## Action results
@@ -1254,6 +1293,7 @@ The `data` of an ok result, per op.
 | `items.use` | CastDone |
 | `move.stop` | MoveDone |
 | `move.to` | MoveDone |
+| `move.unstuck` | Teleport |
 | `objects.use` | CastDone |
 | `quests.accept` | QuestDone |
 | `quests.turn_in` | QuestDone |

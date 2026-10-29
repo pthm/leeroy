@@ -41,13 +41,33 @@ export interface Unit {
   /** who it's targeting; null for nobody */
   target: Guid | null;
   in_combat: boolean;
+  /** the spell it's casting or channelling now (interrupt it, or get out of the way) */
+  casting?: Casting;
+  /** the game's aura states: health_below_20 (Execute, Hammer of Wrath), health_below_35, defense (it dodged, parried or blocked: Revenge), frozen, bleeding, enrage, ... */
+  states?: string[];
+}
+
+export interface Casting {
+  spell: number;
+  name: string;
+  ms_left: number;
 }
 
 export interface Creature extends Unit {
   /** creature template id (wowdb npc <entry>) */
   entry: number;
-  /** much stronger than its level suggests */
+  /** much stronger than its level suggests: meant for groups */
   elite: boolean;
+  /** normal, elite, rare, rare_elite or boss */
+  rank?: string;
+  /** beast, humanoid, undead, demon, elemental, giant, dragonkin, mechanical, critter, totem, ... (spells like Polymorph only work on some types). Known a moment after first sight */
+  type?: string;
+  /** the title under an NPC's name, e.g. Weapon Merchant */
+  subname?: string;
+  /** a corpse that can be skinned */
+  skinnable?: boolean;
+  /** it's evading (resetting, unreachable): your attacks do nothing; leave it */
+  evading?: boolean;
   /** what it offers: vendor, repair, trainer, quest_giver, flight_master, innkeeper, banker, spirit_healer, gossip */
   roles?: string[];
   /** can be attacked at all (false for triggers, dummies, protected NPCs) */
@@ -110,12 +130,6 @@ export interface XP {
   current: number;
   /** needed for the next level */
   next: number;
-}
-
-export interface Casting {
-  spell: number;
-  name: string;
-  ms_left: number;
 }
 
 export interface Stats {
@@ -345,6 +359,8 @@ export interface Aura {
   caster?: UnitRef;
   /** you cast it */
   mine: boolean;
+  /** what can remove it: magic, curse, disease, poison */
+  dispel?: string;
 }
 
 export interface Trade {
@@ -430,6 +446,12 @@ export interface Status {
   auras: Aura[];
   /** your target's buffs and debuffs */
   target_auras?: Aura[];
+  /** your aura states (defense: you dodged/parried/blocked; health_below_20...) */
+  states?: string[];
+  /** rogues: combo points on a target; warriors: Overpower is ready on that target */
+  combo_points?: ComboPoints;
+  /** hostile creatures attacking you, your pet or a party member */
+  threats: Creature[];
   casting?: Casting;
   free_slots: number;
   stats?: Stats;
@@ -522,6 +544,11 @@ export interface MissingSpell {
   name: string;
   rank?: string;
   level: number;
+}
+
+export interface ComboPoints {
+  target: Guid | null;
+  points: number;
 }
 
 export interface MobSummary {
@@ -621,6 +648,13 @@ export interface MoveDone {
   stopped?: boolean;
   /** no navmesh path: it walked a straight line */
   no_path?: boolean;
+}
+
+export interface Teleport {
+  from: Position;
+  to: Position;
+  /** to another map (a loading screen) */
+  far: boolean;
 }
 
 export interface QuestDone {
@@ -727,6 +761,8 @@ export interface Damage {
   spell_name?: string;
   /** you're dst */
   taken: boolean;
+  /** hit, crit, miss, dodge, parry, block, resist, absorb, evade (it's resetting: unreachable), immune, deflect, reflect; misses have amount 0 */
+  outcome?: string;
 }
 
 export interface Death {
@@ -814,11 +850,13 @@ export interface TaskEvent {
   error?: string;
 }
 
-export interface Teleport {
-  from: Position;
-  to: Position;
-  /** to another map (a loading screen) */
-  far: boolean;
+/** UnitCast: a unit started casting at you or a party member. */
+export interface UnitCast {
+  unit: UnitRef;
+  spell: number;
+  name: string;
+  cast_ms: number;
+  target: UnitRef;
 }
 
 export interface XPGain {
@@ -918,6 +956,8 @@ export interface EventMap {
   teleported: Teleport;
   /** the trade window changed: someone asked (requested: trade.open), opened, accepted, completed or cancelled */
   trade: Trade;
+  /** an enemy started casting at you or a party member (an interrupt or a stun stops it) */
+  unit_cast_start: UnitCast;
   /** you gained XP */
   xp: XPGain;
 }

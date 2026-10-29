@@ -173,6 +173,7 @@ func (b *Bot) setupControl() {
 	b.setupTravel()
 	b.setupFights()
 	b.setupAuras()
+	b.setupCombatInfo()
 	b.watchAreaTriggers()
 	b.watchEvents()
 	b.startRecording()

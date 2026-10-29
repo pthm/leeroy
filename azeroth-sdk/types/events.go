@@ -9,6 +9,16 @@ type Damage struct {
 	Spell     uint32  `json:"spell,omitempty" doc:"0 for melee"`
 	SpellName string  `json:"spell_name,omitempty"`
 	Taken     bool    `json:"taken" doc:"you're dst"`
+	Outcome   string  `json:"outcome,omitempty" doc:"hit, crit, miss, dodge, parry, block, resist, absorb, evade (it's resetting: unreachable), immune, deflect, reflect; misses have amount 0"`
+}
+
+// UnitCast: a unit started casting at you or a party member.
+type UnitCast struct {
+	Unit   UnitRef `json:"unit"`
+	Spell  uint32  `json:"spell"`
+	Name   string  `json:"name"`
+	CastMS uint32  `json:"cast_ms"`
+	Target UnitRef `json:"target"`
 }
 
 type Kill struct {
@@ -164,6 +174,7 @@ type FightSummary struct {
 	AurasApplied  map[string]int `json:"auras_applied,omitempty" doc:"buffs and debuffs you put on others, by name"`
 	AurasSuffered map[string]int `json:"auras_suffered,omitempty" doc:"debuffs that landed on you, by name"`
 	SwingsRefused int            `json:"swings_refused,omitempty" doc:"melee swings the server refused (not_in_range, bad_facing)"`
+	Outcomes      map[string]int `json:"outcomes,omitempty" doc:"how your attacks landed: hit, crit, miss, dodge, parry, block, resist, evade, immune..."`
 }
 
 // AuraChange: an aura on you, or one you cast on another unit, began or ended.
@@ -197,6 +208,7 @@ var EventTypes = map[string]EventType{
 	"cast_start":       {Cast{}, "a cast with a cast time began"},
 	"cast_done":        {Cast{}, "a spell went off"},
 	"cast_failed":      {Cast{}, "a cast failed or was interrupted"},
+	"unit_cast_start":  {UnitCast{}, "an enemy started casting at you or a party member (an interrupt or a stun stops it)"},
 	"attack_start":     {AttackStart{}, "your auto-attack started"},
 	"attack_failed":    {AttackFailed{}, "the server refused a swing"},
 	"item_received":    {ItemReceived{}, "an item went into your bags"},
@@ -274,5 +286,5 @@ var OpResults = map[string]any{
 	"items.use": CastDone{}, "objects.use": CastDone{}, "items.loot": Looted{}, "items.equip": Equipped{},
 	"vendor.buy": ItemReceived{}, "vendor.sell": Sold{}, "vendor.sell_junk": Sold{}, "vendor.repair": Repaired{},
 	"trainer.learn": Learned{}, "quests.turn_in": QuestDone{}, "quests.accept": QuestDone{}, "talents.learn": TalentLearned{},
-	"combat.attack": Attacking{}, "flights.map": FlightMap{}, "flights.take": Flight{}, "innkeeper.bind": Home{},
+	"combat.attack": Attacking{}, "move.unstuck": Teleport{}, "flights.map": FlightMap{}, "flights.take": Flight{}, "innkeeper.bind": Home{},
 }

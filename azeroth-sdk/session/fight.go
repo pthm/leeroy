@@ -23,7 +23,7 @@ type fightState struct {
 
 func (f *fightState) reset() {
 	f.sum = types.FightSummary{Abilities: map[string]int{}, FailedCasts: map[string]int{}, Enemies: []types.UnitRef{}, Kills: []types.UnitRef{},
-		AurasApplied: map[string]int{}, AurasSuffered: map[string]int{}}
+		AurasApplied: map[string]int{}, AurasSuffered: map[string]int{}, Outcomes: map[string]int{}}
 	f.enemies = map[types.GUID]types.UnitRef{}
 }
 
@@ -54,6 +54,9 @@ func (f *fightState) count(ev script.Event) {
 		if d.Src.Me {
 			f.sum.DamageDealt += d.Amount
 			enemy(d.Dst)
+			if d.Outcome != "" {
+				f.sum.Outcomes[d.Outcome]++
+			}
 		}
 		if d.Taken {
 			f.sum.DamageTaken += d.Amount
@@ -143,6 +146,9 @@ func (b *Bot) fightTransitions(enteredCombat, leftCombat, died bool) {
 	}
 	if len(s.FailedCasts) == 0 {
 		s.FailedCasts = nil
+	}
+	if len(s.Outcomes) == 0 {
+		s.Outcomes = nil
 	}
 	if len(s.AurasApplied) == 0 {
 		s.AurasApplied = nil

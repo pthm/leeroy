@@ -152,6 +152,16 @@ Holy Shield...). Without a tank, the player taking the hits is the one doing the
 - Patrols and wandering mobs join fights late: watch for them.
 - Start every pull with full health (and mana): rest or eat first.
 
+**Reading a fight.** The client shows what the game shows a player: what an enemy is casting (`casting` on a unit,
+and a `unit_cast_start` event when it casts at you or your group: interrupt or stun it), its debuffs and yours
+(`units.auras`, with what can dispel them), the game's aura states (a target under 20% health is in Execute range;
+`defense` means you just dodged, parried or blocked), combo points, and how each of your attacks landed (dodge,
+parry, miss, resist: `fight_end.outcomes`). A mob that is `evading` can't be hurt: it's resetting or unreachable,
+so leave it.
+
+**Getting stuck.** Walls, rocks and steep slopes stop you; side-stepping and jumping often frees you. If nothing
+works, the game's "Character stuck" option (`move.unstuck`, also the last resort of `act.go_to`) hearths you home.
+
 **Crowd control and adds.** When a second mob joins (an add), take it out of the fight (Polymorph, Sap, Gouge,
 Hammer of Justice, Frost Nova, Psychic Scream) or fight it with defensive abilities ready, rather than trading hits
 with both.

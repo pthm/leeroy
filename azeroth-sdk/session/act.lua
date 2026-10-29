@@ -85,17 +85,38 @@ function A.buff(id, guid)
 end
 
 -- ---------- movement ----------
+-- sidestep: a few yards to the side of the way you're heading, with a jump (what gets a stuck character free)
+local function sidestep(o, n)
+  local p = me.position()
+  local dx, dy = o.x - p.x, o.y - p.y
+  local len = math.sqrt(dx * dx + dy * dy)
+  if len < 0.1 then return end
+  local side = (n % 2 == 0) and 1 or -1
+  local sx, sy = p.x - dy / len * 5 * side, p.y + dx / len * 5 * side
+  move.to(sx, sy, world.ground_z(sx, sy, p.z) or p.z)
+  move.jump()
+  wait(1.5)
+end
+
 function A.go_to(o)
   local tol = o.tolerance or 4
   local z = (o.z and world.ground_z(o.x, o.y, o.z)) or world.ground_z(o.x, o.y) or o.z or me.position().z
   local r
-  for _ = 1, o.tries or 3 do
+  for n = 1, o.tries or 3 do
     if A.dist(o.x, o.y) <= tol then move.stop() return result("act.go_to", true, { distance = A.dist(o.x, o.y) }) end
     r = await(move.to(o.x, o.y, z), 600)
     if A.dist(o.x, o.y) <= tol then return result("act.go_to", true, { distance = A.dist(o.x, o.y) }) end
     if r.ok and r.data and r.data.stopped then return result("act.go_to", false, nil, "stopped", "move.stop() was called on the way") end
     if not r.ok and r.error.code == "superseded" then return result("act.go_to", false, nil, "superseded", r.error.message) end
-    wait(1)
+    if not r.ok and (r.error.code == "in_flight" or r.error.code == "teleporting") then return result("act.go_to", false, nil, r.error.code, r.error.message) end
+    if not r.ok and r.error.code == "stuck" then sidestep(o, n) else wait(1) end
+  end
+  -- the failsafe: still stuck after every try -> the client's "Character stuck" (hearths you home)
+  if not r.ok and r.error.code == "stuck" and o.unstuck ~= false and not me.in_combat() then
+    log("act.go_to: stuck at " .. math.floor(me.position().x) .. "," .. math.floor(me.position().y) .. " heading for " ..
+      math.floor(o.x) .. "," .. math.floor(o.y) .. ": using the Stuck spell (hearth home)")
+    local u = await(move.unstuck(), 30)
+    if u.ok then return result("act.go_to", false, u.data, "unstuck_home", "stuck: the Stuck spell took you home (me.home()); try another route") end
   end
   return result("act.go_to", false, r and r.data, r and r.error and r.error.code or "stuck", r and r.error and r.error.message)
 end
@@ -312,7 +333,7 @@ for name, d in pairs({
   make_room = { "() → bool", "destroy your cheapest grey item to free a bag slot" },
   cast = { "(id [, guid]) → result", "face the target and cast if ready (waits for the result in a task)" },
   buff = { "(id [, guid]) → result", "cast it unless the target already has the aura (nil then)" },
-  go_to = { "{x, y [, z, tolerance = 4, tries = 3]} → result", "walk there, retrying after getting stuck. Pass z indoors and upstairs" },
+  go_to = { "{x, y [, z, tolerance = 4, tries = 3, unstuck = true]} → result", "walk there; when stuck it sidesteps and jumps between tries, and as a last resort (unstuck = true, out of combat) uses the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs" },
   travel = { "{points = {{x, y [, z]}, ...} [, tolerance = 6]} → result", "go_to each waypoint (e.g. from wowdb route)" },
   approach = { "{unit [, range = 4, timeout = 60]} → result<Creature>", "move within range of a unit and face it" },
   follow = { "{name [, distance = 5, until = fn]} → result", "stay near a player until until() is true" },

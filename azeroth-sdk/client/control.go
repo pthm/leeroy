@@ -289,3 +289,18 @@ func (w *WorldClient) auraHooks() []func(uint64, *AuraInfo, *AuraInfo) {
 	defer w.auraHookMu.Unlock()
 	return append([]func(uint64, *AuraInfo, *AuraInfo){}, w.auraHookList...)
 }
+
+// Jump: MSG_MOVE_JUMP, then MSG_MOVE_FALL_LAND as the real client sends on landing (~0.6 s later).
+func (w *WorldClient) Jump() error {
+	if w.serverDriven() {
+		return ErrServerDriven
+	}
+	if err := w.SendJump(); err != nil {
+		return err
+	}
+	go func() {
+		time.Sleep(600 * time.Millisecond)
+		w.sendMovement(MsgMoveFallLand, 0)
+	}()
+	return nil
+}

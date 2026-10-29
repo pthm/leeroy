@@ -32,14 +32,24 @@ const (
 	smsgInitWorldStates    = 0x2C2
 	smsgCreatureQueryResp  = 0x061
 	smsgAttackStart        = 0x143
+	smsgSpellLogMiss       = 0x24B
+	smsgSpellFailedOther   = 0x2A6
+	smsgUpdateComboPoints  = 0x39D
 )
 
 // creature names by entry, from SMSG_CREATURE_QUERY_RESPONSE (the client asks once per entry)
 var creatures = struct {
 	sync.Mutex
 	name  map[uint32]string
+	info  map[uint32]creatureInfo
 	asked map[uint32]time.Time
-}{name: map[uint32]string{}, asked: map[uint32]time.Time{}}
+}{name: map[uint32]string{}, info: map[uint32]creatureInfo{}, asked: map[uint32]time.Time{}}
+
+// creatureInfo: the rest of SMSG_CREATURE_QUERY_RESPONSE
+type creatureInfo struct {
+	subname   string
+	typ, rank uint32
+}
 
 // objName: an object's name, asking the server for creature names it hasn't told us yet ("" until it answers)
 func (b *Bot) objName(o *client.WorldObject) string {
@@ -177,20 +187,34 @@ func (b *Bot) watchEvents() {
 		r := bytes.NewReader(data)
 		u32 := func() (v uint32) { binary.Read(r, binary.LittleEndian, &v); return }
 		u64 := func() (v uint64) { binary.Read(r, binary.LittleEndian, &v); return }
-		hit := func(src, dst uint64, amount uint32, spell uint32, kind string) {
-			if (src != me && dst != me) || amount == 0 {
+		hit := func(src, dst uint64, amount uint32, spell uint32, kind string, outcome ...string) {
+			if (src != me && dst != me) || (amount == 0 && len(outcome) == 0) {
 				return
 			}
 			if dst == me && kind == "damage" {
 				lastAttacker = src
 			}
-			b.emit(kind, types.Damage{Src: b.ref(src), Dst: b.ref(dst), Amount: amount, Spell: spell, SpellName: spellName(spell), Taken: dst == me})
+			d := types.Damage{Src: b.ref(src), Dst: b.ref(dst), Amount: amount, Spell: spell, SpellName: spellName(spell), Taken: dst == me}
+			if len(outcome) > 0 {
+				d.Outcome = outcome[0]
+			}
+			b.emit(kind, d)
 		}
 		switch op {
 		case smsgCreatureQueryResp: // entry (high bit: unknown), name
-			if entry := u32(); entry&0x80000000 == 0 {
+			if entry := u32(); entry&0x80000000 == 0 { // names x4, subname, icon, type flags, type, family, rank
+				n := readCString(r)
+				readCString(r)
+				readCString(r)
+				readCString(r)
+				ci := creatureInfo{subname: readCString(r)}
+				readCString(r)
+				u32()
+				ci.typ = u32()
+				u32()
+				ci.rank = u32()
 				creatures.Lock()
-				creatures.name[entry] = readCString(r)
+				creatures.name[entry], creatures.info[entry] = n, ci
 				creatures.Unlock()
 			}
 		case smsgPartyKillLog: // killer, victim: sent to the killer and their party
@@ -205,14 +229,48 @@ func (b *Bot) watchEvents() {
 			if u64() == me {
 				b.emit("attack_start", types.AttackStart{Target: types.GUID(u64())})
 			}
-		case smsgAttackerState: // hitInfo, attacker, target, damage
-			u32()
+		case smsgAttackerState: // hitInfo, attacker, target, damage, overkill, subs, (absorb), (resist), victim state
+			hitInfo := u32()
 			src, dst := readPackedGUID(r), readPackedGUID(r)
-			hit(src, dst, u32(), 0, "damage")
+			dmg := u32()
+			u32()
+			n, _ := r.ReadByte()
+			for i := uint8(0); i < n; i++ {
+				u32()
+				u32()
+				u32()
+			}
+			if hitInfo&0x60 != 0 { // absorbed
+				for i := uint8(0); i < n; i++ {
+					u32()
+				}
+			}
+			if hitInfo&0x180 != 0 { // resisted
+				for i := uint8(0); i < n; i++ {
+					u32()
+				}
+			}
+			state, _ := r.ReadByte()
+			outcome := map[uint8]string{0: "miss", 1: "hit", 2: "dodge", 3: "parry", 4: "interrupt", 5: "block", 6: "evade", 7: "immune", 8: "deflect"}[state]
+			if outcome == "hit" && hitInfo&0x200 != 0 {
+				outcome = "crit"
+			}
+			b.attackOutcome(src, dst, dmg, 0, outcome, hit)
 		case smsgSpellDmgLog: // target, caster, spell, damage
 			dst, src := readPackedGUID(r), readPackedGUID(r)
 			spell := u32()
 			hit(src, dst, u32(), spell, "damage")
+		case smsgSpellLogMiss: // spell, caster (u64), unk u8, count, then per target: target (u64), miss reason
+			spell := u32()
+			src := u64()
+			r.ReadByte()
+			for n := u32(); n > 0 && n < 64; n-- {
+				dst := u64()
+				reason, _ := r.ReadByte()
+				outcome := map[uint8]string{1: "miss", 2: "resist", 3: "dodge", 4: "parry", 5: "block", 6: "evade", 7: "immune",
+					8: "immune", 9: "deflect", 10: "absorb", 11: "reflect"}[reason]
+				b.attackOutcome(src, dst, 0, spell, outcome, hit)
+			}
 		case smsgSpellHealLog: // target, caster, spell, heal, overheal
 			dst, src := readPackedGUID(r), readPackedGUID(r)
 			spell := u32()

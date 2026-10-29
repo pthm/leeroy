@@ -13,6 +13,9 @@ import (
 func (b *Bot) aura(a client.AuraInfo) types.Aura {
 	t := types.Aura{Spell: a.Spell, Name: spellName(a.Spell), Harmful: a.Harmful(), Stacks: max(a.Stacks, 1),
 		Mine: a.Caster != 0 && a.Caster == b.world.CharGUID()}
+	if sp := spellInfo(a.Spell); sp != nil {
+		t.Dispel = dispelTypes[sp.dispel]
+	}
 	if a.MaxDurationMS > 0 {
 		left := math.Round(a.Left().Seconds()*10) / 10
 		dur := math.Round(float64(a.MaxDurationMS)/100) / 10
