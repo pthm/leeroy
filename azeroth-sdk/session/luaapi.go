@@ -214,6 +214,7 @@ func (b *Bot) setupCoreAPI() {
 				}
 			}
 			sortBy(out, func(o types.Object) float64 { return o.Distance })
+			b.annotateObjects(out)
 			return out
 		})
 	e.Func("objects.find", "(entry [, dist = 80]) → Object?", "the nearest game object with that entry; nil if none", func(entry uint32, d float32) any {
@@ -222,7 +223,9 @@ func (b *Bot) setupCoreAPI() {
 		}
 		if g := w.FindGameObjectByEntry(entry, d); g != 0 {
 			if o := w.GetObject(g); o != nil {
-				return b.object(o)
+				ob := []types.Object{b.object(o)}
+				b.annotateObjects(ob)
+				return ob[0]
 			}
 		}
 		return nil
@@ -410,6 +413,7 @@ func (b *Bot) snapshot() types.Status {
 	if len(st.Objects) > 5 {
 		st.Objects = st.Objects[:5]
 	}
+	b.annotateObjects(st.Objects)
 	for _, it := range bagItems(w) {
 		if it.Equipped && it.Broken {
 			st.Broken = append(st.Broken, it)

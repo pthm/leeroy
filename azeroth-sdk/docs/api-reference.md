@@ -439,6 +439,9 @@ UnitRef names a unit in events and results.
 | `key?` | number | item entry of a key that opens it |
 | `quest?` | number | the quest it's for |
 | `lit?` | bool | the server marks it usable for you (it sparkles): a quest you have needs it (GM characters see every chest lit) |
+| `in_sight?` | bool | nothing solid (rock, walls) between you and it. Distance is a straight line: a chest in a mine under you can be close but not in sight |
+| `path_distance?` | number | nearest first within a time budget: how far you'd walk to reach it |
+| `reachable?` | bool | with path_distance: whether a walking route gets you there |
 
 ### Path
 

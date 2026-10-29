@@ -689,52 +689,76 @@ type pathEntry struct {
 	ok       bool
 }
 
-// annotateNearby adds in_sight to every living creature and, nearest first, path_distance and reachable until the
-// time budget runs out (a route costs a few ms; this runs inside a script step). Routes are cached per unit while
-// neither end has moved much.
-// ponytail: 60 ms budget and a 5 s / 3 yd cache; a background path worker if agents need it for every unit
-func (b *Bot) annotateNearby(cs []types.Creature) {
+// reach answers, for things around you, whether they're in sight and how far you'd walk to them. Line of sight is
+// cheap; a route costs a few ms and this runs inside a script step, so routes are worked out (nearest first, as
+// callers ask) only until a time budget runs out, and cached per thing while neither end has moved much.
+// ponytail: 60 ms budget per call and a 5 s / 3 yd cache; a background path worker if agents need it for everything
+type reach struct {
+	b        *Bot
+	from     navigation.Point3D
+	m        uint32
+	deadline time.Time
+}
+
+func (b *Bot) newReach() *reach {
 	if b.nav == nil {
-		return
+		return nil
 	}
-	if b.pathCache == nil {
-		b.pathCache = map[uint64]pathEntry{}
+	if b.pathCache == nil || len(b.pathCache) > 500 {
+		b.pathCache = map[uint64]pathEntry{} // ponytail: crude bound; things come and go
 	}
 	px, py, pz, _, m := b.world.Position()
-	from := navigation.Point3D{X: px, Y: py, Z: pz}
-	deadline := time.Now().Add(60 * time.Millisecond)
+	return &reach{b: b, from: navigation.Point3D{X: px, Y: py, Z: pz}, m: m, deadline: time.Now().Add(60 * time.Millisecond)}
+}
+
+// of: line of sight to a point eye yards above (x, y, z) (nil without collision data), and the walking distance
+// (nil when unreachable or not worked out this call) with whether a route gets there (nil when not worked out).
+func (r *reach) of(guid uint64, x, y, z float64, eye float32) (inSight *bool, path *float64, reachable *bool) {
+	if r == nil {
+		return nil, nil, nil
+	}
+	b, to := r.b, navigation.Point3D{X: float32(x), Y: float32(y), Z: float32(z)}
+	if clear, ok := b.inSight(navigation.Point3D{X: to.X, Y: to.Y, Z: to.Z + eye}); ok {
+		inSight = &clear
+	}
+	e, hit := b.pathCache[guid]
+	if !hit || time.Since(e.at) > 5*time.Second || dist3(e.from, r.from) > 3 || dist3(e.to, to) > 3 {
+		if time.Now().After(r.deadline) {
+			return inSight, nil, nil
+		}
+		e = pathEntry{from: r.from, to: to, at: time.Now()}
+		if res, err := b.nav.FindPath(r.m, r.from, to); err == nil && res != nil && len(res.Points) > 0 {
+			prev := r.from
+			for _, p := range res.Points {
+				e.dist += dist3(prev, p)
+				prev = p
+			}
+			e.ok = dist3(prev, to) <= 5
+		}
+		b.pathCache[guid] = e
+	}
+	d, ok := math.Round(e.dist*10)/10, e.ok
+	if ok {
+		path = &d
+	}
+	return inSight, path, &ok
+}
+
+// annotateNearby: reach for every living creature (see reach)
+func (b *Bot) annotateNearby(cs []types.Creature) {
+	r := b.newReach()
 	for i := range cs {
-		c := &cs[i]
-		if !c.Alive {
-			continue
-		}
-		to := navigation.Point3D{X: float32(c.X), Y: float32(c.Y), Z: float32(c.Z)}
-		if clear, ok := b.inSight(navigation.Point3D{X: to.X, Y: to.Y, Z: to.Z + 1.5}); ok {
-			c.InSight = &clear
-		}
-		e, hit := b.pathCache[uint64(c.GUID)]
-		if !hit || time.Since(e.at) > 5*time.Second || dist3(e.from, from) > 3 || dist3(e.to, to) > 3 {
-			if time.Now().After(deadline) {
-				continue
-			}
-			e = pathEntry{from: from, to: to, at: time.Now()}
-			if res, err := b.nav.FindPath(m, from, to); err == nil && res != nil && len(res.Points) > 0 {
-				prev := from
-				for _, p := range res.Points {
-					e.dist += dist3(prev, p)
-					prev = p
-				}
-				e.ok = dist3(prev, to) <= 5
-			}
-			b.pathCache[uint64(c.GUID)] = e
-		}
-		d, ok := math.Round(e.dist*10)/10, e.ok
-		c.Reachable = &ok
-		if ok {
-			c.PathDistance = &d
+		if c := &cs[i]; c.Alive {
+			c.InSight, c.PathDistance, c.Reachable = r.of(uint64(c.GUID), c.X, c.Y, c.Z, 1.5)
 		}
 	}
-	if len(b.pathCache) > 500 {
-		b.pathCache = nil // ponytail: crude bound; units come and go
+}
+
+// annotateObjects: reach for game objects (aimed just above their base: chests and nodes sit on the ground)
+func (b *Bot) annotateObjects(os []types.Object) {
+	r := b.newReach()
+	for i := range os {
+		o := &os[i]
+		o.InSight, o.PathDistance, o.Reachable = r.of(uint64(o.GUID), o.X, o.Y, o.Z, 0.5)
 	}
 }

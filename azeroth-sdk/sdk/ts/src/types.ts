@@ -127,6 +127,12 @@ export interface Object {
   quest?: number;
   /** the server marks it usable for you (it sparkles): a quest you have needs it (GM characters see every chest lit) */
   lit?: boolean;
+  /** nothing solid (rock, walls) between you and it. Distance is a straight line: a chest in a mine under you can be close but not in sight */
+  in_sight?: boolean;
+  /** nearest first within a time budget: how far you'd walk to reach it */
+  path_distance?: number;
+  /** with path_distance: whether a walking route gets you there */
+  reachable?: boolean;
 }
 
 export interface Path {

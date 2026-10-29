@@ -108,20 +108,23 @@ type UnitRef struct {
 }
 
 type Object struct {
-	GUID     GUID    `json:"guid"`
-	Entry    uint32  `json:"entry" doc:"game object template id"`
-	Name     string  `json:"name" doc:"empty for a moment after it first comes into view"`
-	Type     string  `json:"type" doc:"chest, door, button, goober (quest objects), questgiver, portal (use it: you're teleported), ship (boats and zeppelins), elevator, mailbox, fishing_pool (fish here), fishing_bobber, ... Mining veins and herbs are chests: see gather"`
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
-	Z        float64 `json:"z"`
-	Distance float64 `json:"distance"`
-	Gather   string  `json:"gather,omitempty" doc:"the skill it takes: mining, herbalism, lockpicking, fishing or inscription"`
-	Skill    uint32  `json:"skill,omitempty" doc:"the skill level it needs"`
-	CanUse   *bool   `json:"can_use,omitempty" doc:"with gather: your skill is high enough (false without the skill: learn it from a trainer)"`
-	Key      uint32  `json:"key,omitempty" doc:"item entry of a key that opens it"`
-	Quest    uint32  `json:"quest,omitempty" doc:"the quest it's for"`
-	Lit      bool    `json:"lit,omitempty" doc:"the server marks it usable for you (it sparkles): a quest you have needs it (GM characters see every chest lit)"`
+	GUID         GUID     `json:"guid"`
+	Entry        uint32   `json:"entry" doc:"game object template id"`
+	Name         string   `json:"name" doc:"empty for a moment after it first comes into view"`
+	Type         string   `json:"type" doc:"chest, door, button, goober (quest objects), questgiver, portal (use it: you're teleported), ship (boats and zeppelins), elevator, mailbox, fishing_pool (fish here), fishing_bobber, ... Mining veins and herbs are chests: see gather"`
+	X            float64  `json:"x"`
+	Y            float64  `json:"y"`
+	Z            float64  `json:"z"`
+	Distance     float64  `json:"distance"`
+	Gather       string   `json:"gather,omitempty" doc:"the skill it takes: mining, herbalism, lockpicking, fishing or inscription"`
+	Skill        uint32   `json:"skill,omitempty" doc:"the skill level it needs"`
+	CanUse       *bool    `json:"can_use,omitempty" doc:"with gather: your skill is high enough (false without the skill: learn it from a trainer)"`
+	Key          uint32   `json:"key,omitempty" doc:"item entry of a key that opens it"`
+	Quest        uint32   `json:"quest,omitempty" doc:"the quest it's for"`
+	Lit          bool     `json:"lit,omitempty" doc:"the server marks it usable for you (it sparkles): a quest you have needs it (GM characters see every chest lit)"`
+	InSight      *bool    `json:"in_sight,omitempty" doc:"nothing solid (rock, walls) between you and it. Distance is a straight line: a chest in a mine under you can be close but not in sight"`
+	PathDistance *float64 `json:"path_distance,omitempty" doc:"nearest first within a time budget: how far you'd walk to reach it"`
+	Reachable    *bool    `json:"reachable,omitempty" doc:"with path_distance: whether a walking route gets you there"`
 }
 
 type Path struct {
