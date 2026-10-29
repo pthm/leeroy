@@ -939,7 +939,12 @@ func (pf *PathFinder) getHeightLocked(x, y, z float32) (float32, bool) {
 			vmapHeight = vh
 		}
 	}
+	// AC Map::GetHeight: with both, the model floor wins only when it's above the terrain or nearer to z. Taking any
+	// model floor found below dropped bots walking over a mine or cave through the ground into it.
 	if vmapHeight > -100000.0 {
+		if mapHeight > -100000.0 && vmapHeight <= mapHeight && math.Abs(float64(mapHeight-searchZ)) <= math.Abs(float64(vmapHeight-searchZ)) {
+			return mapHeight, true
+		}
 		return vmapHeight, true
 	}
 

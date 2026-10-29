@@ -609,7 +609,8 @@ type GroupModel struct {
 	Mesh      []MeshTriangle
 	Vertices  []Vector3
 	bounds    AABox
-	groupTree BIH // for triangles
+	vbounds   AABox // of the vertices: the file's bounds don't always hold every triangle
+	groupTree BIH   // for triangles
 }
 
 func (g *GroupModel) readFromFile(f *os.File) error {
@@ -700,6 +701,13 @@ func (g *GroupModel) readFrom(r io.Reader) error {
 	if err := g.groupTree.readFrom(r); err != nil {
 		return err
 	}
+	for i, v := range g.Vertices {
+		if i == 0 {
+			g.vbounds = AABox{Low: v, High: v}
+		}
+		g.vbounds.Low = Vector3{min32(g.vbounds.Low.X, v.X), min32(g.vbounds.Low.Y, v.Y), min32(g.vbounds.Low.Z, v.Z)}
+		g.vbounds.High = Vector3{max32(g.vbounds.High.X, v.X), max32(g.vbounds.High.Y, v.Y), max32(g.vbounds.High.Z, v.Z)}
+	}
 	// LIQU: liquid data (not modelled), skipped by its size so the next group lines up
 	if err := readFourCC(r, "LIQU"); err != nil {
 		return err
@@ -730,7 +738,12 @@ func validateVMapVectorChunk(name string, chunkSize, count, elemBytes, maxCount 
 }
 
 func (g *GroupModel) getHeight(ray Ray, maxDist float32) float32 {
-	// Simple brute force triangle intersection for height (slow but correct for correctness; can optimize later with tree)
+	// Brute force over the group's triangles, after a bounds check: most of a building's groups are nowhere near
+	// the ray, and skipping them takes path ground-snapping from ~3 ms to microseconds per point.
+	// ponytail: the triangle BIH (groupTree) would go further if one big group dominates
+	if len(g.Vertices) == 0 || !g.vbounds.hitByRay(ray, maxDist) {
+		return math.MaxFloat32
+	}
 	bestT := maxDist
 	for _, tri := range g.Mesh {
 		if tri.idx0 >= uint32(len(g.Vertices)) || tri.idx1 >= uint32(len(g.Vertices)) || tri.idx2 >= uint32(len(g.Vertices)) {
@@ -1334,4 +1347,28 @@ func (vm *VMapManager) InLineOfSight(mapID uint32, a, b Vector3) (clear bool, ok
 		}
 	}
 	return true, true
+}
+
+// hitByRay: whether the ray meets the box within maxDist (slab test).
+func (b AABox) hitByRay(ray Ray, maxDist float32) bool {
+	lo, hi := float32(0), maxDist
+	o, d := [3]float32{ray.Origin.X, ray.Origin.Y, ray.Origin.Z}, [3]float32{ray.Direction.X, ray.Direction.Y, ray.Direction.Z}
+	bl, bh := [3]float32{b.Low.X, b.Low.Y, b.Low.Z}, [3]float32{b.High.X, b.High.Y, b.High.Z}
+	for i := 0; i < 3; i++ {
+		if d[i] == 0 {
+			if o[i] < bl[i] || o[i] > bh[i] {
+				return false
+			}
+			continue
+		}
+		t1, t2 := (bl[i]-o[i])/d[i], (bh[i]-o[i])/d[i]
+		if t1 > t2 {
+			t1, t2 = t2, t1
+		}
+		lo, hi = max32(lo, t1), min32(hi, t2)
+		if lo > hi {
+			return false
+		}
+	}
+	return true
 }

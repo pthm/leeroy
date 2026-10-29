@@ -11,6 +11,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pthm/wowbench/azeroth-sdk/client"
@@ -427,8 +428,12 @@ func (b *Bot) setupActions() {
 		x, y, z           float32
 		started, deadline time.Time
 		straight          bool
+		planned, cancel   atomic.Bool // route worked out (started/deadline/straight set); superseded or stopped
 	}
 	var cur *move // ponytail: guarded by the engine lock (Lua calls) and only read in Check (tick goroutine)
+	// routes are worked out off the Lua thread (a long or cold-tile path takes longer than a script step may run);
+	// planMu keeps them in call order so a superseded route can't land after its replacement
+	var planMu sync.Mutex
 	dist := func(m *move) float64 {
 		x, y, z, _ := b.GetPosition()
 		return math.Sqrt(float64((x-m.x)*(x-m.x) + (y-m.y)*(y-m.y) + (z-m.z)*(z-m.z)))
@@ -445,16 +450,37 @@ func (b *Bot) setupActions() {
 			if m := cur; m != nil && b.lua.Reqs.Result(m.id)["pending"] == true {
 				if dx, dy := m.x-x, m.y-y; dx*dx+dy*dy < 100 {
 					m.x, m.y, m.z = x, y, z
-					b.MoveTo(x, y, z)
+					if m.planned.Load() && planMu.TryLock() { // short chase repaths stay inline
+						b.MoveTo(x, y, z)
+						planMu.Unlock()
+					}
 					return b.lua.Reqs.Result(m.id)
 				}
+				m.cancel.Store(true)
 				b.lua.Reqs.Resolve(m.id, script.Fail("superseded", "a newer move.to replaced this one", nil))
 			}
-			m := &move{x: x, y: y, z: z, started: time.Now()}
-			m.straight = b.MoveTo(x, y, z) != nil
-			m.deadline = m.started.Add(time.Duration(dist(m)/5*1.5+10) * time.Second)
+			m := &move{x: x, y: y, z: z}
 			cur = m
+			go func() {
+				planMu.Lock()
+				defer planMu.Unlock()
+				if m.cancel.Load() {
+					return
+				}
+				m.straight = b.MoveTo(x, y, z) != nil
+				if m.cancel.Load() { // stopped while planning (a newer move.to plans after this)
+					b.StopMoving()
+				}
+				px, py, pz, _ := b.GetPosition()
+				d := math.Sqrt(float64((px-x)*(px-x) + (py-y)*(py-y) + (pz-z)*(pz-z)))
+				m.started = time.Now()
+				m.deadline = m.started.Add(time.Duration(d/5*1.5+10) * time.Second)
+				m.planned.Store(true)
+			}()
 			req := b.request("move.to", args, time.Hour, func() *script.Outcome {
+				if !m.planned.Load() {
+					return nil
+				}
 				d := math.Round(dist(m)*10) / 10
 				res := types.MoveDone{Distance: d, NoPath: m.straight}
 				switch {
@@ -477,6 +503,7 @@ func (b *Bot) setupActions() {
 		})
 	e.Func("move.stop", "() → request<MoveDone>", "stop walking (a pending move.to resolves ok with stopped = true)", func() map[string]any {
 		if cur != nil {
+			cur.cancel.Store(true)
 			b.lua.Reqs.Resolve(cur.id, script.Ok(types.MoveDone{Stopped: true, Distance: math.Round(dist(cur)*10) / 10}))
 		}
 		b.StopMoving()
