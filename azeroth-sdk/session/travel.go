@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pthm/wowbench/azeroth-sdk/script"
-	"github.com/pthm/wowbench/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azeroth-sdk/script"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
 const (

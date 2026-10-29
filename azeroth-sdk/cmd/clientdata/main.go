@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/pthm/wowbench/azeroth-sdk/clientdata"
+	"github.com/pthm/leeroy/azeroth-sdk/clientdata"
 )
 
 func main() {

@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pthm/wowbench/azeroth-sdk/client"
-	"github.com/pthm/wowbench/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azeroth-sdk/client"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
 var classNames = map[uint8]string{1: "warrior", 2: "paladin", 3: "hunter", 4: "rogue", 5: "priest", 6: "death_knight",

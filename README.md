@@ -1,4 +1,6 @@
-# wowbench
+# LEEROY
+
+**L**ong-horizon **E**valuation of **E**mergent **R**easoning, **O**rganisation and **Y**ield
 
 <img width="1661" height="1123" alt="image" src="https://github.com/user-attachments/assets/fb8168af-c80b-4074-9616-df19c4c2b5c2" />
 

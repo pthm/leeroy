@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pthm/wowbench/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 	lua "github.com/yuin/gopher-lua"
 )
 

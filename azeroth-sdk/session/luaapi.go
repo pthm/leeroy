@@ -24,9 +24,9 @@ import (
 	"math"
 	"time"
 
-	"github.com/pthm/wowbench/azeroth-sdk/client"
-	"github.com/pthm/wowbench/azeroth-sdk/script"
-	"github.com/pthm/wowbench/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azeroth-sdk/client"
+	"github.com/pthm/leeroy/azeroth-sdk/script"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
 // UnitInfo is a creature or player as the client tracks it.

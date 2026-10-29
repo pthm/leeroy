@@ -8,7 +8,7 @@ import (
 	"math"
 	"sync"
 
-	"github.com/pthm/wowbench/azeroth-sdk/pathfinding"
+	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
 )
 
 // Point3D is a 3D position in game world coordinates.

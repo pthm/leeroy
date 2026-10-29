@@ -3,7 +3,7 @@ package navigation
 import (
 	"testing"
 
-	"github.com/pthm/wowbench/azeroth-sdk/pathfinding"
+	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
 )
 
 func TestConvertResultRejectsSyntheticStraightPaths(t *testing.T) {

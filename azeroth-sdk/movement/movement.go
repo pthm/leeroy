@@ -4,8 +4,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/pthm/wowbench/azeroth-sdk/client"
-	"github.com/pthm/wowbench/azeroth-sdk/navigation"
+	"github.com/pthm/leeroy/azeroth-sdk/client"
+	"github.com/pthm/leeroy/azeroth-sdk/navigation"
 )
 
 // MovementSender is the interface used by MovementController to emit movement packets.

@@ -3,7 +3,7 @@
 //	azsdk -config azsdk.json
 //	azsdk -char Garrick -account agent1 [-password agent1] [-race 1 -class 1] [-listen 127.0.0.1:8090] [-data ./data]
 //
-// The second form runs one character without a config file (one daemon per agent, as wowbench does).
+// The second form runs one character without a config file (one daemon per agent, as LEEROY's bench does).
 // -duration stops after that long (e.g. a short first login that only creates the character).
 // Each character logs in (creating it if needed) and stays in the world until the daemon stops. Agents
 // talk to http://<listen>/rpc (JSON-RPC 2.0); see api/ and sdk/ts.
@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pthm/wowbench/azeroth-sdk/api"
-	"github.com/pthm/wowbench/azeroth-sdk/session"
+	"github.com/pthm/leeroy/azeroth-sdk/api"
+	"github.com/pthm/leeroy/azeroth-sdk/session"
 )
 
 type character struct {

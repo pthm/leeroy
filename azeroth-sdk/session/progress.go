@@ -11,8 +11,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/pthm/wowbench/azeroth-sdk/client"
-	"github.com/pthm/wowbench/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azeroth-sdk/client"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
 var slotNames = []string{"head", "neck", "shoulder", "shirt", "chest", "waist", "legs", "feet", "wrists", "hands",

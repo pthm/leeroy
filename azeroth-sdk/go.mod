@@ -1,4 +1,4 @@
-module github.com/pthm/wowbench/azeroth-sdk
+module github.com/pthm/leeroy/azeroth-sdk
 
 go 1.26.0
 

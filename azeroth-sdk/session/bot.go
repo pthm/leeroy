@@ -10,10 +10,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pthm/wowbench/azeroth-sdk/client"
-	"github.com/pthm/wowbench/azeroth-sdk/movement"
-	"github.com/pthm/wowbench/azeroth-sdk/navigation"
-	"github.com/pthm/wowbench/azeroth-sdk/script"
+	"github.com/pthm/leeroy/azeroth-sdk/client"
+	"github.com/pthm/leeroy/azeroth-sdk/movement"
+	"github.com/pthm/leeroy/azeroth-sdk/navigation"
+	"github.com/pthm/leeroy/azeroth-sdk/script"
 )
 
 type BotStatus string
@@ -431,7 +431,7 @@ func (b *Bot) Run() BotResult {
 	for _, ch := range chars {
 		if strings.EqualFold(ch.Name, b.config.CharacterName) {
 			charGUID = ch.GUID
-			b.world.SetCharRace(ch.Race) // wowbench: was never set, so chat always used Common
+			b.world.SetCharRace(ch.Race) // leeroy: was never set, so chat always used Common
 			found = true
 			b.log("Found character %s (GUID: %d, Level: %d)", ch.Name, ch.GUID, ch.Level)
 			break
@@ -491,7 +491,7 @@ func (b *Bot) Run() BotResult {
 		for _, ch := range chars {
 			if strings.EqualFold(ch.Name, b.config.CharacterName) {
 				charGUID = ch.GUID
-				b.world.SetCharRace(ch.Race) // wowbench: was never set, so chat always used Common
+				b.world.SetCharRace(ch.Race) // leeroy: was never set, so chat always used Common
 				found = true
 				break
 			}
@@ -578,7 +578,7 @@ func (b *Bot) Run() BotResult {
 	b.mu.Lock()
 	b.lua = eng
 	b.mu.Unlock()
-	b.setupControl() // wowbench: agent control bindings + AZGHOST_CONTROL eval endpoint
+	b.setupControl() // leeroy: agent control bindings + AZGHOST_CONTROL eval endpoint
 
 	// Startup script: inline code or a file.
 	if b.config.LuaCode != "" {
@@ -1541,7 +1541,7 @@ func (b *Bot) worldObjToUnitInfo(obj *client.WorldObject) UnitInfo {
 }
 
 func (b *Bot) SendChat(message string) error {
-	return b.world.SendChatMessage(client.ChatMsgSay, b.chatLang(), message) // wowbench: was always Common
+	return b.world.SendChatMessage(client.ChatMsgSay, b.chatLang(), message) // leeroy: was always Common
 }
 
 func (b *Bot) SendCommand(command string) error {

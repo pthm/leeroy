@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pthm/wowbench/azeroth-sdk/client"
+	"github.com/pthm/leeroy/azeroth-sdk/client"
 )
 
 // Recorder is shared by all sessions in a daemon (one file).

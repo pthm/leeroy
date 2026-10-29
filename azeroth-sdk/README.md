@@ -159,4 +159,4 @@ Agent-facing documentation, in `docs/`:
 | [`world-data.md`](docs/world-data.md) | `wowdb` (structured lookups) and `worlddb` (raw SQL) |
 
 Derived from [AzerothGhost](https://github.com/azerothcore/AzerothGhost) (MIT, see `LICENSE.AzerothGhost`),
-with the bot AI removed and the agent API, movement and pathfinding fixes from wowbench.
+with the bot AI removed and the agent API, movement and pathfinding fixes from LEEROY.

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pthm/wowbench/azeroth-sdk/navigation"
+	"github.com/pthm/leeroy/azeroth-sdk/navigation"
 )
 
 // recordedPacket is what our fake sender captures during simulated ticks.

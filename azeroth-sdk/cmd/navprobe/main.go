@@ -8,7 +8,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/pthm/wowbench/azeroth-sdk/navigation"
+	"github.com/pthm/leeroy/azeroth-sdk/navigation"
 )
 
 func main() {

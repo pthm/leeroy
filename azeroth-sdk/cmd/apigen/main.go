@@ -26,7 +26,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pthm/wowbench/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
 type fnDoc struct {

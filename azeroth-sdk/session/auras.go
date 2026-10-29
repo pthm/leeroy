@@ -6,8 +6,8 @@ package session
 import (
 	"math"
 
-	"github.com/pthm/wowbench/azeroth-sdk/client"
-	"github.com/pthm/wowbench/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azeroth-sdk/client"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
 func (b *Bot) aura(a client.AuraInfo) types.Aura {
