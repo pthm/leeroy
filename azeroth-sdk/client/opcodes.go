@@ -41,7 +41,7 @@ func IsHighValueTraceOpcode(op uint16) bool {
 	// Spells / auras (CmsgCancelAura is 0x136; SmsgSpellFailure is 0x133)
 	case CmsgCastSpell, CmsgCancelCast, CmsgCancelAura,
 		SmsgCastFailed, SmsgSpellStart, SmsgSpellGo, SmsgSpellFailure,
-		SmsgSpellCooldown, SmsgCooldownEvent, SmsgClearCooldown,
+		SmsgSpellCooldown, SmsgCooldownEvent, SmsgClearCooldown, SmsgItemCooldown, SmsgModifyCooldown,
 		SmsgInitialSpells, SmsgLearnedSpell, SmsgSupercededSpell, SmsgRemovedSpell,
 		SmsgAuraUpdate, SmsgAuraUpdateAll:
 		return true
@@ -157,6 +157,8 @@ var opcodeNames = map[uint16]string{
 	SmsgRemovedSpell:                    "SMSG_REMOVED_SPELL",
 	SmsgCooldownEvent:                   "SMSG_COOLDOWN_EVENT",
 	SmsgClearCooldown:                   "SMSG_CLEAR_COOLDOWN",
+	SmsgItemCooldown:                    "SMSG_ITEM_COOLDOWN",
+	SmsgModifyCooldown:                  "SMSG_MODIFY_COOLDOWN",
 	CmsgCancelCast:                      "CMSG_CANCEL_CAST",
 	SmsgUpdateObject:                    "SMSG_UPDATE_OBJECT",
 	SmsgDestroyObject:                   "SMSG_DESTROY_OBJECT",

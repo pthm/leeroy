@@ -59,6 +59,21 @@ func (c *combatLog) since(t int64) []combatEvent {
 	return append([]combatEvent{}, c.evs[i:]...)
 }
 
+// killingBlow: who last hurt victim in the last 10 s (the damage logs come before the death), of those ours accepts
+// (nil: anyone); else fallback. SMSG_PARTYKILLLOG names whoever gets the credit, which is the tapper, not the killer.
+func (c *combatLog) killingBlow(victim, fallback uint64, ours func(uint64) bool) uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	since := time.Now().UnixMilli() - 10000
+	for i := len(c.evs) - 1; i >= 0 && c.evs[i].T >= since; i-- {
+		if e := c.evs[i]; e.Dst == victim && e.Src != 0 && e.Amount > 0 && (e.Kind == "melee" || e.Kind == "spell" || e.Kind == "dot") &&
+			(ours == nil || ours(e.Src)) {
+			return e.Src
+		}
+	}
+	return fallback
+}
+
 func (c *combatLog) onPacket(op uint16, data []byte) {
 	r := bytes.NewReader(data)
 	u32 := func() (v uint32) { binary.Read(r, binary.LittleEndian, &v); return }
@@ -89,32 +104,32 @@ func (c *combatLog) onPacket(op uint16, data []byte) {
 		u32()
 		crit, _ := r.ReadByte()
 		c.add(combatEvent{T: now, Src: src, Dst: dst, Spell: spell, Amount: heal - min(heal, over), Over: over, Kind: "heal", Crit: crit != 0})
-	case smsgPeriodicAura: // target, caster, spell, count, then per entry: aura type + payload
-		dst, src := readPackedGUID(r), readPackedGUID(r)
-		spell := u32()
-		for n := u32(); n > 0 && r.Len() > 0; n-- {
-			switch u32() {
-			case 3, 89: // periodic damage (+ percent): damage, overkill, school, absorb, resist, crit
-				dmg, over := u32(), u32()
-				u32()
-				u32()
-				u32()
-				crit, _ := r.ReadByte()
-				c.add(combatEvent{T: now, Src: src, Dst: dst, Spell: spell, Amount: dmg, Over: over, Kind: "dot", Crit: crit != 0})
-			case 8, 20: // periodic heal / obs mod health: heal, overheal, absorb, crit
-				heal, over := u32(), u32()
-				u32()
-				crit, _ := r.ReadByte()
-				c.add(combatEvent{T: now, Src: src, Dst: dst, Spell: spell, Amount: heal - min(heal, over), Over: over, Kind: "hot", Crit: crit != 0})
-			default:
-				return // energize, leech...: not tracked, and their payload sizes differ
+	case smsgPeriodicAura:
+		dst, src, spell, ticks := parsePeriodic(data)
+		for _, t := range ticks {
+			switch t.kind {
+			case "dot":
+				c.add(combatEvent{T: now, Src: src, Dst: dst, Spell: spell, Amount: t.amount, Over: t.over, Kind: "dot", Crit: t.crit})
+			case "hot":
+				c.add(combatEvent{T: now, Src: src, Dst: dst, Spell: spell, Amount: t.amount - min(t.amount, t.over), Over: t.over, Kind: "hot", Crit: t.crit})
 			}
 		}
-	case smsgPartyKillLog: // killer, victim (sent to the killer's party)
-		var killer, victim uint64
-		binary.Read(r, binary.LittleEndian, &killer)
+	case smsgDamageShield: // owner (u64), attacker (u64), spell, damage, overkill, school
+		var src, dst uint64
+		binary.Read(r, binary.LittleEndian, &src)
+		binary.Read(r, binary.LittleEndian, &dst)
+		spell, dmg, over := u32(), u32(), u32()
+		c.add(combatEvent{T: now, Src: src, Dst: dst, Spell: spell, Amount: dmg, Over: over, Kind: "spell"})
+	case smsgInstakillLog: // caster (u64), target (u64), spell
+		var src, dst uint64
+		binary.Read(r, binary.LittleEndian, &src)
+		binary.Read(r, binary.LittleEndian, &dst)
+		c.add(combatEvent{T: now, Src: src, Dst: dst, Spell: u32(), Kind: "spell"})
+	case smsgPartyKillLog: // the player credited (the tapper), victim (sent to their party)
+		var credited, victim uint64
+		binary.Read(r, binary.LittleEndian, &credited)
 		binary.Read(r, binary.LittleEndian, &victim)
-		c.add(combatEvent{T: now, Src: killer, Dst: victim, Kind: "kill"})
+		c.add(combatEvent{T: now, Src: c.killingBlow(victim, credited, nil), Dst: victim, Kind: "kill"})
 	}
 }
 

@@ -38,7 +38,7 @@ var roots = []any{
 	types.Item{}, types.Comparison{}, types.VendorItem{}, types.Spell{}, types.Quest{}, types.Objective{}, types.Talents{},
 	types.TalentTree{}, types.Talent{}, types.Group{}, types.GroupMember{}, types.GroupReport{}, types.GroupMemberReport{}, types.Trade{}, types.TradeSide{}, types.Inspect{},
 	types.CombatEntry{}, types.Meter{}, types.SpellMeter{}, types.Status{}, types.TaskInfo{}, types.MobSummary{},
-	types.Threat{}, types.Gossip{}, types.Gear{}, types.Spellbook{}, types.QuestInfo{}, types.Trainer{},
+	types.Threat{}, types.Gossip{}, types.Gear{}, types.Spellbook{}, types.QuestInfo{}, types.Trainer{}, types.Reputation{},
 	types.Result{}, types.Error{}, types.Event{},
 }
 

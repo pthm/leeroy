@@ -55,12 +55,12 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | |
 |---|---|
-| `chat.channel(name, msg) → request` | everyone in a channel you've joined. Every chat call takes at most 255 bytes (message_too_long) |
+| `chat.channel(name, msg) → request` | everyone in a channel you've joined (not_member, muted, throttled, not_in_area). Every chat call takes at most 255 bytes (message_too_long) |
 | `chat.command(text) → request` | a server command (".help"); GM commands only work on GM accounts |
-| `chat.join(name [, id = 0]) → request` | join a channel. Zone channels need their id: 1 General, 2 Trade, 22 LocalDefense ("General - Elwynn Forest"); custom channels use 0 and any name |
+| `chat.join(name [, id = 0]) → request` | join a channel. Zone channels need their id: 1 General, 2 Trade, 22 LocalDefense ("General - Elwynn Forest"); custom channels use 0 and any name (wrong_password, banned) |
 | `chat.party(msg) → request` | your party, at any distance |
 | `chat.say(msg) → request` | players within 40 yards hear it |
-| `chat.whisper(name, msg) → request` | one player anywhere, by exact character name |
+| `chat.whisper(name, msg) → request` | one player anywhere, by exact character name: player_not_found when no one by that name is online |
 | `chat.yell(msg) → request` | players within 300 yards hear it |
 
 ### client
@@ -83,7 +83,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `combat.sheath(state) → request` | 0 = weapons out, 1 = melee sheathed, 2 = ranged |
 | `combat.stop() → request` | stop auto-attacking |
 | `combat.target(guid) → request` | select a unit (some spells and abilities use your target) |
-| `combat.threat(guid) → Threat[]` | a creature's threat table as the server sends it to everyone near: who it would attack, highest first, with each one's share of the top (pct = 100 is the one it attacks). Empty when it isn't fighting or out of sight |
+| `combat.threat(guid) → Threat[]` | a creature's threat table as the server sends it to everyone near: who it would attack, highest first, with each one's threat as a % of the one it attacks (pct = 100; to pull it off them another needs over 110% in melee range, 130% beyond). Empty when it isn't fighting or out of sight |
 
 ### death
 
@@ -139,6 +139,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `group.invite(name) → request` | invite a player (by exact character name) to your group: ok once the invite is sent; they answer with group.accept |
 | `group.invited_by() → string?` | who invited you, nil if no invite is pending |
 | `group.leave() → request` | leave your group |
+| `group.ready([ready = true]) → request` | answer a ready check (ready_check event) |
 | `group.report([minutes = 10]) → GroupReport?` | how your party has spent the last minutes, from what you've seen of them: each member's time fighting, travelling, idle, dead and with the group, and their kills and deaths (XP and scores: the standings); nil when you're solo |
 
 ### runtime
@@ -159,6 +160,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 |---|---|
 | `items.broken() → Item[]` | equipped items at 0 durability (they give nothing; a broken weapon means fighting bare-handed) |
 | `items.compare(item) → Comparison?` | an item (entry, or the guid of one you carry) against what you wear in its slot (the weaker one for rings, trinkets and one-handers); nil until the items' info has loaded |
+| `items.cooldown(item) → ms` | milliseconds until an item you carry or wear (entry or guid) can be used again: potions, healthstones, trinkets, the Hearthstone; 0 = ready, -1 = until you leave combat (a potion used in combat) |
 | `items.count(entry) → number` | how many of an item you carry |
 | `items.destroy(item [, count = all]) → request` | destroy an item you carry (entry or guid): gone for good |
 | `items.equip(item [, slot]) → request<Equipped>` | wear an item you carry (entry or guid) in its slot, or in the slot you name: main_hand, off_hand (a second one-hander, with Dual Wield), finger1, finger2, trinket1, trinket2 |
@@ -167,6 +169,8 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `items.info(entry) → Item?` | an item's template: stats, slot, prices, whether you can use it; nil the first time (it asks the server: call again a moment later) |
 | `items.list() → Item[]` | everything you wear and carry (equipped, bags, backpack) |
 | `items.loot(guid) → request<Looted>` | loot a corpse within 5 yd: takes every item and the money (waits a moment for a fresh corpse to become lootable) |
+| `items.roll(roll, choice) → request<LootRollResult>` | roll on group loot (loot_roll_start event, items.rolls): need, greed, disenchant or pass. No choice before the countdown ends is a pass |
+| `items.rolls() → LootRoll[]` | group loot waiting for your roll (also in me.status().loot_rolls) |
 | `items.unequip(slot) → request` | take off what you wear in a slot (head, chest, main_hand, off_hand, finger1, trinket2, ...) into your bags |
 | `items.use(item [, guid]) → request<CastDone>` | use an item you carry (entry or guid): food, drink, potions, quest items; optionally on a unit. Food and drink work out of combat, and you must sit still while they tick |
 
@@ -202,6 +206,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `me.position() → Position` | where you are and which way you face |
 | `me.power() → Resource` | your mana, rage, energy or runic power |
 | `me.race() → string` | human, dwarf, night_elf, gnome, draenei, orc, undead, tauren, troll, blood_elf |
+| `me.reputation() → Reputation[]` | your standing with each faction in your reputation list, by name |
 | `me.resting() → bool` | in an inn or city: rested XP builds up |
 | `me.spellbook() → Spellbook` | the class spells you could know at your level against the ones you do, and what's missing (learn them at your trainer) |
 | `me.stance() → number` | warrior stance / druid form index (0 = none) |
@@ -257,13 +262,20 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | |
 |---|---|
-| `spells.cast(id [, guid = you]) → request<CastDone>` | cast a spell on a unit: ok when it goes off, else the server's reason (out_of_range, line_of_sight, not_ready, no_power, bad_targets, moving, interrupted, cancelled, unit_not_infront, caster_aurastate, equipped_item_class, ...) or not_known |
+| `spells.cast(id [, guid = you]) → request<CastDone>` | cast a spell on a unit: ok when it goes off, else the server's reason (out_of_range, line_of_sight, not_ready, no_power, bad_targets, moving, interrupted, cancelled, unit_not_infront, caster_aurastate, equipped_item_class, ...) or not_known; when it goes off but every target avoids it, how (miss, resist, immune, evade, reflect, dodge, parry...): power and cooldown are spent |
 | `spells.cast_at(id, x, y, z) → request<CastDone>` | cast a ground-targeted spell (Blizzard, Flare...) |
-| `spells.cooldown(id) → ms` | milliseconds until it's ready (its cooldown, category cooldown and the global cooldown); 0 = ready |
+| `spells.cooldown(id) → ms` | milliseconds until it's ready (its cooldown, category cooldown and the global cooldown); 0 = ready, -1 = not until an event (a potion used in combat: until you leave combat) |
 | `spells.find(name [, rank]) → Spell?` | a spell by name (any case): the highest rank you know, or that rank (a number, or "Rank 2"); nil if you know none |
 | `spells.info(id) → Spell?` | a spell's name, rank, cast time, cooldown, range and cost; nil if unknown |
 | `spells.known(id) → bool` | whether you know the spell (that rank) |
 | `spells.usable(id [, guid]) → bool` | known, off cooldown, affordable, and any aura state it needs is there (Victory Rush after a kill, Execute below 20% on that target) |
+
+### summon
+
+| Function | |
+|---|---|
+| `summon.accept() → request<Teleport>` | accept a pending summon (summon_request event): resolves when you arrive |
+| `summon.decline() → request` | decline a pending summon |
 
 ### talents
 
@@ -289,7 +301,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | |
 |---|---|
-| `trade.accept() → request<Trade>` | accept the trade: ok when it completes (both sides accepted; any change un-accepts both) |
+| `trade.accept() → request<Trade>` | accept the trade: ok when it completes (both sides accepted; any change un-accepts both), else why not (not_enough_money, inventory_full, too_far, cancelled, ...) |
 | `trade.cancel() → request` | close the trade, or refuse a request |
 | `trade.offer{items = {entry or guid, ...}, money = copper} → request` | set your side of the open trade (up to 6 items; replaces what you offered). Soulbound items can't be traded |
 | `trade.open() → request<Trade>` | open the window for someone's trade request (a trade event with state requested) |
@@ -418,6 +430,7 @@ Everything in [Unit](#unit), plus:
 | `rank?` | string | normal, elite, rare, rare_elite or boss |
 | `type?` | string | beast, humanoid, undead, demon, elemental, giant, dragonkin, mechanical, critter, totem, ... (spells like Polymorph only work on some types). Known a moment after first sight |
 | `subname?` | string | the title under an NPC's name, e.g. Weapon Merchant |
+| `kill_credit?` | number[] | other creature entries killing this one counts as, for kill objectives (an objective's entry may be one of these) |
 | `skinnable?` | bool | a corpse that can be skinned |
 | `evading?` | bool | it's evading (resetting, unreachable): your attacks do nothing; leave it |
 | `roles?` | string[] | what it offers: vendor, repair, trainer, quest_giver, flight_master, innkeeper, banker, spirit_healer, gossip |
@@ -738,11 +751,12 @@ GroupMemberReport is one member's time over the report's window, in percent of t
 
 | Field | Type | |
 |---|---|---|
-| `state` | string | none, waiting (you asked), requested (they asked: trade.open), open, complete, cancelled, rejected, busy, too_far, no_target, closed |
+| `state` | string | none, waiting (you asked), requested (they asked: trade.open), open, complete, or why it ended: cancelled, rejected, busy, too_far, no_target, wrong_faction, ignored, dead, target_dead, stunned, closed, ... |
 | `with?` | string |  |
 | `mine` | TradeSide |  |
 | `theirs` | TradeSide |  |
 | `they_accepted` | bool |  |
+| `error?` | string | why it ended, or why the last step (an accept, an item) was refused |
 
 ### TradeSide
 
@@ -840,6 +854,7 @@ Status is what a player sees on screen, in one call (me.status, `wow status`): e
 | `untrained_spells` | number | class spells at your level you haven't learned: visit your trainer (trainer.list; me.spellbook() names them) |
 | `unspent_talents` | number | talent points to spend (talents.list, talents.learn) |
 | `free_slots` | number |  |
+| `loot_rolls?` | LootRoll[] | group loot waiting for your roll: items.roll(roll, choice) |
 | `bag_upgrades` | Upgrade[] | items you carry that beat what you wear: items.equip(item.guid) (items.compare for the stats) |
 | `last_minute?` | Meter | your fighting over the last minute |
 | `tasks` | TaskInfo[] |  |
@@ -947,6 +962,17 @@ Everything in [Place](#place), plus:
 | `avg_item_level` | number |  |
 | `weakest` | string[] | the three slots holding you back most (empty ones included) |
 | `broken?` | string[] | slots at 0 durability: they give nothing; repair at an armorer |
+
+### LootRoll
+
+LootRoll: a group loot roll waiting for your choice.
+
+| Field | Type | |
+|---|---|---|
+| `roll` | GUID | pass it to items.roll |
+| `item` | Item |  |
+| `choices` | string[] | what you may choose: need, greed, disenchant, pass |
+| `seconds_left` | number |  |
 
 ### Upgrade
 
@@ -1097,6 +1123,16 @@ QuestInfo: a quest's text and rewards, as the quest giver and the quest log show
 | `skill_rank?` | number |  |
 | `requires?` | number[] | spells you must know first |
 
+### Reputation
+
+| Field | Type | |
+|---|---|---|
+| `faction` | number |  |
+| `name` | string |  |
+| `standing` | number | -42000 to 42999: hated below -6000, hostile, unfriendly below 0, neutral, friendly from 3000, honored 9000, revered 21000, exalted 42000 |
+| `rank` | string |  |
+| `at_war?` | bool |  |
+
 ### Result
 
 Result is an action's request (Pending) or its outcome.
@@ -1169,6 +1205,17 @@ Home is where your hearthstone takes you (set by binding at an innkeeper).
 | `items` | Item[] |  |
 | `money` | number | copper |
 
+### LootRollResult
+
+| Field | Type | |
+|---|---|---|
+| `roll` | GUID |  |
+| `item` | Item |  |
+| `player?` | UnitRef |  |
+| `choice?` | string | need, greed, disenchant or pass |
+| `number?` | number | the 1-100 roll, once everyone has chosen |
+| `auto?` | bool | passed automatically: they can't loot it |
+
 ### CastDone
 
 | Field | Type | |
@@ -1199,6 +1246,7 @@ Home is where your hearthstone takes you (set by binding at an innkeeper).
 | `title?` | string |  |
 | `xp?` | number | quest_turned_in |
 | `money?` | number | quest_turned_in |
+| `reason?` | string | quest_failed: failed (an escort died, you died on a stay-alive quest, ...) or timer (a timed quest ran out) |
 
 ### TalentLearned
 
@@ -1234,6 +1282,7 @@ Home is where your hearthstone takes you (set by binding at an innkeeper).
 |---|---|---|
 | `money` | number | copper gained |
 | `count?` | number | vendor.sell_junk: stacks sold |
+| `failed?` | number | vendor.sell_junk: stacks the vendor refused |
 
 ### AchievementEarned
 
@@ -1279,6 +1328,20 @@ AuraChange: an aura on you, or one you cast on another unit, began or ended.
 | `unit` | UnitRef | who it's on (me = true for you) |
 | `aura` | Aura |  |
 
+### Battleground
+
+Battleground: a battleground or arena queue changed.
+
+| Field | Type | |
+|---|---|---|
+| `slot` | number | queue slot (0-2) |
+| `status` | string | none (left the queue), queued, invited (enter before seconds_left runs out), in_progress, leaving |
+| `type?` | number | battleground type id |
+| `map?` | number |  |
+| `arena?` | number | arenas: players per side |
+| `rated?` | bool |  |
+| `seconds_left?` | number |  |
+
 ### Cast
 
 | Field | Type | |
@@ -1287,14 +1350,24 @@ AuraChange: an aura on you, or one you cast on another unit, began or ended.
 | `name` | string |  |
 | `cast_ms?` | number | cast_start: how long it takes |
 | `code?` | string | cast_failed: the reason (out_of_range, line_of_sight, not_ready, interrupted, ...) |
+| `detail?` | string | cast_failed: what the reason is about (the missing reagent or tool, the spell focus or area needed) |
 | `hint?` | string |  |
 | `interrupted?` | bool |  |
+| `hits?` | number | cast_done: how many targets it landed on |
+| `misses?` | SpellMiss[] | cast_done: targets it went off at but didn't land on |
+
+### SpellMiss
+
+| Field | Type | |
+|---|---|---|
+| `unit` | UnitRef |  |
+| `outcome` | string | miss, resist, dodge, parry, block, evade, immune, deflect, absorb, reflect |
 
 ### Chat
 
 | Field | Type | |
 |---|---|---|
-| `kind` | string | say, yell, party, whisper, channel, system, emote, npc_say, npc_yell, npc_whisper, npc_emote (match one with chat:<kind>) |
+| `kind` | string | say, yell, party, raid, raid_warning, battleground, guild, officer, whisper, channel, system, emote, npc_say, npc_yell, npc_whisper, npc_emote, battleground_system, achievement, loot, money, xp, reputation... (match one with chat:<kind>; a leader's party, raid and battleground chat is that kind) |
 | `from` | string |  |
 | `guid` | GUID |  |
 | `channel?` | string |  |
@@ -1314,7 +1387,8 @@ AuraChange: an aura on you, or one you cast on another unit, began or ended.
 | `spell?` | number | 0 for melee |
 | `spell_name?` | string |  |
 | `taken` | bool | you're dst |
-| `outcome?` | string | hit, crit, miss, dodge, parry, block, resist, absorb, evade (it's resetting: unreachable), immune, deflect, reflect; misses have amount 0 |
+| `outcome?` | string | melee: hit, crit, glancing, crushing, block (partly blocked: amount > 0); any: miss, dodge, parry, block, resist, absorb, evade (it's resetting: unreachable), immune, deflect, reflect, instakill; misses have amount 0 |
+| `periodic?` | bool | a damage or heal over time tick (DoT, HoT) |
 | `cause?` | string | environmental damage (no src): fall, drowning, lava, slime, fire, fatigue (swimming too far out) |
 
 ### Death
@@ -1324,11 +1398,38 @@ AuraChange: an aura on you, or one you cast on another unit, began or ended.
 | `killer?` | UnitRef | who last hit you |
 | `cause?` | string | when the environment killed you: fall, drowning, lava, slime, fire, fatigue |
 
+### Dispel
+
+Dispel: auras removed (or stolen) from you, or by you.
+
+| Field | Type | |
+|---|---|---|
+| `src` | UnitRef | the dispeller |
+| `dst` | UnitRef | who lost the auras |
+| `spell` | number |  |
+| `spell_name?` | string |  |
+| `removed` | string[] | the auras' names |
+| `stolen?` | bool | spellsteal: the dispeller has them now |
+
+### Energize
+
+Energize: power (mana, rage, energy, runic power) given to you, or by you to another.
+
+| Field | Type | |
+|---|---|---|
+| `src` | UnitRef |  |
+| `dst` | UnitRef |  |
+| `spell` | number |  |
+| `spell_name?` | string |  |
+| `power` | string |  |
+| `amount` | number |  |
+| `periodic?` | bool |  |
+
 ### ErrorEvent
 
 | Field | Type | |
 |---|---|---|
-| `op` | string | items, vendor.buy, vendor.sell, trainer.learn, group, quests |
+| `op` | string | items, items.loot, vendor.buy, vendor.sell, trainer.learn, group, quests, chat.whisper, chat.channel, chat.join |
 | `code` | string |  |
 | `message` | string |  |
 
@@ -1381,7 +1482,7 @@ FightSummary: one fight, from you or a party member in sight entering combat unt
 | Field | Type | |
 |---|---|---|
 | `victim` | UnitRef |  |
-| `killer?` | UnitRef | party_kill only: the party member who killed it |
+| `killer?` | UnitRef | party_kill only: who landed the killing blow (the credit, XP and loot, go to whoever tapped it) |
 
 ### LevelUp
 
@@ -1403,18 +1504,18 @@ FightSummary: one fight, from you or a party member in sight entering combat unt
 | `amount` | number | copper |
 | `source` | string | loot |
 
+### Notice
+
+| Field | Type | |
+|---|---|---|
+| `message` | string |  |
+
 ### MovementChanged
 
 | Field | Type | |
 |---|---|---|
 | `state` | string | see Movement |
 | `previous` | string |  |
-
-### Notice
-
-| Field | Type | |
-|---|---|---|
-| `message` | string |  |
 
 ### PartyChanged
 
@@ -1448,6 +1549,12 @@ FightSummary: one fight, from you or a party member in sight entering combat unt
 | `have` | number |  |
 | `need` | number |  |
 
+### ReadyCheck
+
+| Field | Type | |
+|---|---|---|
+| `from` | UnitRef | answer with group.ready(true) or group.ready(false) |
+
 ### ResurrectOffer
 
 ResurrectOffer: another player cast a resurrection on you.
@@ -1474,6 +1581,14 @@ ResurrectOffer: another player cast a resurrection on you.
 | `below?` | number |  |
 | `window_s?` | number |  |
 
+### SummonRequest
+
+| Field | Type | |
+|---|---|---|
+| `from` | UnitRef |  |
+| `zone` | string | where they'd take you |
+| `seconds_left` | number | summon.accept() or summon.decline() before it expires |
+
 ### TaskEvent
 
 | Field | Type | |
@@ -1483,6 +1598,16 @@ ResurrectOffer: another player cast a resurrection on you.
 | `state?` | string | task_finished: done, failed or stopped |
 | `seconds?` | number |  |
 | `error?` | string |  |
+
+### TravelRefused
+
+TravelRefused: the server turned a portal or an instance down.
+
+| Field | Type | |
+|---|---|---|
+| `map?` | number | the map you were going to (instance refusals) |
+| `reason` | string | requirement (a portal's level, item, quest or group need: see message), instance_full, too_many_instances, encounter_in_progress, difficulty_unavailable, need_group, map_not_allowed, not_found, error... |
+| `message` | string |  |
 
 ### UnitCast
 
@@ -1518,14 +1643,17 @@ An event is an [Event](#event) whose `data` is the type below.
 | `attention` | Attention | a script asks the agent (ask) |
 | `aura_faded` | AuraChange | a buff or debuff on you, or one you cast on another unit, ended (expired, dispelled, cancelled) |
 | `aura_gained` | AuraChange | a buff or debuff landed on you, or one you cast landed on another unit |
+| `battleground` | Battleground | a battleground queue changed: queued, invited, entered, left |
 | `cast_done` | Cast | a spell went off |
 | `cast_failed` | Cast | a cast failed or was interrupted |
 | `cast_start` | Cast | a cast with a cast time began |
 | `chat` | Chat | a message to you, near you or in your channels |
 | `combat_end` | None | you left combat |
 | `combat_start` | None | you entered combat |
-| `damage` | Damage | a hit involving you (melee or spell) |
+| `damage` | Damage | a hit involving you (melee, spell, DoT tick or damage shield), or an attack that missed |
 | `death` | Death | you died |
+| `dispel` | Dispel | auras dispelled or stolen from you, or by you |
+| `energize` | Energize | power (mana, rage, energy...) given to you, or by you |
 | `error` | ErrorEvent | the server refused something |
 | `fight_end` | FightSummary | a fight ended (you or a party member in sight left combat, or you died): its summary, with the group's numbers when you're in a party |
 | `flight_end` | Flight | you landed |
@@ -1539,8 +1667,13 @@ An event is an [Event](#event) whose `data` is the type below.
 | `learned` | Learned | you learned a spell from a trainer |
 | `level_up` | LevelUp | you reached a new level |
 | `log` | Log | log(msg) from a script |
+| `loot_roll` | LootRollResult | a group member (or you) chose need, greed, disenchant or pass, or rolled a number |
+| `loot_roll_all_passed` | LootRollResult | a group roll ended with everyone passing |
+| `loot_roll_start` | LootRoll | group loot: an item is up for rolls; items.roll(roll, choice) before the countdown ends, or you pass |
+| `loot_roll_won` | LootRollResult | a group roll ended: player won the item |
 | `mirror_timer` | MirrorTimer | your breath, fatigue or fire timer started, paused or stopped: surface or turn back before it runs out (me.timers) |
 | `money` | Money | you looted money |
+| `motd` | Notice | the server's message of the day (at login) |
 | `movement_changed` | MovementChanged | who moves you changed: a flight, a teleport, fear, a stun or a root began or ended |
 | `notice` | Notice | a server notice ("Inventory is full") |
 | `party_changed` | PartyChanged | your group changed |
@@ -1548,17 +1681,21 @@ An event is an [Event](#event) whose `data` is the type below.
 | `party_kill` | Kill | a party member killed something |
 | `progress` | Progress | a periodic digest of your progress (events.watch{every_s = ...}; off by default) |
 | `quest_complete` | QuestDone | a quest's objectives are done: turn it in |
+| `quest_failed` | QuestDone | a quest in your log failed: abandon it (quests.abandon) and take it again |
 | `quest_progress` | QuestProgress | a quest kill/object counter went up |
 | `quest_turned_in` | QuestDone | you turned a quest in |
+| `ready_check` | ReadyCheck | your group leader started a ready check: group.ready(true\|false) |
 | `result` | Result | an action finished (its result) |
 | `resurrect_offered` | ResurrectOffer | a player is resurrecting you: death.accept_res() (works dead or as a ghost) |
 | `resurrected` | None | you're alive again |
 | `script_error` | ScriptError | a script raised an error |
 | `stall` | Stall | no XP for a while, or the XP rate fell below your threshold (events.watch); once until progress resumes |
+| `summon_request` | SummonRequest | a player is summoning you: summon.accept() or summon.decline() |
 | `task_finished` | TaskEvent | a task ended (done, failed or stopped) |
 | `task_started` | TaskEvent | a task started |
 | `teleported` | Teleport | you were teleported: a portal, hearthstone, summon, the graveyard, an instance |
 | `trade` | Trade | the trade window changed: someone asked (requested: trade.open), opened, accepted, completed or cancelled |
+| `travel_refused` | TravelRefused | the server refused a portal or an instance (level, group, full, lockout...) |
 | `unit_cast_start` | UnitCast | an enemy started casting at you or a party member (an interrupt or a stun stops it) |
 | `xp` | XPGain | you gained XP |
 
@@ -1574,6 +1711,7 @@ The `data` of an ok result, per op.
 | `innkeeper.bind` | Home |
 | `items.equip` | Equipped |
 | `items.loot` | Looted |
+| `items.roll` | LootRollResult |
 | `items.use` | CastDone |
 | `move.stop` | MoveDone |
 | `move.to` | MoveDone |
@@ -1583,6 +1721,7 @@ The `data` of an ok result, per op.
 | `quests.turn_in` | QuestDone |
 | `spells.cast` | CastDone |
 | `spells.cast_at` | CastDone |
+| `summon.accept` | Teleport |
 | `talents.learn` | TalentLearned |
 | `trainer.learn` | Learned |
 | `vendor.buy` | ItemReceived |

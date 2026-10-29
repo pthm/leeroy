@@ -76,6 +76,8 @@ type Bot struct {
 	agent          *agentState              // Lua agent API state (cast tracking); nil outside sessions
 	playerName     func(guid uint64) string // name from the session's name-query cache ("" until the server answers)
 	notify         func(text string)        // a notice event (set by setupControl)
+	acked          func(key string) bool    // takes a server confirmation (chat echo, invite ok) setupControl recorded
+	wm             *worldMsgs               // reputation, MOTD, refused travel... (worldmsg.go)
 	lua            *script.Engine
 
 	// Stats
@@ -370,9 +372,12 @@ func (b *Bot) Run() BotResult {
 			b.logDecision("OnInvalidTarget GUID=%d (terminal safety net)", victimGUID)
 		}
 	}
-	b.world.OnLootOpened = func(lootGUID uint64, items []client.LootItem) {
-		b.handleLootOpened(lootGUID, items)
-	}
+	b.wm = b.watchWorldMessages()
+	b.world.AddPacketHook(func(op uint16, data []byte) {
+		if op == client.SmsgLootResponse {
+			b.handleLootResponse(data)
+		}
+	})
 
 	// Summon / .go / portal: interrupt movement+combat and flag Lua to restart AI.
 	b.wireTeleportHandling()
@@ -728,6 +733,17 @@ func (b *Bot) ensureMovementControllerLocked() {
 		w.SetSwimming(on)
 		b.log("swimming=%v", on)
 	}
+	w.SetGroundFunc(func(mapID uint32, x, y, z float32) (float32, bool) {
+		nav := b.nav
+		if nav == nil {
+			return 0, false
+		}
+		gh, ok := movementGroundHeight(nav, mapID, x, y, z)
+		if !ok {
+			return 0, false
+		}
+		return movement.FloorAware(nav, mapID, x, y, z, gh), true
+	})
 	// Seed the controller with the real position we just got from the server so we don't start at (0,0,0)
 	cx, cy, cz, co, _ := b.world.Position()
 	b.moveController.InitPositionFromWorld(cx, cy, cz, co)
@@ -815,17 +831,11 @@ func (b *Bot) runMovementLoop(stop <-chan struct{}, done chan<- struct{}) {
 // Behavior tree construction
 // ============================================================
 
-func (b *Bot) handleLootOpened(lootGUID uint64, items []client.LootItem) {
-	// Auto-loot all items without blocking sleeps (non-blocking for the read loop)
-	for _, item := range items {
-		b.world.LootItem(item.Index)
-	}
-	b.world.LootMoney()
-	b.world.LootRelease(lootGUID)
-}
-
 func (b *Bot) moveToPoint(x, y, z float32) {
 	b.ensureMovementController()
+	if b.world.Falling() { // no steering in the air
+		return
+	}
 
 	now := time.Now()
 	requestedDest := [3]float32{x, y, z}
@@ -1233,7 +1243,7 @@ func (b *Bot) updateMovement() {
 	b.movementMu.Lock()
 	defer b.movementMu.Unlock()
 
-	if b.moveController == nil {
+	if b.moveController == nil || b.world.Falling() { // the world client moves us until we land
 		return
 	}
 
@@ -1604,7 +1614,7 @@ func (b *Bot) Loot(guid uint64) error {
 // LootAll opens loot, takes money, and releases without blocking the AI tick.
 // Previously this slept 700ms on the AI goroutine, which froze ticks and caused
 // loot spam under Lua grind (validation run: 122× CMSG_LOOT in ~45s).
-// Server responses arrive asynchronously via OnLootOpened / SMSG_LOOT_*.
+// Server responses arrive asynchronously via SMSG_LOOT_RESPONSE (handleLootResponse).
 func (b *Bot) LootAll(guid uint64) error {
 	if b.world == nil || guid == 0 {
 		return nil
@@ -1620,7 +1630,7 @@ func (b *Bot) LootAll(guid uint64) error {
 	b.lastLootAttemptAt = now
 	b.lootMu.Unlock()
 
-	// Items, money and release happen in handleLootOpened once SMSG_LOOT_RESPONSE arrives; releasing
+	// Items, money and release happen in handleLootResponse once SMSG_LOOT_RESPONSE arrives; releasing
 	// here (before the response) closed the window first, so items were never taken.
 	return b.world.Loot(guid)
 }

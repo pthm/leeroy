@@ -75,3 +75,44 @@ func TestParseLootRollWon(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 }
+
+// Player::SendLoot / SendLootError as AzerothCore writes them.
+func TestParseLootResponse(t *testing.T) {
+	le := binary.LittleEndian
+	p := append(le.AppendUint64(nil, 0xF130000000000042), 1) // corpse
+	p = append(le.AppendUint32(p, 57), 2)
+	slot := func(i uint8, item uint32, typ uint8) {
+		p = append(le.AppendUint32(le.AppendUint32(le.AppendUint32(le.AppendUint32(le.AppendUint32(append(p, i), item), 1), 7), 0), 0), typ)
+	}
+	slot(0, 2589, LootSlotTypeAllowLoot)
+	slot(1, 4306, LootSlotTypeRollOngoing)
+	lr, err := ParseLootResponse(p)
+	if err != nil || lr.Error != -1 || lr.Gold != 57 || len(lr.Items) != 2 ||
+		lr.Items[1] != (LootItem{Index: 1, ItemID: 4306, Quantity: 1, SlotType: LootSlotTypeRollOngoing}) {
+		t.Fatalf("%+v %v", lr, err)
+	}
+
+	lr, err = ParseLootResponse(append(le.AppendUint64(nil, 0xF130000000000042), 0, 4))
+	if err != nil || lr.Error != 4 || LootErrorName(lr.Error) != "TOO_FAR" || lr.Items != nil {
+		t.Fatalf("error form: %+v %v", lr, err)
+	}
+}
+
+// An accept the server refuses (CLOSE_WINDOW + inventory result, TARGET_TO_FAR) leaves the trade open.
+func TestTradeStatusRefusedAcceptKeepsTradeOpen(t *testing.T) {
+	le := binary.LittleEndian
+	w := NewWorldClient("t", nil, nil)
+	w.handleTradeStatus(le.AppendUint32(nil, TradeStatusOpenWindow))
+	w.handleTradeStatus(append(le.AppendUint32(le.AppendUint32(nil, TradeStatusCloseWindow), 29), 0, 0, 0, 0, 0))
+	if !w.TradeOpen() || w.LastTradeStatus().Result != 29 {
+		t.Fatalf("open=%v %+v", w.TradeOpen(), w.LastTradeStatus())
+	}
+	w.handleTradeStatus(le.AppendUint32(nil, TradeStatusTargetTooFar))
+	if !w.TradeOpen() {
+		t.Fatal("too far on accept closed the trade")
+	}
+	w.handleTradeStatus(le.AppendUint32(nil, TradeStatusIgnoreYou))
+	if w.TradeOpen() {
+		t.Fatal("ignore should close the trade")
+	}
+}

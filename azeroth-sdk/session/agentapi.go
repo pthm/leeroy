@@ -5,6 +5,7 @@ package session
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -25,6 +26,12 @@ const (
 	smsgSpellStart        = 0x131
 	smsgSpellGo           = 0x132
 	smsgSpellFailure      = 0x133
+	smsgItemCooldown      = 0x0B0
+	smsgInitialSpells     = 0x12A
+	smsgSpellCooldown     = 0x134
+	smsgCooldownEvent     = 0x135
+	smsgClearCooldown     = 0x1DE
+	smsgModifyCooldown    = 0x491
 	msgChannelStart       = 0x139
 	msgChannelUpdate      = 0x13A
 	msgCorpseQuery        = 0x216
@@ -56,7 +63,11 @@ type agentState struct {
 	cd        map[uint32]time.Time // spell -> ready at
 	catCD     map[uint32]time.Time // spell category -> ready at
 	gcdUntil  time.Time
-	corpse    []float32 // x, y, z, map
+	onEvent   map[uint32]cdRule // spell -> the cooldown SMSG_COOLDOWN_EVENT starts (potions used in combat)
+	// itemCD: an item cast's cooldown, by the item's guid, or its entry when that's 0
+	itemCD    func(item uint64, entry, spell uint32) (cdRule, bool)
+	pushed    map[uint32]time.Time // SMSG_SPELL_COOLDOWN: sent before the SPELL_GO, it wins over Spell.dbc
+	corpse    []float32            // x, y, z, map
 	corpseAt  time.Time
 	reclaimAt time.Time
 	earned    map[uint32]bool   // achievement ids
@@ -93,10 +104,19 @@ func (t mirrorTimer) view(id uint32) types.MirrorTimer {
 }
 
 func (b *Bot) setupAgentAPI() {
-	s := &agentState{cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, earned: map[uint32]bool{},
+	s := &agentState{cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, onEvent: map[uint32]cdRule{}, pushed: map[uint32]time.Time{}, earned: map[uint32]bool{},
 		criteria: map[uint32]uint64{}, timers: map[uint32]mirrorTimer{}}
 	w := b.world
 	b.agent = s
+	s.itemCD = func(item uint64, entry, spell uint32) (cdRule, bool) {
+		if o := w.GetObject(item); o != nil {
+			entry = o.Value(3)
+		}
+		if p := itemInfo(w, entry); entry != 0 && p != nil && p.UseSpell == spell {
+			return p.useCD, true
+		}
+		return cdRule{}, false
+	}
 	spellsDir = b.config.DataDir
 	go loadSpells() // ~50MB; don't stall the packet goroutine on first use
 	w.AddPacketHook(func(op uint16, data []byte) { s.onPacket(w.CharGUID(), op, data) })
@@ -183,14 +203,30 @@ func (b *Bot) setupAgentAPI() {
 		return nil
 	})
 	// AC doesn't push cooldowns for normal casts (the real client reads them from Spell.dbc), so they're tracked here.
-	e.Func("spells.cooldown", "(id) → ms", "milliseconds until it's ready (its cooldown, category cooldown and the global cooldown); 0 = ready", func(id uint32) float64 {
+	e.Func("spells.cooldown", "(id) → ms", "milliseconds until it's ready (its cooldown, category cooldown and the global cooldown); 0 = ready, -1 = not until an event (a potion used in combat: until you leave combat)", func(id uint32) float64 {
 		if left := s.cooldownLeft(id); left > 0 {
-			return float64(left.Milliseconds())
+			return cdMS(left)
 		}
-		if !b.IsSpellReady(id) {
+		if w.KnowsSpell(id) && !b.IsSpellReady(id) {
 			return 1500
 		}
 		return 0
+	})
+	e.Func("items.cooldown", "(item) → ms", "milliseconds until an item you carry or wear (entry or guid) can be used again: potions, healthstones, trinkets, the Hearthstone; 0 = ready, -1 = until you leave combat (a potion used in combat)", func(item uint64) float64 {
+		var p *itemProto
+		for _, it := range bagItems(w) {
+			if uint64(it.GUID) == item || it.Entry == uint32(item) && item < 1<<32 {
+				p = itemInfo(w, it.Entry)
+				break
+			}
+		}
+		if p == nil && item < 1<<32 {
+			p = itemInfo(w, uint32(item))
+		}
+		if p == nil || p.UseSpell == 0 {
+			return 0
+		}
+		return cdMS(s.itemCooldownLeft(p.UseSpell, p.useCD.cat))
 	})
 
 	// ---------- world ----------
@@ -395,24 +431,64 @@ func (b *Bot) setupAgentAPI() {
 	})
 	e.Func("quests.turn_in", "(npc, quest [, reward = 0]) → request<QuestDone>", "hand a complete quest in (reward: the index of the item to choose, 0 = first; quests.info lists the choices)",
 		func(npc uint64, quest, reward uint32) map[string]any {
-			if r := b.noNPC("quests.turn_in", map[string]any{"npc": gs(npc), "quest": quest}, npc); r != nil {
+			args := map[string]any{"npc": gs(npc), "quest": quest, "reward": reward}
+			if r := b.noNPC("quests.turn_in", args, npc); r != nil {
 				return r
 			}
+			if p := questInfo(w, quest); reward >= 6 || p != nil && p.choices[0][0] != 0 && p.choices[reward][0] == 0 {
+				return b.refuse("quests.turn_in", args, "bad_reward", fmt.Sprintf("no reward choice %d (0 = first; quests.info lists the choices)", reward))
+			}
+			// the server answers COMPLETE_QUEST with REQUEST_ITEMS (an incomplete one fails on it) or OFFER_REWARD
 			w.QuestgiverCompleteQuest(npc, quest)
 			body := binary.LittleEndian.AppendUint64(nil, npc)
 			w.SendPacketRaw(cmsgQuestRequestRew, binary.LittleEndian.AppendUint32(body, quest))
 			w.QuestgiverChooseReward(npc, quest, reward)
-			return b.request("quests.turn_in", map[string]any{"npc": gs(npc), "quest": quest, "reward": reward}, 5*time.Second,
+			return b.request("quests.turn_in", args, 5*time.Second,
 				nil, func(ev script.Event) *script.Outcome {
 					if d, ok := ev.Data.(types.QuestDone); ok && ev.Type == "quest_turned_in" && d.Quest == quest {
 						return script.Ok(d)
 					}
-					if e, ok := ev.Data.(types.ErrorEvent); ok && e.Op == "items" {
-						return script.Fail("bags_full", "bags full: the item reward was refused; sell or destroy something", nil)
+					if e, ok := ev.Data.(types.ErrorEvent); ok && ev.Type == "error" && e.Op == "items" { // Player::CanRewardQuest
+						if e.Code == "inventory_full" || e.Code == "bag_full" {
+							e.Code = "bags_full"
+						}
+						return script.Fail(e.Code, "the turn-in was refused: "+e.Message, nil)
 					}
 					return failOn(ev, "quests")
 				})
 		})
+}
+
+// questInvalid: QuestFailedReason (QuestDef.h), SMSG_QUESTGIVER_QUEST_INVALID
+var questInvalid = map[uint32][2]string{0: {"requirements_not_met", "you don't meet its requirements"},
+	1: {"low_level", "you're not high enough level"}, 6: {"wrong_race", "not available to your race"},
+	7: {"already_done", "you've completed that quest"}, 12: {"only_one_timed", "you can only be on one timed quest at a time"},
+	13: {"already_on", "you're already on that quest"}, 16: {"expansion", "it needs an expansion"},
+	18: {"already_on", "you're already on that quest"}, 21: {"missing_items", "you don't have the required items with you"},
+	23: {"not_enough_money", "you don't have enough money"}, 26: {"daily_limit", "you've done 25 daily quests today"},
+	27: {"tired", "too much play time"}, 29: {"daily_done", "you've done that daily quest today"}}
+
+// parseQuestRequestItems: SMSG_QUESTGIVER_REQUEST_ITEMS (PlayerMenu::SendQuestGiverRequestItems): npc, quest, title,
+// text, 0, emote, close on cancel, flags, suggested players, money, items (entry, count, display), then 3 if completable.
+// turnIn: the answer to CMSG_QUESTGIVER_COMPLETE_QUEST, the only sender that doesn't set close on cancel.
+func parseQuestRequestItems(data []byte) (quest uint32, done, turnIn bool, items [][2]uint32) {
+	r := bytes.NewReader(data)
+	u32 := func() (v uint32) { binary.Read(r, binary.LittleEndian, &v); return }
+	r.Seek(8, io.SeekCurrent)
+	quest = u32()
+	readCString(r)
+	readCString(r)
+	u32()
+	u32()
+	turnIn = u32() == 0
+	for range 3 {
+		u32()
+	}
+	for n := u32(); n > 0 && r.Len() >= 12; n-- {
+		items = append(items, [2]uint32{u32(), u32()})
+		u32()
+	}
+	return quest, u32() != 0, turnIn, items
 }
 
 // castSent: is_casting covers the round trip between cast_spell and the server's SPELL_START, so a script that
@@ -433,6 +509,65 @@ func (s *agentState) cooldownLeft(id uint32) time.Duration {
 	return max(0, time.Until(at))
 }
 
+// itemCooldownLeft: an item spell's own cooldown and its item category's (no GCD: items.use has none of its own).
+func (s *agentState) itemCooldownLeft(spell, cat uint32) time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	at := s.cd[spell]
+	if c := s.catCD[cat]; cat != 0 && c.After(at) {
+		at = c
+	}
+	return max(0, time.Until(at))
+}
+
+// cdRule: a cast's cooldown as Player::AddSpellAndCategoryCooldowns works it out: the item template's values for item
+// casts (the item query sends those, or Spell.dbc's), else Spell.dbc's. ms; <= 0 = none.
+type cdRule struct {
+	rec, catrec int32
+	cat         uint32
+	onEvent     bool // starts on SMSG_COOLDOWN_EVENT (potions, SPELL_ATTR0_COOLDOWN_ON_EVENT), blocked until then
+}
+
+// cdWait: a cooldown waiting for its event (SMSG_INITIAL_SPELLS sends it as infinite)
+var cdWait = time.Now().AddDate(100, 0, 0)
+
+func cdMS(left time.Duration) float64 {
+	if left > 365*24*time.Hour {
+		return -1
+	}
+	return float64(left.Milliseconds())
+}
+
+func dbcRule(sp *spellRec) cdRule {
+	if sp == nil {
+		return cdRule{}
+	}
+	return cdRule{rec: int32(sp.Cooldown), cat: sp.Category, catrec: int32(sp.CategoryCooldown), onEvent: sp.attrs&0x02000000 != 0}
+}
+
+// startCD: the spell's cooldown (rec, or catrec when it has none) and its category's. Caller holds s.mu.
+// ponytail: base values; talents, glyphs and SPELL_AURA_MOD_COOLDOWN aren't applied (the last sends SMSG_SPELL_COOLDOWN)
+func (s *agentState) startCD(spell uint32, c cdRule, now time.Time) {
+	if c.onEvent {
+		s.cd[spell], s.onEvent[spell] = cdWait, c
+		if c.cat != 0 { // the server refuses every potion while one waits (Spell::CheckItems: GetLastPotionId)
+			s.catCD[c.cat] = cdWait
+		}
+		return
+	}
+	delete(s.onEvent, spell)
+	if rec := cmp.Or(max(c.rec, 0), max(c.catrec, 0)); rec > 0 {
+		s.cd[spell] = now.Add(time.Duration(rec) * time.Millisecond)
+	} else {
+		delete(s.cd, spell)
+	}
+	if c.cat != 0 && c.catrec > 0 {
+		s.catCD[c.cat] = now.Add(time.Duration(c.catrec) * time.Millisecond)
+	} else if s.catCD[c.cat] == cdWait {
+		delete(s.catCD, c.cat)
+	}
+}
+
 func (s *agentState) castSent(spell uint32) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -445,12 +580,13 @@ func (s *agentState) onPacket(me uint64, op uint16, data []byte) {
 	r := bytes.NewReader(data)
 	u32 := func() (v uint32) { binary.Read(r, binary.LittleEndian, &v); return }
 	f32 := func() (v float32) { binary.Read(r, binary.LittleEndian, &v); return }
+	u64 := func() (v uint64) { binary.Read(r, binary.LittleEndian, &v); return }
 	now := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch op {
 	case smsgSpellStart, smsgSpellGo:
-		readPackedGUID(r) // caster item
+		item := readPackedGUID(r) // the item for item casts, else the caster
 		if readPackedGUID(r) != me {
 			return
 		}
@@ -467,22 +603,123 @@ func (s *agentState) onPacket(me uint64, op uint16, data []byte) {
 		if s.castSpell == spell {
 			s.castSpell = 0
 		}
-		// ponytail: base cooldowns from Spell.dbc; talents/glyphs that shorten them aren't applied
-		if sp != nil && sp.Cooldown > 0 {
-			s.cd[spell] = now.Add(time.Duration(sp.Cooldown) * time.Millisecond)
+		c := dbcRule(sp)
+		if item != me && s.itemCD != nil {
+			if ic, ok := s.itemCD(item, 0, spell); ok {
+				ic.onEvent = ic.onEvent || c.onEvent
+				c = ic
+			}
 		}
-		if sp != nil && sp.Category != 0 && sp.CategoryCooldown > 0 {
-			s.catCD[sp.Category] = now.Add(time.Duration(sp.CategoryCooldown) * time.Millisecond)
+		pushed, ok := s.cd[spell]
+		s.startCD(spell, c, now)
+		if ok && now.Sub(s.pushed[spell]) < time.Second {
+			s.cd[spell] = pushed
 		}
-	case smsgSpellFailure:
+	case smsgCooldownEvent: // spell, player: an on-event cooldown starts now (Player::SendCooldownEvent)
+		spell := u32()
+		if u64() != me {
+			return
+		}
+		c, ok := s.onEvent[spell]
+		if !ok && s.cd[spell] != cdWait { // a failed cast's reset (Spell::finish): nothing was waiting
+			return
+		}
+		if !ok { // waiting since login
+			c = dbcRule(spellInfo(spell))
+		}
+		c.onEvent = false
+		s.startCD(spell, c, now)
+	case smsgSpellCooldown: // player, flags, (spell, ms)...: cooldowns the client can't work out itself
+		if u64() != me {
+			return
+		}
+		r.ReadByte()
+		for r.Len() >= 8 {
+			spell, ms := u32(), u32()
+			s.cd[spell], s.pushed[spell] = now.Add(time.Duration(ms)*time.Millisecond), now
+		}
+	case smsgItemCooldown: // item, spell: the 30 s on-use cooldown of an item just equipped
+		u64()
+		s.cd[u32()] = now.Add(30 * time.Second)
+	case smsgModifyCooldown: // spell, player, ms delta
+		spell := u32()
+		if u64() == me && !s.cd[spell].IsZero() {
+			s.cd[spell] = s.cd[spell].Add(time.Duration(int32(u32())) * time.Millisecond)
+		}
+	case smsgClearCooldown: // spell, unit
+		spell := u32()
+		if u64() == me {
+			delete(s.cd, spell)
+			if c, ok := s.onEvent[spell]; ok {
+				delete(s.catCD, c.cat)
+			}
+			delete(s.onEvent, spell)
+			if sp := spellInfo(spell); sp != nil { // ponytail: clears the whole category; a reset spell clears its siblings too
+				delete(s.catCD, sp.Category)
+			}
+		}
+	case smsgInitialSpells: // on login and every far teleport: spells, then the cooldowns still running (Player::SendInitialSpells)
+		r.ReadByte()
+		var n, item, cat uint16
+		binary.Read(r, binary.LittleEndian, &n)
+		r.Seek(int64(n)*6, io.SeekCurrent)
+		waiting := s.onEvent
+		if n > 0 { // a spell script sends one with only a cooldown
+			clear(s.cd)
+			clear(s.catCD)
+			s.onEvent = map[uint32]cdRule{}
+		}
+		binary.Read(r, binary.LittleEndian, &n) // counts entries it then skips, so read to the end
+		for r.Len() >= 16 {
+			spell := u32()
+			binary.Read(r, binary.LittleEndian, &item)
+			binary.Read(r, binary.LittleEndian, &cat)
+			rec, catrec := u32(), u32()
+			// the cast spell comes with category 0 and its category's other spells mostly not at all
+			// (Player::AddSpellAndCategoryCooldowns), so its category comes from the item or Spell.dbc
+			c, ok := waiting[spell]
+			if !ok && item != 0 && s.itemCD != nil {
+				c, ok = s.itemCD(0, uint32(item), spell)
+			}
+			if !ok {
+				c = dbcRule(spellInfo(spell))
+			}
+			if catrec == 0x80000000 {
+				c.onEvent = true
+				s.startCD(spell, c, now)
+				continue
+			}
+			left := time.Duration(max(rec, catrec)) * time.Millisecond
+			s.cd[spell] = now.Add(left)
+			if cat != 0 { // a sibling that has its own (catrec != rec): sent with its category's time
+				s.catCD[uint32(cat)] = now.Add(left)
+			} else if c.cat != 0 && c.catrec > 0 { // its category started with it: catrec of its rec (or catrec)
+				if catLeft := left + time.Duration(c.catrec-cmp.Or(max(c.rec, 0), c.catrec))*time.Millisecond; catLeft > 0 {
+					s.catCD[c.cat] = now.Add(catLeft)
+				}
+			}
+		}
+	case smsgSpellFailure: // caster, cast count, spell, reason
 		if readPackedGUID(r) == me {
-			s.castSpell = 0
+			r.ReadByte()
+			if u32() == s.castSpell {
+				s.castSpell = 0
+			}
+		}
+	case smsgSpellDelayed: // caster, ms: pushback from a hit
+		if readPackedGUID(r) == me && s.castSpell != 0 {
+			s.castUntil = s.castUntil.Add(time.Duration(u32()) * time.Millisecond)
 		}
 	case smsgCastFailed:
 		r.ReadByte()
 		spell := u32()
 		code, _ := r.ReadByte()
-		s.castSpell = 0
+		if code == 0 { // SPELL_FAILED_SUCCESS
+			return
+		}
+		if spell == s.castSpell { // not a second spell refused while this one casts (spell_in_progress)
+			s.castSpell = 0
+		}
 		s.castErr = map[string]any{"spell": spell, "code": code, "reason": castResultNames[code], "time_ms": now.UnixMilli()}
 		if code >= 28 && code <= 30 { // equipped_item*: usually a weapon broken by deaths, or none equipped
 			s.castErr["hint"] = "needs a working weapon: check bot.broken_gear() and repair at an armorer (bot.repair)"

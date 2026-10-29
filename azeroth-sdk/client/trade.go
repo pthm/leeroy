@@ -211,15 +211,18 @@ func (w *WorldClient) handleTradeStatus(data []byte) {
 	switch info.Status {
 	case TradeStatusBeginTrade, TradeStatusOpenWindow, TradeStatusTradeAccept, TradeStatusBackToTrade:
 		w.tradeOpen = true
-	case TradeStatusTradeComplete, TradeStatusTradeCanceled, TradeStatusCloseWindow,
-		TradeStatusTargetTooFar, TradeStatusTradeRejected, TradeStatusNoTarget,
-		TradeStatusYouLogout, TradeStatusTargetLogout, TradeStatusYouDead, TradeStatusTargetDead,
-		TradeStatusBusy, TradeStatusBusy2:
+	case TradeStatusTradeComplete, TradeStatusTradeCanceled, TradeStatusTradeRejected,
+		TradeStatusIgnoreYou, TradeStatusBusy, TradeStatusBusy2:
 		w.tradeOpen = false
-	}
+	} // the rest refuse an initiate (no trade yet) or an accept/item (CLOSE_WINDOW, TARGET_TO_FAR): the trade stays open
 	w.tradeMu.Unlock()
 	// Sparse e2e flake signal — keep at Info (not per-hit combat volume).
-	w.logAt(LogInfo, "SMSG_TRADE_STATUS %s", TradeStatusName(info.Status))
+	if info.Status == TradeStatusCloseWindow && info.Result != 0 {
+		w.logAt(LogInfo, "SMSG_TRADE_STATUS %s result=%d target=%d item=%d", TradeStatusName(info.Status), info.Result,
+			info.IsTargetResult, info.ItemLimitedByLimitCategory)
+	} else {
+		w.logAt(LogInfo, "SMSG_TRADE_STATUS %s", TradeStatusName(info.Status))
+	}
 	w.invokeTradeStatusHooks(info)
 }
 

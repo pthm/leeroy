@@ -157,7 +157,7 @@ local choice = ask("Bags full. Destroy greys or go sell?", {"destroy", "sell"}, 
 | `quests` | your quest log, quest text, accepting, turning in, abandoning |
 | `flights` | flight masters and flight points |
 | `death` | your corpse, releasing, reclaiming, spirit healers |
-| `chat`, `group`, `trade` | other players |
+| `chat`, `group`, `trade`, `summon` | other players |
 | `talents` | your talent trees and spending points |
 | `task`, `events`, `wait`, `await`, `ask` | the runtime (above) |
 | `act` | utilities that wait: walking with retries, NPC errands, resting, recovering from death |
@@ -215,6 +215,9 @@ me.level()`). `goto` is reserved, so it can't name a function.
   kill, Execute below 20% health, Revenge after a block or dodge: `me.states()`, a unit's `states`) before a cast;
   the result says whether it went off or why not (`out_of_range`, `not_ready`, `no_power`, `line_of_sight`,
   `bad_targets`, `caster_aurastate`...).
+- `spells.cooldown(id)` and `items.cooldown(item)` say how long until a spell or item is ready, including
+  cooldowns still running from before you logged in (the Hearthstone) and shared ones (all potions). A potion used
+  in combat reads `-1`: its cooldown only starts when you leave combat.
 - `cast_failed` events carry the server's reason. A cast bar that ends without the spell and without one is
   `cancelled`. A failed cast's code is in its request's result too, so check `r.ok` and branch on `r.error.code`:
   retrying the same call unchanged gets the same answer.
@@ -224,6 +227,9 @@ me.level()`). `goto` is reserved, so it can't name a function.
 - Every fight ends with a `fight_end` event: duration, damage dealt and taken, abilities used, outcomes. A unit's
   `casting`, a `unit_cast_start` event, `units.auras`, `threat_pct` and `combat.threat(guid)` show what the game
   shows a player.
+- The combat log: `damage` and `heal` events (`periodic` for DoT and HoT ticks), `energize` (mana, rage, energy
+  given), `dispel` (auras dispelled or stolen). A `cast_done` event says how many targets it `hits` and which it
+  `misses`, and why.
 
 ### NPCs
 
@@ -238,7 +244,9 @@ me.level()`). `goto` is reserved, so it can't name a function.
   level-70 "<Class> Trainer" NPCs in Northshire are placeholders that teach nothing.
 - Quests: `quests.accept(npc, quest)`, `quests.turn_in(npc, quest [, reward index])` (0 = the first choice;
   `quests.info(id)` lists the choices), `quests.log()`, `quests.info(id)` (the quest giver's text), `quests.abandon`.
-  `act.accept` and `act.turn_in` walk there first.
+  `act.accept` and `act.turn_in` walk there first. A kill objective also counts the creatures whose
+  `kill_credit` lists its entry (`units.nearby`, `units.get`). A turn-in fails at once with `incomplete` when the objectives
+  aren't done; a `quest_failed` event means an escort died or a timer ran out: abandon it and take it again.
 
 ### Items
 
@@ -247,6 +255,9 @@ me.level()`). `goto` is reserved, so it can't name a function.
 - `items.compare(item)` shows the change against what you wear in that slot (item level, stats, armor, dps) and
   `usable = false` with the reason when you can't use it. `items.info(entry)` has the details; `me.gear()` every
   slot; `items.broken()` what's at 0 durability.
+- Group loot: a `loot_roll_start` event per item up for rolls; `items.roll(roll, "need"|"greed"|"disenchant"|"pass")`
+  before the countdown ends (`items.rolls()` lists the open ones), then `loot_roll` and `loot_roll_won` events
+  (`loot_roll_all_passed` when nobody wants it).
 - Full bags: loot stays on the corpse and turn-ins with an item reward fail with `bags_full` (and an "Inventory is
   full" notice).
 - `objects.use(guid)` within ~5 yards uses a chest, node or quest object. `objects.nearby` says what each takes
@@ -260,22 +271,29 @@ me.level()`). `goto` is reserved, so it can't name a function.
 - `death.release()`, `death.corpse()` (where it is and when you can reclaim), `death.reclaim()` within ~30 yards,
   `death.spirit_res(npc)`. `act.recover()` does release, corpse run (spirit healer if that fails) and rest. A
   `gear_broken` event follows a revive with broken gear.
+- A `travel_refused` event: a portal or instance turned you away (`reason`, `message`: level, group, full, lockout).
+- `me.reputation()`: your standing with each faction (`rank`: hated ... exalted).
 
 ### Other players
 
 - Sending: `chat.say(msg)`, `chat.yell(msg)`, `chat.whisper(name, msg)`, `chat.party(msg)`,
-  `chat.channel(name, msg)`. Every message is at most 255 bytes (`message_too_long`). Sending returns an ok
-  result; your own messages aren't echoed back as chat events.
+  `chat.channel(name, msg)`. Every message is at most 255 bytes (`message_too_long`). Whispers and channel
+  messages resolve once the server has delivered them, or fail (`player_not_found`, `not_member`, `muted`,
+  `throttled`); your own messages aren't echoed back as chat events.
 - Channels: you start in your zone's General channel, and leave it when you change zone until you
   `chat.join("General - <Zone>", 1)` (zone channel ids: General 1, Trade 2, LocalDefense 22). `chat.join("name", 0)`
-  joins a custom channel, in every zone.
+  joins a custom channel, in every zone (`wrong_password`, `banned`).
 - Receiving: every message is a `chat` event with `kind`, `from` and `text` (`ago_s` in `wow events` says how old).
   `events.on("chat", fn)` reacts in a script. Messages sent while your session restarts are lost.
-- Groups: `group.invite(name)`, the invitee gets a `party_invite` event and calls `group.accept()`;
-  `group.info()`, `group.leave()`. `group.report([minutes])`: how each member spent the last minutes (fighting,
-  travelling, idle, dead, with the group), from what you've seen of them.
+- Groups: `group.invite(name)` (fails with `bad_player_name`, `already_in_group`, `group_full`...), the invitee gets
+  a `party_invite` event and calls `group.accept()`; `group.info()`, `group.leave()`. A `ready_check` event:
+  answer with `group.ready(true)`. A `summon_request` event: `summon.accept()` resolves when you arrive, or `summon.decline()`.
+  `group.report([minutes])`: how each member spent the last minutes (fighting, travelling, idle, dead, with the
+  group), from what you've seen of them.
+- The server's message of the day comes as a `motd` event; battleground and arena queue changes as `battleground`.
 - `units.players(dist)`, `units.inspect(guid)`: who's around, their level, class and gear.
 - Trading: `trade.start(name)`, both sides `trade.offer{items = {...}, money = copper}`, both `trade.accept()`.
+  A refused trade fails the call with the reason (`too_far`, `busy`, `not_enough_money`...), also in `Trade.error`.
 
 ### When something doesn't work
 
@@ -287,11 +305,12 @@ me.level()`). `goto` is reserved, so it can't name a function.
 | `out_of_range` | too far for that spell | `spells.info(id).range` |
 | `bad_targets` | not a valid target (dead, friendly, tapped by someone else) | the unit's `alive`, `reaction`, `tapped_by_other` |
 | `equipped_item_class*` | your weapon is broken or missing | `items.broken()` |
-| `not_ready` / `no_power` | cooldown, or not enough mana, rage or energy | `spells.cooldown(id)`, `spells.usable(id, guid)` |
+| `not_ready` / `no_power` | cooldown, or not enough mana, rage or energy | `spells.cooldown(id)`, `items.cooldown(item)`, `spells.usable(id, guid)` |
 | `caster_aurastate` / `target_aurastate` | the spell's condition isn't met (Victory Rush without a kill, Execute above 20%) | `me.states()`, the target's `states`, `spells.usable` |
 | `unit_not_infront` | the target isn't in front of you | `move.face(guid)` before the cast (`act.cast` faces for you) |
 | casting while dead (`caster_dead`) | a script still running after you died | `me.alive()`, or wait in your loop while dead |
 | `interrupted` | you moved or were hit mid-cast | `me.casting()` |
+| `miss`, `resist`, `immune`, `evade`, `reflect`, `dodge`, `parry`... | the spell went off but didn't land: power and cooldown are spent, so a retry may hit `not_ready` | `spells.cooldown(id)`; `immune`/`evade`: try another spell or target |
 | `bags_full`, loot left on corpses | no bag space | `items.free_slots()` |
 | `turn_in` times out | the quest isn't complete, or a different NPC takes it | `quests.log()`, `azworld quest <id>` |
 | accepting does nothing | level too low, a prerequisite missing, or already done | `azworld quest <id>` (min level, chain) |

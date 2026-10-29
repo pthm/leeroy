@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/bits"
 	"net"
 	"strings"
 	"sync"
@@ -122,6 +123,8 @@ const (
 	SmsgRemovedSpell    uint16 = 0x0203
 	SmsgCooldownEvent   uint16 = 0x0135
 	SmsgClearCooldown   uint16 = 0x01DE
+	SmsgItemCooldown    uint16 = 0x00B0
+	SmsgModifyCooldown  uint16 = 0x0491
 	CmsgCancelCast      uint16 = 0x012F
 	// CMSG_CANCEL_AURA = 0x136 on 3.3.5a (AC Opcodes.h). 0x133 is SMSG_SPELL_FAILURE only;
 	// using 0x133 made CancelAura a silent no-op server-side.
@@ -292,6 +295,9 @@ const (
 	MoveFlagFalling     uint32 = 0x00001000
 	MoveFlagSwimming    uint32 = 0x00200000
 	MoveFlagFlying      uint32 = 0x02000000
+
+	// MOVEMENTFLAG_MASK_MOVING: forward, backward, strafe, pitch, falling, falling far, ascending, descending, spline elevation
+	moveFlagMaskMoving uint32 = 0x04C030CF
 )
 
 // ObjectType constants
@@ -356,7 +362,7 @@ const (
 
 	// UNIT_FIELD_AURASTATE (bitmask of aura states). Fast path hint only;
 	// authoritative aura list comes from SMSG_AURA_UPDATE* packets.
-	UnitFieldAuraState = 0x003C // OBJECT_END + 0x0036 (typical); adjust if your build differs
+	UnitFieldAuraState = 0x003D // OBJECT_END + 0x0037
 )
 
 // Equipment slots (3.3.5a SharedDefines.h EQUIPMENT_SLOT_*). These are also the
@@ -430,7 +436,7 @@ func MakePetActionButton(action uint32, actType uint8) uint32 {
 // From AC SharedDefines.h - dyn flags for dead/lootable corpses
 const (
 	UnitDynflagLootable = 0x0001
-	UnitDynflagDead     = 0x0020
+	UnitDynflagDead     = 0x0020 // set by Feign Death only, not real death
 )
 
 // UnitFlags
@@ -444,7 +450,6 @@ const (
 	UnitFlagDisarmed       uint32 = 0x00200000
 	UnitFlagPacified       uint32 = 0x00020000
 	UnitFlagStunned        uint32 = 0x00040000
-	UnitFlagDead           uint32 = 0x20000000
 	UnitFlagTaxiFlight     uint32 = 0x00100000 // from AC UnitDefines.h - must skip for attack (see _IsValidAttackTarget)
 )
 
@@ -654,26 +659,17 @@ func (o *WorldObject) Level() uint32 {
 	return o.value(UnitFieldLevel)
 }
 
-// IsAlive returns true if the object appears to be alive.
+// IsAlive: health above 0 and not a lootable corpse. UNIT_DYNFLAG_DEAD is not death:
+// AzerothCore sets it only for Feign Death. Unknown health (no values yet) counts as alive;
+// a create omits zero fields, so known max health without health means 0 (a corpse).
 func (o *WorldObject) IsAlive() bool {
-	flags := o.value(UnitFieldFlags)
-	if flags&UnitFlagDead != 0 {
+	o.valuesMu.RLock()
+	defer o.valuesMu.RUnlock()
+	h, hasH := o.Values[UnitFieldHealth]
+	if o.Values[UnitDynamicFlags]&UnitDynflagLootable != 0 {
 		return false
 	}
-	dynFlags := o.value(UnitDynamicFlags)
-	if dynFlags&(UnitDynflagDead|UnitDynflagLootable) != 0 {
-		return false
-	}
-	h := o.Health()
-	mh := o.MaxHealth()
-	// If we know the max health (object data received) and current is 0, it's dead
-	if mh > 0 && h == 0 {
-		return false
-	}
-	if h > 0 {
-		return true
-	}
-	return flags&UnitFlagDead == 0
+	return h > 0 || !hasH && o.Values[UnitFieldMaxHealth] == 0
 }
 
 // IsUnit returns true if the object type is unit (NPC) or player.
@@ -903,6 +899,9 @@ type SpellCooldown struct {
 	ExpiresAt time.Time
 }
 
+// cooldownUntilEvent stands in for a cooldown that only starts on SMSG_COOLDOWN_EVENT.
+const cooldownUntilEvent = 100 * 365 * 24 * time.Hour
+
 // KnownSpell represents a spell the bot knows
 type KnownSpell struct {
 	SpellID uint32
@@ -914,7 +913,17 @@ type LootItem struct {
 	Index    uint8
 	ItemID   uint32
 	Quantity uint32
+	SlotType uint8 // LootSlotType*: only ALLOW_LOOT and OWNER can be taken
 }
+
+// LootSlotType (LootMgr.h): what a viewer may do with a loot slot.
+const (
+	LootSlotTypeAllowLoot   uint8 = 0
+	LootSlotTypeRollOngoing uint8 = 1
+	LootSlotTypeMaster      uint8 = 2
+	LootSlotTypeLocked      uint8 = 3
+	LootSlotTypeOwner       uint8 = 4
+)
 
 // WorldClient handles the world server protocol
 type WorldClient struct {
@@ -935,11 +944,14 @@ type WorldClient struct {
 	timeSyncCounter               uint32
 	posX, posY, posZ, orientation float32
 	mapID                         uint32
-	moveSpeed                     float32
-	swimSpeed                     float32      // from the server (create block / SMSG_FORCE_SWIM_SPEED_CHANGE)
-	rooted                        bool         // SMSG_FORCE_MOVE_ROOT (roots, stuns): no movement until unrooted
-	bindPoint                     atomic.Value // []byte: the last SMSG_BINDPOINTUPDATE
-	auras                         auraTable    // full aura details per unit and slot (control.go)
+	speeds                        [9]float32 // by UnitMoveType, from the server (create block, SMSG_FORCE_*_SPEED_CHANGE)
+	rooted                        bool       // SMSG_FORCE_MOVE_ROOT (roots, stuns): no movement until unrooted
+	moveState                     uint32     // water walk, feather fall, hover: set by the server, in every movement packet
+	fall                          *selfFall  // in the air (selfmove.go)
+	ground                        func(mapID uint32, x, y, z float32) (float32, bool)
+	transport                     selfTransport // the boat or zeppelin we're on
+	bindPoint                     atomic.Value  // []byte: the last SMSG_BINDPOINTUPDATE
+	auras                         auraTable     // full aura details per unit and slot (control.go)
 	auraHookMu                    sync.Mutex
 	auraHookList                  []func(unit uint64, prev, cur *AuraInfo)
 	spline                        selfSpline // the server's path for our character (flights, fear), see control.go
@@ -1167,8 +1179,7 @@ func NewWorldClient(username string, sessionKey []byte, logFunc func(string, ...
 		objects:     make(map[uint64]*WorldObject),
 		knownSpells: make(map[uint32]*KnownSpell),
 		cooldowns:   make(map[uint32]*SpellCooldown),
-		moveSpeed:   BaseSpeedRun,
-		swimSpeed:   BaseSpeedSwim,
+		speeds:      [9]float32{BaseSpeedWalk, BaseSpeedRun, BaseSpeedRunBack, BaseSpeedSwim, BaseSpeedSwimBack, math.Pi, BaseSpeedFlight, BaseSpeedRunBack, math.Pi},
 		lastMovDebug: make(map[uint64]struct {
 			ts      uint32
 			x, y, z float32
@@ -1616,6 +1627,10 @@ func (w *WorldClient) handlePacket(opcode uint16, data []byte) {
 		w.handleCooldownEvent(data)
 	case SmsgClearCooldown:
 		w.handleClearCooldown(data)
+	case SmsgItemCooldown:
+		w.handleItemCooldown(data)
+	case SmsgModifyCooldown:
+		w.handleModifyCooldown(data)
 
 	// Auras (primary delivery mechanism for aura state on AC 3.3.5a)
 	case SmsgAuraUpdate:
@@ -1709,11 +1724,6 @@ func (w *WorldClient) handlePacket(opcode uint16, data []byte) {
 	case SmsgTransferPending:
 		w.log("Transfer pending received")
 
-	// Speed
-	case SmsgForceRunSpeedChange:
-		w.handleForceSpeedChange(data)
-	case SmsgForceSwimSpeedChange:
-		w.handleForceSwimSpeedChange(data)
 	case SmsgForceMoveRoot, SmsgForceMoveUnroot:
 		w.handleForceRoot(data, opcode == SmsgForceMoveRoot)
 
@@ -1730,7 +1740,7 @@ func (w *WorldClient) handlePacket(opcode uint16, data []byte) {
 		w.handleInstanceResetFailed(data)
 
 	default:
-		// Ignore most unhandled opcodes
+		w.handleMoveStateOpcode(opcode, data) // speed changes, water walk / feather fall / hover; the rest is ignored
 	}
 }
 
@@ -2016,28 +2026,6 @@ func (w *WorldClient) SendTextEmote(emoteID uint32, targetGUID uint64) error {
 	return w.sendPacket(CmsgTextEmote, buf.Bytes())
 }
 
-// SendJump sends a jump movement packet
-func (w *WorldClient) SendJump() error {
-	buf := new(bytes.Buffer)
-	writePackedGUID(buf, w.charGUID)
-	binary.Write(buf, binary.LittleEndian, uint32(0x00001000)) // movementFlags: MOVEMENTFLAG_FALLING
-	binary.Write(buf, binary.LittleEndian, uint16(0))          // movementFlags2
-	binary.Write(buf, binary.LittleEndian, uint32(getMSTime()))
-	// Position x, y, z, orientation - use stored position if available
-	binary.Write(buf, binary.LittleEndian, w.posX)
-	binary.Write(buf, binary.LittleEndian, w.posY)
-	binary.Write(buf, binary.LittleEndian, w.posZ)
-	binary.Write(buf, binary.LittleEndian, w.orientation)
-	// fallTime
-	binary.Write(buf, binary.LittleEndian, uint32(0))
-	// Jump data (present because MOVEMENTFLAG_FALLING is set)
-	binary.Write(buf, binary.LittleEndian, float32(7.96)) // zspeed
-	binary.Write(buf, binary.LittleEndian, float32(0.0))  // sinAngle
-	binary.Write(buf, binary.LittleEndian, float32(1.0))  // cosAngle
-	binary.Write(buf, binary.LittleEndian, float32(0.0))  // xyspeed
-	return w.sendPacket(MsgMoveJump, buf.Bytes())
-}
-
 // SendHeartbeat sends a movement heartbeat (stationary, no movement flags)
 func (w *WorldClient) SendHeartbeat() error {
 	w.moveMu.Lock()
@@ -2063,23 +2051,7 @@ func (w *WorldClient) sendHeartbeatLocked() error {
 }
 
 func (w *WorldClient) sendHeartbeatLockedAt(ts uint32) error {
-	w.currentMoveFlags = 0
-	buf := new(bytes.Buffer)
-	if len(w.packedGUID) > 0 {
-		buf.Write(w.packedGUID)
-	} else {
-		writePackedGUID(buf, w.charGUID)
-	}
-	binary.Write(buf, binary.LittleEndian, uint32(0)) // movementFlags: none
-	binary.Write(buf, binary.LittleEndian, uint16(0)) // movementFlags2
-	binary.Write(buf, binary.LittleEndian, ts)
-	binary.Write(buf, binary.LittleEndian, w.posX)
-	binary.Write(buf, binary.LittleEndian, w.posY)
-	binary.Write(buf, binary.LittleEndian, w.posZ)
-	binary.Write(buf, binary.LittleEndian, w.orientation)
-	binary.Write(buf, binary.LittleEndian, uint32(0)) // fallTime
-	pkt := buf.Bytes()
-	return w.sendPacket(MsgMoveHeartbeat, pkt)
+	return w.sendMovementLockedAt(MsgMoveHeartbeat, 0, ts)
 }
 
 // SendMovementHeartbeat sends a movement heartbeat while moving (with forward flag)
@@ -2107,24 +2079,7 @@ func (w *WorldClient) sendMovementHeartbeatLocked() error {
 }
 
 func (w *WorldClient) sendMovementHeartbeatLockedAt(ts uint32) error {
-	w.currentMoveFlags = MoveFlagForward
-	buf := new(bytes.Buffer)
-	if len(w.packedGUID) > 0 {
-		buf.Write(w.packedGUID)
-	} else {
-		writePackedGUID(buf, w.charGUID)
-	}
-	binary.Write(buf, binary.LittleEndian, uint32(MoveFlagForward)) // movementFlags: forward
-	binary.Write(buf, binary.LittleEndian, uint16(0))               // movementFlags2
-	binary.Write(buf, binary.LittleEndian, ts)
-	binary.Write(buf, binary.LittleEndian, w.posX)
-	binary.Write(buf, binary.LittleEndian, w.posY)
-	binary.Write(buf, binary.LittleEndian, w.posZ)
-	binary.Write(buf, binary.LittleEndian, w.orientation)
-	binary.Write(buf, binary.LittleEndian, uint32(0)) // fallTime
-	pkt := buf.Bytes()
-	//w.log("[MOV] send 0x%04X flags=0x%08X ts=%d pos=(%.3f,%.3f,%.3f) o=%.3f", MsgMoveHeartbeat, MoveFlagForward, ts, w.posX, w.posY, w.posZ, w.orientation)
-	return w.sendPacket(MsgMoveHeartbeat, pkt)
+	return w.sendMovementLockedAt(MsgMoveHeartbeat, MoveFlagForward, ts)
 }
 
 // SendMovementHeartbeatWithJump sends a forward heartbeat that also has MOVEMENTFLAG_FALLING
@@ -2156,6 +2111,7 @@ func (w *WorldClient) sendMovementHeartbeatWithJumpLocked(fallTime uint32, zspee
 func (w *WorldClient) sendMovementHeartbeatWithJumpLockedAt(ts uint32, fallTime uint32, zspeed, sinAngle, cosAngle, xyspeed float32) error {
 	flags := MoveFlagForward | MoveFlagFalling
 	w.currentMoveFlags = flags
+	w.transport = selfTransport{} // no ONTRANSPORT: the server drops us off it
 	buf := new(bytes.Buffer)
 	if len(w.packedGUID) > 0 {
 		buf.Write(w.packedGUID)
@@ -2178,29 +2134,6 @@ func (w *WorldClient) sendMovementHeartbeatWithJumpLockedAt(ts uint32, fallTime 
 	return w.sendPacket(MsgMoveHeartbeat, buf.Bytes())
 }
 
-// writeMovementBody writes the movement info body (flags + pos etc) without leading packed GUID.
-// Used for ACK packets which have their own prefix (guid + counter).
-func (w *WorldClient) writeMovementBody(buf *bytes.Buffer, moveFlags uint32) {
-	if w.swimming {
-		moveFlags = moveFlags&^MoveFlagFalling | MoveFlagSwimming
-	}
-	if w.rooted {
-		moveFlags = moveFlags&^MoveFlagForward | 0x00000800 // MOVEMENTFLAG_ROOT
-	}
-	binary.Write(buf, binary.LittleEndian, moveFlags)
-	binary.Write(buf, binary.LittleEndian, uint16(0)) // flags2
-	binary.Write(buf, binary.LittleEndian, uint32(getMSTime()))
-	binary.Write(buf, binary.LittleEndian, w.posX)
-	binary.Write(buf, binary.LittleEndian, w.posY)
-	binary.Write(buf, binary.LittleEndian, w.posZ)
-	binary.Write(buf, binary.LittleEndian, w.orientation)
-	if moveFlags&MoveFlagSwimming != 0 {
-		binary.Write(buf, binary.LittleEndian, float32(0)) // pitch (present for swimming/flying)
-	}
-	binary.Write(buf, binary.LittleEndian, uint32(0)) // fallTime
-	// For basic ground movement we omit transport/pitch/jump/spline extras.
-}
-
 func (w *WorldClient) sendForceSpeedAck(ackOpcode uint16, counter uint32, speed float32) {
 	w.moveMu.Lock()
 	defer w.moveMu.Unlock()
@@ -2208,26 +2141,9 @@ func (w *WorldClient) sendForceSpeedAck(ackOpcode uint16, counter uint32, speed 
 	buf := new(bytes.Buffer)
 	writePackedGUID(buf, w.charGUID)
 	binary.Write(buf, binary.LittleEndian, counter)
-	w.writeMovementBody(buf, w.currentMoveFlags)
+	w.writeSelfMovement(buf, w.currentMoveFlags, getMSTime())
 	binary.Write(buf, binary.LittleEndian, speed)
 	w.sendPacket(ackOpcode, buf.Bytes())
-}
-
-// handleForceSwimSpeedChange: packed guid, counter, speed (no extra byte, unlike run).
-func (w *WorldClient) handleForceSwimSpeedChange(data []byte) {
-	r := bytes.NewReader(data)
-	guid, err := readPackedGUID(r)
-	if err != nil || guid != w.charGUID {
-		return
-	}
-	var counter uint32
-	var speed float32
-	binary.Read(r, binary.LittleEndian, &counter)
-	if binary.Read(r, binary.LittleEndian, &speed) != nil {
-		return
-	}
-	w.swimSpeed = speed
-	w.sendForceSpeedAck(CmsgForceSwimSpeedChangeAck, counter, speed)
 }
 
 // handleForceRoot: packed guid, counter. Roots and stuns arrive this way; the client must stop and ack.
@@ -2245,7 +2161,7 @@ func (w *WorldClient) handleForceRoot(data []byte, root bool) {
 	buf := new(bytes.Buffer)
 	writePackedGUID(buf, w.charGUID)
 	binary.Write(buf, binary.LittleEndian, counter)
-	w.writeMovementBody(buf, 0)
+	w.writeSelfMovement(buf, 0, getMSTime())
 	ack := CmsgForceMoveUnrootAck
 	if root {
 		ack = CmsgForceMoveRootAck
@@ -2254,36 +2170,16 @@ func (w *WorldClient) handleForceRoot(data []byte, root bool) {
 }
 
 // SwimSpeed, Rooted, SetSwimming: movement state for the movement controller.
-func (w *WorldClient) SwimSpeed() float32  { return w.swimSpeed }
-func (w *WorldClient) Rooted() bool        { return w.rooted }
-func (w *WorldClient) SetSwimming(on bool) { w.swimming = on }
-
-func (w *WorldClient) handleForceSpeedChange(data []byte) {
-	if len(data) < 10 {
-		return
-	}
-	r := bytes.NewReader(data)
-	_, err := readPackedGUID(r)
-	if err != nil {
-		return
-	}
-	var counter uint32
-	binary.Read(r, binary.LittleEndian, &counter)
-
-	// For RUN there is an extra uint8(0) before the float.
-	// Read enough for u8 + f32 or just f32.
-	var b [5]byte
-	if n, err := io.ReadFull(r, b[:]); err == nil && n >= 5 {
-		newspeed := math.Float32frombits(binary.LittleEndian.Uint32(b[1:5]))
-		w.moveSpeed = newspeed
-		w.log("Force speed change: speed=%.4f counter=%d", newspeed, counter)
-		w.sendForceSpeedAck(CmsgForceRunSpeedChangeAck, counter, newspeed)
-	} else if n, err := io.ReadFull(r, b[:4]); err == nil && n >= 4 {
-		newspeed := math.Float32frombits(binary.LittleEndian.Uint32(b[:4]))
-		w.moveSpeed = newspeed
-		w.log("Force speed change: speed=%.4f counter=%d", newspeed, counter)
-		w.sendForceSpeedAck(CmsgForceRunSpeedChangeAck, counter, newspeed)
-	}
+func (w *WorldClient) SwimSpeed() float32 {
+	w.moveMu.Lock()
+	defer w.moveMu.Unlock()
+	return w.speeds[moveSwim]
+}
+func (w *WorldClient) Rooted() bool { return w.rooted }
+func (w *WorldClient) SetSwimming(on bool) {
+	w.moveMu.Lock()
+	w.swimming = on
+	w.moveMu.Unlock()
 }
 
 // SendPing sends CMSG_PING
@@ -3258,16 +3154,8 @@ func (w *WorldClient) sendMovementLockedAt(opcode uint16, moveFlags uint32, ts u
 	} else {
 		writePackedGUID(buf, w.charGUID)
 	}
-	binary.Write(buf, binary.LittleEndian, moveFlags)
-	binary.Write(buf, binary.LittleEndian, uint16(0)) // movementFlags2
-	binary.Write(buf, binary.LittleEndian, ts)
-	binary.Write(buf, binary.LittleEndian, w.posX)
-	binary.Write(buf, binary.LittleEndian, w.posY)
-	binary.Write(buf, binary.LittleEndian, w.posZ)
-	binary.Write(buf, binary.LittleEndian, w.orientation)
-	binary.Write(buf, binary.LittleEndian, uint32(0)) // fallTime
-	pkt := buf.Bytes()
-	return w.sendPacket(opcode, pkt)
+	w.writeSelfMovement(buf, moveFlags, ts)
+	return w.sendPacket(opcode, buf.Bytes())
 }
 
 func (w *WorldClient) setPositionLocked(x, y, z, o float32) {
@@ -3538,8 +3426,6 @@ func (w *WorldClient) MarkObjectDead(guid uint64) {
 	w.objectsMu.Lock()
 	if obj := w.objects[guid]; obj != nil {
 		obj.setValue(UnitFieldHealth, 0)
-		obj.setValue(UnitFieldFlags, obj.value(UnitFieldFlags)|UnitFlagDead)
-		obj.setValue(UnitDynamicFlags, obj.value(UnitDynamicFlags)|UnitDynflagDead)
 	}
 	w.objectsMu.Unlock()
 }
@@ -3559,8 +3445,6 @@ func (w *WorldClient) ApplyLocalDamage(guid uint64, damage uint32) {
 			obj.setValue(UnitFieldHealth, h-damage)
 		} else {
 			obj.setValue(UnitFieldHealth, 0)
-			obj.setValue(UnitFieldFlags, obj.value(UnitFieldFlags)|UnitFlagDead)
-			obj.setValue(UnitDynamicFlags, obj.value(UnitDynamicFlags)|UnitDynflagDead)
 		}
 	}
 	w.objectsMu.Unlock()
@@ -3629,7 +3513,9 @@ func (w *WorldClient) KnowsSpell(spellID uint32) bool {
 
 // MoveSpeed returns the current movement speed.
 func (w *WorldClient) MoveSpeed() float32 {
-	return w.moveSpeed
+	w.moveMu.Lock()
+	defer w.moveMu.Unlock()
+	return w.speeds[moveRun]
 }
 
 // ============================================================
@@ -3673,8 +3559,8 @@ func (w *WorldClient) handleAttackStart(data []byte) {
 			w.logAt(LogInfo, "combat start self attacker=0x%X victim=0x%X", attacker, victim)
 		}
 	}
-	// Also set if the start involves the target we are currently trying to attack (helps when GUID forms differ or server reports the engagement)
-	if w.attackingGUID != 0 && (attacker == w.attackingGUID || victim == w.attackingGUID || (attacker&0xFFFFFFFF) == (w.attackingGUID&0xFFFFFFFF) || (victim&0xFFFFFFFF) == (w.attackingGUID&0xFFFFFFFF)) {
+	// Also set if the start involves the target we are currently trying to attack
+	if w.attackingGUID != 0 && (attacker == w.attackingGUID || victim == w.attackingGUID) {
 		w.combatMu.Lock()
 		w.inCombat = true
 		w.combatMu.Unlock()
@@ -3695,7 +3581,7 @@ func (w *WorldClient) handleAttackStop(data []byte) {
 	// SMSG_ATTACK_STOP alone is ambiguous: normal end of swing, invalid target,
 	// or death. Do NOT invent death here — terminal state comes from
 	// SMSG_ATTACKSWING_DEAD_TARGET / CANT_ATTACK, health updates, or OnKill.
-	if attackerGUID != w.charGUID && (attackerGUID&0xFFFFFFFF) != (w.charGUID&0xFFFFFFFF) {
+	if !w.isSelfGUID(attackerGUID) {
 		return
 	}
 
@@ -3884,6 +3770,29 @@ func (w *WorldClient) handleInitialSpells(data []byte) {
 		w.initialSpellsLogged = true
 	}
 	w.spellsMu.Unlock()
+
+	// Cooldowns still running (Player::SendInitialSpells): count, then spell, item u16, category u16, cooldown,
+	// category cooldown. The count includes entries it skips, so read to the end.
+	r.Seek(2, io.SeekCurrent)
+	now := time.Now()
+	w.cooldownsMu.Lock()
+	if spellCount > 0 {
+		clear(w.cooldowns)
+	}
+	for r.Len() >= 16 {
+		var e struct {
+			Spell          uint32
+			Item, Category uint16
+			Rec, CatRec    uint32
+		}
+		binary.Read(r, binary.LittleEndian, &e)
+		left := time.Duration(max(e.Rec, e.CatRec)) * time.Millisecond
+		if e.CatRec == 0x80000000 { // until SMSG_COOLDOWN_EVENT (a potion used in combat)
+			left = cooldownUntilEvent
+		}
+		w.cooldowns[e.Spell] = &SpellCooldown{SpellID: e.Spell, ExpiresAt: now.Add(left)}
+	}
+	w.cooldownsMu.Unlock()
 	// Map transfers re-send INITIAL_SPELLS; Info only once per session.
 	if first {
 		w.logAt(LogInfo, "Received %d initial spells", spellCount)
@@ -3961,8 +3870,8 @@ func (w *WorldClient) handleSpellGo(data []byte) {
 		return
 	}
 	r := bytes.NewReader(data)
+	readPackedGUID(r) // the item for item casts, else the caster
 	casterGUID, _ := readPackedGUID(r)
-	_, _ = readPackedGUID(r) // casterUnit
 	var castID uint8
 	binary.Read(r, binary.LittleEndian, &castID)
 	var spellID uint32
@@ -3973,18 +3882,20 @@ func (w *WorldClient) handleSpellGo(data []byte) {
 	}
 }
 
+// handleSpellFailure: SMSG_SPELL_FAILURE as Spell::SendInterrupted writes it (packed caster, cast count, spell,
+// reason). SMSG_SPELL_FAILED_OTHER is the same packet sent alongside it, so it's left alone.
 func (w *WorldClient) handleSpellFailure(data []byte) {
-	if len(data) < 10 {
-		return
-	}
 	r := bytes.NewReader(data)
 	casterGUID, _ := readPackedGUID(r)
-	var castID uint8
-	binary.Read(r, binary.LittleEndian, &castID)
-	var spellID uint32
-	binary.Read(r, binary.LittleEndian, &spellID)
-	var reason uint8
-	binary.Read(r, binary.LittleEndian, &reason)
+	var body struct {
+		CastID  uint8
+		SpellID uint32
+		Reason  uint8
+	}
+	if binary.Read(r, binary.LittleEndian, &body) != nil {
+		return
+	}
+	spellID, reason := body.SpellID, body.Reason
 
 	if casterGUID == w.charGUID {
 		// Keep Info: real in-flight fail for self (rarer than CAST_FAILED spam).
@@ -4052,6 +3963,31 @@ func (w *WorldClient) handleCooldownEvent(data []byte) {
 		delete(w.cooldowns, spellID)
 		w.cooldownsMu.Unlock()
 	}
+}
+
+// handleItemCooldown: SMSG_ITEM_COOLDOWN (item guid, spell), the 30 s on-use cooldown of an item just equipped.
+func (w *WorldClient) handleItemCooldown(data []byte) {
+	if len(data) < 12 {
+		return
+	}
+	spellID := binary.LittleEndian.Uint32(data[8:12])
+	w.cooldownsMu.Lock()
+	w.cooldowns[spellID] = &SpellCooldown{SpellID: spellID, ExpiresAt: time.Now().Add(30 * time.Second)}
+	w.cooldownsMu.Unlock()
+}
+
+// handleModifyCooldown: SMSG_MODIFY_COOLDOWN (spell, player guid, int32 ms) shifts a running cooldown.
+func (w *WorldClient) handleModifyCooldown(data []byte) {
+	if len(data) < 16 || binary.LittleEndian.Uint64(data[4:12]) != w.charGUID {
+		return
+	}
+	spellID := binary.LittleEndian.Uint32(data[0:4])
+	delta := time.Duration(int32(binary.LittleEndian.Uint32(data[12:16]))) * time.Millisecond
+	w.cooldownsMu.Lock()
+	if cd, ok := w.cooldowns[spellID]; ok {
+		cd.ExpiresAt = cd.ExpiresAt.Add(delta)
+	}
+	w.cooldownsMu.Unlock()
 }
 
 func (w *WorldClient) handleClearCooldown(data []byte) {
@@ -4213,36 +4149,98 @@ func (w *WorldClient) handleAuraUpdateAll(data []byte) {
 	}
 }
 
+// LootResponse is a parsed SMSG_LOOT_RESPONSE. Error is the LootError of SendLootError's short form, -1 for a loot
+// window.
+type LootResponse struct {
+	GUID  uint64
+	Type  uint8
+	Gold  uint32
+	Items []LootItem
+	Error int
+}
+
+// LootErrorName maps AzerothCore LootError codes to short names.
+func LootErrorName(code int) string {
+	switch code {
+	case 0:
+		return "DIDNT_KILL"
+	case 4:
+		return "TOO_FAR"
+	case 5:
+		return "BAD_FACING"
+	case 6:
+		return "LOCKED"
+	case 8:
+		return "NOTSTANDING"
+	case 9:
+		return "STUNNED"
+	case 10:
+		return "PLAYER_NOT_FOUND"
+	case 11:
+		return "PLAY_TIME_EXCEEDED"
+	case 12:
+		return "MASTER_INV_FULL"
+	case 13:
+		return "MASTER_UNIQUE_ITEM"
+	case 14:
+		return "MASTER_OTHER"
+	case 15:
+		return "ALREADY_PICKPOCKETED"
+	case 16:
+		return "NOT_WHILE_SHAPESHIFTED"
+	}
+	return fmt.Sprintf("LOOT_ERROR_%d", code)
+}
+
+// ParseLootResponse decodes SMSG_LOOT_RESPONSE as Player::SendLoot writes it (guid, loot type, LootView: gold, count,
+// then per slot index, item, count, display, random suffix, random property, slot type) or SendLootError's short
+// form (guid, LOOT_NONE, error).
+func ParseLootResponse(data []byte) (LootResponse, error) {
+	lr := LootResponse{Error: -1}
+	if len(data) < 10 {
+		return lr, fmt.Errorf("SMSG_LOOT_RESPONSE too short: %d", len(data))
+	}
+	lr.GUID = binary.LittleEndian.Uint64(data)
+	lr.Type = data[8]
+	if len(data) == 10 {
+		lr.Error = int(data[9])
+		return lr, nil
+	}
+	r := bytes.NewReader(data[9:])
+	var n uint8
+	if err := binary.Read(r, binary.LittleEndian, &lr.Gold); err != nil {
+		return lr, err
+	}
+	if err := binary.Read(r, binary.LittleEndian, &n); err != nil {
+		return lr, err
+	}
+	for range n {
+		var it struct {
+			Index                   uint8
+			ItemID, Quantity        uint32
+			DisplayID, RandomSuffix uint32
+			RandomProperty          int32
+			SlotType                uint8
+		}
+		if err := binary.Read(r, binary.LittleEndian, &it); err != nil {
+			return lr, err
+		}
+		lr.Items = append(lr.Items, LootItem{Index: it.Index, ItemID: it.ItemID, Quantity: it.Quantity, SlotType: it.SlotType})
+	}
+	return lr, nil
+}
+
 func (w *WorldClient) handleLootResponse(data []byte) {
-	if len(data) < 14 {
+	lr, err := ParseLootResponse(data)
+	if err != nil {
+		w.logAt(LogWarn, "%v", err)
 		return
 	}
-	r := bytes.NewReader(data)
-	var lootGUID uint64
-	binary.Read(r, binary.LittleEndian, &lootGUID)
-
-	var lootType uint8
-	binary.Read(r, binary.LittleEndian, &lootType)
-	var gold uint32
-	binary.Read(r, binary.LittleEndian, &gold)
-	var itemCount uint8
-	binary.Read(r, binary.LittleEndian, &itemCount)
-
-	items := make([]LootItem, 0, itemCount)
-	for i := uint8(0); i < itemCount; i++ {
-		item := LootItem{}
-		binary.Read(r, binary.LittleEndian, &item.Index)
-		binary.Read(r, binary.LittleEndian, &item.ItemID)
-		binary.Read(r, binary.LittleEndian, &item.Quantity)
-
-		// Skip: displayID(4) + randomSuffix(4) + randomPropertyID(4) + slotType(1)
-		skip := make([]byte, 13)
-		r.Read(skip)
-
-		items = append(items, item)
+	if lr.Error >= 0 {
+		w.logAt(LogDebug, "SMSG_LOOT_RESPONSE %d error %s", lr.GUID, LootErrorName(lr.Error))
+		return
 	}
-
-	w.invokeLootOpenedHooks(lootGUID, items)
+	w.invokeLootOpenedHooks(lr.GUID, lr.Items)
 }
 
 func (w *WorldClient) handleChatMessage(data []byte) {
@@ -4311,19 +4309,21 @@ func (w *WorldClient) handleLevelUp(data []byte) {
 	}
 }
 
+// handlePowerUpdate: SMSG_POWER_UPDATE as Unit::SetPower writes it (packed guid, u8 power, u32 value).
 func (w *WorldClient) handlePowerUpdate(data []byte) {
-	if len(data) < 12 {
-		return
-	}
 	r := bytes.NewReader(data)
 	guid, _ := readPackedGUID(r)
 	if guid != w.charGUID {
 		return
 	}
-	var powerType uint8
-	binary.Read(r, binary.LittleEndian, &powerType)
-	var value uint32
-	binary.Read(r, binary.LittleEndian, &value)
+	var p struct {
+		Type  uint8
+		Value uint32
+	}
+	if binary.Read(r, binary.LittleEndian, &p) != nil {
+		return
+	}
+	powerType, value := p.Type, p.Value
 
 	if powerType == 0 { // mana
 		w.statsMu.Lock()
@@ -4510,68 +4510,26 @@ func (w *WorldClient) readMovementUpdate(r *bytes.Reader, obj *WorldObject) {
 
 	// UPDATEFLAG_LIVING = 0x20
 	if updateFlags&0x20 != 0 {
-		var moveFlags uint32
-		binary.Read(r, binary.LittleEndian, &moveFlags)
-		var moveFlags2 uint16
-		binary.Read(r, binary.LittleEndian, &moveFlags2)
-		var timestamp uint32
-		binary.Read(r, binary.LittleEndian, &timestamp)
-
-		binary.Read(r, binary.LittleEndian, &obj.PosX)
-		binary.Read(r, binary.LittleEndian, &obj.PosY)
-		binary.Read(r, binary.LittleEndian, &obj.PosZ)
-		binary.Read(r, binary.LittleEndian, &obj.Orientation)
-
+		mi, _ := readMovementInfo(r)
+		obj.PosX, obj.PosY, obj.PosZ, obj.Orientation = mi.pos[0], mi.pos[1], mi.pos[2], mi.pos[3]
 		obj.LastPosUpdate = time.Now()
 		obj.LastSeen = time.Now()
 
-		// Transport GUID (MOVEMENTFLAG_ONTRANSPORT = 0x00000200)
-		if moveFlags&0x00000200 != 0 {
-			tGUID, _ := readPackedGUID(r)
-			_ = tGUID
-			// transX(4) + transY(4) + transZ(4) + transO(4) + transTime(4) + transSeat(1)
-			r.Seek(21, io.SeekCurrent)
-			// MOVEMENTFLAG2_INTERPOLATED_MOVEMENT = 0x0400
-			if moveFlags2&0x0400 != 0 {
-				var extraTime uint32
-				binary.Read(r, binary.LittleEndian, &extraTime)
-			}
-		}
-
-		// MOVEMENTFLAG_SWIMMING (0x00200000) or MOVEMENTFLAG_FLYING (0x02000000) or MOVEMENTFLAG2_ALWAYS_ALLOW_PITCHING (0x0020)
-		if moveFlags&(0x00200000|0x02000000) != 0 || moveFlags2&0x0020 != 0 {
-			var pitch float32
-			binary.Read(r, binary.LittleEndian, &pitch)
-		}
-
-		var fallTime uint32
-		binary.Read(r, binary.LittleEndian, &fallTime)
-
-		// MOVEMENTFLAG_FALLING (0x00001000)
-		if moveFlags&0x00001000 != 0 {
-			r.Seek(16, io.SeekCurrent) // zSpeed(4) + sinAngle(4) + cosAngle(4) + xySpeed(4)
-		}
-
-		// MOVEMENTFLAG_SPLINE_ELEVATION
-		if moveFlags&0x04000000 != 0 {
-			var splineElev float32
-			binary.Read(r, binary.LittleEndian, &splineElev)
-		}
-
 		// Movement speeds: walk, run, runBack, swim, swimBack, flight, flightBack, turnRate, pitchRate
 		if obj.GUID == w.charGUID {
-			speeds := make([]float32, 9)
-			for si := 0; si < 9; si++ {
-				binary.Read(r, binary.LittleEndian, &speeds[si])
-			}
-			w.moveSpeed = speeds[1] // run speed
-			w.swimSpeed = speeds[3]
+			var sp [9]float32
+			binary.Read(r, binary.LittleEndian, &sp)
+			w.moveMu.Lock()
+			w.speeds = [9]float32{sp[0], sp[1], sp[2], sp[3], sp[4], sp[7], sp[5], sp[6], sp[8]}
+			w.setSelfTransportLocked(mi)
+			w.setPositionLocked(mi.pos[0], mi.pos[1], mi.pos[2], mi.pos[3])
+			w.moveMu.Unlock()
 		} else {
 			r.Seek(36, io.SeekCurrent)
 		}
 
 		// Spline data (MOVEMENTFLAG_SPLINE_ENABLED = 0x08000000)
-		if moveFlags&0x08000000 != 0 {
+		if mi.flags&0x08000000 != 0 {
 			if obj.TypeID == ObjectTypeUnit && obj.GUID != w.charGUID {
 				w.parseCreateSplineData(r, obj)
 			} else {
@@ -4643,133 +4601,49 @@ func (w *WorldClient) readMovementUpdate(r *bytes.Reader, obj *WorldObject) {
 	}
 }
 
-func (w *WorldClient) skipSplineData(r *bytes.Reader) {
-	var splineFlags uint32
-	binary.Read(r, binary.LittleEndian, &splineFlags)
+func (w *WorldClient) skipSplineData(r *bytes.Reader) { w.parseCreateSplineData(r, nil) }
 
-	// SPLINEFLAG_FINAL_ANGLE = 0x00040000
-	if splineFlags&0x00040000 != 0 {
-		var angle float32
-		binary.Read(r, binary.LittleEndian, &angle)
-	} else if splineFlags&0x00020000 != 0 {
-		// SPLINEFLAG_FINAL_TARGET
-		var targetGUID uint64
-		binary.Read(r, binary.LittleEndian, &targetGUID)
-	} else if splineFlags&0x00010000 != 0 {
-		// SPLINEFLAG_FINAL_POINT
-		r.Seek(12, io.SeekCurrent)
-	}
-
-	var timePassed uint32
-	binary.Read(r, binary.LittleEndian, &timePassed)
-	var duration uint32
-	binary.Read(r, binary.LittleEndian, &duration)
-	var splineID uint32
-	binary.Read(r, binary.LittleEndian, &splineID)
-
-	// 3.3.3 additions
-	var unk1 float32
-	binary.Read(r, binary.LittleEndian, &unk1)
-	var unk2 float32
-	binary.Read(r, binary.LittleEndian, &unk2)
-	var unk3 uint32
-	binary.Read(r, binary.LittleEndian, &unk3)
-	var unk4 uint32
-	binary.Read(r, binary.LittleEndian, &unk4)
-
-	var splineCount uint32
-	binary.Read(r, binary.LittleEndian, &splineCount)
-
-	// Read waypoints - use seek to avoid allocs
-	r.Seek(int64(splineCount)*12, io.SeekCurrent)
-
-	// Spline mode
-	var splineMode uint8
-	binary.Read(r, binary.LittleEndian, &splineMode)
-
-	// Final point
-	r.Seek(12, io.SeekCurrent)
-}
-
-// parseCreateSplineData parses the spline data from UPDATE_OBJECT create movement block for units
-// and sets the movement state for interpolation. This ensures we capture initial movement
-// for creatures created while moving, so their positions are up-to-date rather than frozen
-// at create time (which was causing targeting of outdated locations).
+// parseCreateSplineData reads the spline of a living create/movement block as
+// AzerothCore's PacketBuilder::WriteCreate writes it, and (obj non-nil) starts
+// interpolating toward its destination. Must consume the same bytes for nil obj.
 func (w *WorldClient) parseCreateSplineData(r *bytes.Reader, obj *WorldObject) {
 	var splineFlags uint32
 	if err := binary.Read(r, binary.LittleEndian, &splineFlags); err != nil {
 		return
 	}
-
-	// Handle final facing (angle, target, or point)
-	if splineFlags&0x00040000 != 0 { // FINAL_ANGLE
-		var angle float32
-		binary.Read(r, binary.LittleEndian, &angle)
-	} else if splineFlags&0x00020000 != 0 { // FINAL_TARGET
-		var tgt uint64
-		binary.Read(r, binary.LittleEndian, &tgt)
-	} else if splineFlags&0x00010000 != 0 { // FINAL_POINT
-		var fx, fy, fz float32
-		binary.Read(r, binary.LittleEndian, &fx)
-		binary.Read(r, binary.LittleEndian, &fy)
-		binary.Read(r, binary.LittleEndian, &fz)
+	switch {
+	case splineFlags&splineFinalAngle != 0:
+		r.Seek(4, io.SeekCurrent)
+	case splineFlags&splineFinalTarget != 0:
+		r.Seek(8, io.SeekCurrent)
+	case splineFlags&splineFinalPoint != 0:
+		r.Seek(12, io.SeekCurrent)
 	}
 
-	var timePassed, duration, splineID uint32
+	var timePassed, duration uint32
 	binary.Read(r, binary.LittleEndian, &timePassed)
 	binary.Read(r, binary.LittleEndian, &duration)
-	binary.Read(r, binary.LittleEndian, &splineID)
+	// id, duration_mod, duration_mod_next, vertical_acceleration, effect_start_time
+	r.Seek(20, io.SeekCurrent)
 
-	// 3.3.3 fields (duration_mod, duration_mod_next, vertical_accel, effect_start_time)
-	var durationMod1, durationMod2, verticalAccel float32
-	var effectStartTime uint32
-	binary.Read(r, binary.LittleEndian, &durationMod1)
-	binary.Read(r, binary.LittleEndian, &durationMod2)
-	binary.Read(r, binary.LittleEndian, &verticalAccel)
-	binary.Read(r, binary.LittleEndian, &effectStartTime)
-
-	var nodeCount uint32
-	binary.Read(r, binary.LittleEndian, &nodeCount)
-
-	var lastX, lastY, lastZ float32
-	origNodeCount := nodeCount
-	if nodeCount > 1024 {
-		// Guard against bogus huge nodeCount from misparsed data (CPU/reader exhaustion risk)
-		nodeCount = 1024
+	var nodes uint32
+	binary.Read(r, binary.LittleEndian, &nodes)
+	var last [3]float32
+	if nodes > 0 {
+		r.Seek(int64(nodes-1)*12, io.SeekCurrent)
+		binary.Read(r, binary.LittleEndian, &last)
 	}
-
-	if nodeCount > 0 {
-		// We only need the last point for destination. Seek over all but the last to avoid CPU on bogus huge counts.
-		if nodeCount > 1 {
-			r.Seek(int64((nodeCount-1)*12), io.SeekCurrent)
-		}
-		binary.Read(r, binary.LittleEndian, &lastX)
-		binary.Read(r, binary.LittleEndian, &lastY)
-		binary.Read(r, binary.LittleEndian, &lastZ)
+	r.Seek(1, io.SeekCurrent) // spline mode
+	var dest [3]float32       // zero for cyclic splines
+	if err := binary.Read(r, binary.LittleEndian, &dest); err != nil || obj == nil {
+		return
 	}
-
-	var mode uint8
-	binary.Read(r, binary.LittleEndian, &mode)
-
-	// final dest
-	var fdX, fdY, fdZ float32
-	binary.Read(r, binary.LittleEndian, &fdX)
-	binary.Read(r, binary.LittleEndian, &fdY)
-	binary.Read(r, binary.LittleEndian, &fdZ)
-
-	// Use the final dest if present, else last node
-	destX, destY, destZ := fdX, fdY, fdZ
-	if origNodeCount > 0 && destX == 0 && destY == 0 && destZ == 0 {
-		destX, destY, destZ = lastX, lastY, lastZ
+	if nodes > 0 && dest == [3]float32{} {
+		dest = last
 	}
-
-	obj.StartX = obj.PosX
-	obj.StartY = obj.PosY
-	obj.StartZ = obj.PosZ
-	obj.DestX = destX
-	obj.DestY = destY
-	obj.DestZ = destZ
-	obj.IsMoving = (origNodeCount > 0 || splineFlags != 0)
+	obj.StartX, obj.StartY, obj.StartZ = obj.PosX, obj.PosY, obj.PosZ
+	obj.DestX, obj.DestY, obj.DestZ = dest[0], dest[1], dest[2]
+	obj.IsMoving = nodes > 0
 	obj.MoveStartTime = time.Now().Add(-time.Duration(timePassed) * time.Millisecond)
 	obj.MoveDuration = time.Duration(duration) * time.Millisecond
 }
@@ -4881,19 +4755,13 @@ func (w *WorldClient) skipValuesUpdate(r *bytes.Reader) {
 	if err := binary.Read(r, binary.LittleEndian, &blockCount); err != nil || blockCount == 0 {
 		return
 	}
-	var mask [32]uint32
 	totalValues := 0
-	for i := uint8(0); i < blockCount && i < 32; i++ {
-		binary.Read(r, binary.LittleEndian, &mask[i])
-		for b := 0; b < 32; b++ {
-			if mask[i]&(1<<uint(b)) != 0 {
-				totalValues++
-			}
-		}
+	for i := uint8(0); i < blockCount; i++ {
+		var mask uint32
+		binary.Read(r, binary.LittleEndian, &mask)
+		totalValues += bits.OnesCount32(mask)
 	}
-	if totalValues > 0 {
-		r.Seek(int64(totalValues)*4, io.SeekCurrent)
-	}
+	r.Seek(int64(totalValues)*4, io.SeekCurrent)
 }
 
 func (w *WorldClient) readValuesUpdate(r *bytes.Reader, guid uint64) {
@@ -4928,12 +4796,6 @@ func (w *WorldClient) readValuesUpdate(r *bytes.Reader, guid uint64) {
 				switch fieldIndex {
 				case UnitFieldEntry:
 					obj.Entry = value
-				case UnitDynamicFlags:
-					if (value & (UnitDynflagDead | UnitDynflagLootable)) != 0 {
-						// Server told us it's a dead/lootable corpse - force health 0 in our cache
-						// even if a health value wasn't sent or is stale positive.
-						obj.setValue(UnitFieldHealth, 0)
-					}
 				case UnitFieldHealth:
 					if guid == w.charGUID {
 						w.statsMu.Lock()
@@ -4977,10 +4839,6 @@ func (w *WorldClient) readValuesUpdate(r *bytes.Reader, guid uint64) {
 						w.money = value
 						w.statsMu.Unlock()
 					}
-				case UnitFieldAuraState:
-					// Aura state bitmask received. We do not map bits->spellIDs here
-					// (states are engine-defined). SMSG_AURA_UPDATE* are authoritative.
-					_ = value
 				}
 			}
 		}
@@ -5003,7 +4861,7 @@ func (w *WorldClient) isSelfGUID(guid uint64) bool {
 	if w.charGUID == 0 || guid == 0 {
 		return false
 	}
-	return guid == w.charGUID || (guid&0xFFFFFFFF) == (w.charGUID&0xFFFFFFFF)
+	return guid == w.charGUID
 }
 
 // applySelfServerRelocate updates local player pose and notifies the bot so the
@@ -5180,154 +5038,83 @@ func (w *WorldClient) handleMonsterMove(data []byte) {
 	}
 }
 
+// handleMonsterMoveTransport: unit, transport, seat, then a MONSTER_MOVE body whose
+// positions are offsets on the transport (MoveSplineInit TransportPathTransform).
+// ponytail: only the start pose is applied; the spline itself is not followed.
 func (w *WorldClient) handleMonsterMoveTransport(data []byte) {
-	// SMSG_MONSTER_MOVE_TRANSPORT has transport prefix: after opcode, typically unitGUID? + transGUID packed + seat + then standard monster move data (unk + pos + ...)
-	// Since not main case per user, parse prefix and then update pos using similar logic to avoid missing pos updates.
 	r := bytes.NewReader(data)
 	unitGUID, err := readPackedGUID(r)
 	if err != nil {
 		return
 	}
-	transGUID, _ := readPackedGUID(r)
-	var seat int8
-	binary.Read(r, binary.LittleEndian, &seat)
-	_ = transGUID
-	_ = seat
-
-	// now at unk8 + pos etc, same as after guid in regular
-	var unk8 uint8
-	if err := binary.Read(r, binary.LittleEndian, &unk8); err != nil {
+	transGUID, err := readPackedGUID(r)
+	if err != nil {
 		return
 	}
-
-	var posX, posY, posZ float32
-	binary.Read(r, binary.LittleEndian, &posX)
-	binary.Read(r, binary.LittleEndian, &posY)
-	binary.Read(r, binary.LittleEndian, &posZ)
+	r.Seek(2, io.SeekCurrent) // seat, unk8
+	var off [3]float32
+	if err := binary.Read(r, binary.LittleEndian, &off); err != nil {
+		return
+	}
 
 	w.objectsMu.RLock()
-	obj, ok := w.objects[unitGUID]
+	obj, trans := w.objects[unitGUID], w.objects[transGUID]
 	w.objectsMu.RUnlock()
-	if !ok || obj == nil {
+	if obj == nil {
 		return
 	}
-	obj.PosX = posX
-	obj.PosY = posY
-	obj.PosZ = posZ
-	obj.LastPosUpdate = time.Now()
 	obj.LastSeen = time.Now()
-
-	// for full spline, would continue parse, but for pos correctness, pos is set. Skip rest for now to keep sync.
-	// To fully support, could call similar parse code, but skip for this.
+	if !trans.HasKnownPosition() {
+		return // offsets are meaningless without the transport's pose
+	}
+	obj.PosX, obj.PosY, obj.PosZ = transportToWorld(trans, off)
+	obj.IsMoving, obj.MoveDuration = false, 0
+	obj.LastPosUpdate = time.Now()
 }
 
-func (w *WorldClient) handleCompressedMoves(data []byte) {
-	// (debug log removed)
-	// TODO: decompress and parse multiple move packets.
-}
-
-func (w *WorldClient) handleMultipleMoves(data []byte) {
-	// (debug log removed)
-	// Parse multiple movement infos.
+// transportToWorld is TransportBase::CalculatePassengerPosition.
+func transportToWorld(t *WorldObject, off [3]float32) (x, y, z float32) {
+	s, c := math.Sincos(float64(t.Orientation))
+	x = t.PosX + off[0]*float32(c) - off[1]*float32(s)
+	y = t.PosY + off[1]*float32(c) + off[0]*float32(s)
+	return x, y, t.PosZ + off[2]
 }
 
 func (w *WorldClient) handleMovementPacket(opcode uint16, data []byte) {
-	if len(data) < 8 {
-		return
-	}
 	r := bytes.NewReader(data)
 	guid, err := readPackedGUID(r)
 	if err != nil {
 		return
 	}
+	mi, err := readMovementInfo(r)
 	w.objectsMu.RLock()
-	obj, ok := w.objects[guid]
+	obj := w.objects[guid]
 	w.objectsMu.RUnlock()
-	if !ok || obj == nil {
-		// Not tracking, but consume to keep in sync? For now, try to parse pos anyway for debug.
-		// Skip to pos.
-		var moveFlags uint32
-		binary.Read(r, binary.LittleEndian, &moveFlags)
-		var moveFlags2 uint16
-		binary.Read(r, binary.LittleEndian, &moveFlags2)
-		var ts uint32
-		binary.Read(r, binary.LittleEndian, &ts)
-		var x, y, z, o float32
-		binary.Read(r, binary.LittleEndian, &x)
-		binary.Read(r, binary.LittleEndian, &y)
-		binary.Read(r, binary.LittleEndian, &z)
-		binary.Read(r, binary.LittleEndian, &o)
-		// (debug log removed)
+	if obj == nil || err != nil {
 		return
 	}
-	// Parse basic movement info to update pos
-	var moveFlags uint32
-	binary.Read(r, binary.LittleEndian, &moveFlags)
-	var moveFlags2 uint16
-	binary.Read(r, binary.LittleEndian, &moveFlags2)
-	var ts uint32
-	binary.Read(r, binary.LittleEndian, &ts)
-	var x, y, z, o float32
-	binary.Read(r, binary.LittleEndian, &x)
-	binary.Read(r, binary.LittleEndian, &y)
-	binary.Read(r, binary.LittleEndian, &z)
-	binary.Read(r, binary.LittleEndian, &o)
-	obj.PosX = x
-	obj.PosY = y
-	obj.PosZ = z
-	obj.Orientation = o
+	obj.PosX, obj.PosY, obj.PosZ, obj.Orientation = mi.pos[0], mi.pos[1], mi.pos[2], mi.pos[3]
 	obj.LastPosUpdate = time.Now()
 	obj.LastSeen = time.Now()
-	obj.IsMoving = (moveFlags&0x1000) != 0 || (moveFlags&0x4000) != 0 // forward or backward rough
-	// (debug log removed)
-}
-
-func (w *WorldClient) handleMoveKnockBack(data []byte) {
-	if len(data) < 8 {
-		return
-	}
-	r := bytes.NewReader(data)
-	guid, _ := readPackedGUID(r)
-	w.objectsMu.RLock()
-	obj, ok := w.objects[guid]
-	w.objectsMu.RUnlock()
-	if !ok || obj == nil {
-		return
-	}
-	// packet has more: falltime, x y z speed horiz/vert etc. For pos update, we can try to read new pos if present in structure.
-	// Basic: skip some, read possible pos fields. For now, log to see.
-	// (debug log removed)
-	// To properly update, would parse the knock target pos, but AC may follow with monster move.
-	// For this, at least mark.
+	obj.IsMoving = mi.flags&moveFlagMaskMoving != 0
+	obj.MoveDuration = 0 // a client-driven pose, not a spline: Pos* is current
 }
 
 func (w *WorldClient) handleMoveTeleport(data []byte) {
-	if len(data) < 8 {
+	r := bytes.NewReader(data)
+	guid, err := readPackedGUID(r)
+	if err != nil {
 		return
 	}
-	r := bytes.NewReader(data)
-	guid, _ := readPackedGUID(r)
-
-	// Movement info block (same layout used elsewhere)
-	var moveFlags uint32
-	binary.Read(r, binary.LittleEndian, &moveFlags)
-	var moveFlags2 uint16
-	binary.Read(r, binary.LittleEndian, &moveFlags2)
-	var ts uint32
-	binary.Read(r, binary.LittleEndian, &ts)
-	var nx, ny, nz, no float32
-	binary.Read(r, binary.LittleEndian, &nx)
-	binary.Read(r, binary.LittleEndian, &ny)
-	binary.Read(r, binary.LittleEndian, &nz)
-	binary.Read(r, binary.LittleEndian, &no)
+	mi, err := readMovementInfo(r)
+	if err != nil {
+		return
+	}
 
 	// Update object cache for any unit
 	w.objectsMu.Lock()
 	if obj := w.objects[guid]; obj != nil {
-		obj.PosX = nx
-		obj.PosY = ny
-		obj.PosZ = nz
-		obj.Orientation = no
+		obj.PosX, obj.PosY, obj.PosZ, obj.Orientation = mi.pos[0], mi.pos[1], mi.pos[2], mi.pos[3]
 		obj.LastPosUpdate = time.Now()
 		obj.LastSeen = time.Now()
 		obj.IsMoving = false
@@ -5336,9 +5123,9 @@ func (w *WorldClient) handleMoveTeleport(data []byte) {
 
 	// Self near-teleport: update local pose, ACK, resume in-world.
 	// Counter is typically present after movement block on some builds; use 0 if absent.
-	if guid == w.charGUID || (w.charGUID != 0 && (guid&0xFFFFFFFF) == (w.charGUID&0xFFFFFFFF)) {
+	if w.isSelfGUID(guid) {
 		w.setPhase(PhaseNearTeleport, "SMSG_MOVE_TELEPORT")
-		w.posX, w.posY, w.posZ, w.orientation = nx, ny, nz, no
+		w.teleportedTo(mi)
 		var counter uint32
 		_ = binary.Read(r, binary.LittleEndian, &counter)
 
@@ -5353,7 +5140,17 @@ func (w *WorldClient) handleMoveTeleport(data []byte) {
 		w.phaseMu.Unlock()
 		w.setPhase(PhaseInWorld, "MSG_MOVE_TELEPORT_ACK")
 		_ = w.SendHeartbeat()
+		go w.maybeFall()
 	}
+}
+
+// teleportedTo puts us where a teleport's movement info says, on its transport if any, and ends any fall.
+func (w *WorldClient) teleportedTo(mi movementInfo) {
+	w.moveMu.Lock()
+	defer w.moveMu.Unlock()
+	w.setPositionLocked(mi.pos[0], mi.pos[1], mi.pos[2], mi.pos[3])
+	w.setSelfTransportLocked(mi)
+	w.fall = nil
 }
 
 func (w *WorldClient) handleNewWorld(data []byte) {
@@ -5372,11 +5169,16 @@ func (w *WorldClient) handleNewWorld(data []byte) {
 	w.log("SMSG_NEW_WORLD map=%d pos=(%.1f,%.1f,%.1f)", mapID, newX, newY, newZ)
 	w.setPhase(PhaseFarTransfer, "SMSG_NEW_WORLD")
 
+	w.moveMu.Lock()
 	w.mapID = mapID
-	w.posX = newX
-	w.posY = newY
-	w.posZ = newZ
-	w.orientation = newO
+	w.fall = nil
+	// Our place on the boat if the server kept us on it (TELE_TO_NOT_LEAVE_TRANSPORT), else the world; only our create
+	// says which, and it brings both.
+	if w.transport.guid == 0 {
+		w.setPositionLocked(newX, newY, newZ, newO)
+	}
+	w.transport = selfTransport{}
+	w.moveMu.Unlock()
 
 	// Clear all objects since we changed maps
 	w.objectsMu.Lock()
@@ -5408,7 +5210,7 @@ func (w *WorldClient) handleMoveTeleportAck(data []byte) {
 	}
 	r := bytes.NewReader(data)
 	guid, _ := readPackedGUID(r)
-	if guid != w.charGUID && (guid&0xFFFFFFFF) != (w.charGUID&0xFFFFFFFF) {
+	if !w.isSelfGUID(guid) {
 		return
 	}
 
@@ -5416,26 +5218,13 @@ func (w *WorldClient) handleMoveTeleportAck(data []byte) {
 
 	var counter uint32
 	binary.Read(r, binary.LittleEndian, &counter)
+	mi, err := readMovementInfo(r)
+	if err != nil {
+		return
+	}
+	w.teleportedTo(mi)
 
-	var moveFlags uint32
-	binary.Read(r, binary.LittleEndian, &moveFlags)
-	var moveFlags2 uint16
-	binary.Read(r, binary.LittleEndian, &moveFlags2)
-	var moveTime uint32
-	binary.Read(r, binary.LittleEndian, &moveTime)
-	var newX, newY, newZ, newO float32
-	binary.Read(r, binary.LittleEndian, &newX)
-	binary.Read(r, binary.LittleEndian, &newY)
-	binary.Read(r, binary.LittleEndian, &newZ)
-	binary.Read(r, binary.LittleEndian, &newO)
-
-	w.posX = newX
-	w.posY = newY
-	w.posZ = newZ
-	w.orientation = newO
-
-	// Drop only far leftovers from the previous area (not a full wipe).
-	w.pruneObjectsBeyond(newX, newY, newZ, 150)
+	// No pruning: the server sends out-of-range for whatever left its visibility.
 
 	ackBuf := new(bytes.Buffer)
 	writePackedGUID(ackBuf, w.charGUID)
@@ -5447,28 +5236,7 @@ func (w *WorldClient) handleMoveTeleportAck(data []byte) {
 	w.phaseMu.Unlock()
 	w.setPhase(PhaseInWorld, "MSG_MOVE_TELEPORT_ACK")
 	_ = w.SendHeartbeat()
-}
-
-// pruneObjectsBeyond removes tracked objects farther than maxDist from (x,y,z).
-// Objects without a known position are kept (entry-only creates after tele).
-func (w *WorldClient) pruneObjectsBeyond(x, y, z, maxDist float32) {
-	maxDistSq := maxDist * maxDist
-	w.objectsMu.Lock()
-	defer w.objectsMu.Unlock()
-	for guid, obj := range w.objects {
-		if guid == w.charGUID {
-			continue
-		}
-		if !obj.HasKnownPosition() {
-			continue
-		}
-		dx := obj.PosX - x
-		dy := obj.PosY - y
-		dz := obj.PosZ - z
-		if dx*dx+dy*dy+dz*dz > maxDistSq {
-			delete(w.objects, guid)
-		}
-	}
+	go w.maybeFall()
 }
 
 func (w *WorldClient) getOrCreateObject(guid uint64) *WorldObject {
@@ -5492,6 +5260,9 @@ func (w *WorldClient) removeObject(guid uint64) {
 	}
 	delete(w.objects, guid)
 	w.objectsMu.Unlock()
+	w.auras.mu.Lock()
+	delete(w.auras.m, guid)
+	w.auras.mu.Unlock()
 	if w.OnObjectRemove != nil {
 		w.OnObjectRemove(guid)
 	}

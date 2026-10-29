@@ -23,6 +23,7 @@ import (
 	"encoding/binary"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/pthm/leeroy/azeroth-sdk/client"
@@ -336,20 +337,50 @@ func (b *Bot) setupCoreAPI() {
 	})
 	e.Func("chat.yell", "(msg) → request", "players within 300 yards hear it", say("chat.yell", 6, ""))
 	e.Func("chat.party", "(msg) → request", "your party, at any distance", say("chat.party", 2, ""))
-	e.Func("chat.whisper", "(name, msg) → request", "one player anywhere, by exact character name", func(to, msg string) map[string]any {
-		return say("chat.whisper", 7, to)(msg)
+	// whispers and channel messages resolve on the server's echo (or its refusal)
+	echoed := func(op string, typ uint32, to, msg, key string) map[string]any {
+		if r := tooLong(op, msg); r != nil {
+			return r
+		}
+		if msg = chatText(msg); msg == "" {
+			return b.refuse(op, map[string]any{"to": to}, "empty_message", "the server drops a message that's empty or starts with a newline")
+		}
+		key += msg
+		b.acked(key) // drop a stale one
+		b.sendChat(typ, to, msg)
+		return b.request(op, map[string]any{"to": to}, 3*time.Second, func() *script.Outcome {
+			if b.acked(key) {
+				return script.Ok(nil)
+			}
+			return nil
+		}, func(ev script.Event) *script.Outcome {
+			if e, ok := ev.Data.(types.ErrorEvent); ok && e.Code == "player_not_found" && !strings.Contains(strings.ToLower(e.Message), strings.ToLower(strconv.Quote(to))) {
+				return nil // another whisper's
+			}
+			return failOn(ev, op)
+		})
+	}
+	e.Func("chat.whisper", "(name, msg) → request", "one player anywhere, by exact character name: player_not_found when no one by that name is online", func(to, msg string) map[string]any {
+		return echoed("chat.whisper", 7, to, msg, "whisper\x00")
 	})
-	e.Func("chat.channel", "(name, msg) → request", "everyone in a channel you've joined. Every chat call takes at most 255 bytes (message_too_long)", func(ch, msg string) map[string]any {
-		return say("chat.channel", 0x11, ch)(msg)
+	e.Func("chat.channel", "(name, msg) → request", "everyone in a channel you've joined (not_member, muted, throttled, not_in_area). Every chat call takes at most 255 bytes (message_too_long)", func(ch, msg string) map[string]any {
+		return echoed("chat.channel", 0x11, ch, msg, "channel\x00"+strings.ToLower(ch)+"\x00")
 	})
-	e.Func("chat.join", "(name [, id = 0]) → request", "join a channel. Zone channels need their id: 1 General, 2 Trade, 22 LocalDefense (\"General - Elwynn Forest\"); custom channels use 0 and any name",
+	e.Func("chat.join", "(name [, id = 0]) → request", "join a channel. Zone channels need their id: 1 General, 2 Trade, 22 LocalDefense (\"General - Elwynn Forest\"); custom channels use 0 and any name (wrong_password, banned)",
 		func(name string, id uint32) map[string]any {
+			key := "join\x00" + strings.ToLower(name)
+			b.acked(key)
 			var buf bytes.Buffer
 			binary.Write(&buf, binary.LittleEndian, id)
 			buf.Write([]byte{0, 0})
 			buf.WriteString(name + "\x00\x00") // name, empty password
 			w.SendPacketRaw(cmsgJoinChannel, buf.Bytes())
-			return b.done("chat.join", map[string]any{"name": name}, nil)
+			return b.request("chat.join", map[string]any{"name": name}, 3*time.Second, func() *script.Outcome {
+				if b.acked(key) {
+					return script.Ok(nil)
+				}
+				return nil
+			}, func(ev script.Event) *script.Outcome { return failOn(ev, "chat.join") })
 		})
 	e.Func("chat.command", "(text) → request", "a server command (\".help\"); GM commands only work on GM accounts", func(cmd string) map[string]any {
 		return b.sent("chat.command", nil, b.SendCommand(cmd))
@@ -395,6 +426,7 @@ func (b *Bot) snapshot() types.Status {
 		st.ComboPoints = &c
 	}
 	st.Timers, _ = e.Native("me.timers").([]types.MirrorTimer)
+	st.LootRolls, _ = e.Native("items.rolls").([]types.LootRoll)
 	var res uint64
 	if b.agent != nil {
 		b.agent.mu.Lock()
@@ -534,4 +566,15 @@ func (b *Bot) snapshot() types.Status {
 		}
 	}
 	return st
+}
+
+// chatText: a message as the server echoes it (ChatHandler: cut at the first newline, runs of spaces collapsed)
+func chatText(s string) string {
+	if i := strings.IndexAny(s, "\n\r"); i >= 0 {
+		s = s[:i]
+	}
+	for strings.Contains(s, "  ") {
+		s = strings.ReplaceAll(s, "  ", " ")
+	}
+	return s
 }

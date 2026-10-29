@@ -27,6 +27,8 @@ const (
 	smsgNotification  = 0x01CB
 	smsgInvChangeFail = 0x0112
 	smsgPartyResult   = 0x007F
+	smsgChannelNotify = 0x0099
+	smsgChatNotFound  = 0x02A9
 	cmsgMessageChat   = 0x0095
 	cmsgJoinChannel   = 0x0097
 	packetsCap        = 1000 // ponytail: drop-oldest cap for client.packets()
@@ -56,6 +58,7 @@ type controlState struct {
 	members   map[uint64]*memberStats
 	asked     map[uint64]time.Time // when we last asked for a member's full stats
 	invitedBy string               // pending group invite
+	acks      map[string]bool      // server confirmations a request waits for (b.acked)
 }
 
 // memberStats: a party member as SMSG_PARTY_MEMBER_STATS(_FULL) describes them (sent even when out of sight)
@@ -78,26 +81,30 @@ const (
 
 // requestStats asks for an out-of-range member's full stats (CMSG_REQUEST_PARTY_MEMBER_STATS), as the real client's
 // party frames do: for members out of range the server only sends the fields that changed, so without it their
-// maximum health and their online/dead/ghost status may never arrive. At most every 10 s per member.
+// maximum health and their online/dead/ghost status may never arrive. At most every 10 s per member: a later ask
+// waits for the window rather than being dropped (it may sleep; call it in a goroutine).
 func (c *controlState) requestStats(w *client.WorldClient, guid uint64) {
 	c.mu.Lock()
-	ok := time.Since(c.asked[guid]) > 10*time.Second
-	if ok {
-		c.asked[guid] = time.Now()
+	last := c.asked[guid]
+	if last.After(time.Now()) { // one is already queued: it covers this change too
+		c.mu.Unlock()
+		return
 	}
+	at := time.Now().Add(max(time.Until(last.Add(10*time.Second)), 0)) // at most one every 10s, deferred, not dropped
+	c.asked[guid] = at
 	c.mu.Unlock()
-	if ok {
-		w.SendPacketRaw(cmsgRequestPartyMemberStats, binary.LittleEndian.AppendUint64(nil, guid))
-	}
+	time.Sleep(time.Until(at))
+	w.SendPacketRaw(cmsgRequestPartyMemberStats, binary.LittleEndian.AppendUint64(nil, guid))
 }
 
-// parsePartyStats reads the fields up to the position (auras and pet data after it aren't needed).
-func (c *controlState) parsePartyStats(full bool, data []byte) {
+// parsePartyStats reads the fields up to the auras (pet data after them isn't needed). refresh: an aura was added
+// whose flags (harmful or not) only SMSG_PARTY_MEMBER_STATS_FULL says.
+func (c *controlState) parsePartyStats(full bool, data []byte) (guid uint64, refresh bool) {
 	r := bytes.NewReader(data)
 	if full {
 		r.ReadByte()
 	}
-	guid := readPackedGUID(r)
+	guid = readPackedGUID(r)
 	var mask uint32
 	binary.Read(r, binary.LittleEndian, &mask)
 	m := c.members[guid]
@@ -135,10 +142,11 @@ func (c *controlState) parsePartyStats(full bool, data []byte) {
 		rd(&m.x)
 		rd(&m.y)
 	}
-	if mask&0x200 != 0 { // u64 slot mask, then per slot: spell u32, flags u8
+	if mask&0x200 != 0 { // u64 slot mask, then per slot: spell u32, flags u8 (the full packet: the aura's flags and
+		// every aura; the changed-fields one always writes flags 1, so an aura it adds has unknown flags until a full one)
 		var am uint64
 		rd(&am)
-		if m.auras == nil {
+		if m.auras == nil || full {
 			m.auras = map[uint8][2]uint32{}
 		}
 		for i := uint8(0); i < 64; i++ {
@@ -149,20 +157,25 @@ func (c *controlState) parsePartyStats(full bool, data []byte) {
 			var flags uint8
 			rd(&spell)
 			rd(&flags)
-			if spell == 0 {
+			switch old, had := m.auras[i]; {
+			case spell == 0:
 				delete(m.auras, i)
-			} else {
+			case full:
 				m.auras[i] = [2]uint32{spell, uint32(flags)}
+			case !had || old[0] != spell:
+				m.auras[i] = [2]uint32{spell, 0}
+				refresh = true
 			}
 		}
 	}
+	return guid, refresh
 }
 
 //go:embed act.lua
 var actLua string // the built-in act library and me.status() (Lua, on top of the API)
 
 func (b *Bot) setupControl() {
-	c := &controlState{watched: map[uint16]bool{}, names: map[uint64]string{}, classes: map[uint64]uint8{}, members: map[uint64]*memberStats{}, asked: map[uint64]time.Time{}}
+	c := &controlState{watched: map[uint16]bool{}, names: map[uint64]string{}, classes: map[uint64]uint8{}, members: map[uint64]*memberStats{}, asked: map[uint64]time.Time{}, acks: map[string]bool{}}
 	w := b.world
 	w.AddPacketHook(func(op uint16, data []byte) { c.onPacket(b, op, data) })
 
@@ -181,6 +194,13 @@ func (b *Bot) setupControl() {
 		return ""
 	}
 	b.notify = func(text string) { b.emit("notice", types.Notice{Message: text}) }
+	b.acked = func(k string) bool {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		ok := c.acks[k]
+		delete(c.acks, k)
+		return ok
+	}
 	b.setupCoreAPI()
 	b.setupAgentAPI()
 	b.setupItems()
@@ -196,6 +216,7 @@ func (b *Bot) setupControl() {
 	b.watchEvents()
 	b.setupWatch()
 	b.setupGroupReport()
+	b.setupWorldMessages()
 	b.startRecording()
 	e := b.lua
 
@@ -248,11 +269,11 @@ func (b *Bot) setupControl() {
 					}
 				}
 				if w.GetObject(m.GUID) == nil {
-					c.requestStats(w, m.GUID)
+					go c.requestStats(w, m.GUID)
 				}
 				if o := w.GetObject(m.GUID); o != nil { // in sight: exact
 					u := b.worldObjToUnitInfo(o)
-					gm.Ghost = o.Value(0x96)&0x10 != 0 // PLAYER_FLAGS_GHOST, as IsGhost
+					gm.Ghost = o.Value(0x96)&0x10 != 0                                     // PLAYER_FLAGS_GHOST, as IsGhost
 					gm.InRange, gm.Level, gm.Alive = true, u.Level, u.IsAlive && !gm.Ghost // a ghost has 1 health
 					gm.Health = types.Resource{Current: u.Health, Max: u.MaxHealth}
 					gm.InCombat, gm.Target = u.Flags&0x80000 != 0, types.GUID(u.Target)
@@ -299,12 +320,13 @@ func (b *Bot) setupControl() {
 		})
 	e.Func("group.invite", "(name) → request", "invite a player (by exact character name) to your group: ok once the invite is sent; they answer with group.accept", func(name string) map[string]any {
 		args := map[string]any{"name": name}
+		key := "invite\x00" + strings.ToLower(name)
+		b.acked(key)
 		if err := w.GroupInvite(name); err != nil {
 			return b.refuse("group.invite", args, "failed", err.Error())
 		}
-		start := time.Now()
 		return b.request("group.invite", args, 5*time.Second, func() *script.Outcome {
-			if time.Since(start) > 1500*time.Millisecond { // the server only answers failures
+			if b.acked(key) { // PARTY_RESULT_OK
 				return script.Ok(nil)
 			}
 			return nil
@@ -319,7 +341,7 @@ func (b *Bot) setupControl() {
 				return script.Ok(nil)
 			}
 			return nil
-		}, nil)
+		}, func(ev script.Event) *script.Outcome { return failOn(ev, "group") })
 	})
 	e.Func("group.decline", "() → request", "decline a pending invite", func() map[string]any {
 		c.mu.Lock()
@@ -347,7 +369,11 @@ func (b *Bot) setupControl() {
 		}
 		return c.invitedBy
 	})
-	w.AddGroupInviteHook(func(name string, _ bool) {
+	w.AddGroupInviteHook(func(name string, fresh bool) {
+		if !fresh { // flag 0: they tried, but you're already in a group
+			b.emit("notice", types.Notice{Message: name + " tried to invite you to a group, but you're already in one"})
+			return
+		}
 		c.mu.Lock()
 		c.invitedBy = name
 		c.mu.Unlock()
@@ -379,7 +405,7 @@ func (b *Bot) setupControl() {
 	}
 	// the API's namespaces and runtime functions can't be overwritten by a script's own globals
 	if err := e.DoString(`_protect{"me", "units", "objects", "world", "move", "combat", "spells", "items", "vendor", "trainer",
-		"quests", "death", "chat", "group", "trade", "talents", "flights", "innkeeper", "client", "task", "events", "act",
+		"quests", "death", "chat", "group", "summon", "trade", "talents", "flights", "innkeeper", "client", "task", "events", "act",
 		"wait", "await", "result", "log", "now", "help", "doc", "ask", "answer"}`); err != nil {
 		b.log("protect: %v", err)
 	}
@@ -398,26 +424,29 @@ func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
 	fail := func(op, code, text string) { b.emit("error", types.ErrorEvent{Op: op, Code: code, Message: text}) }
 	switch op {
 	case smsgInvChangeFail: // bag errors, e.g. a loot or quest reward that doesn't fit
-		if len(data) > 0 && data[0] != 0 {
-			if msg, ok := equipErrors[data[0]]; ok {
-				fail("items", slug(msg), msg)
-			} else if n, ok := inventoryResultNames[data[0]]; ok {
-				fail("items", n, strings.ReplaceAll(n, "_", " "))
-			} else {
-				fail("items", fmt.Sprintf("inventory_%d", data[0]), fmt.Sprintf("inventory error %d", data[0]))
-			}
+		if len(data) > 0 && data[0] != 0 && data[0] != 59 { // 59 EQUIP_ERR_NONE: only un-greys the item (a no-op move, a cancelled use)
+			code, msg := inventoryError(data)
+			fail("items", code, msg)
 		}
-	case 0x1A5: // SMSG_BUY_FAILED: vendor, item, reason
+	case 0x1A5: // SMSG_BUY_FAILED: vendor, item, [param], reason (Player::SendBuyError)
 		if len(data) >= 13 {
-			code := map[byte]string{0: "not_sold_here", 2: "not_enough_money", 5: "out_of_range", 7: "sold_out", 8: "cant_carry_more"}[data[12]]
-			fail("vendor.buy", code, "buy failed: "+map[byte]string{0: "vendor doesn't have that item", 2: "not enough money", 5: "too far from the vendor",
-				7: "sold out", 8: "you can't carry more of that"}[data[12]])
+			r := buyErrors[data[len(data)-1]]
+			if r[0] == "" {
+				r = [2]string{fmt.Sprintf("buy_%d", data[len(data)-1]), "unknown reason"}
+			}
+			fail("vendor.buy", r[0], "buy failed: "+r[1])
 		}
-	case 0x1A1: // SMSG_SELL_ITEM: vendor, item, error (0 = sold)
-		if len(data) >= 17 && data[16] != 0 {
-			code := map[byte]string{1: "item_not_found", 2: "wont_buy", 3: "vendor_not_found", 4: "not_yours"}[data[16]]
-			fail("vendor.sell", code, "sell failed: "+map[byte]string{1: "item not found", 2: "the vendor won't buy that", 3: "vendor not found",
-				4: "you don't own that"}[data[16]])
+	case 0x1A1: // SMSG_SELL_ITEM: vendor, item, [param], error (Player::SendSellError; 0 = sold)
+		if len(data) >= 17 && data[len(data)-1] != 0 {
+			r := sellErrors[data[len(data)-1]]
+			if r[0] == "" {
+				r = [2]string{fmt.Sprintf("sell_%d", data[len(data)-1]), "unknown reason"}
+			}
+			if binary.LittleEndian.Uint64(data[8:]) == 0 { // no item: the answer to a list request (WorldSession::SendListInventory)
+				fail("vendor.items", r[0], "the vendor won't show its wares: "+r[1]+" (stand within ~5 yd)")
+			} else {
+				fail("vendor.sell", r[0], "sell failed: "+r[1])
+			}
 		}
 	case 0x1B4: // SMSG_TRAINER_BUY_FAILED: trainer, spell, reason
 		if len(data) >= 16 {
@@ -440,8 +469,14 @@ func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
 		name := readCString(r)
 		var res uint32
 		binary.Read(r, binary.LittleEndian, &res)
-		if res != 0 {
-			fail("group", slug(partyErrors[res]), fmt.Sprintf("group command failed for %q: %s", name, partyErrors[res]))
+		switch e, known := partyErrors[res]; {
+		case res == 0 && op == 0 && name != "": // PARTY_OP_INVITE: the invite went out
+			c.acks["invite\x00"+strings.ToLower(name)] = true
+		case res == 0:
+		case !known:
+			fail("group", fmt.Sprintf("party_%d", res), fmt.Sprintf("group command failed for %q (result %d)", name, res))
+		default:
+			fail("group", e[0], fmt.Sprintf("group command failed for %q: %s", name, e[1]))
 		}
 	case 0x0077, 0x007D: // SMSG_GROUP_UNINVITE, SMSG_GROUP_LIST: no invite pending any more
 		c.invitedBy = ""
@@ -460,10 +495,30 @@ func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
 			}
 		}
 	case smsgPartyMemberStats, smsgPartyMemberStatsFull:
-		c.parsePartyStats(op == smsgPartyMemberStatsFull, data)
+		if guid, refresh := c.parsePartyStats(op == smsgPartyMemberStatsFull, data); refresh {
+			go c.requestStats(w, guid)
+		}
+	case smsgChatNotFound: // a whisper to a name that isn't online
+		fail("chat.whisper", "player_not_found", fmt.Sprintf("no player named %q is online", readCString(bytes.NewReader(data))))
+	case smsgChannelNotify: // notice type, channel name, then per type
+		r := bytes.NewReader(data)
+		t, _ := r.ReadByte()
+		ch := readCString(r)
+		if t == 2 || t == 0x17 { // you joined; you're already in it
+			c.acks["join\x00"+strings.ToLower(ch)] = true
+		} else if e, ok := channelErrors[t]; ok {
+			fail(e[0], e[1], fmt.Sprintf("[%s] %s", ch, e[2]))
+		}
 	case smsgMessageChat, smsgGMMessageChat:
-		// not your own chat, nor the server's echo of a whisper you sent: chat.whisper's result is the ack
-		if m, guid, ok := parseChat(op, data); ok && guid != w.CharGUID() && chatKind(m.Type) != "whisper_sent" {
+		m, guid, ok := parseChat(op, data)
+		switch { // the server's echo: what chat.whisper and chat.channel wait for
+		case ok && m.Type == 9:
+			c.acks["whisper\x00"+m.Text] = true
+		case ok && m.Type == 0x11 && guid == w.CharGUID():
+			c.acks["channel\x00"+strings.ToLower(m.Channel)+"\x00"+m.Text] = true
+		}
+		// not your own chat, nor the server's echo of a whisper you sent
+		if ok && guid != w.CharGUID() && chatKind(m.Type) != "whisper_sent" {
 			if m.From == "" && guid != 0 {
 				m.From = c.names[guid]
 				if m.From == "" {
@@ -532,7 +587,7 @@ func parseChat(op uint16, data []byte) (m ChatMessage, sender uint64, ok bool) {
 	binary.Read(r, binary.LittleEndian, &sender)
 	binary.Read(r, binary.LittleEndian, &flags)
 	monster := monsterChat(m.Type)
-	if monster || op == smsgGMMessageChat {
+	if monster || m.Type == 8 || op == smsgGMMessageChat { // 8: CHAT_MSG_WHISPER_FOREIGN
 		m.From = readSized(r)
 	}
 	if m.Type == 0x11 {
@@ -541,6 +596,8 @@ func parseChat(op uint16, data []byte) (m ChatMessage, sender uint64, ok bool) {
 	binary.Read(r, binary.LittleEndian, &receiver)
 	if monster && receiver != 0 && receiver>>48 != 0 && receiver>>48 != 0xF140 {
 		readSized(r) // non-player receiver name
+	} else if m.Type >= 0x24 && m.Type <= 0x26 && receiver>>48 != 0 { // BG_SYSTEM_*: a non-player receiver's name
+		readSized(r)
 	}
 	m.Text = readSized(r)
 	if monster {
@@ -585,9 +642,58 @@ func readPackedGUID(r *bytes.Reader) uint64 {
 	return g
 }
 
-var equipErrors = map[byte]string{4: "Bag is full", 17: "You can't carry any more of those", 22: "Slot is empty",
+var equipErrors = map[byte]string{1: "You must reach a higher level to use that", 4: "Bag is full", 17: "You can't carry any more of those", 22: "Slot is empty",
 	23: "Item not found", 25: "Out of range", 29: "Not enough money", 38: "You are dead", 39: "You can't do that right now",
 	49: "Already looted", 50: "Inventory is full", 52: "Item is sold out", 53: "Bag is full", 56: "Bag is full", 57: "Item is sold out"}
 
-var partyErrors = map[uint32]string{1: "no player by that name online", 2: "not in your group", 4: "group is full",
-	5: "already in a group", 6: "you aren't in a group", 7: "you aren't the leader", 8: "wrong faction", 9: "they're ignoring you"}
+// inventoryError: SMSG_INVENTORY_CHANGE_FAILURE's code and text (Player::SendEquipError: result, item, item2, bag
+// subclass, then the required level for CANT_EQUIP_LEVEL_I and PURCHASE_LEVEL_TOO_LOW).
+func inventoryError(data []byte) (string, string) {
+	code := inventoryResultNames[data[0]]
+	if code == "" {
+		code = fmt.Sprintf("inventory_%d", data[0])
+	}
+	msg := equipErrors[data[0]]
+	if msg == "" {
+		msg = strings.ReplaceAll(code, "_", " ")
+	}
+	if (data[0] == 1 || data[0] == 87) && len(data) >= 22 {
+		msg = fmt.Sprintf("%s: requires level %d", msg, binary.LittleEndian.Uint32(data[18:]))
+	}
+	return code, msg
+}
+
+// BuyResult and SellResult (Item.h)
+var buyErrors = map[byte][2]string{0: {"not_sold_here", "vendor doesn't have that item"}, 1: {"already_sold", "the item was already sold"},
+	2: {"not_enough_money", "not enough money"}, 4: {"seller_dislikes_you", "the vendor won't trade with you"},
+	5: {"out_of_range", "too far from the vendor"}, 7: {"sold_out", "sold out"}, 8: {"cant_carry_more", "you can't carry more of that"},
+	11: {"rank_required", "your rank is too low"}, 12: {"reputation_required", "your reputation with their faction is too low"}}
+
+var sellErrors = map[byte][2]string{1: {"item_not_found", "item not found"}, 2: {"wont_buy", "the vendor won't buy that"},
+	3: {"vendor_not_found", "vendor not found"}, 4: {"not_yours", "you don't own that"}, 5: {"unknown", "the server refused"},
+	6: {"bag_not_empty", "empty the bag first"}, 7: {"vendor_doesnt_buy", "this vendor doesn't buy items"},
+	8: {"needs_repair", "repair it first"}, 9: {"bag_error", "internal bag error"}}
+
+// ChatNotify (Channel.h) refusals: op, code, message
+var channelErrors = map[uint8][3]string{4: {"chat.join", "wrong_password", "wrong password"},
+	5:    {"chat.channel", "not_member", "you aren't in that channel: chat.join it first"},
+	0x11: {"chat.channel", "muted", "you don't have permission to speak"}, 0x13: {"chat.join", "banned", "you're banned from that channel"},
+	0x1A: {"chat.join", "wrong_faction", "wrong faction for that channel"}, 0x1B: {"chat.join", "invalid_name", "invalid channel name"},
+	0x1F: {"chat.channel", "throttled", "too many messages: wait before sending another"},
+	0x20: {"chat.channel", "not_in_area", "you're not in that channel's area"},
+	0x21: {"chat.join", "not_in_lfg", "queue in the dungeon finder before joining that channel"}}
+
+// PartyResult (SharedDefines.h)
+var partyErrors = map[uint32][2]string{1: {"bad_player_name", "no player by that name online"}, 2: {"not_in_your_group", "not in your group"},
+	3: {"not_in_your_instance", "not in your instance"}, 4: {"group_full", "group is full"}, 5: {"already_in_group", "already in a group"},
+	6: {"not_in_group", "you aren't in a group"}, 7: {"not_leader", "you aren't the leader"}, 8: {"wrong_faction", "wrong faction"},
+	9: {"ignoring_you", "they're ignoring you"}, 12: {"lfg_pending", "in the dungeon finder queue"},
+	13: {"invite_restricted", "invites are restricted"}, 14: {"in_combat", "in combat (or the subgroup swap failed)"},
+	15: {"unknown_realm", "unknown realm"}, 16: {"no_party_server", "no party server"},
+	17: {"busy", "they're busy"}, 18: {"ambiguous_name", "more than one player by that name"},
+	19: {"raid_locked", "dungeon finder: locked to that raid"}, 20: {"boot_limit", "dungeon finder: too many kick votes"},
+	21: {"boot_cooldown", "dungeon finder: kick vote on cooldown"}, 22: {"boot_in_progress", "dungeon finder: a kick vote is already running"},
+	23: {"boot_too_few_players", "dungeon finder: too few players to kick"}, 24: {"boot_not_eligible", "dungeon finder: they can't be kicked"},
+	25: {"raid_level_too_low", "everyone must be level 10 for a raid"}, 26: {"boot_in_combat", "dungeon finder: can't kick in combat"},
+	27: {"kick_reason_needed", "a kick vote needs a reason"}, 28: {"boot_dungeon_complete", "dungeon finder: the dungeon is done"},
+	29: {"boot_loot_rolls", "dungeon finder: can't kick during loot rolls"}, 30: {"teleport_in_combat", "dungeon finder: can't teleport in combat"}}

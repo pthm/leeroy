@@ -49,6 +49,7 @@ type combatInfo struct {
 	evaded map[uint64]time.Time // when each unit last evaded
 	combo  types.ComboPoints
 	threat map[uint64][]threatRef // a creature's threat list, highest first (SMSG_THREAT_UPDATE: sent to everyone near it)
+	victim map[uint64]uint64      // whom it attacks (SMSG_HIGHEST_THREAT_UPDATE): threat % is relative to theirs
 }
 
 type threatRef struct {
@@ -103,6 +104,7 @@ func (b *Bot) creatureExtras(c *types.Creature, u UnitInfo) {
 	creatures.Unlock()
 	if known {
 		c.Rank, c.Type, c.Subname = name(creatureRanks, info.rank), name(creatureTypes, info.typ), info.subname
+		c.KillCredit = info.killCredit
 		c.Elite = info.rank == 1 || info.rank == 2 || info.rank == 3
 	}
 	c.Skinnable = !u.IsAlive && u.Flags&unitFlagSkinnable != 0
@@ -112,10 +114,10 @@ func (b *Bot) creatureExtras(c *types.Creature, u UnitInfo) {
 	if ci := b.cinfo; ci != nil {
 		ci.mu.Lock()
 		c.Evading = time.Since(ci.evaded[u.GUID]) < 6*time.Second
-		if l := ci.threat[u.GUID]; len(l) > 0 && l[0].threat > 0 {
+		if l := ci.threat[u.GUID]; len(l) > 0 {
 			for _, t := range l {
 				if t.guid == b.world.CharGUID() {
-					pct := math.Round(t.threat / l[0].threat * 100)
+					pct := ci.threatPct(u.GUID, t.threat)
 					c.ThreatPct = &pct
 				}
 			}
@@ -124,14 +126,30 @@ func (b *Bot) creatureExtras(c *types.Creature, u UnitInfo) {
 	}
 }
 
+// threatPct: a threat value as a percentage of the creature's current victim's (the threat meter: another unit pulls
+// it past 110% in melee range, 130% beyond); of the top of its list when the victim isn't known. Under ci.mu.
+func (ci *combatInfo) threatPct(unit uint64, threat float64) float64 {
+	l := ci.threat[unit]
+	ref := 0.0
+	if len(l) > 0 {
+		ref = l[0].threat
+	}
+	for _, t := range l {
+		if t.guid == ci.victim[unit] && ci.victim[unit] != 0 {
+			ref = t.threat
+		}
+	}
+	return math.Round(threat / max(ref, 0.01) * 100)
+}
+
 // attackOutcome records how an attack landed (from the melee and spell-miss logs) and passes it on as a damage event.
-func (b *Bot) attackOutcome(src, dst uint64, amount, spell uint32, outcome string, hit func(src, dst uint64, amount, spell uint32, kind string, outcome ...string)) {
-	if outcome == "evade" && b.cinfo != nil {
+func (b *Bot) attackOutcome(src, dst uint64, d types.Damage, hit func(src, dst uint64, kind string, d types.Damage)) {
+	if d.Outcome == "evade" && b.cinfo != nil {
 		b.cinfo.mu.Lock()
 		b.cinfo.evaded[dst] = time.Now()
 		b.cinfo.mu.Unlock()
 	}
-	hit(src, dst, amount, spell, "damage", outcome)
+	hit(src, dst, "damage", d)
 }
 
 // threats: hostile living creatures attacking you, your pet or a party member.
@@ -154,10 +172,11 @@ func (b *Bot) threats() []types.Creature {
 }
 
 func (b *Bot) setupCombatInfo() {
-	ci := &combatInfo{casts: map[uint64]unitCast{}, evaded: map[uint64]time.Time{}, threat: map[uint64][]threatRef{}}
+	ci := &combatInfo{casts: map[uint64]unitCast{}, evaded: map[uint64]time.Time{}, threat: map[uint64][]threatRef{}, victim: map[uint64]uint64{}}
 	b.cinfo = ci
 	w, e := b.world, b.lua
 	me := w.CharGUID()
+	w.AddPacketHook(func(op uint16, data []byte) { ci.onPacket(op, data) })
 	w.AddPacketHook(func(op uint16, data []byte) {
 		switch op {
 		case smsgSpellStart: // caster item, caster, cast count, spell, flags, cast time
@@ -188,48 +207,6 @@ func (b *Bot) setupCombatInfo() {
 			if ours {
 				b.emit("unit_cast_start", types.UnitCast{Unit: b.ref(caster), Spell: spell, Name: spellName(spell), CastMS: castMS, Target: b.ref(target)})
 			}
-		case smsgSpellGo, smsgSpellFailure, smsgSpellFailedOther:
-			r := newReader(data)
-			if op == smsgSpellGo {
-				readPackedGUID(r.Reader)
-			}
-			caster := readPackedGUID(r.Reader)
-			ci.mu.Lock()
-			delete(ci.casts, caster)
-			ci.mu.Unlock()
-		case smsgHighestThreat, smsgThreatUpdate: // ThreatManager::SendThreatListToClients: unit, [new top], count, (victim, threat*100)...
-			r := newReader(data)
-			unit := readPackedGUID(r.Reader)
-			if op == smsgHighestThreat {
-				readPackedGUID(r.Reader)
-			}
-			list := []threatRef{}
-			for n := r.u32(); n > 0 && r.Len() > 0; n-- {
-				v := readPackedGUID(r.Reader)
-				list = append(list, threatRef{v, float64(r.u32()) / 100})
-			}
-			sort.SliceStable(list, func(i, j int) bool { return list[i].threat > list[j].threat })
-			ci.mu.Lock()
-			ci.threat[unit] = list
-			ci.mu.Unlock()
-		case smsgThreatRemove: // unit, victim
-			r := newReader(data)
-			unit, v := readPackedGUID(r.Reader), readPackedGUID(r.Reader)
-			ci.mu.Lock()
-			ci.threat[unit] = slices.DeleteFunc(ci.threat[unit], func(t threatRef) bool { return t.guid == v })
-			ci.mu.Unlock()
-		case smsgThreatClear: // unit
-			unit := readPackedGUID(newReader(data).Reader)
-			ci.mu.Lock()
-			delete(ci.threat, unit)
-			ci.mu.Unlock()
-		case smsgUpdateComboPoints: // target, points
-			r := newReader(data)
-			t := readPackedGUID(r.Reader)
-			n, _ := r.ReadByte()
-			ci.mu.Lock()
-			ci.combo = types.ComboPoints{Target: types.GUID(t), Points: n}
-			ci.mu.Unlock()
 		}
 	})
 
@@ -252,14 +229,17 @@ func (b *Bot) setupCombatInfo() {
 		})
 	e.Func("units.threats", "() → Creature[]", "hostile creatures attacking you, your pet or anyone in your group, nearest first: what a tank has to pick up and a healer has to watch",
 		func() []types.Creature { cs := b.threats(); b.annotateNearby(cs); return cs })
-	e.Func("combat.threat", "(guid) → Threat[]", "a creature's threat table as the server sends it to everyone near: who it would attack, highest first, with each one's share of the top (pct = 100 is the one it attacks). Empty when it isn't fighting or out of sight",
+	e.Func("combat.threat", "(guid) → Threat[]", "a creature's threat table as the server sends it to everyone near: who it would attack, highest first, with each one's threat as a % of the one it attacks (pct = 100; to pull it off them another needs over 110% in melee range, 130% beyond). Empty when it isn't fighting or out of sight",
 		func(g uint64) []types.Threat {
 			ci.mu.Lock()
 			l := ci.threat[g]
 			ci.mu.Unlock()
 			out := []types.Threat{}
 			for _, t := range l {
-				out = append(out, types.Threat{Unit: b.ref(t.guid), Threat: math.Round(t.threat), Pct: math.Round(t.threat / max(l[0].threat, 1) * 100)})
+				ci.mu.Lock()
+				pct := ci.threatPct(g, t.threat)
+				ci.mu.Unlock()
+				out = append(out, types.Threat{Unit: b.ref(t.guid), Threat: math.Round(t.threat), Pct: pct})
 			}
 			return out
 		})
@@ -332,6 +312,48 @@ func (b *Bot) setupCombatInfo() {
 				return nil
 			})
 		})
+}
+
+// onPacket: the state other units' packets keep (casts ended or pushed back, threat lists, combo points).
+func (ci *combatInfo) onPacket(op uint16, data []byte) {
+	r := newReader(data)
+	ci.mu.Lock()
+	defer ci.mu.Unlock()
+	switch op {
+	case smsgSpellGo:
+		delete(ci.casts, parseSpellGo(data).caster)
+	case smsgSpellFailure, smsgSpellFailedOther: // caster, cast count, spell, reason
+		delete(ci.casts, readPackedGUID(r.Reader))
+	case smsgSpellDelayed: // caster, delay ms (Spell::Delayed: pushback)
+		caster := readPackedGUID(r.Reader)
+		if c, ok := ci.casts[caster]; ok {
+			c.until = c.until.Add(time.Duration(r.u32()) * time.Millisecond)
+			ci.casts[caster] = c
+		}
+	case smsgHighestThreat, smsgThreatUpdate: // ThreatManager::SendThreatListToClients: unit, [new victim], count, (unit, threat*100)...
+		unit := readPackedGUID(r.Reader)
+		if op == smsgHighestThreat {
+			ci.victim[unit] = readPackedGUID(r.Reader)
+		}
+		list := []threatRef{}
+		for n := r.u32(); n > 0 && r.Len() > 0; n-- {
+			v := readPackedGUID(r.Reader)
+			list = append(list, threatRef{v, float64(r.u32()) / 100})
+		}
+		sort.SliceStable(list, func(i, j int) bool { return list[i].threat > list[j].threat })
+		ci.threat[unit] = list
+	case smsgThreatRemove: // unit, victim
+		unit, v := readPackedGUID(r.Reader), readPackedGUID(r.Reader)
+		ci.threat[unit] = slices.DeleteFunc(ci.threat[unit], func(t threatRef) bool { return t.guid == v })
+	case smsgThreatClear: // unit
+		unit := readPackedGUID(r.Reader)
+		delete(ci.threat, unit)
+		delete(ci.victim, unit)
+	case smsgUpdateComboPoints: // target, points
+		t := readPackedGUID(r.Reader)
+		n, _ := r.ReadByte()
+		ci.combo = types.ComboPoints{Target: types.GUID(t), Points: n}
+	}
 }
 
 type pktReader struct{ *bytes.Reader }

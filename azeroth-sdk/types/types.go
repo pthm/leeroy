@@ -89,6 +89,7 @@ type Creature struct {
 	Rank          string   `json:"rank,omitempty" doc:"normal, elite, rare, rare_elite or boss"`
 	Type          string   `json:"type,omitempty" doc:"beast, humanoid, undead, demon, elemental, giant, dragonkin, mechanical, critter, totem, ... (spells like Polymorph only work on some types). Known a moment after first sight"`
 	Subname       string   `json:"subname,omitempty" doc:"the title under an NPC's name, e.g. Weapon Merchant"`
+	KillCredit    []uint32 `json:"kill_credit,omitempty" doc:"other creature entries killing this one counts as, for kill objectives (an objective's entry may be one of these)"`
 	Skinnable     bool     `json:"skinnable,omitempty" doc:"a corpse that can be skinned"`
 	Evading       bool     `json:"evading,omitempty" doc:"it's evading (resetting, unreachable): your attacks do nothing; leave it"`
 	Roles         []string `json:"roles,omitempty" doc:"what it offers: vendor, repair, trainer, quest_giver, flight_master, innkeeper, banker, spirit_healer, gossip"`
@@ -426,11 +427,12 @@ type TradeSide struct {
 }
 
 type Trade struct {
-	State        string    `json:"state" doc:"none, waiting (you asked), requested (they asked: trade.open), open, complete, cancelled, rejected, busy, too_far, no_target, closed"`
+	State        string    `json:"state" doc:"none, waiting (you asked), requested (they asked: trade.open), open, complete, or why it ended: cancelled, rejected, busy, too_far, no_target, wrong_faction, ignored, dead, target_dead, stunned, closed, ..."`
 	With         string    `json:"with,omitempty"`
 	Mine         TradeSide `json:"mine"`
 	Theirs       TradeSide `json:"theirs"`
 	TheyAccepted bool      `json:"they_accepted"`
+	Error        string    `json:"error,omitempty" doc:"why it ended, or why the last step (an accept, an item) was refused"`
 }
 
 type Inspect struct {
@@ -588,6 +590,7 @@ type Status struct {
 	Untrained      int           `json:"untrained_spells" doc:"class spells at your level you haven't learned: visit your trainer (trainer.list; me.spellbook() names them)"`
 	Talents        uint32        `json:"unspent_talents" doc:"talent points to spend (talents.list, talents.learn)"`
 	FreeSlots      int           `json:"free_slots"`
+	LootRolls      []LootRoll    `json:"loot_rolls,omitempty" doc:"group loot waiting for your roll: items.roll(roll, choice)"`
 	BagUpgrades    []Upgrade     `json:"bag_upgrades" doc:"items you carry that beat what you wear: items.equip(item.guid) (items.compare for the stats)"`
 	LastMinute     *Meter        `json:"last_minute,omitempty" doc:"your fighting over the last minute"`
 	Tasks          []TaskInfo    `json:"tasks"`
@@ -677,6 +680,14 @@ type Teleport struct {
 	From Position `json:"from"`
 	To   Position `json:"to"`
 	Far  bool     `json:"far" doc:"to another map (a loading screen)"`
+}
+
+type Reputation struct {
+	Faction  uint32 `json:"faction"`
+	Name     string `json:"name"`
+	Standing int32  `json:"standing" doc:"-42000 to 42999: hated below -6000, hostile, unfriendly below 0, neutral, friendly from 3000, honored 9000, revered 21000, exalted 42000"`
+	Rank     string `json:"rank"`
+	AtWar    bool   `json:"at_war,omitempty"`
 }
 
 type MovementChanged struct {

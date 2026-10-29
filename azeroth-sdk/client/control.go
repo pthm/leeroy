@@ -170,6 +170,9 @@ func readSplinePath(r *bytes.Reader, flags, count uint32, start [3]float32) [][3
 const (
 	splineParabolic      = 0x00000800
 	splineFlying         = 0x00002000
+	splineFinalPoint     = 0x00008000
+	splineFinalTarget    = 0x00010000
+	splineFinalAngle     = 0x00020000
 	splineCatmullrom     = 0x00040000
 	splineAnimation      = 0x00200000
 	splineMaskCatmullRom = splineFlying | splineCatmullrom
@@ -227,6 +230,9 @@ func (t *auraTable) set(unit uint64, a AuraInfo, hooks []func(uint64, *AuraInfo,
 	var cur *AuraInfo
 	if a.Spell == 0 {
 		delete(slots, a.Slot)
+		if len(slots) == 0 {
+			delete(t.m, unit)
+		}
 	} else {
 		slots[a.Slot] = a
 		cur = &a
@@ -248,6 +254,9 @@ func (t *auraTable) replace(unit uint64, all []AuraInfo, hooks []func(uint64, *A
 		slots[a.Slot] = a
 	}
 	t.m[unit] = slots
+	if len(slots) == 0 {
+		delete(t.m, unit)
+	}
 	t.mu.Unlock()
 	for _, h := range hooks {
 		for slot, p := range old {
@@ -290,17 +299,10 @@ func (w *WorldClient) auraHooks() []func(uint64, *AuraInfo, *AuraInfo) {
 	return append([]func(uint64, *AuraInfo, *AuraInfo){}, w.auraHookList...)
 }
 
-// Jump: MSG_MOVE_JUMP, then MSG_MOVE_FALL_LAND as the real client sends on landing (~0.6 s later).
+// Jump: MSG_MOVE_JUMP, then MSG_MOVE_FALL_LAND when we land, as the real client does.
 func (w *WorldClient) Jump() error {
 	if w.serverDriven() {
 		return ErrServerDriven
 	}
-	if err := w.SendJump(); err != nil {
-		return err
-	}
-	go func() {
-		time.Sleep(600 * time.Millisecond)
-		w.sendMovement(MsgMoveFallLand, 0)
-	}()
-	return nil
+	return w.SendJump()
 }

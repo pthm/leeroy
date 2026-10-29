@@ -32,6 +32,7 @@ const (
 	cmsgDestroyItem       = 0x111
 	cmsgListInventory     = 0x19E
 	smsgListInventory     = 0x19F
+	smsgBuyItem           = 0x1A4
 	cmsgSellItem          = 0x1A0
 	cmsgBuyItem           = 0x1A2
 	cmsgCastSpellOp       = 0x12E
@@ -60,6 +61,7 @@ type itemProto struct {
 	Stats      map[string]int32 `json:"stats,omitempty"` // e.g. {strength = 3, stamina = 2}
 	Slot       string           `json:"slot,omitempty"`  // where it's worn ("" = not equippable)
 	allowClass int32            // class bitmask, -1 = any
+	useCD      cdRule           // UseSpell's cooldown
 }
 
 var statNames = map[uint32]string{0: "mana", 1: "health", 3: "agility", 4: "strength", 5: "intellect", 6: "spirit", 7: "stamina",
@@ -185,17 +187,164 @@ func parseItemQuery(data []byte) {
 	r.Seek(8, io.SeekCurrent) // ammo type, ranged range
 	for i := 0; i < 5; i++ {
 		id, trigger := u32(), u32()
-		r.Seek(16, io.SeekCurrent)                      // charges, cooldowns
+		u32() // charges
+		c := cdRule{rec: int32(u32()), cat: u32(), catrec: int32(u32())}
 		if trigger == 0 && id != 0 && p.UseSpell == 0 { // ITEM_SPELLTRIGGER_ON_USE
 			p.UseSpell = id
+			c.onEvent = p.Class == 0 && p.SubClass == 1 // ItemTemplate::IsPotion: its cooldown starts out of combat
+			p.useCD = c
 		}
 	}
 	u32() // bonding
 	readCString(r)
-	r.Seek(16, io.SeekCurrent) // page text, language, page material
+	r.Seek(12, io.SeekCurrent) // page text, language, page material
 	p.StartQuest = u32()
 	p.Slot = invSlots[p.InvType].name
 	items.proto[entry] = p
+}
+
+// LootError (LootMgr.h)
+var lootErrors = map[int][2]string{0: {"not_yours", "you don't have permission to loot it (someone else's kill, or nothing for you)"},
+	4: {"out_of_range", "too far away: get within 5 yd"}, 5: {"bad_facing", "face it to loot it"},
+	6: {"being_looted", "someone else is looting it"}, 8: {"not_standing", "stand up to loot"}, 9: {"stunned", "you're stunned"},
+	10: {"player_not_found", "player not found"}, 11: {"play_time_exceeded", "maximum play time exceeded"},
+	12: {"master_inventory_full", "that player's bags are full"}, 13: {"master_unique_item", "that player has too many of that item"},
+	14: {"master_other", "can't assign the item to that player"}, 15: {"already_pickpocketed", "its pockets were already picked"},
+	16: {"not_while_shapeshifted", "you can't loot while shapeshifted"}}
+
+// handleLootResponse takes what the loot window lets you take, then the money, and releases (non-blocking for the
+// read loop). Locked, master-looter and rolled-for slots stay: a roll arrives as SMSG_LOOT_START_ROLL (items.roll).
+func (b *Bot) handleLootResponse(data []byte) {
+	lr, err := client.ParseLootResponse(data)
+	if err != nil {
+		return
+	}
+	if lr.Error >= 0 {
+		e, ok := lootErrors[lr.Error]
+		if !ok {
+			e = [2]string{fmt.Sprintf("loot_%d", lr.Error), "can't loot that"}
+		}
+		b.emit("error", types.ErrorEvent{Op: "items.loot", Code: e[0], Message: e[1]})
+		return
+	}
+	for _, it := range lr.Items {
+		if it.SlotType == 0 || it.SlotType == 4 { // LootSlotType: allow, owner (not roll ongoing, master looter's, locked)
+			b.world.LootItem(it.Index)
+		}
+	}
+	b.world.LootMoney()
+	b.world.LootRelease(lr.GUID)
+}
+
+// rollChoices: RollType (LootMgr.h); a roll's vote mask has bit 1<<type for each choice allowed.
+var rollChoices = []string{"pass", "need", "greed", "disenchant"}
+
+func rollChoice(t uint8) string {
+	if int(t) < len(rollChoices) {
+		return rollChoices[t]
+	}
+	return fmt.Sprintf("roll_%d", t)
+}
+
+// lootRolls: group loot rolls by roll guid (SMSG_LOOT_START_ROLL's item guid), until won, all passed or expired.
+type lootRolls struct {
+	sync.Mutex
+	m map[uint64]*pendingRoll
+}
+
+type pendingRoll struct {
+	client.LootStartRoll
+	until time.Time
+	sent  bool // items.roll sent a choice
+	voted bool // the server counted yours
+}
+
+func (s *lootRolls) start(r client.LootStartRoll) pendingRoll {
+	p := pendingRoll{LootStartRoll: r, until: time.Now().Add(time.Duration(r.CountdownMS) * time.Millisecond)}
+	s.Lock()
+	defer s.Unlock()
+	for g, q := range s.m {
+		if time.Since(q.until) > 10*time.Second {
+			delete(s.m, g)
+		}
+	}
+	s.m[r.ItemGUID] = &p
+	return p
+}
+
+// vote: SMSG_LOOT_ROLL's roll, choice and number (0 until the roll is counted). Group::CountRollVote sends each
+// choice with an empty guid, need as number 0 type 0 and the others as number 128; CountTheRoll the numbers.
+func (s *lootRolls) vote(r client.LootRollEvent, me uint64) (uint64, string, uint8) {
+	s.Lock()
+	defer s.Unlock()
+	g := r.ItemGUID
+	if g == 0 { // ponytail: two corpses' rolls for one item in one slot can't be told apart; yours goes to the one you rolled on
+		for k, q := range s.m {
+			if q.ItemSlot == r.ItemSlot && q.ItemID == r.ItemID && q.RandomSuffix == r.RandomSuffix && q.RandomPropID == r.RandomPropID &&
+				(g == 0 || r.TargetGUID == me && q.sent && !q.voted) {
+				g = k
+			}
+		}
+	}
+	if q := s.m[g]; q != nil && r.TargetGUID == me {
+		q.voted = true
+	}
+	switch r.RollNumber {
+	case 0:
+		return g, "need", 0
+	case 128:
+		return g, rollChoice(r.RollType), 0
+	}
+	return g, rollChoice(r.RollType), r.RollNumber
+}
+
+func (s *lootRolls) sent(g uint64) {
+	s.Lock()
+	if p := s.m[g]; p != nil {
+		p.sent = true
+	}
+	s.Unlock()
+}
+
+func (s *lootRolls) end(g uint64) {
+	s.Lock()
+	delete(s.m, g)
+	s.Unlock()
+}
+
+func (s *lootRolls) get(g uint64) (pendingRoll, bool) {
+	s.Lock()
+	defer s.Unlock()
+	if p := s.m[g]; p != nil {
+		return *p, true
+	}
+	return pendingRoll{}, false
+}
+
+// open: the rolls you haven't chosen on yet, still counting down.
+func (s *lootRolls) open() []pendingRoll {
+	s.Lock()
+	defer s.Unlock()
+	var out []pendingRoll
+	for _, p := range s.m {
+		if !p.voted && time.Now().Before(p.until) {
+			out = append(out, *p)
+		}
+	}
+	return out
+}
+
+func (p pendingRoll) view(w *client.WorldClient) types.LootRoll {
+	it := itemTemplate(w, p.ItemID)
+	it.Count = p.ItemCount
+	lr := types.LootRoll{Roll: types.GUID(p.ItemGUID), Item: it, Choices: []string{},
+		SecondsLeft: math.Round(time.Until(p.until).Seconds()*10) / 10}
+	for i, c := range rollChoices {
+		if p.RollVoteMask&(1<<i) != 0 {
+			lr.Choices = append(lr.Choices, c)
+		}
+	}
+	return lr
 }
 
 type vendorItem struct {
@@ -229,6 +378,18 @@ func (s *itemState) onPacket(op uint16, data []byte) {
 		}
 		s.mu.Lock()
 		s.vendors[guid] = list
+		s.mu.Unlock()
+	case smsgBuyItem: // vendor, slot (from 1), stock left (-1 unlimited), count (Player::BuyItemFromVendorSlot)
+		if len(data) < 16 {
+			return
+		}
+		guid, slot := binary.LittleEndian.Uint64(data), binary.LittleEndian.Uint32(data[8:])
+		s.mu.Lock()
+		for i, v := range s.vendors[guid] {
+			if v.Slot == slot {
+				s.vendors[guid][i].Stock = int32(binary.LittleEndian.Uint32(data[12:]))
+			}
+		}
 		s.mu.Unlock()
 	}
 }
@@ -352,7 +513,7 @@ func (b *Bot) setupItems() {
 			if freeSlots(w) == 0 {
 				return b.refuse("items.unequip", args, "bags_full", "no room in your bags")
 			}
-			w.SendPacketRaw(cmsgAutoStoreBagItem, []byte{255, idx, 255}) // from the equipment slot to any bag
+			w.SendPacketRaw(cmsgAutoStoreBagItem, []byte{255, idx, 0}) // dst NULL_BAG: any bag with room (255 is the backpack only)
 			return b.request("items.unequip", args, 3*time.Second, func() *script.Outcome {
 				for _, x := range bagItems(w) {
 					if x.GUID == g && !x.Equipped {
@@ -368,11 +529,20 @@ func (b *Bot) setupItems() {
 		if it == nil {
 			return b.refuse("items.destroy", args, "item_not_found", "no such item in your bags")
 		}
-		if count == 0 {
-			count = it.Count
+		if count == 0 || count >= it.Count {
+			count = 0 // the whole stack
 		}
-		w.SendPacketRaw(cmsgDestroyItem, []byte{it.Bag, it.BagSlot, byte(min(count, 255)), 0, 0, 0})
-		return b.done("items.destroy", args, nil)
+		count = min(count, 255)
+		g, left := it.GUID, it.Count-count
+		w.SendPacketRaw(cmsgDestroyItem, []byte{it.Bag, it.BagSlot, byte(count), 0, 0, 0})
+		return b.request("items.destroy", args, 3*time.Second, func() *script.Outcome {
+			for _, x := range bagItems(w) {
+				if x.GUID == g && (count == 0 || x.Count > left) {
+					return nil
+				}
+			}
+			return script.Ok(nil)
+		}, func(ev script.Event) *script.Outcome { return failOn(ev, "items") })
 	})
 	e.Func("items.loot", "(guid) → request<Looted>", "loot a corpse within 5 yd: takes every item and the money (waits a moment for a fresh corpse to become lootable)",
 		func(guid uint64) map[string]any {
@@ -424,7 +594,7 @@ func (b *Bot) setupItems() {
 				case types.Money:
 					got.Money += d.Amount
 				case types.ErrorEvent:
-					if d.Op != "items" {
+					if (d.Op != "items" && d.Op != "items.loot") || d.Code == "already_looted" { // already_looted: a slot someone else (or a roll) took meanwhile
 						return nil
 					}
 					return script.Fail(d.Code, d.Message, got)
@@ -432,6 +602,56 @@ func (b *Bot) setupItems() {
 					return nil
 				}
 				last = time.Now()
+				return nil
+			})
+		})
+
+	// ---------- group loot rolls ----------
+	rolls := &lootRolls{m: map[uint64]*pendingRoll{}}
+	w.AddLootStartRollHook(func(r client.LootStartRoll) { b.emit("loot_roll_start", rolls.start(r).view(w)) })
+	w.AddLootRollHook(func(r client.LootRollEvent) {
+		g, choice, n := rolls.vote(r, w.CharGUID())
+		b.emit("loot_roll", types.LootRollResult{Roll: types.GUID(g), Item: itemTemplate(w, r.ItemID), Player: b.ref(r.TargetGUID),
+			Choice: choice, Number: n, Auto: r.AutoPass != 0})
+	})
+	w.AddLootRollWonHook(func(r client.LootRollWon) {
+		rolls.end(r.ItemGUID)
+		b.emit("loot_roll_won", types.LootRollResult{Roll: types.GUID(r.ItemGUID), Item: itemTemplate(w, r.ItemID),
+			Player: b.ref(r.WinnerGUID), Choice: rollChoice(r.RollType), Number: r.RollNumber})
+	})
+	w.AddLootAllPassedHook(func(r client.LootAllPassed) {
+		rolls.end(r.ItemGUID)
+		b.emit("loot_roll_all_passed", types.LootRollResult{Roll: types.GUID(r.ItemGUID), Item: itemTemplate(w, r.ItemID), Choice: "pass"})
+	})
+	e.Func("items.rolls", "() → LootRoll[]", "group loot waiting for your roll (also in me.status().loot_rolls)", func() []types.LootRoll {
+		out := []types.LootRoll{}
+		for _, p := range rolls.open() {
+			out = append(out, p.view(w))
+		}
+		sortBy(out, func(r types.LootRoll) float64 { return r.SecondsLeft })
+		return out
+	})
+	e.Func("items.roll", "(roll, choice) → request<LootRollResult>", "roll on group loot (loot_roll_start event, items.rolls): need, greed, disenchant or pass. No choice before the countdown ends is a pass",
+		func(roll uint64, choice string) map[string]any {
+			args := map[string]any{"roll": gs(roll), "choice": choice}
+			n := slices.Index(rollChoices, choice)
+			p, ok := rolls.get(roll)
+			switch {
+			case n < 0:
+				return b.refuse("items.roll", args, "bad_choice", "choice: need, greed, disenchant or pass")
+			case !ok || time.Now().After(p.until):
+				return b.refuse("items.roll", args, "no_such_roll", "no open roll with that id: items.rolls() lists them")
+			case n != 0 && p.RollVoteMask&(1<<n) == 0:
+				return b.refuse("items.roll", args, "not_allowed", "you may choose: "+strings.Join(p.view(w).Choices, ", "))
+			}
+			rolls.sent(roll)
+			if err := w.LootRoll(roll, p.ItemSlot, uint8(n)); err != nil {
+				return b.refuse("items.roll", args, "failed", err.Error())
+			}
+			return b.request("items.roll", args, 3*time.Second, nil, func(ev script.Event) *script.Outcome {
+				if d, ok := ev.Data.(types.LootRollResult); ok && ev.Type == "loot_roll" && d.Player.Me && uint64(d.Roll) == roll {
+					return script.Ok(d)
+				}
 				return nil
 			})
 		})
@@ -466,8 +686,10 @@ func (b *Bot) setupItems() {
 		s.mu.Lock()
 		list, ok := s.vendors[vendor]
 		s.mu.Unlock()
+		if !ok || slices.ContainsFunc(list, func(v vendorItem) bool { return v.Stock >= 0 }) {
+			w.SendPacketRaw(cmsgListInventory, binary.LittleEndian.AppendUint64(nil, vendor)) // limited stock is only recounted on a list request
+		}
 		if !ok {
-			w.SendPacketRaw(cmsgListInventory, binary.LittleEndian.AppendUint64(nil, vendor))
 			return nil
 		}
 		out := []types.VendorItem{}
@@ -491,6 +713,10 @@ func (b *Bot) setupItems() {
 			}
 			for _, v := range list {
 				if v.Entry == entry {
+					if v.Stock == 0 {
+						w.SendPacketRaw(cmsgListInventory, binary.LittleEndian.AppendUint64(nil, vendor))
+						return b.refuse("vendor.buy", args, "sold_out", "sold out: limited stock comes back over time; this asked for a fresh count, buy again in a moment to retry")
+					}
 					body := binary.LittleEndian.AppendUint64(nil, vendor)
 					body = binary.LittleEndian.AppendUint32(body, entry)
 					body = binary.LittleEndian.AppendUint32(body, v.Slot)
@@ -514,10 +740,10 @@ func (b *Bot) setupItems() {
 		body = binary.LittleEndian.AppendUint64(body, uint64(it.GUID))
 		w.SendPacketRaw(cmsgSellItem, binary.LittleEndian.AppendUint32(body, count))
 	}
-	moneyUp := func(before uint32, count int) func() *script.Outcome {
+	moneyUp := func(before uint32) func() *script.Outcome {
 		return func() *script.Outcome {
 			if w.Money() > before {
-				return script.Ok(types.Sold{Money: w.Money() - before, Count: count})
+				return script.Ok(types.Sold{Money: w.Money() - before})
 			}
 			return nil
 		}
@@ -539,24 +765,52 @@ func (b *Bot) setupItems() {
 		}
 		before := w.Money()
 		sell(vendor, *it, count)
-		return b.request("vendor.sell", args, 3*time.Second, moneyUp(before, 0), func(ev script.Event) *script.Outcome { return failOn(ev, "vendor.sell") })
+		return b.request("vendor.sell", args, 3*time.Second, moneyUp(before), func(ev script.Event) *script.Outcome { return failOn(ev, "vendor.sell") })
 	})
 	e.Func("vendor.sell_junk", "(npc) → request<Sold>", "sell every grey (poor) item you carry. Items whose info hasn't loaded are skipped", func(vendor uint64) map[string]any {
 		args := map[string]any{"npc": gs(vendor)}
 		if r := b.noNPC("vendor.sell_junk", args, vendor); r != nil {
 			return r
 		}
-		n, before := 0, w.Money()
+		before, sold := w.Money(), map[types.GUID]bool{}
 		for _, it := range bagItems(w) {
 			if inBags(it) && it.Quality == "poor" && it.SellPrice > 0 {
 				sell(vendor, it, it.Count)
-				n++
+				sold[it.GUID] = true
 			}
 		}
-		if n == 0 {
+		if len(sold) == 0 {
 			return b.done("vendor.sell_junk", args, types.Sold{})
 		}
-		return b.request("vendor.sell_junk", args, 3*time.Second, moneyUp(before, n), func(ev script.Event) *script.Outcome { return failOn(ev, "vendor.sell") })
+		var mu sync.Mutex
+		var failed []script.Outcome
+		// every stack answered: gone from the bags, or refused (SMSG_SELL_ITEM error)
+		return b.request("vendor.sell_junk", args, 3*time.Second, func() *script.Outcome {
+			gone := len(sold)
+			for _, x := range bagItems(w) {
+				if sold[x.GUID] {
+					gone--
+				}
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			switch {
+			case gone+len(failed) < len(sold):
+				return nil
+			case gone == 0:
+				return &failed[len(failed)-1]
+			case w.Money() <= before: // the money update can trail the item's removal
+				return nil
+			}
+			return script.Ok(types.Sold{Money: w.Money() - before, Count: gone, Failed: len(failed)})
+		}, func(ev script.Event) *script.Outcome {
+			if o := failOn(ev, "vendor.sell"); o != nil {
+				mu.Lock()
+				failed = append(failed, *o)
+				mu.Unlock()
+			}
+			return nil
+		})
 	})
 	e.Func("vendor.repair", "(npc) → request<Repaired>", "repair everything you wear and carry at an NPC that repairs (role repair: armorers, weaponsmiths) within ~5 yd",
 		func(npc uint64) map[string]any {

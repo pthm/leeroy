@@ -73,10 +73,19 @@ func TestWorldObjectBasics(t *testing.T) {
 }
 
 func TestWorldObjectIsAlive(t *testing.T) {
-	// Dead via flag
-	dead := &WorldObject{Values: map[uint16]uint32{UnitFieldFlags: UnitFlagDead}}
-	if dead.IsAlive() {
-		t.Error("dead flag should make IsAlive false")
+	for _, c := range []struct {
+		name  string
+		v     map[uint16]uint32
+		alive bool
+	}{
+		{"unknown", map[uint16]uint32{}, true},
+		{"corpse create omits health", map[uint16]uint32{UnitFieldMaxHealth: 100}, false},
+		{"lootable", map[uint16]uint32{UnitFieldHealth: 5, UnitDynamicFlags: UnitDynflagLootable}, false},
+		{"feign death", map[uint16]uint32{UnitFieldHealth: 80, UnitFieldMaxHealth: 100, UnitFieldFlags: 0x20000000, UnitDynamicFlags: UnitDynflagDead}, true},
+	} {
+		if got := (&WorldObject{Values: c.v}).IsAlive(); got != c.alive {
+			t.Errorf("%s: IsAlive=%v want %v", c.name, got, c.alive)
+		}
 	}
 
 	// Zero health + maxhealth known -> dead

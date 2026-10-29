@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/pthm/leeroy/azeroth-sdk/metrics"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -28,6 +29,7 @@ const (
 	smsgQuestComplete      = 0x191
 	smsgQuestFailed        = 0x192
 	smsgQuestLogFull       = 0x195
+	smsgQuestFailedTimer   = 0x197
 	smsgQuestUpdateDone    = 0x198
 	smsgQuestUpdateAddKill = 0x199
 	smsgLogXPGain          = 0x1D0
@@ -56,8 +58,34 @@ var creatures = struct {
 
 // creatureInfo: the rest of SMSG_CREATURE_QUERY_RESPONSE
 type creatureInfo struct {
-	subname   string
-	typ, rank uint32
+	subname    string
+	typ, rank  uint32
+	killCredit []uint32
+}
+
+// readCreatureQuery: SMSG_CREATURE_QUERY_RESPONSE as WorldSession::HandleCreatureQueryOpcode writes it:
+// entry (high bit: unknown), names x4, subname, icon, type flags, type, family, rank, kill credit x2, ...
+func readCreatureQuery(r *bytes.Reader) (entry uint32, n string, ci creatureInfo, ok bool) {
+	u32 := func() (v uint32) { binary.Read(r, binary.LittleEndian, &v); return }
+	if entry = u32(); entry&0x80000000 != 0 {
+		return entry, "", ci, false
+	}
+	n = readCString(r)
+	readCString(r)
+	readCString(r)
+	readCString(r)
+	ci.subname = readCString(r)
+	readCString(r)
+	u32()
+	ci.typ = u32()
+	u32()
+	ci.rank = u32()
+	for range 2 {
+		if k := u32(); k != 0 {
+			ci.killCredit = append(ci.killCredit, k)
+		}
+	}
+	return entry, n, ci, true
 }
 
 // objName: an object's name, asking the server for creature names it hasn't told us yet ("" until it answers)
@@ -119,7 +147,7 @@ func (b *Bot) sent(op string, args map[string]any, err error) map[string]any {
 // timeoutHints: the usual reason the server stayed silent
 var timeoutHints = map[string]string{
 	"quests.accept":    "the quest giver didn't offer it: level, prerequisites, already done, or a different NPC",
-	"quests.turn_in":   "the server ignores a turn-in when the quest isn't complete (quests.log) or you aren't next to the NPC that takes it",
+	"quests.turn_in":   "the server ignores a turn-in when the quest isn't in your log or you aren't next to the NPC that takes it",
 	"combat.attack":    "no swing started: out of range or not facing it (move.face)",
 	"trainer.learn":    "stand within ~5 yd of the trainer",
 	"trainer.list":     "stand within ~5 yd of the trainer, alive (it won't talk to ghosts), with a trainer for your class",
@@ -130,6 +158,9 @@ var timeoutHints = map[string]string{
 	"spells.cast":      "the cast never started: check range, facing and spells.usable",
 	"talents.learn":    "check talents.list(): free points, tier (5 points per row) and prerequisites",
 	"group.invite":     "no answer from the server",
+	"chat.whisper":     "no echo from the server: a notice may say why (level requirement, silenced)",
+	"chat.channel":     "no echo from the server: a notice may say why (level requirement)",
+	"chat.join":        "zone channels (id > 0) only join in their zone, and say nothing when you're already in them",
 	"death.reclaim":    "too far from your corpse (within ~30 yd)",
 	"death.spirit_res": "stand within ~5 yd of the spirit healer",
 }
@@ -153,10 +184,16 @@ func slug(s string) string {
 	}, s)
 }
 
+// ChatMsg (SharedDefines.h). The leaders' party, raid and battleground chat is that chat.
 var chatKinds = map[uint8]string{0: "system", 1: "say", 2: "party", 3: "raid", 4: "guild", 5: "officer", 6: "yell",
-	7: "whisper", 8: "whisper_sent", 9: "whisper_sent", 0xA: "emote", 0xB: "emote", 0xC: "npc_say", 0xD: "npc_party",
-	0xE: "npc_yell", 0xF: "npc_whisper", 0x10: "npc_emote", 0x11: "channel", 0x29: "npc_emote", 0x2A: "npc_whisper",
-	0x2F: "npc_say"}
+	7: "whisper", 8: "whisper", 9: "whisper_sent", 0xA: "emote", 0xB: "emote", 0xC: "npc_say", 0xD: "npc_party",
+	0xE: "npc_yell", 0xF: "npc_whisper", 0x10: "npc_emote", 0x11: "channel", 0x12: "channel_join", 0x13: "channel_leave",
+	0x14: "channel_list", 0x15: "channel_notice", 0x16: "channel_notice", 0x17: "afk", 0x18: "dnd", 0x19: "ignored",
+	0x1A: "skill", 0x1B: "loot", 0x1C: "money", 0x1D: "opening", 0x1E: "tradeskill", 0x1F: "pet_info", 0x20: "combat_info",
+	0x21: "xp", 0x22: "honor", 0x23: "reputation", 0x24: "battleground_system", 0x25: "battleground_system",
+	0x26: "battleground_system", 0x27: "raid", 0x28: "raid_warning", 0x29: "npc_emote", 0x2A: "npc_whisper", 0x2B: "filtered",
+	0x2C: "battleground", 0x2D: "battleground", 0x2E: "restricted", 0x2F: "npc_say", 0x30: "achievement",
+	0x31: "guild_achievement", 0x32: "arena_points", 0x33: "party"}
 
 func chatKind(t uint8) string {
 	if k, ok := chatKinds[t]; ok {
@@ -222,18 +259,21 @@ func (b *Bot) watchEvents() {
 		r := bytes.NewReader(data)
 		u32 := func() (v uint32) { binary.Read(r, binary.LittleEndian, &v); return }
 		u64 := func() (v uint64) { binary.Read(r, binary.LittleEndian, &v); return }
-		hit := func(src, dst uint64, amount uint32, spell uint32, kind string, outcome ...string) {
-			if (src != me && dst != me) || (amount == 0 && len(outcome) == 0) {
+		hit := func(src, dst uint64, kind string, d types.Damage) {
+			if (src != me && dst != me) || (d.Amount == 0 && d.Overheal == 0 && d.Outcome == "") {
 				return
 			}
-			if dst == me && kind == "damage" && amount > 0 {
+			if dst == me && kind == "damage" && (d.Amount > 0 || d.Outcome == "instakill") {
 				lastAttacker, lastCause = src, ""
 			}
-			d := types.Damage{Src: b.ref(src), Dst: b.ref(dst), Amount: amount, Spell: spell, SpellName: spellName(spell), Taken: dst == me}
-			if len(outcome) > 0 {
-				d.Outcome = outcome[0]
-			}
+			d.Src, d.Dst, d.SpellName, d.Taken = b.ref(src), b.ref(dst), spellName(d.Spell), dst == me
 			b.emit(kind, d)
+		}
+		energize := func(src, dst uint64, spell, power, amount uint32, periodic bool) {
+			if (src == me || dst == me) && amount > 0 {
+				b.emit("energize", types.Energize{Src: b.ref(src), Dst: b.ref(dst), Spell: spell, SpellName: spellName(spell),
+					Power: name(powerNames, uint8(power)), Amount: amount, Periodic: periodic})
+			}
 		}
 		switch op {
 		case smsgEnvironmentalDmg: // victim (u64), type, amount, resisted, absorbed
@@ -284,24 +324,21 @@ func (b *Bot) watchEvents() {
 				v.State, v.SecondsLeft = "stopped", 0
 			}
 			b.emit("mirror_timer", v)
-		case smsgCreatureQueryResp: // entry (high bit: unknown), name
-			if entry := u32(); entry&0x80000000 == 0 { // names x4, subname, icon, type flags, type, family, rank
-				n := readCString(r)
-				readCString(r)
-				readCString(r)
-				readCString(r)
-				ci := creatureInfo{subname: readCString(r)}
-				readCString(r)
-				u32()
-				ci.typ = u32()
-				u32()
-				ci.rank = u32()
+		case smsgCreatureQueryResp:
+			if entry, n, ci, ok := readCreatureQuery(r); ok {
 				creatures.Lock()
 				creatures.name[entry], creatures.info[entry] = n, ci
 				creatures.Unlock()
 			}
-		case smsgPartyKillLog: // killer, victim: sent to the killer and their party
-			killer, victim := u64(), u64()
+		case smsgPartyKillLog: // the player credited (the tapper: Unit::Kill), victim; sent to them and their party
+			credited, victim := u64(), u64()
+			pet, party := b.GetPetGUID(), w.GroupState().Members // only the credited player's party gets this (Unit::Kill)
+			killer := b.clog.killingBlow(victim, credited, func(g uint64) bool {
+				return g == me || g == pet || slices.ContainsFunc(party, func(m client.GroupMember) bool { return m.GUID == g })
+			})
+			if pet != 0 && killer == pet {
+				killer = me
+			}
 			if killer == me {
 				b.emit("kill", types.Kill{Victim: b.ref(victim)})
 			} else if victim != me {
@@ -334,15 +371,11 @@ func (b *Bot) watchEvents() {
 				}
 			}
 			state, _ := r.ReadByte()
-			outcome := map[uint8]string{0: "miss", 1: "hit", 2: "dodge", 3: "parry", 4: "interrupt", 5: "block", 6: "evade", 7: "immune", 8: "deflect"}[state]
-			if outcome == "hit" && hitInfo&0x200 != 0 {
-				outcome = "crit"
-			}
-			b.attackOutcome(src, dst, dmg, 0, outcome, hit)
+			b.attackOutcome(src, dst, types.Damage{Amount: dmg, Outcome: meleeOutcome(hitInfo, state)}, hit)
 		case smsgSpellDmgLog: // target, caster, spell, damage
 			dst, src := readPackedGUID(r), readPackedGUID(r)
 			spell := u32()
-			hit(src, dst, u32(), spell, "damage")
+			hit(src, dst, "damage", types.Damage{Spell: spell, Amount: u32()})
 		case smsgSpellLogMiss: // spell, caster (u64), unk u8, count, then per target: target (u64), miss reason
 			spell := u32()
 			src := u64()
@@ -350,17 +383,51 @@ func (b *Bot) watchEvents() {
 			for n := u32(); n > 0 && n < 64; n-- {
 				dst := u64()
 				reason, _ := r.ReadByte()
-				outcome := map[uint8]string{1: "miss", 2: "resist", 3: "dodge", 4: "parry", 5: "block", 6: "evade", 7: "immune",
-					8: "immune", 9: "deflect", 10: "absorb", 11: "reflect"}[reason]
-				b.attackOutcome(src, dst, 0, spell, outcome, hit)
+				b.attackOutcome(src, dst, types.Damage{Spell: spell, Outcome: missReasons[reason]}, hit)
 			}
 		case smsgSpellHealLog: // target, caster, spell, heal, overheal
 			dst, src := readPackedGUID(r), readPackedGUID(r)
 			spell, heal, over := u32(), u32(), u32()
-			if (src == me || dst == me) && heal > 0 {
-				b.emit("heal", types.Damage{Src: b.ref(src), Dst: b.ref(dst), Amount: heal - min(heal, over), Overheal: min(heal, over),
-					Spell: spell, SpellName: spellName(spell), Taken: dst == me})
+			hit(src, dst, "heal", types.Damage{Amount: heal - min(heal, over), Overheal: min(heal, over), Spell: spell})
+		case smsgPeriodicAura:
+			dst, src, spell, ticks := parsePeriodic(data)
+			for _, t := range ticks {
+				switch t.kind {
+				case "dot":
+					hit(src, dst, "damage", types.Damage{Amount: t.amount, Spell: spell, Periodic: true})
+				case "hot":
+					hit(src, dst, "heal", types.Damage{Amount: t.amount - min(t.amount, t.over), Overheal: min(t.amount, t.over), Spell: spell, Periodic: true})
+				case "energize":
+					energize(src, dst, spell, t.power, t.amount, true)
+				}
 			}
+		case smsgSpellEnergizeLog: // target, caster, spell, power, amount
+			dst, src := readPackedGUID(r), readPackedGUID(r)
+			spell, power := u32(), u32()
+			energize(src, dst, spell, power, u32(), false)
+		case smsgDamageShield: // owner (u64), attacker (u64), spell, damage, overkill, school: the attacker takes it
+			src, dst := u64(), u64()
+			spell := u32()
+			hit(src, dst, "damage", types.Damage{Spell: spell, Amount: u32()})
+		case smsgInstakillLog: // caster (u64), target (u64), spell
+			src, dst := u64(), u64()
+			hit(src, dst, "damage", types.Damage{Spell: u32(), Outcome: "instakill"})
+		case smsgSpellImmune, smsgProcResist: // caster (u64), target (u64), spell, debug
+			src, dst := u64(), u64()
+			b.attackOutcome(src, dst, types.Damage{Spell: u32(), Outcome: map[uint16]string{smsgSpellImmune: "immune", smsgProcResist: "resist"}[op]}, hit)
+		case smsgDispelLog, smsgStealLog: // target, caster, spell, unused, count, (spell, unused)...
+			dst, src := readPackedGUID(r), readPackedGUID(r)
+			spell := u32()
+			r.ReadByte()
+			if src != me && dst != me {
+				return
+			}
+			d := types.Dispel{Src: b.ref(src), Dst: b.ref(dst), Spell: spell, SpellName: spellName(spell), Removed: []string{}, Stolen: op == smsgStealLog}
+			for n := u32(); n > 0 && r.Len() >= 5; n-- {
+				d.Removed = append(d.Removed, spellName(u32()))
+				r.ReadByte()
+			}
+			b.emit("dispel", d)
 		case smsgLogXPGain: // victim (u64), amount, 0 = kill / 1 = other
 			victim, amount := u64(), u32()
 			typ, _ := r.ReadByte()
@@ -379,15 +446,29 @@ func (b *Bot) watchEvents() {
 		case smsgQuestUpdateDone:
 			q := u32()
 			b.emit("quest_complete", types.QuestDone{Quest: q, Title: questTitle(w, q)})
-		case smsgQuestInvalid, smsgQuestFailed:
-			code := "quest_invalid"
-			if op == smsgQuestFailed {
-				u32()
-				code = "quest_failed"
+		case smsgQuestInvalid: // QuestFailedReason (Player::SendCanTakeQuestResponse)
+			r, ok := questInvalid[u32()]
+			if !ok {
+				r = questInvalid[0]
 			}
-			reason := u32()
-			b.emit("error", types.ErrorEvent{Op: "quests", Code: code,
-				Message: fmt.Sprintf("the quest giver refused (reason %d): level, prerequisites, or already done", reason)})
+			b.emit("error", types.ErrorEvent{Op: "quests", Code: r[0], Message: "the quest giver refused: " + r[1]})
+		case smsgQuestFailed, smsgQuestFailedTimer: // quest (+ an InventoryResult, always 0): Player::FailQuest
+			q := u32()
+			ev := types.QuestDone{Quest: q, Title: questTitle(w, q), Reason: "failed"}
+			if op == smsgQuestFailedTimer {
+				ev.Reason = "timer"
+			}
+			b.emit("quest_failed", ev)
+		case client.SmsgQuestgiverRequestItems:
+			if q, done, turnIn, need := parseQuestRequestItems(data); turnIn && !done { // a hello or quest query shows it too
+				msg := fmt.Sprintf("quest %d isn't complete (quests.log)", q)
+				sep := ": it takes "
+				for _, it := range need {
+					msg += fmt.Sprintf("%s%d x %s", sep, it[1], itemTemplate(w, it[0]).Name)
+					sep = ", "
+				}
+				b.emit("error", types.ErrorEvent{Op: "quests", Code: "incomplete", Message: msg})
+			}
 		case smsgQuestLogFull:
 			b.emit("error", types.ErrorEvent{Op: "quests", Code: "quest_log_full", Message: "your quest log is full (25)"})
 		case smsgLootMoneyNotify:
@@ -426,19 +507,25 @@ func (b *Bot) watchEvents() {
 			if readPackedGUID(r) == me {
 				b.emit("achievement", types.AchievementEarned{ID: u32()})
 			}
-		case smsgSpellStart, smsgSpellGo:
+		case smsgSpellStart:
 			readPackedGUID(r)
 			if readPackedGUID(r) != me {
 				return
 			}
 			r.ReadByte()
 			spell := u32()
-			c := types.Cast{Spell: spell, Name: spellName(spell)}
-			if op == smsgSpellStart {
-				u32()
-				c.CastMS = u32()
-				b.emit("cast_start", c)
-			} else {
+			u32()
+			b.emit("cast_start", types.Cast{Spell: spell, Name: spellName(spell), CastMS: u32()})
+		case smsgSpellGo: // misses here aren't in SMSG_SPELLLOGMISS (that only has the ones found on impact)
+			g := parseSpellGo(data)
+			c := types.Cast{Spell: g.spell, Name: spellName(g.spell), Hits: len(g.hits)}
+			for _, m := range g.misses {
+				b.attackOutcome(g.caster, m.guid, types.Damage{Spell: g.spell, Outcome: missReasons[m.reason]}, hit)
+				if g.caster == me {
+					c.Misses = append(c.Misses, types.SpellMiss{Unit: b.ref(m.guid), Outcome: missReasons[m.reason]})
+				}
+			}
+			if g.caster == me {
 				b.emit("cast_done", c)
 			}
 		case smsgSpellFailure: // caster, cast count, spell, reason
@@ -448,23 +535,30 @@ func (b *Bot) watchEvents() {
 			r.ReadByte()
 			spell := u32()
 			code, _ := r.ReadByte()
-			if code == 0 { // the cast bar ended without the spell: the reason, if any, came as SMSG_CAST_FAILED just before
-				if failedAt[spell].After(time.Now().Add(-time.Second)) {
-					return
-				}
-				b.emit("cast_failed", types.Cast{Spell: spell, Name: spellName(spell), Code: "cancelled", Interrupted: true})
+			if failedAt[spell].After(time.Now().Add(-time.Second)) { // SMSG_CAST_FAILED just said why (Spell::cancel, Spell::cast send both)
+				delete(failedAt, spell)
 				return
 			}
-			b.emit("cast_failed", types.Cast{Spell: spell, Name: spellName(spell), Code: castResultNames[code], Interrupted: true})
+			c := types.Cast{Spell: spell, Name: spellName(spell), Code: castResultNames[code], Interrupted: true}
+			if code == 0 { // the cast bar ended without the spell, and no reason
+				c.Code = "cancelled"
+			}
+			b.emit("cast_failed", c)
 		case smsgCastFailed: // cast count, spell, reason
 			r.ReadByte()
 			spell := u32()
 			code, _ := r.ReadByte()
-			if code == 27 && !w.KnowsSpell(spell) { // dont_report on a spell you don't have (mount forms tried on death): a client shows nothing
+			if code == 0 || (code == 27 && !w.KnowsSpell(spell)) { // success; dont_report on a spell you don't have (mount forms tried on death): a client shows nothing
 				return
 			}
 			failedAt[spell] = time.Now()
-			c := types.Cast{Spell: spell, Name: spellName(spell), Code: castResultNames[code]}
+			c := types.Cast{Spell: spell, Name: spellName(spell), Code: castResultNames[code],
+				Detail: castFailDetail(code, r, func(e uint32) string {
+					if n := itemTemplate(w, e).Name; n != "" {
+						return n
+					}
+					return fmt.Sprintf("item %d", e)
+				})}
 			if code >= 28 && code <= 30 {
 				c.Hint = "needs a working weapon: check items.broken() and repair at an armorer (vendor.repair)"
 			}
@@ -616,7 +710,7 @@ func (b *Bot) setupActions() {
 		b.StopMoving()
 		return b.done("move.stop", nil, nil)
 	})
-	e.Func("spells.cast", "(id [, guid = you]) → request<CastDone>", "cast a spell on a unit: ok when it goes off, else the server's reason (out_of_range, line_of_sight, not_ready, no_power, bad_targets, moving, interrupted, cancelled, unit_not_infront, caster_aurastate, equipped_item_class, ...) or not_known",
+	e.Func("spells.cast", "(id [, guid = you]) → request<CastDone>", "cast a spell on a unit: ok when it goes off, else the server's reason (out_of_range, line_of_sight, not_ready, no_power, bad_targets, moving, interrupted, cancelled, unit_not_infront, caster_aurastate, equipped_item_class, ...) or not_known; when it goes off but every target avoids it, how (miss, resist, immune, evade, reflect, dodge, parry...): power and cooldown are spent",
 		func(spell uint32, target uint64) map[string]any {
 			if target == 0 {
 				target = b.world.CharGUID()
@@ -641,9 +735,16 @@ func castMatch(spell uint32) func(script.Event) *script.Outcome {
 		}
 		switch ev.Type {
 		case "cast_done":
+			if c.Hits == 0 && len(c.Misses) > 0 {
+				o := c.Misses[0].Outcome
+				return script.Fail(o, "it went off but didn't land: "+o, types.CastDone{Spell: spell})
+			}
 			return script.Ok(types.CastDone{Spell: spell})
 		case "cast_failed":
 			msg := c.Code
+			if c.Detail != "" {
+				msg += ": " + c.Detail
+			}
 			if c.Hint != "" {
 				msg += ": " + c.Hint
 			}
