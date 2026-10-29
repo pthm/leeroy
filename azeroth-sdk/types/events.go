@@ -201,6 +201,7 @@ var EventTypes = map[string]EventType{
 	"flight_start":     {Flight{}, "you took off: the server flies you, and move.to is refused until you land"},
 	"flight_end":       {Flight{}, "you landed"},
 	"flight_learned":   {FlightLearned{}, "you discovered a flight point"},
+	"home_changed":     {Home{}, "your hearthstone now takes you here (innkeeper.bind)"},
 	"movement_changed": {MovementChanged{}, "who moves you changed: a flight, a teleport, fear, a stun or a root began or ended"},
 	"gear_broken":      {GearBroken{}, "you revived with equipped items at 0 durability"},
 	"chat":             {Chat{}, "a message to you, near you or in your channels"},
@@ -263,5 +264,5 @@ var OpResults = map[string]any{
 	"items.use": CastDone{}, "objects.use": CastDone{}, "items.loot": Looted{}, "items.equip": Equipped{},
 	"vendor.buy": ItemReceived{}, "vendor.sell": Sold{}, "vendor.sell_junk": Sold{}, "vendor.repair": Repaired{},
 	"trainer.learn": Learned{}, "quests.turn_in": QuestDone{}, "quests.accept": QuestDone{}, "talents.learn": TalentLearned{},
-	"combat.attack": Attacking{}, "flights.map": FlightMap{}, "flights.take": Flight{},
+	"combat.attack": Attacking{}, "flights.map": FlightMap{}, "flights.take": Flight{}, "innkeeper.bind": Home{},
 }

@@ -305,6 +305,26 @@ func (b *Bot) setupAgentAPI() {
 			return nil
 		}, func(ev script.Event) *script.Outcome { return failOn(ev, "quests") })
 	})
+	e.Func("quests.abandon", "(quest) → request", "drop a quest from your log (to make room: the log holds 25)", func(quest uint32) map[string]any {
+		args := map[string]any{"quest": quest}
+		o := w.GetObject(w.CharGUID())
+		slot := -1
+		for i := uint16(0); o != nil && i < 25; i++ {
+			if o.Value(fieldQuestLog+i*5) == quest {
+				slot = int(i)
+			}
+		}
+		if slot < 0 {
+			return b.refuse("quests.abandon", args, "not_in_log", fmt.Sprintf("quest %d isn't in your quest log", quest))
+		}
+		w.SendPacketRaw(cmsgQuestLogRemoveQuest, []byte{byte(slot)})
+		return b.request("quests.abandon", args, 3*time.Second, func() *script.Outcome {
+			if me := w.GetObject(w.CharGUID()); me != nil && me.Value(fieldQuestLog+uint16(slot)*5) != quest {
+				return script.Ok(nil)
+			}
+			return nil
+		}, nil)
+	})
 	e.Func("quests.turn_in", "(npc, quest [, reward = 0]) → request<QuestDone>", "hand a complete quest in (reward: the index of the item to choose, 0 = first; wowdb quest <id> lists them)",
 		func(npc uint64, quest, reward uint32) map[string]any {
 			w.QuestgiverCompleteQuest(npc, quest)

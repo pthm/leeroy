@@ -522,3 +522,12 @@ type MovementChanged struct {
 type FlightLearned struct {
 	Node TaxiNode `json:"node"`
 }
+
+// Home is where your hearthstone takes you (set by binding at an innkeeper).
+type Home struct {
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
+	Z    float64 `json:"z"`
+	Map  uint32  `json:"map"`
+	Area string  `json:"area"`
+}

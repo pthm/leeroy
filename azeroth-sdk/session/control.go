@@ -340,8 +340,9 @@ func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
 		}
 	case 0x1B3: // SMSG_TRAINER_BUY_SUCCEEDED: trainer, spell
 		if len(data) >= 12 {
-			spell := binary.LittleEndian.Uint32(data[8:])
-			b.emit("learned", types.Learned{Spell: spell, Name: spellName(spell)})
+			if spell := binary.LittleEndian.Uint32(data[8:]); spell != 3286 { // 3286: an innkeeper's Bind, not a spell learned
+				b.emit("learned", types.Learned{Spell: spell, Name: spellName(spell)})
+			}
 		}
 	case smsgPartyResult: // operation, member name, result
 		r := bytes.NewReader(data)

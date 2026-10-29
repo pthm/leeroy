@@ -27,6 +27,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -936,11 +937,12 @@ type WorldClient struct {
 	posX, posY, posZ, orientation float32
 	mapID                         uint32
 	moveSpeed                     float32
-	swimSpeed                     float32    // from the server (create block / SMSG_FORCE_SWIM_SPEED_CHANGE)
-	rooted                        bool       // SMSG_FORCE_MOVE_ROOT (roots, stuns): no movement until unrooted
-	spline                        selfSpline // the server's path for our character (flights, fear), see control.go
-	swimming                      bool       // set by the movement controller; adds MOVEMENTFLAG_SWIMMING + pitch
-	currentMoveFlags              uint32     // last used for movement (to use in acks etc)
+	swimSpeed                     float32      // from the server (create block / SMSG_FORCE_SWIM_SPEED_CHANGE)
+	rooted                        bool         // SMSG_FORCE_MOVE_ROOT (roots, stuns): no movement until unrooted
+	bindPoint                     atomic.Value // []byte: the last SMSG_BINDPOINTUPDATE
+	spline                        selfSpline   // the server's path for our character (flights, fear), see control.go
+	swimming                      bool         // set by the movement controller; adds MOVEMENTFLAG_SWIMMING + pitch
+	currentMoveFlags              uint32       // last used for movement (to use in acks etc)
 
 	// Cached packed GUID to avoid repeated allocation in hot send path
 	packedGUID []byte
@@ -1698,6 +1700,8 @@ func (w *WorldClient) handlePacket(opcode uint16, data []byte) {
 	case SmsgCorpseReclaimDelay:
 		w.handleCorpseReclaimDelay(data)
 
+	case 0x155: // SMSG_BINDPOINTUPDATE: sent at login, before session hooks exist; kept for BindPoint
+		w.bindPoint.Store(append([]byte(nil), data...))
 	case SmsgNewWorld:
 		w.handleNewWorld(data)
 	case SmsgTransferPending:

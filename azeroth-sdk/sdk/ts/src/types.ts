@@ -568,6 +568,15 @@ export interface FlightMap {
   learned?: boolean;
 }
 
+/** Home is where your hearthstone takes you (set by binding at an innkeeper). */
+export interface Home {
+  x: number;
+  y: number;
+  z: number;
+  map: number;
+  area: string;
+}
+
 export interface Equipped {
   slot: string;
 }
@@ -831,6 +840,8 @@ export interface EventMap {
   gear_broken: GearBroken;
   /** a heal involving you */
   heal: Damage;
+  /** your hearthstone now takes you here (innkeeper.bind) */
+  home_changed: Home;
   /** an item went into your bags */
   item_received: ItemReceived;
   /** you killed something */

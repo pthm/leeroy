@@ -26,6 +26,9 @@ const (
 	cmsgActivateTaxi        = 0x1AD
 	smsgActivateTaxiReply   = 0x1AE
 	smsgNewTaxiPath         = 0x1AF
+	smsgBindPointUpdate     = 0x155
+	cmsgBinderActivate      = 0x1B5
+	cmsgQuestLogRemoveQuest = 0x194
 	cmsgActivateTaxiExpress = 0x312
 	flightSpeed             = 32.0 // yards per second (PLAYER_FLIGHT_SPEED)
 )
@@ -87,6 +90,8 @@ type travelState struct {
 	started time.Time
 	lock    string // last MovementLock, for movement_changed
 	lastPos types.Position
+	home    *types.Home // where the hearthstone goes (SMSG_BINDPOINTUPDATE)
+	bound   time.Time   // the server confirmed a bind (the Bind spell, 3286)
 }
 
 func (b *Bot) taxiNode(id uint32, known bool) types.TaxiNode {
@@ -143,8 +148,23 @@ func route(from, to uint32, known map[uint32]bool) ([]uint32, uint32) {
 	return nodes, cost[to]
 }
 
+// parseBindPoint: SMSG_BINDPOINTUPDATE: x, y, z, map, area
+func parseBindPoint(data []byte) types.Home {
+	r := bytes.NewReader(data)
+	var x, y, z float32
+	var m, area uint32
+	for _, v := range []any{&x, &y, &z, &m, &area} {
+		binary.Read(r, binary.LittleEndian, v)
+	}
+	return types.Home{X: round1(x), Y: round1(y), Z: round1(z), Map: m, Area: areaNames()[area]}
+}
+
 func (b *Bot) setupTravel() {
 	t := &travelState{known: map[uint32]bool{}, current: map[uint64]uint32{}}
+	if bp := b.world.BindPoint(); bp != nil { // sent at login, before this hook existed
+		h := parseBindPoint(bp)
+		t.home = &h
+	}
 	b.travel = t
 	w, e := b.world, b.lua
 	var menus = make(chan [2]uint64, 4) // (npc, node) as flight maps arrive, for flights.map
@@ -185,6 +205,21 @@ func (b *Bot) setupTravel() {
 				t.known[best] = true
 				t.mu.Unlock()
 				b.emit("flight_learned", types.FlightLearned{Node: b.taxiNode(best, true)})
+			}
+		case smsgBindPointUpdate: // after binding at an inn (the login one is read in setupTravel)
+			h := parseBindPoint(data)
+			t.mu.Lock()
+			changed := t.home == nil || *t.home != h
+			t.home = &h
+			t.mu.Unlock()
+			if changed {
+				b.emit("home_changed", h)
+			}
+		case 0x1B3: // SMSG_TRAINER_BUY_SUCCEEDED: npc, spell; an innkeeper's bind confirms with the Bind spell
+			if len(data) >= 12 && binary.LittleEndian.Uint32(data[8:]) == 3286 {
+				t.mu.Lock()
+				t.bound = time.Now()
+				t.mu.Unlock()
 			}
 		case smsgActivateTaxiReply:
 			if code := u32(); code != 0 {
@@ -313,6 +348,30 @@ func (b *Bot) setupTravel() {
 				return nil
 			}, func(ev script.Event) *script.Outcome { return failOn(ev, "flights.take") })
 		})
+	e.Func("me.home", "() → Home?", "where your hearthstone takes you (use the Hearthstone item: items.use(6948), a 10 s cast with a 1 hour cooldown)", func() any {
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		if t.home == nil {
+			return nil
+		}
+		return *t.home
+	})
+	e.Func("innkeeper.bind", "(npc) → request<Home>", "make this inn your home: your hearthstone brings you back here (talk to an innkeeper within ~5 yd)", func(npc uint64) map[string]any {
+		args := map[string]any{"npc": gs(npc)}
+		if u := b.GetUnitInfo(npc); u == nil || u.NPCFlags&0x10000 == 0 {
+			return b.refuse("innkeeper.bind", args, "not_an_innkeeper", "that's not an innkeeper in sight")
+		}
+		asked := time.Now()
+		w.SendPacketRaw(cmsgBinderActivate, binary.LittleEndian.AppendUint64(nil, npc))
+		return b.request("innkeeper.bind", args, 5*time.Second, func() *script.Outcome {
+			t.mu.Lock()
+			defer t.mu.Unlock()
+			if t.bound.After(asked) && time.Since(t.bound) > 500*time.Millisecond && t.home != nil { // the bind point follows
+				return script.Ok(*t.home)
+			}
+			return nil
+		}, nil)
+	})
 	e.Func("me.movement", "() → Movement", "who's moving you: free, or the server (in_flight, teleporting, feared, confused, charmed: move.to is refused), or stunned / rooted; with where the server is taking you",
 		func() types.Movement {
 			mv := types.Movement{State: w.MovementLock()}

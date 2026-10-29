@@ -135,6 +135,12 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 |---|---|
 | `help([prefix]) → {lines}` | this reference: every function whose name starts with prefix ("items", "act.go") |
 
+### innkeeper
+
+| Function | |
+|---|---|
+| `innkeeper.bind(npc) → request<Home>` | make this inn your home: your hearthstone brings you back here (talk to an innkeeper within ~5 yd) |
+
 ### items
 
 | Function | |
@@ -168,6 +174,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `me.ghost() → bool` | released and walking back as a ghost |
 | `me.guid() → GUID` | your GUID |
 | `me.health() → Resource` | your health |
+| `me.home() → Home?` | where your hearthstone takes you (use the Hearthstone item: items.use(6948), a 10 s cast with a 1 hour cooldown) |
 | `me.in_combat() → bool` | the server's combat flag |
 | `me.level() → number` | your level |
 | `me.location() → Location` | where you are, by the game's own zone and area names |
@@ -214,6 +221,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 
 | Function | |
 |---|---|
+| `quests.abandon(quest) → request` | drop a quest from your log (to make room: the log holds 25) |
 | `quests.accept(npc, quest) → request<QuestDone>` | talk to a quest giver and accept a quest it offers |
 | `quests.log() → Quest[]` | your quests with their objectives and progress (titles fill in once the server answers) |
 | `quests.turn_in(npc, quest [, reward = 0]) → request<QuestDone>` | hand a complete quest in (reward: the index of the item to choose, 0 = first; wowdb quest <id> lists them) |
@@ -875,6 +883,18 @@ FlightMap is a flight master's map: where you are and where you can fly from the
 | `destinations` | TaxiNode[] | known nodes you can reach from here, with the cost |
 | `learned?` | bool | talking to this flight master discovered its node |
 
+### Home
+
+Home is where your hearthstone takes you (set by binding at an innkeeper).
+
+| Field | Type | |
+|---|---|---|
+| `x` | number |  |
+| `y` | number |  |
+| `z` | number |  |
+| `map` | number |  |
+| `area` | string |  |
+
 ### Equipped
 
 | Field | Type | |
@@ -1164,6 +1184,7 @@ An event is an [Event](#event) whose `data` is the type below.
 | `flight_start` | Flight | you took off: the server flies you, and move.to is refused until you land |
 | `gear_broken` | GearBroken | you revived with equipped items at 0 durability |
 | `heal` | Damage | a heal involving you |
+| `home_changed` | Home | your hearthstone now takes you here (innkeeper.bind) |
 | `item_received` | ItemReceived | an item went into your bags |
 | `kill` | Kill | you killed something |
 | `learned` | Learned | you learned a spell from a trainer |
@@ -1196,6 +1217,7 @@ The `data` of an ok result, per op.
 | `combat.attack` | Attacking |
 | `flights.map` | FlightMap |
 | `flights.take` | Flight |
+| `innkeeper.bind` | Home |
 | `items.equip` | Equipped |
 | `items.loot` | Looted |
 | `items.use` | CastDone |

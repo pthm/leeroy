@@ -173,3 +173,9 @@ const (
 	splineAnimation      = 0x00200000
 	splineMaskCatmullRom = splineFlying | splineCatmullrom
 )
+
+// BindPoint is the last SMSG_BINDPOINTUPDATE body (x, y, z, map, area: where the hearthstone goes), nil before one.
+func (w *WorldClient) BindPoint() []byte {
+	b, _ := w.bindPoint.Load().([]byte)
+	return b
+}

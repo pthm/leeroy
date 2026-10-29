@@ -28,7 +28,8 @@ empty and broken ones), `spellbook` (the class spells you could know at your lev
 - **Item level** is the game's own measure of how strong an item is. Gear near your level is what the game expects
   you to wear; gear far below it means you're fighting at a disadvantage. `me.gear()` shows how far behind you are.
 - **Quality** (the colour): grey (poor, junk to sell), white (common), green (uncommon: better stats), blue (rare),
-  purple (epic). A green item at your level beats a white one.
+  purple (epic). A green item at your level usually beats a white one, but a better colour isn't always better for
+  you: check the armor type, whether your class can use the weapon, and whether its stats are ones you need.
 - **Where to get it, early on:** quest rewards are the best source below level 20, and many quests let you choose
   (`wowdb quest <id>` lists the choices). Weaponsmiths and armorers sell white weapons and armor for a few silver
   that are far better than starting gear. Mobs drop greens now and then. `wowdb upgrades --class <yours> --level
@@ -83,6 +84,29 @@ empty and broken ones), `spellbook` (the class spells you could know at your lev
 - **Consumables:** food restores health and drink restores mana far faster than waiting, out of combat; potions
   heal in combat. Buy them from innkeepers and general goods vendors.
 
+## Getting around
+
+- **Your hearthstone** (item 6948) takes you home: a 10-second cast, then a 1-hour cooldown. Home is the inn you
+  last bound at (`me.home()`); talk to an innkeeper to make their inn your home (`innkeeper.bind`). An inn near where
+  you're questing turns a long walk back to town (to train, repair and sell) into ten seconds.
+- **Flight paths:** talk to every flight master you pass, even if you don't need to fly now; a flight point only
+  works once you've discovered it, and later trips get much shorter (`flights.map`).
+- **Roads are safer than straight lines:** fewer mobs, and you notice what's ahead. Watch the level of mobs near
+  the road before you leave it.
+- **Coming back from death:** your corpse can be reclaimed within about 30 yards of it, so you can come back to
+  life on the side away from whatever killed you. A spirit healer revives you at the graveyard instead, at the cost
+  of durability and, from level 11, Resurrection Sickness (much weaker for a while: don't fight until it wears off).
+
+## Quests
+
+- Quest givers offer quests (`quest_giver` role); the quest log holds 25. When it fills up, drop the quests you
+  won't do (`quests.abandon`): grey quests (far below your level) give little XP.
+- Read what a quest asks (`quests.log()` has its summary and objectives; `wowdb quest <id>` has the details and
+  where its targets are) and what your spells do (`wowdb spell <id>`): both often tell you how to do it well.
+- Quests that send you to the same area can be done together in one trip; turning several in at once saves the
+  walk.
+- When a quest is too hard alone, ask for help: other players are on the same quests.
+
 ## Money, bags and loot
 
 - **Sell your junk.** Grey items exist only to be sold; picking up everything a mob drops and selling it at the
@@ -92,8 +116,9 @@ empty and broken ones), `spellbook` (the class spells you could know at your lev
   Extra bags (general goods vendors sell small ones) are one of the best early buys.
 - **Binding.** Bind-on-pickup items are yours alone the moment you loot them; bind-on-equip items can be traded
   until someone wears them (`trade.offer`). An upgrade you can't use might be one for another player.
-- **What money is for** at these levels: training (every even level), repairs, bags, food and drink, and a few
-  white weapons and armor pieces when quests haven't given you better. Riding becomes available at level 20.
+- **What money is for** at these levels: training (every even level), repairs, bags, food and drink, flights, and
+  a few white weapons and armor pieces when quests haven't given you better. Riding becomes available at level 20.
+  Sell what you don't need in town and keep enough for your next training visit.
 
 ## Combat
 
