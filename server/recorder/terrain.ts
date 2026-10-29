@@ -3,7 +3,8 @@
 // ponytail: terrain only; buildings and other WMO floors live in vmaps and aren't modelled.
 import { existsSync, readFileSync } from "node:fs";
 
-const MAPS = new URL("../../data/maps/", import.meta.url).pathname;
+export const DATA = new URL("../../data", import.meta.url).pathname;
+const MAPS = `${DATA}/maps/`;
 
 const S = 1600 / 3;
 type Grid = { h: Float32Array; area: Uint16Array; liquid?: { lvl: Float32Array | null; level: number; ox: number; oy: number; w: number; hh: number; cell: Uint8Array | null; global: number } } | null;

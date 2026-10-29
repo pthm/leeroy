@@ -16,8 +16,8 @@ wowdb near -9460 70 --kind mob --hostile --level 9-11   # nearest mobs that atta
 wowdb quests --level 10 --race 1 --class 1 --near -9460,70   # quests you can pick up, nearest givers first
 wowdb area -9460 70                            # which area/zone a point is in
 wowdb route -9460 70 -9660 690 --level 7       # walking waypoints: prefers roads, avoids hostile mobs near/above level 7
-wowdb map -9460 70 --level 7 [--to -9660,690]  # writes map.png (terrain, roads, hostile mobs, route): view it with Read
-wowdb roads -9460 70                           # road polylines near a point
+wowdb map -9460 70 --level 7 [--to -9660,690]  # writes map.png (the game's minimap: roads, buildings, water; hostile mobs, route): view it with Read
+wowdb roads -9460 70                           # guard patrol paths near a point (the roads themselves are on the map)
 wowdb upgrades --class priest --level 7 --near -9460,70 [--slot chest]   # gear you can use, best first, and where to get it
 ```
 

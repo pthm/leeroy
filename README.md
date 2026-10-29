@@ -28,6 +28,10 @@ mkdir -p data/dbc && docker run --rm -v server_ac-client-data:/src:ro -v $PWD/da
    SpellRange.dbc AreaTrigger.dbc Talent.dbc TalentTab.dbc TaxiNodes.dbc TaxiPath.dbc TaxiPathNode.dbc SkillLine.dbc SkillLineAbility.dbc /dst/dbc/'
 bun azeroth-sdk/worlddata/dbsetup.ts   # wowbench schema: achievements, areas, spawn zones, faction hostility, spells
 
+# optional, from a 3.3.5a game install: the game's minimap (viewer and `wowdb map`) and its road textures (road
+# map for `wowdb route`); ~150MB, a few seconds
+go run ./azeroth-sdk/cmd/clientdata -client ~/path/to/WoW_3.3.5a extract data
+
 # the client (bench/client/play.sh also builds it on first use)
 go build -o azeroth-sdk/azsdk ./azeroth-sdk/cmd/azsdk
 ```

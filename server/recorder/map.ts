@@ -1,5 +1,6 @@
 // Shared by replay.ts (static replays) and live.ts (live viewer): terrain map rendering from the server's map
 // files, area/zone names and labels from the wowbench schema, item names, player colours.
+import { minimapAt } from "./clientmap.ts";
 import { deflateSync } from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { sample } from "./terrain.ts";
@@ -147,6 +148,8 @@ export function renderMap(mapId: number, xMin: number, xMax: number, yMin: numbe
         const depth = Math.min(1, (water[k] - h) / 20);
         col = [70 - depth * 30, 120 - depth * 30, 170 - depth * 20];
       }
+      const mm = minimapAt(mapId, xMax - r * res, yMax - c * res); // the game's own minimap where we have it
+      if (mm) col = mm;
       const z = zone[k];
       if ((c + 1 < W && zone[k + 1] !== z) || (r + 1 < H && zone[k + W] !== z)) col = col.map((v) => v * 0.45);
       // clamp: shaded snow goes past 255, which would wrap around in the byte buffer

@@ -5,6 +5,7 @@
 // follows the newest data until you seek back. --run <dir> takes a bench run (or team) dir: its record files plus
 // each agent's transcript, whose visible messages appear in the Agent tab.
 import { existsSync, openSync, readSync, statSync, closeSync, readFileSync } from "node:fs";
+import { minimapTile } from "./clientmap.ts";
 import { S, SERVER_LOG, areas, clientChatFilter, itemNames, labels, nameUnits, parseLines, renderMap, runSources, serverChat, transcriptEvents, type Ev } from "./map.ts";
 
 const args = process.argv.slice(2);
@@ -77,7 +78,8 @@ function tile(map: number, gx: number, gy: number) {
   const key = `${map}/${gx}/${gy}`;
   if (!tiles.has(key)) {
     const xMax = S * (32 - gx), yMax = S * (32 - gy);
-    tiles.set(key, renderMap(map, xMax - S, xMax, yMax - S, yMax, 2, [-60, 420]).png); // fixed colour scale so tiles match
+    // the client's minimap for that square if it was extracted (roads, buildings, water); else the terrain render
+    tiles.set(key, minimapTile(map, gx, gy) ?? renderMap(map, xMax - S, xMax, yMax - S, yMax, 2, [-60, 420]).png); // fixed colour scale so tiles match
   }
   return tiles.get(key)!;
 }

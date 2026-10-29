@@ -1,12 +1,14 @@
 // Roads, safe routes and map images for wowdb (roads / route / map).
-// Roads come from the patrol paths of friendly NPCs (guards, patrollers, travelling merchants walk the roads); the
-// client's road textures aren't available (no client MPQs here), so off-patrol paths are missing.
+// Roads come from the game client's road textures (data/roads, extracted by azeroth-sdk/cmd/clientdata: every paved,
+// cobbled or stone road as painted on the ground) and from the patrol paths of friendly NPCs (guards, patrollers,
+// travelling merchants walk the roads). Map images use the client's minimap where it was extracted.
 // Routes: A* on an 8-yard grid over the server's terrain (no slopes over ~45 degrees, swimming is slow), cheaper on
 // roads and more expensive near hostile mobs around or above your level. Terrain only: buildings, caves and
 // bridges aren't modelled, so follow the route with move_to, which uses the real navmesh between waypoints.
 import { writeFileSync } from "node:fs";
 import { sample } from "../../server/recorder/terrain.ts";
 import { renderMap } from "../../server/recorder/map.ts";
+import { hasClientData, roadAt } from "../../server/recorder/clientmap.ts";
 
 type Row = Record<string, string | number | null>;
 export type Q = (sql: string) => Row[];
@@ -67,6 +69,7 @@ export function route(q: Q, map: number, from: [number, number], to: [number, nu
       if (x >= x0 && x <= x1 && y >= y0 && y <= y1) road[idx(x, y)] = 1;
     }
   }
+  for (let i = 0; i < W * H; i++) if (roadAt(map, cx(i), cy(i)) > 100) road[i] = 1; // the client's road textures
   for (let i = 0; i < W * H; i++) if (road[i]) cost[i] *= 0.6;
   const mobs = threats(q, map, x0, x1, y0, y1, horde).filter((m) => m.level >= level - 2);
   for (const m of mobs) {
@@ -146,6 +149,7 @@ export function mapImage(q: Q, map: number, x: number, y: number, radius: number
   });
   writeFileSync(out, img.png);
   return { file: out, width: img.w, height: img.h, yards_per_pixel: res, center: [x, y],
-    legend: "north up; light lines = roads (guard patrols); red = hostile 2+ levels above you, orange = around your level, brown = lower; big dot = elite; white = (x, y); yellow = route",
+    legend: (hasClientData() ? "the game's minimap (roads, buildings, water); " : "terrain; ") +
+      "north up; light lines = guard patrol paths; red = hostile 2+ levels above you, orange = around your level, brown = lower; big dot = elite; white = (x, y); yellow = route",
     roads: rd.length, hostile_spawns: mobs.length };
 }
