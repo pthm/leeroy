@@ -326,6 +326,25 @@ export interface GroupMember {
   in_sight: boolean;
   /** what they're targeting (in sight only) */
   target?: Guid | null;
+  /** their buffs and debuffs (spell, name, harmful; details while in sight) */
+  auras?: Aura[];
+}
+
+/** Aura is a buff or debuff on a unit. */
+export interface Aura {
+  spell: number;
+  name: string;
+  /** a debuff */
+  harmful: boolean;
+  /** stacks or charges (1 when it doesn't stack) */
+  stacks?: number;
+  /** nil for auras without a duration */
+  seconds_left?: number;
+  /** its full duration, seconds */
+  duration?: number;
+  caster?: UnitRef;
+  /** you cast it */
+  mine: boolean;
 }
 
 export interface Trade {
@@ -407,6 +426,10 @@ export interface Status {
   spellbook: Spellbook;
   /** talent points to spend (talents.list, talents.learn) */
   unspent_talents: number;
+  /** your buffs and debuffs */
+  auras: Aura[];
+  /** your target's buffs and debuffs */
+  target_auras?: Aura[];
   casting?: Casting;
   free_slots: number;
   stats?: Stats;
@@ -665,6 +688,13 @@ export interface Attention {
   task?: string;
 }
 
+/** AuraChange: an aura on you, or one you cast on another unit, began or ended. */
+export interface AuraChange {
+  /** who it's on (me = true for you) */
+  unit: UnitRef;
+  aura: Aura;
+}
+
 export interface Cast {
   spell: number;
   name: string;
@@ -812,6 +842,10 @@ export interface EventMap {
   attack_start: AttackStart;
   /** a script asks the agent (ask) */
   attention: Attention;
+  /** a buff or debuff on you, or one you cast on another unit, ended (expired, dispelled, cancelled) */
+  aura_faded: AuraChange;
+  /** a buff or debuff landed on you, or one you cast landed on another unit */
+  aura_gained: AuraChange;
   /** a spell went off */
   cast_done: Cast;
   /** a cast failed or was interrupted */

@@ -65,6 +65,7 @@ type memberStats struct {
 	power, maxPower, level uint16
 	zone                   uint16
 	x, y                   int16
+	auras                  map[uint8][2]uint32 // slot -> spell, flags (GROUP_UPDATE_FLAG_AURAS)
 	seen                   bool
 }
 
@@ -117,6 +118,27 @@ func (c *controlState) parsePartyStats(full bool, data []byte) {
 		rd(&m.x)
 		rd(&m.y)
 	}
+	if mask&0x200 != 0 { // u64 slot mask, then per slot: spell u32, flags u8
+		var am uint64
+		rd(&am)
+		if m.auras == nil {
+			m.auras = map[uint8][2]uint32{}
+		}
+		for i := uint8(0); i < 64; i++ {
+			if am&(1<<i) == 0 {
+				continue
+			}
+			var spell uint32
+			var flags uint8
+			rd(&spell)
+			rd(&flags)
+			if spell == 0 {
+				delete(m.auras, i)
+			} else {
+				m.auras[i] = [2]uint32{spell, uint32(flags)}
+			}
+		}
+	}
 }
 
 //go:embed act.lua
@@ -150,6 +172,7 @@ func (b *Bot) setupControl() {
 	b.setupTrade()
 	b.setupTravel()
 	b.setupFights()
+	b.setupAuras()
 	b.watchAreaTriggers()
 	b.watchEvents()
 	b.startRecording()
@@ -179,12 +202,19 @@ func (b *Bot) setupControl() {
 				var stats memberStats
 				if ms != nil {
 					stats = *ms
+					stats.auras = map[uint8][2]uint32{}
+					for k, v := range ms.auras {
+						stats.auras[k] = v
+					}
 				}
 				c.mu.Unlock()
 				if cls == 0 && b.playerName != nil {
 					b.playerName(m.GUID) // asks the server (name, race, class) if we haven't yet
 				}
 				if stats.seen {
+					for _, a := range stats.auras {
+						gm.Auras = append(gm.Auras, types.Aura{Spell: a[0], Name: spellName(a[0]), Harmful: a[1]&0x80 != 0, Stacks: 1})
+					}
 					gm.Level, gm.Online = uint32(stats.level), stats.status&1 != 0
 					gm.Alive, gm.Ghost = stats.status&0xC == 0, stats.status&8 != 0
 					gm.Health = types.Resource{Current: stats.hp, Max: stats.maxHP}
@@ -206,6 +236,7 @@ func (b *Bot) setupControl() {
 					gm.Distance = &d
 					b0 := o.Value(fieldUnitBytes0)
 					cls = uint8(b0 >> 8 & 0xFF)
+					gm.Auras = b.aurasOf(m.GUID)
 					pt := uint16(b0 >> 24 & 0xFF)
 					gm.Power = types.Resource{Current: o.Value(client.UnitFieldPower1 + pt), Max: o.Value(client.UnitFieldMaxPower1 + pt), Type: name(powerNames, uint8(pt))}
 				}

@@ -940,9 +940,12 @@ type WorldClient struct {
 	swimSpeed                     float32      // from the server (create block / SMSG_FORCE_SWIM_SPEED_CHANGE)
 	rooted                        bool         // SMSG_FORCE_MOVE_ROOT (roots, stuns): no movement until unrooted
 	bindPoint                     atomic.Value // []byte: the last SMSG_BINDPOINTUPDATE
-	spline                        selfSpline   // the server's path for our character (flights, fear), see control.go
-	swimming                      bool         // set by the movement controller; adds MOVEMENTFLAG_SWIMMING + pitch
-	currentMoveFlags              uint32       // last used for movement (to use in acks etc)
+	auras                         auraTable    // full aura details per unit and slot (control.go)
+	auraHookMu                    sync.Mutex
+	auraHookList                  []func(unit uint64, prev, cur *AuraInfo)
+	spline                        selfSpline // the server's path for our character (flights, fear), see control.go
+	swimming                      bool       // set by the movement controller; adds MOVEMENTFLAG_SWIMMING + pitch
+	currentMoveFlags              uint32     // last used for movement (to use in acks etc)
 
 	// Cached packed GUID to avoid repeated allocation in hot send path
 	packedGUID []byte
@@ -4093,6 +4096,22 @@ const (
 //	  [if flags & AFLAG_DURATION]  uint32 maxDuration, uint32 duration
 //	  [if flags & AFLAG_ANY_EFFECT_AMOUNT_SENT] int32 amount per effect bit
 func parseAuraSlotUpdate(r *bytes.Reader) (slot uint8, spellID uint32, stacks uint8, ok bool) {
+	a, ok := parseAura(r, 0)
+	return a.Slot, a.Spell, a.Stacks, ok
+}
+
+// parseAura reads one aura slot of SMSG_AURA_UPDATE(_ALL) in full; target is the unit it's on (the caster when
+// the self-cast flag is set).
+func parseAura(r *bytes.Reader, target uint64) (a AuraInfo, ok bool) {
+	slot, spellID, stacks, ok := parseAuraFields(r, &a)
+	a.Slot, a.Spell, a.Stacks, a.At = slot, spellID, stacks, time.Now()
+	if ok && spellID != 0 && a.Flags&auraFlagCaster != 0 {
+		a.Caster = target
+	}
+	return a, ok
+}
+
+func parseAuraFields(r *bytes.Reader, a *AuraInfo) (slot uint8, spellID uint32, stacks uint8, ok bool) {
 	if err := binary.Read(r, binary.LittleEndian, &slot); err != nil {
 		return 0, 0, 0, false
 	}
@@ -4113,18 +4132,20 @@ func parseAuraSlotUpdate(r *bytes.Reader) (slot uint8, spellID uint32, stacks ui
 	if err := binary.Read(r, binary.LittleEndian, &stackOrCharges); err != nil {
 		return 0, 0, 0, false
 	}
+	a.Flags, a.CasterLevel = flags, casterLevel
 	// Caster GUID is omitted only when AFLAG_CASTER is set (self-cast).
 	if flags&auraFlagCaster == 0 {
-		if _, err := readPackedGUID(r); err != nil {
+		c, err := readPackedGUID(r)
+		if err != nil {
 			return 0, 0, 0, false
 		}
+		a.Caster = c
 	}
 	if flags&auraFlagDuration != 0 {
-		var maxDur, dur uint32
-		if err := binary.Read(r, binary.LittleEndian, &maxDur); err != nil {
+		if err := binary.Read(r, binary.LittleEndian, &a.MaxDurationMS); err != nil {
 			return 0, 0, 0, false
 		}
-		if err := binary.Read(r, binary.LittleEndian, &dur); err != nil {
+		if err := binary.Read(r, binary.LittleEndian, &a.DurationMS); err != nil {
 			return 0, 0, 0, false
 		}
 	}
@@ -4153,11 +4174,12 @@ func (w *WorldClient) handleAuraUpdate(data []byte) {
 	obj := w.getOrCreateObject(targetGUID)
 
 	for {
-		slot, spellID, stacks, ok := parseAuraSlotUpdate(r)
+		a, ok := parseAura(r, targetGUID)
 		if !ok {
 			break
 		}
-		obj.setAuraForSlot(slot, spellID, stacks)
+		obj.setAuraForSlot(a.Slot, a.Spell, a.Stacks)
+		w.auras.set(targetGUID, a, w.auraHooks())
 		if w.OnObjectUpdate != nil {
 			w.OnObjectUpdate(targetGUID, obj.Clone())
 		}
@@ -4173,16 +4195,18 @@ func (w *WorldClient) handleAuraUpdateAll(data []byte) {
 	}
 	obj := w.getOrCreateObject(targetGUID)
 	obj.clearAuras()
-
+	all := []AuraInfo{}
 	for {
-		slot, spellID, stacks, ok := parseAuraSlotUpdate(r)
+		a, ok := parseAura(r, targetGUID)
 		if !ok {
 			break
 		}
-		if spellID != 0 {
-			obj.setAuraForSlot(slot, spellID, stacks)
+		if a.Spell != 0 {
+			obj.setAuraForSlot(a.Slot, a.Spell, a.Stacks)
+			all = append(all, a)
 		}
 	}
+	w.auras.replace(targetGUID, all, w.auraHooks())
 
 	if w.OnObjectUpdate != nil {
 		w.OnObjectUpdate(targetGUID, obj.Clone())
@@ -5358,6 +5382,9 @@ func (w *WorldClient) handleNewWorld(data []byte) {
 	w.objectsMu.Lock()
 	w.objects = make(map[uint64]*WorldObject)
 	w.objectsMu.Unlock()
+	w.auras.mu.Lock()
+	w.auras.m = nil
+	w.auras.mu.Unlock()
 
 	// MSG_MOVE_WORLDPORT_ACK — required before AC accepts STATUS_LOGGEDIN gameplay again
 	w.sendPacket(MsgMoveWorldportAck, nil)

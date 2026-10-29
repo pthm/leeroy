@@ -304,6 +304,7 @@ type GroupMember struct {
 	Distance *float64  `json:"distance,omitempty" doc:"yards from you"`
 	InSight  bool      `json:"in_sight" doc:"close enough to see (about 100 yd): units.get works on them"`
 	Target   GUID      `json:"target,omitempty" doc:"what they're targeting (in sight only)"`
+	Auras    []Aura    `json:"auras,omitempty" doc:"their buffs and debuffs (spell, name, harmful; details while in sight)"`
 }
 
 type TradeSide struct {
@@ -455,6 +456,8 @@ type Status struct {
 	Gear        Gear         `json:"gear"`
 	Spellbook   Spellbook    `json:"spellbook"`
 	Talents     uint32       `json:"unspent_talents" doc:"talent points to spend (talents.list, talents.learn)"`
+	Auras       []Aura       `json:"auras" doc:"your buffs and debuffs"`
+	TargetAuras []Aura       `json:"target_auras,omitempty" doc:"your target's buffs and debuffs"`
 	Casting     *Casting     `json:"casting,omitempty"`
 	FreeSlots   int          `json:"free_slots"`
 	Stats       *Stats       `json:"stats,omitempty"`
@@ -530,4 +533,16 @@ type Home struct {
 	Z    float64 `json:"z"`
 	Map  uint32  `json:"map"`
 	Area string  `json:"area"`
+}
+
+// Aura is a buff or debuff on a unit.
+type Aura struct {
+	Spell       uint32   `json:"spell"`
+	Name        string   `json:"name"`
+	Harmful     bool     `json:"harmful" doc:"a debuff"`
+	Stacks      uint8    `json:"stacks,omitempty" doc:"stacks or charges (1 when it doesn't stack)"`
+	SecondsLeft *float64 `json:"seconds_left,omitempty" doc:"nil for auras without a duration"`
+	Duration    *float64 `json:"duration,omitempty" doc:"its full duration, seconds"`
+	Caster      *UnitRef `json:"caster,omitempty"`
+	Mine        bool     `json:"mine" doc:"you cast it"`
 }

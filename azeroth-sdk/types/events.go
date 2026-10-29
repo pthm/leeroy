@@ -161,7 +161,15 @@ type FightSummary struct {
 	XP            uint32         `json:"xp"`
 	Abilities     map[string]int `json:"abilities" doc:"casts that went off, by spell"`
 	FailedCasts   map[string]int `json:"failed_casts,omitempty" doc:"by reason (out_of_range, no_power, not_ready...)"`
+	AurasApplied  map[string]int `json:"auras_applied,omitempty" doc:"buffs and debuffs you put on others, by name"`
+	AurasSuffered map[string]int `json:"auras_suffered,omitempty" doc:"debuffs that landed on you, by name"`
 	SwingsRefused int            `json:"swings_refused,omitempty" doc:"melee swings the server refused (not_in_range, bad_facing)"`
+}
+
+// AuraChange: an aura on you, or one you cast on another unit, began or ended.
+type AuraChange struct {
+	Unit UnitRef `json:"unit" doc:"who it's on (me = true for you)"`
+	Aura Aura    `json:"aura"`
 }
 
 type None struct{}
@@ -182,6 +190,8 @@ var EventTypes = map[string]EventType{
 	"resurrected":      {None{}, "you're alive again"},
 	"combat_start":     {None{}, "you entered combat"},
 	"combat_end":       {None{}, "you left combat"},
+	"aura_gained":      {AuraChange{}, "a buff or debuff landed on you, or one you cast landed on another unit"},
+	"aura_faded":       {AuraChange{}, "a buff or debuff on you, or one you cast on another unit, ended (expired, dispelled, cancelled)"},
 	"xp":               {XPGain{}, "you gained XP"},
 	"level_up":         {LevelUp{}, "you reached a new level"},
 	"cast_start":       {Cast{}, "a cast with a cast time began"},

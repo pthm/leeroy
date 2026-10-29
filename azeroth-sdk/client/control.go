@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"math"
+	"sort"
 	"sync"
 	"time"
 )
@@ -178,4 +179,113 @@ const (
 func (w *WorldClient) BindPoint() []byte {
 	b, _ := w.bindPoint.Load().([]byte)
 	return b
+}
+
+// AuraInfo is one aura slot as SMSG_AURA_UPDATE describes it.
+type AuraInfo struct {
+	Slot          uint8
+	Spell         uint32
+	Flags         uint8 // 0x10 positive, 0x80 negative, 0x08 self-cast, 0x20 has a duration
+	CasterLevel   uint8
+	Stacks        uint8
+	Caster        uint64
+	MaxDurationMS uint32 // 0 = permanent
+	DurationMS    uint32 // remaining when the update arrived (At)
+	At            time.Time
+}
+
+// Harmful: a debuff.
+func (a AuraInfo) Harmful() bool { return a.Flags&0x80 != 0 }
+
+// Left: time remaining now (0 for permanent auras).
+func (a AuraInfo) Left() time.Duration {
+	if a.Flags&auraFlagDuration == 0 || a.MaxDurationMS == 0 {
+		return 0
+	}
+	return max(0, time.Duration(a.DurationMS)*time.Millisecond-time.Since(a.At))
+}
+
+type auraTable struct {
+	mu sync.Mutex
+	m  map[uint64]map[uint8]AuraInfo
+}
+
+func (t *auraTable) set(unit uint64, a AuraInfo, hooks []func(uint64, *AuraInfo, *AuraInfo)) {
+	t.mu.Lock()
+	if t.m == nil {
+		t.m = map[uint64]map[uint8]AuraInfo{}
+	}
+	slots := t.m[unit]
+	if slots == nil {
+		slots = map[uint8]AuraInfo{}
+		t.m[unit] = slots
+	}
+	var prev *AuraInfo
+	if p, ok := slots[a.Slot]; ok {
+		prev = &p
+	}
+	var cur *AuraInfo
+	if a.Spell == 0 {
+		delete(slots, a.Slot)
+	} else {
+		slots[a.Slot] = a
+		cur = &a
+	}
+	t.mu.Unlock()
+	for _, h := range hooks {
+		h(unit, prev, cur)
+	}
+}
+
+func (t *auraTable) replace(unit uint64, all []AuraInfo, hooks []func(uint64, *AuraInfo, *AuraInfo)) {
+	t.mu.Lock()
+	if t.m == nil {
+		t.m = map[uint64]map[uint8]AuraInfo{}
+	}
+	old := t.m[unit]
+	slots := map[uint8]AuraInfo{}
+	for _, a := range all {
+		slots[a.Slot] = a
+	}
+	t.m[unit] = slots
+	t.mu.Unlock()
+	for _, h := range hooks {
+		for slot, p := range old {
+			if n, ok := slots[slot]; !ok || n.Spell != p.Spell {
+				p := p
+				h(unit, &p, nil)
+			}
+		}
+		for slot, n := range slots {
+			if p, ok := old[slot]; !ok || p.Spell != n.Spell {
+				n := n
+				h(unit, nil, &n)
+			}
+		}
+	}
+}
+
+// Auras: a unit's auras, by slot order.
+func (w *WorldClient) Auras(unit uint64) []AuraInfo {
+	w.auras.mu.Lock()
+	defer w.auras.mu.Unlock()
+	out := []AuraInfo{}
+	for _, a := range w.auras.m[unit] {
+		out = append(out, a)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Slot < out[j].Slot })
+	return out
+}
+
+// AddAuraHook: fn(unit, prev, cur) for every aura gained (prev nil), lost (cur nil) or changed (stacks, refresh).
+func (w *WorldClient) AddAuraHook(fn func(unit uint64, prev, cur *AuraInfo)) {
+	w.auraHookMu.Lock()
+	defer w.auraHookMu.Unlock()
+	w.auraHookList = append(w.auraHookList, fn)
+}
+
+func (w *WorldClient) auraHooks() []func(uint64, *AuraInfo, *AuraInfo) {
+	w.auraHookMu.Lock()
+	defer w.auraHookMu.Unlock()
+	return append([]func(uint64, *AuraInfo, *AuraInfo){}, w.auraHookList...)
 }

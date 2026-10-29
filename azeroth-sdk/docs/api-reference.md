@@ -168,6 +168,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 |---|---|
 | `me.achievements() → Achievements` | what you've earned and your criteria progress (worlddb's wowbench.achievement tables have names). The first call asks the server |
 | `me.alive() → bool` | false while dead or a ghost |
+| `me.auras() → Aura[]` | your buffs and debuffs: name, harmful, stacks, time left, who cast them |
 | `me.casting() → Casting?` | the cast or channel in progress (from the moment you send it); nil when idle. Moving interrupts it |
 | `me.class() → string` | warrior, paladin, hunter, rogue, priest, death_knight, shaman, mage, warlock, druid |
 | `me.gear() → Gear` | your gear graded against your level: average item level, a 0-100 score, the weakest slots, empty and broken ones |
@@ -284,6 +285,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | Function | |
 |---|---|
 | `units.attackers([dist = 30]) → Creature[]` | living creatures within dist that are targeting you |
+| `units.auras(guid) → Aura[]` | a unit's buffs and debuffs (units in sight: your target, party members, mobs). mine = you cast it: is your debuff still on the mob? |
 | `units.behind(guid) → bool` | whether you stand behind the unit (backstab and similar need it) |
 | `units.get(guid) → (Creature \| Player)?` | one unit by GUID; nil if it's out of sight |
 | `units.has_aura(guid, spell) → bool` | whether the unit has that aura (buff or debuff) |
@@ -633,6 +635,22 @@ GroupMember is a party member as the real client's party frames show them: healt
 | `distance?` | number | yards from you |
 | `in_sight` | bool | close enough to see (about 100 yd): units.get works on them |
 | `target?` | GUID | what they're targeting (in sight only) |
+| `auras?` | Aura[] | their buffs and debuffs (spell, name, harmful; details while in sight) |
+
+### Aura
+
+Aura is a buff or debuff on a unit.
+
+| Field | Type | |
+|---|---|---|
+| `spell` | number |  |
+| `name` | string |  |
+| `harmful` | bool | a debuff |
+| `stacks?` | number | stacks or charges (1 when it doesn't stack) |
+| `seconds_left?` | number | nil for auras without a duration |
+| `duration?` | number | its full duration, seconds |
+| `caster?` | UnitRef |  |
+| `mine` | bool | you cast it |
 
 ### Trade
 
@@ -723,6 +741,8 @@ Status is a one-call snapshot of your character (me.status, `wow status`).
 | `gear` | Gear |  |
 | `spellbook` | Spellbook |  |
 | `unspent_talents` | number | talent points to spend (talents.list, talents.learn) |
+| `auras` | Aura[] | your buffs and debuffs |
+| `target_auras?` | Aura[] | your target's buffs and debuffs |
 | `casting?` | Casting |  |
 | `free_slots` | number |  |
 | `stats?` | Stats |  |
@@ -1001,6 +1021,15 @@ Home is where your hearthstone takes you (set by binding at an innkeeper).
 | `default?` | string |  |
 | `task?` | string |  |
 
+### AuraChange
+
+AuraChange: an aura on you, or one you cast on another unit, began or ended.
+
+| Field | Type | |
+|---|---|---|
+| `unit` | UnitRef | who it's on (me = true for you) |
+| `aura` | Aura |  |
+
 ### Cast
 
 | Field | Type | |
@@ -1170,6 +1199,8 @@ An event is an [Event](#event) whose `data` is the type below.
 | `attack_failed` | AttackFailed | the server refused a swing |
 | `attack_start` | AttackStart | your auto-attack started |
 | `attention` | Attention | a script asks the agent (ask) |
+| `aura_faded` | AuraChange | a buff or debuff on you, or one you cast on another unit, ended (expired, dispelled, cancelled) |
+| `aura_gained` | AuraChange | a buff or debuff landed on you, or one you cast landed on another unit |
 | `cast_done` | Cast | a spell went off |
 | `cast_failed` | Cast | a cast failed or was interrupted |
 | `cast_start` | Cast | a cast with a cast time began |

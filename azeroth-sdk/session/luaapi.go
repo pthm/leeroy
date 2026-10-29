@@ -336,6 +336,10 @@ func (b *Bot) snapshot() types.Status {
 	st.Location, _ = e.Native("me.location").(types.Location)
 	st.Movement, _ = e.Native("me.movement").(types.Movement)
 	st.Gear, st.Spellbook, st.Talents = b.gear(), b.spellbook(), unspentTalents(w)
+	st.Auras = b.aurasOf(w.CharGUID())
+	if t := b.GetTargetGUID(); t != 0 {
+		st.TargetAuras = b.aurasOf(t)
+	}
 	if c, ok := e.Native("me.casting").(types.Casting); ok {
 		st.Casting = &c
 	}
