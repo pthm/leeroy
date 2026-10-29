@@ -34,7 +34,7 @@ func waitOffline(name string, limit time.Duration) bool {
 	return false
 }
 
-// grantReader gives the read-only account the agents' worlddb uses SELECT on the world database.
+// grantReader gives the read-only account azworld uses SELECT on the world database.
 func grantReader() error {
 	_, err := world.DB(world.Admin, "").Exec(`CREATE USER IF NOT EXISTS 'worldreader'@'%' IDENTIFIED BY 'worldreader';
 		GRANT SELECT ON acore_world.* TO 'worldreader'@'%'; GRANT SELECT ON wowbench.* TO 'worldreader'@'%'`)

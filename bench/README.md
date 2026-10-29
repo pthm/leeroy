@@ -11,7 +11,7 @@ commands below run from the repo root; server and client setup is in the [repo R
 | `matrices/*.yaml` | grids of solo runs: task × race × class × minutes × reps ([matrices/README.md](matrices/README.md)) |
 | `specs.yaml` | class specs a scenario's agents can take: class and spec, role, what to optimise, key stats |
 | `places.yaml` | named starting positions (`start: goldshire`) |
-| `agent/` | what the agent is given: `AGENTS.md` and its tools in `bin/` (links to `azbench`) |
+| `agent/` | what the agent is given: `AGENTS.md` and its three tools in `bin/` (links to `bin/wow`, `bin/azworld`, `bin/azbench`) |
 | `workspaces/<agent>/` | each agent's persistent script library and notes (gitignored) |
 | `runs/` | results (gitignored) |
 
@@ -162,16 +162,14 @@ move their `workspaces/<agent>/` aside: the library and `NOTES.md` carry over ot
 Each run writes the workspace's `AGENTS.md` from `agent/AGENTS.md` (workspace, session, `wow`, tasks) followed by
 `../azeroth-sdk/docs/` `playing.md`, `guide.md`, `runtime.md`, `lua-api.md`, `api-reference.md` and `world-data.md`.
 It copies `../azeroth-sdk/examples/lua/grind.lua` to `example.lua`, and creates `NOTES.md` only if missing. The
-agent's tools come from `agent/bin/` on its `PATH`, outside the workspace, so it can't edit them: they're links to
-`bin/azbench` (and `bin/azworld`), which acts as the one it's called by.
+agent's tools come from `agent/bin/` on its `PATH`, outside the workspace, so it can't edit them. There are three,
+one per thing the agent deals with: the game, the world's data, and its score.
 
-| Tool | |
-|---|---|
-| `wow` | the session on `$WOW_PORT`: `wow '<lua>'`, `wow < file`, `wow -f file.lua`, `wow status`, `wow tasks`, `wow events [--types a,b] [--last n] [--since seq] [--match s]`, `wow wait [--types ...] [--match s] [seconds]` (max 600), `wow subscribe [types]`, `wow answer <id> <choice>`, `wow -w <s> '<lua>'`. Chat from players, invites, trades, script questions and the minutes left also go to stderr |
-| `worlddb` | read-only SQL on `acore_world` as `worldreader`; tab-separated, at most 300 rows |
-| `azworld` | structured world-data lookups (`azworld help`) |
-| `standings` | every player's rank, score, rates, level, role stats, cooperation, item level and money from `$WOWBENCH_BOARD`, plus a faction total and the minutes left |
-| `party [minutes]` | the agent's current party over the last minutes (default 10): per member XP/hour, kills, deaths, time fighting, travelling, idle, dead and with the group. Reads the server's `mod-recorder` log |
+| Tool | Is | |
+|---|---|---|
+| `wow` | the game (`azeroth-sdk/cmd/wow`) | the session on `$WOW_PORT`: `wow '<lua>'`, `wow < file`, `wow -f file.lua`, `wow status`, `wow tasks`, `wow events [--types a,b] [--last n] [--since seq] [--match s]`, `wow wait [--types ...] [--match s] [seconds]` (max 600), `wow subscribe [types]`, `wow answer <id> <choice>`, `wow -w <s> '<lua>'`. Subscribed chat, invites, trades and script questions also go to stderr. Everything in the game, including how the party spends its time (`group.report()`) |
+| `azworld` | the world's data (`azworld/`) | structured lookups (`azworld help`) and raw read-only SQL (`azworld sql`, tab-separated, at most 300 rows) over the world database |
+| `standings` | the score (`azbench/tools`) | every player's rank, score, rates, level, role stats, cooperation, item level and money from `$WOWBENCH_BOARD`, plus a faction total and the minutes left in the run |
 
 The agent's environment: `PATH` with `agent/bin/` first, `WOW_PORT`, `WOWBENCH_BOARD` (the board directory) and
 `WOWBENCH_CHAR` (its character).
@@ -182,7 +180,7 @@ Claude Code runs as `claude -p` in the workspace with:
 - `--setting-sources project --strict-mcp-config`: no user settings and no MCP servers;
 - `--add-dir` on `azeroth-sdk/client`, `session`, `script` and `server/azerothcore/src/server/game`, `shared`: the
   source it may read;
-- `--allowedTools`: `Bash` for `wow`, `worlddb`, `azworld`, `standings`, `party`, `sleep`, `tail`, `cat`, `ls`, `grep`,
+- `--allowedTools`: `Bash` for `wow`, `azworld`, `standings`, `sleep`, `tail`, `cat`, `ls`, `grep`,
   `mkdir`, and `Edit(./**)` (the workspace); `--disallowedTools` `Read` and `Edit` on `~/.claude/**`;
 - `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`: auto-memory is keyed by the git root, so agents would otherwise share notes.
 

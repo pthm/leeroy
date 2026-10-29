@@ -206,8 +206,8 @@ kills count for everyone nearby.
 ## Getting better
 
 Treat each fight as data. `fight_end` events tell you how long a fight took, what you dealt and took, which
-abilities you used and how it ended; `combat.meter()` compares you with others; `standings` and `party` show your
-rate against everyone's. When a fight goes badly, the cause is usually one of: a target too high for you, an add
+abilities you used and how it ended; `combat.meter()` compares you with others; `standings` shows your rate against
+everyone's, and `group.report()` how your party spends its time. When a fight goes badly, the cause is usually one of: a target too high for you, an add
 you didn't plan for, weak gear, untrained spells, or starting the fight hurt. Fix the cause, not the symptom.
 
 ## Glossary

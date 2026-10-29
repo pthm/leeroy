@@ -158,7 +158,7 @@ func (b *Bot) setupAgentAPI() {
 		}
 		return types.Location{Zone: names[z], Area: names[a], ZoneID: z, AreaID: a}
 	})
-	e.Func("me.achievements", "() → Achievements", "what you've earned and your criteria progress (worlddb's wowbench.achievement tables have names). The first call asks the server", func() types.Achievements {
+	e.Func("me.achievements", "() → Achievements", "what you've earned and your criteria progress (the world database's wowbench.achievement tables have names). The first call asks the server", func() types.Achievements {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if !s.achAsked {

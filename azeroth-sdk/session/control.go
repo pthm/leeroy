@@ -54,7 +54,8 @@ type controlState struct {
 	names     map[uint64]string
 	classes   map[uint64]uint8 // from name queries
 	members   map[uint64]*memberStats
-	invitedBy string // pending group invite
+	asked     map[uint64]time.Time // when we last asked for a member's full stats
+	invitedBy string               // pending group invite
 }
 
 // memberStats: a party member as SMSG_PARTY_MEMBER_STATS(_FULL) describes them (sent even when out of sight)
@@ -70,9 +71,25 @@ type memberStats struct {
 }
 
 const (
-	smsgPartyMemberStats     = 0x07E
-	smsgPartyMemberStatsFull = 0x2F2
+	smsgPartyMemberStats        = 0x07E
+	smsgPartyMemberStatsFull    = 0x2F2
+	cmsgRequestPartyMemberStats = 0x27F
 )
+
+// requestStats asks for an out-of-range member's full stats (CMSG_REQUEST_PARTY_MEMBER_STATS), as the real client's
+// party frames do: for members out of range the server only sends the fields that changed, so without it their
+// maximum health and their online/dead/ghost status may never arrive. At most every 10 s per member.
+func (c *controlState) requestStats(w *client.WorldClient, guid uint64) {
+	c.mu.Lock()
+	ok := time.Since(c.asked[guid]) > 10*time.Second
+	if ok {
+		c.asked[guid] = time.Now()
+	}
+	c.mu.Unlock()
+	if ok {
+		w.SendPacketRaw(cmsgRequestPartyMemberStats, binary.LittleEndian.AppendUint64(nil, guid))
+	}
+}
 
 // parsePartyStats reads the fields up to the position (auras and pet data after it aren't needed).
 func (c *controlState) parsePartyStats(full bool, data []byte) {
@@ -145,7 +162,7 @@ func (c *controlState) parsePartyStats(full bool, data []byte) {
 var actLua string // the built-in act library and me.status() (Lua, on top of the API)
 
 func (b *Bot) setupControl() {
-	c := &controlState{watched: map[uint16]bool{}, names: map[uint64]string{}, classes: map[uint64]uint8{}, members: map[uint64]*memberStats{}}
+	c := &controlState{watched: map[uint16]bool{}, names: map[uint64]string{}, classes: map[uint64]uint8{}, members: map[uint64]*memberStats{}, asked: map[uint64]time.Time{}}
 	w := b.world
 	w.AddPacketHook(func(op uint16, data []byte) { c.onPacket(b, op, data) })
 
@@ -178,6 +195,7 @@ func (b *Bot) setupControl() {
 	b.watchAreaTriggers()
 	b.watchEvents()
 	b.setupWatch()
+	b.setupGroupReport()
 	b.startRecording()
 	e := b.lua
 
@@ -229,9 +247,13 @@ func (b *Bot) setupControl() {
 						gm.Distance = &d
 					}
 				}
+				if w.GetObject(m.GUID) == nil {
+					c.requestStats(w, m.GUID)
+				}
 				if o := w.GetObject(m.GUID); o != nil { // in sight: exact
 					u := b.worldObjToUnitInfo(o)
-					gm.InRange, gm.Level, gm.Alive = true, u.Level, u.IsAlive
+					gm.Ghost = o.Value(0x96)&0x10 != 0 // PLAYER_FLAGS_GHOST, as IsGhost
+					gm.InRange, gm.Level, gm.Alive = true, u.Level, u.IsAlive && !gm.Ghost // a ghost has 1 health
 					gm.Health = types.Resource{Current: u.Health, Max: u.MaxHealth}
 					gm.InCombat, gm.Target = u.Flags&0x80000 != 0, types.GUID(u.Target)
 					gm.Position = &types.Position{X: round1(u.PosX), Y: round1(u.PosY), Z: round1(u.PosZ), Map: mapID}

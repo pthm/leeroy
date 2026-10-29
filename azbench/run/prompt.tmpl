@@ -8,7 +8,8 @@ GOAL: {{.GoalText}}.{{if .Hint}} {{.Hint}}{{end}}
 Read AGENTS.md first. It covers playing the game well (gear, spells, combat, pulls), your session (wow), how to
 play well with the SDK (bags, vendors,
 trainers, death, other players), the runtime and the Lua API, and the world data tools: azworld (where a quest's targets are,
-what drops an item, the nearest trainer) and worlddb (read-only SQL over the game's world database).
+what drops an item, the nearest trainer; azworld sql for read-only SQL over the game's world database). The run
+lasts {{.Minutes}} minutes: standings shows how many are left.
 Reference source (read-only): the client and its Lua bindings in {{.Repo}}/azeroth-sdk (client/, session/,
 script/), the server in {{.Repo}}/server/azerothcore/src/server/game and {{.Repo}}/server/azerothcore/src/server/shared.
 

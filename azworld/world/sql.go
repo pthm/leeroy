@@ -1,4 +1,4 @@
-package tools
+package world
 
 import (
 	"bufio"
@@ -10,22 +10,22 @@ import (
 	"strings"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/pthm/leeroy/azworld/world"
 )
 
-const worlddbUsage = `worlddb "SELECT ..."   read-only SQL against the game's world database (acore_world): creature spawns,
-NPCs, quests, loot tables, items, vendors. Output is tab-separated with a header row, capped at 300 rows.
+const sqlUsage = `azworld sql "SELECT ..."   read-only SQL against the game's world database (acore_world; wowbench.* for the
+derived tables): creature spawns, NPCs, quests, loot tables, items, vendors. Output is tab-separated with a header
+row, capped at 300 rows. The query can also come on stdin.
 `
 
-// Worlddb runs read-only SQL on acore_world and prints it the way mysql -B does (tab-separated, a header row per
+// SQL (azworld sql) runs read-only SQL on acore_world and prints it the way mysql -B does (tab-separated, a header row per
 // result, NULL as NULL), capped at 301 lines.
-func Worlddb(args []string) int {
+func SQL(args []string) int {
 	q := ""
 	if len(args) > 0 {
 		q = args[0]
 	}
 	if q == "--help" || q == "-h" {
-		fmt.Print(worlddbUsage)
+		fmt.Print(sqlUsage)
 		return 0
 	}
 	if q == "" {
@@ -34,7 +34,7 @@ func Worlddb(args []string) int {
 	}
 	w := &capped{w: bufio.NewWriter(os.Stdout), left: 301}
 	defer w.w.Flush()
-	rs, err := world.DB(world.Reader, "acore_world").Query(q)
+	rs, err := DB(Reader, "acore_world").Query(q)
 	if err != nil {
 		w.line(mysqlErr(err))
 		return 0

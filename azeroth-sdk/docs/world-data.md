@@ -1,8 +1,8 @@
-# World data: `azworld` (structured) and `worlddb` (raw SQL)
+# World data: `azworld`
 
 `azworld` answers the usual planning questions in one call, as JSON, with relations already resolved: where
 an item drops (with chances and spawn locations), who gives a quest and where its targets are, which NPCs
-are hostile to you, the nearest trainer or vendor. Start here; drop to `worlddb` SQL for anything else.
+are hostile to you, the nearest trainer or vendor. Start here; drop to raw SQL (`azworld sql`) for anything else.
 
 ```sh
 azworld search "Hogger"                          # items, quests, npcs, objects, spells, zones, achievements by name
@@ -25,9 +25,9 @@ azworld upgrades --class priest --level 7 --near -9460,70 [--slot chest]   # gea
 back). Races: 1 Human, 3 Dwarf, 4 Night Elf, 7 Gnome; classes: 1 Warrior, 2 Paladin, 4 Rogue, 5 Priest,
 8 Mage. Results are capped (15 per list); counts like `drops_total` give the full size.
 
-## Raw SQL: `worlddb`
+## Raw SQL: `azworld sql`
 
-`worlddb "SELECT ..."` runs read-only SQL against the game's static world data (MySQL; TSV output, max
+`azworld sql "SELECT ..."` runs read-only SQL against the game's static world data (MySQL; TSV output, max
 300 rows). Use it to plan: where to go, what to kill, who gives which quest, what drops an item.
 
 | Table | Useful columns |
@@ -60,7 +60,7 @@ indoors (an inn's upstairs trainer, anything in Stormwind), pass their z: `move.
 
 ```sh
 # level 3-5 mobs near Northshire (map 0 = Eastern Kingdoms), by spawn count
-worlddb "SELECT t.entry, t.name, t.minlevel, t.maxlevel, COUNT(*) n, ROUND(AVG(c.position_x)) x, ROUND(AVG(c.position_y)) y
+azworld sql "SELECT t.entry, t.name, t.minlevel, t.maxlevel, COUNT(*) n, ROUND(AVG(c.position_x)) x, ROUND(AVG(c.position_y)) y
   FROM creature c JOIN creature_template t ON t.entry = c.id
   WHERE c.map = 0 AND t.maxlevel BETWEEN 3 AND 5 AND t.npcflag = 0
     AND c.position_x BETWEEN -9500 AND -8500 AND c.position_y BETWEEN -800 AND 200

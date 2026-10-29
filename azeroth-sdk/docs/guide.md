@@ -191,7 +191,7 @@ same time and often with the same goal. The rules that shape how you interact:
 - **Tagging.** The first player (or group) to damage a mob owns it: only they get its XP, loot and quest credit.
   Hitting a mob someone else tagged gets you nothing.
 - **Contested spawns.** Some quest targets are a single named mob that respawns one to a few minutes after it dies
-  (`spawntimesecs` in worlddb's `creature` table). Several players on the same quest will queue for it, or fight
+  (`spawntimesecs` in the world database's `creature` table, `azworld sql`). Several players on the same quest will queue for it, or fight
   over the tag.
 - **Groups.** Party members near a kill all get quest kill credit for it, and quest items from the group's kills go to
   members who have the quest. Kill XP is split between members (with a bonus for groups of three or more), but quest XP and
@@ -202,9 +202,9 @@ same time and often with the same goal. The rules that shape how you interact:
 - **Trading.** Players can hand each other items and money directly: `trade.start(name)`, both put things in the
   window (`trade.offer{...}`), both `trade.accept()`. Items you picked up as quest rewards or that are
   "soulbound" can't be traded.
-- **How well is the party doing?** The `party` command shows, for the last few minutes, each member's XP/hour,
-  kills and deaths, and how their time went: fighting, travelling, idle (standing around), dead, and with the group;
-  plus your XP/hour in the party against before you joined. A party that waits for stragglers, runs back from the
+- **How well is the party doing?** `group.report(minutes)` shows, for the last few minutes, each member's kills
+  and deaths and how their time went: fighting, travelling, idle (standing around), dead, and with the group (it
+  counts what you've seen of them; `in_sight_pct` says how much). Their XP rates are in `standings`. A party that waits for stragglers, runs back from the
   graveyard one by one or splits up spends its time idle or travelling instead of fighting.
 - **Inviting.** `group.invite(name)`, and the other player gets a `party_invite` event and accepts with
   `group.accept()`. `group.info()` shows your party, `group.leave()` leaves it. Everyone uses the same

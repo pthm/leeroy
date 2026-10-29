@@ -1,6 +1,6 @@
 package world
 
-// Setup builds the `wowbench` schema that worlddb and azworld read: client DBC data the world DB lacks, plus
+// Setup builds the `wowbench` schema that azworld reads: client DBC data the world DB lacks, plus
 // precomputed joins (aowow-style). Needs data/dbc/*.dbc and data/maps (see README). Tables:
 //  achievement, achievement_criteria, achievement_category, criteria_type: the achievement catalogue
 //  area (AreaTable), map_overlay (explore_area criteria asset -> area ids), area_location (where each area

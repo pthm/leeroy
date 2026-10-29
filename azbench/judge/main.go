@@ -74,7 +74,7 @@ func appendLine(file string, v any) {
 	f.Write(append(b, '\n'))
 }
 
-// Main is the judge's command line (azbench judge|report|party|signals): it returns the exit code.
+// Main is the judge's command line (azbench judge|report|signals): it returns the exit code.
 func Main(args []string) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -86,10 +86,6 @@ func Main(args []string) (code int) {
 			code = 2
 		}
 	}()
-	if len(args) > 0 && args[0] == "party" {
-		runParty(args[1:])
-		return 0
-	}
 	if len(args) == 2 && args[0] == "report" {
 		Report(args[1])
 		return 0

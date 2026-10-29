@@ -3,7 +3,7 @@
 World queries for agents: where an NPC stands and what it sells or teaches, what a quest needs and where its targets
 are, where an item drops, gear upgrades, safe walking routes and map images, all as JSON. It reads the server's
 databases (`acore_world` and the derived `wowbench` schema) and the extracted game data in `data/` (maps, DBC files,
-and the client's minimap and road tiles when extracted). Agents run it as `azworld` (`bench/agent/bin/azworld`);
+and the client's minimap and road tiles when extracted). Agents run it as `azworld` (`bench/agent/bin/azworld`), and `azworld sql` for raw SQL;
 the agent-facing docs are in [`azeroth-sdk/docs/world-data.md`](../azeroth-sdk/docs/world-data.md).
 
 ```sh
@@ -20,7 +20,7 @@ directory or the binary.
 ## Package `world`
 
 `azworld/world` is the shared side of every tool that reads the server or the game data: `azview` (maps, names),
-the judge and `party` (the characters database) and `bin/account` (the auth database) use it too. The headless
+the judge (the characters database) and `bin/account` (the auth database) use it too. The headless
 client (`azeroth-sdk`) doesn't: it needs no database.
 
 | File | |

@@ -139,6 +139,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `group.invite(name) → request` | invite a player (by exact character name) to your group: ok once the invite is sent; they answer with group.accept |
 | `group.invited_by() → string?` | who invited you, nil if no invite is pending |
 | `group.leave() → request` | leave your group |
+| `group.report([minutes = 10]) → GroupReport?` | how your party has spent the last minutes, from what you've seen of them: each member's time fighting, travelling, idle, dead and with the group, and their kills and deaths (XP and scores: the standings); nil when you're solo |
 
 ### runtime
 
@@ -179,7 +180,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 
 | Function | |
 |---|---|
-| `me.achievements() → Achievements` | what you've earned and your criteria progress (worlddb's wowbench.achievement tables have names). The first call asks the server |
+| `me.achievements() → Achievements` | what you've earned and your criteria progress (the world database's wowbench.achievement tables have names). The first call asks the server |
 | `me.alive() → bool` | false while dead or a ghost |
 | `me.auras() → Aura[]` | your buffs and debuffs: name, harmful, stacks, time left, who cast them |
 | `me.casting() → Casting?` | the cast or channel in progress (from the moment you send it); nil when idle. Moving interrupts it |
@@ -705,6 +706,33 @@ Aura is a buff or debuff on a unit.
 | `caster?` | UnitRef |  |
 | `mine` | bool | you cast it |
 | `dispel?` | string | what can remove it: magic, curse, disease, poison |
+
+### GroupReport
+
+GroupReport is how your party has spent the last minutes, from what you've seen of them (group.report).
+
+| Field | Type | |
+|---|---|---|
+| `minutes` | number |  |
+| `members` | GroupMemberReport[] | you first |
+
+### GroupMemberReport
+
+GroupMemberReport is one member's time over the report's window, in percent of the seconds sampled.
+
+| Field | Type | |
+|---|---|---|
+| `name` | string |  |
+| `you?` | bool |  |
+| `seconds` | number | seconds sampled (while you were grouped with them) |
+| `fighting_pct` | number | in combat (seen only while they're in sight: out of sight it counts as travelling or idle) |
+| `travelling_pct` | number |  |
+| `idle_pct` | number | alive, not fighting, not moving: usually waiting |
+| `dead_pct` | number |  |
+| `with_group_pct` | number | within 50 yd of another member |
+| `in_sight_pct` | number | how much of it you saw them; out of sight it's from party updates: their position, not combat, and a death may be missed |
+| `kills` | number | killing blows |
+| `deaths` | number |  |
 
 ### Trade
 

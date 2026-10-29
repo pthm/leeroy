@@ -25,16 +25,16 @@ wow subscribe +stall,chat:npc_*                  # choose what wakes you: show, 
 wow events --types chat,death --last 20          # the event log: what happened, in order, for the whole run
 wow answer 812 sell                              # answer a script's ask()
 tail -20 session.log
-standings                                        # where everyone in this run stands (rank, score, recent rate)
-party [10]                                       # your party over the last 10 min: each member's XP/hour, time fighting/travelling/idle/dead/with the group
+wow 'return group.report(10)'                    # your party over the last 10 min: each member's time fighting/travelling/idle/dead/with the group, kills, deaths
+standings                                        # outside the game: where everyone stands (score, rates, level) and the minutes left in the run
 ```
 
 - `wow` runs Lua in the session and prints the returned values as JSON (`{"error": ...}` on failure). It runs
   between your scripts' steps on the same state, so it sees exactly what they see, and it can't wait: start a
   task for anything that takes time. Every reply carries `"events"`: what happened since your last call (counts,
   plus what you subscribe to, errors, failed actions and tasks in full), and `"script_errors"` if a script failed.
-  Subscribed chat and the minutes left in the run (`wow: 42 min left`) also go to stderr;
-  `standings` has `minutes_left` on its last line.
+  Subscribed chat also goes to stderr. The run's clock isn't in the game: `standings` has `minutes_left` on its
+  last line.
 - `wow wait`/`-w` take whole seconds (max 600). Create and edit files with your file-editing tools; your working
   directory is the only place you can write (some setups block shell redirects, heredocs and `sed -i`).
 - Scripts and Lua globals persist until you replace them. Keep state you want to inspect in globals
@@ -92,4 +92,4 @@ end, "chat watch")
 
 The rest of this file: a guide to playing well with the SDK (bags, vendors, trainers, death, unreachable
 targets, other players), then the runtime (tasks, actions, events), the Lua API and its full reference, then the world data tools
-(`azworld`, `worlddb`).
+(`azworld`, with `azworld sql` for raw SQL).

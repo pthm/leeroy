@@ -605,10 +605,7 @@ var commands = []command{
 		return img
 	}},
 
-	{"sql", "sql <query>  raw read-only SQL (acore_world; wowbench.* for the derived tables)", func(a []string, _ []bool, _ map[string]string) any {
-		s, _ := arg(a, 0)
-		return q(s)
-	}},
+	{"sql", "sql <query>  raw read-only SQL (acore_world; wowbench.* for the derived tables), tab-separated, at most 300 rows", nil},
 }
 
 // jsShl is JS `1 << (n - 1)` (int32, shift count mod 32).
@@ -656,6 +653,9 @@ func Run(argv []string, w io.Writer) (code int) {
 		} else {
 			args = append(args, rest[i])
 		}
+	}
+	if cmd == "sql" { // a table, not JSON
+		return SQL(rest)
 	}
 	var c *command
 	for i := range commands {

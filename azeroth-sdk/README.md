@@ -137,6 +137,8 @@ AC_DATA_DIR=$PWD/../data go test ./pathfinding/ ./movement/   # tests that need 
 | [`movement`](movement) | follows a path and sends client-like movement packets |
 | [`clientdata`](clientdata) | reads a game install's MPQ archives: minimap BLPs, ADT texture layers |
 | [`cmd/azsdk`](cmd/azsdk) | the daemon |
+| [`cmd/wow`](cmd/wow) | `wow`: the command line for a session (run Lua, load scripts, read and wait on events) |
+| [`jqjson`](jqjson) | JSON read and printed the way `jq -c` does (`wow`'s output) |
 | [`cmd/apigen`](cmd/apigen) | generates the API reference |
 | [`cmd/clientdata`](cmd/clientdata), [`cmd/navprobe`](cmd/navprobe) | data extraction and navmesh probing |
 | [`examples/lua`](examples/lua) | example in-daemon scripts |
@@ -152,7 +154,7 @@ Agent-facing documentation, in `docs/`:
 | [`runtime.md`](docs/runtime.md) | tasks, actions (requests and results), events |
 | [`lua-api.md`](docs/lua-api.md) | the Lua API by namespace, and its conventions |
 | [`api-reference.md`](docs/api-reference.md) | every function, type and event (generated) |
-| [`world-data.md`](docs/world-data.md) | `azworld` (structured lookups) and `worlddb` (raw SQL): the bench's world tools, documented here for agents |
+| [`world-data.md`](docs/world-data.md) | `azworld`: structured lookups and raw SQL (`azworld sql`), the bench's world tool, documented here for agents |
 
 Derived from [AzerothGhost](https://github.com/azerothcore/AzerothGhost) (MIT, see `LICENSE.AzerothGhost`),
 with the bot AI removed and the agent API, movement and pathfinding fixes from LEEROY.

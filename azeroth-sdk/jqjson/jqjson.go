@@ -1,6 +1,7 @@
-// Package tools is the agents' own commands (wow, standings, worlddb), run by azbench when it's called by one of
-// those names (bench/agent/bin links to it). They print exactly what the shell+curl+jq versions printed.
-package tools
+// Package jqjson reads and prints JSON the way jq -c does: object keys in their order, number literals as written
+// (exponents as jq 1.8 writes them), no HTML escaping, plus jq-style truthiness and field access. The wow tool
+// prints the session's replies with it, and azbench's standings the board.
+package jqjson
 
 import (
 	"bytes"
@@ -11,18 +12,21 @@ import (
 	"strings"
 )
 
-// obj is a JSON object that keeps its keys in order, like jq.
-type obj struct {
+// Obj is a JSON object that keeps its keys in order, like jq.
+type Obj struct {
 	keys []string
 	vals map[string]any
 }
 
-func newObj() *obj { return &obj{vals: map[string]any{}} }
+func NewObj() *Obj { return &Obj{vals: map[string]any{}} }
 
-func (o *obj) get(k string) any { return o.vals[k] }
+func (o *Obj) Get(k string) any { return o.vals[k] }
+
+// Keys in order.
+func (o *Obj) Keys() []string { return o.keys }
 
 // set replaces a value in place, or appends a new key (jq's `. + {k: v}`).
-func (o *obj) set(k string, v any) {
+func (o *Obj) Set(k string, v any) {
 	if _, ok := o.vals[k]; !ok {
 		o.keys = append(o.keys, k)
 	}
@@ -31,7 +35,7 @@ func (o *obj) set(k string, v any) {
 
 // parse decodes JSON values into ordered objects, []any, json.Number, string, bool and nil, one per value in the
 // input (jq's -s reads all of them).
-func parseAll(data []byte) ([]any, error) {
+func ParseAll(data []byte) ([]any, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
 	var out []any
@@ -55,7 +59,7 @@ func parseValue(dec *json.Decoder) (any, error) {
 	switch d := t.(type) {
 	case json.Delim:
 		if d == '{' {
-			o := newObj()
+			o := NewObj()
 			for dec.More() {
 				kt, err := dec.Token()
 				if err != nil {
@@ -65,7 +69,7 @@ func parseValue(dec *json.Decoder) (any, error) {
 				if err != nil {
 					return nil, err
 				}
-				o.set(kt.(string), v)
+				o.Set(kt.(string), v)
 			}
 			_, err := dec.Token()
 			return o, err
@@ -110,7 +114,7 @@ func enc(b *strings.Builder, v any) {
 			enc(b, e)
 		}
 		b.WriteByte(']')
-	case *obj:
+	case *Obj:
 		b.WriteByte('{')
 		for i, k := range x.keys {
 			if i > 0 {
@@ -153,14 +157,14 @@ func encString(b *strings.Builder, s string) {
 	b.WriteByte('"')
 }
 
-func compact(v any) string {
+func Compact(v any) string {
 	var b strings.Builder
 	enc(&b, v)
 	return b.String()
 }
 
 // truthy: jq's truth (everything but null and false).
-func truthy(v any) bool {
+func Truthy(v any) bool {
 	switch x := v.(type) {
 	case nil:
 		return false
@@ -171,22 +175,22 @@ func truthy(v any) bool {
 }
 
 // field is jq's .k on an object (null otherwise).
-func field(v any, k string) any {
-	if o, ok := v.(*obj); ok {
-		return o.get(k)
+func Field(v any, k string) any {
+	if o, ok := v.(*Obj); ok {
+		return o.Get(k)
 	}
 	return nil
 }
 
 // interp is jq's string interpolation of a value: strings raw, everything else as JSON.
-func interp(v any) string {
+func Interp(v any) string {
 	if s, ok := v.(string); ok {
 		return s
 	}
-	return compact(v)
+	return Compact(v)
 }
 
-func num(v any) float64 {
+func Num(v any) float64 {
 	switch x := v.(type) {
 	case json.Number:
 		f, _ := x.Float64()

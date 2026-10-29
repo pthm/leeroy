@@ -1,8 +1,8 @@
 # judge
 
 Scoring and reporting, in one place. The judge scores one character by polling the character database (the
-server's record, not the client's); `judge report` writes the report card and `team.json` after a run; `judge party`
-is the agents' `party` tool. All four are `azbench` subcommands. Every measure they share (the score's rates, combat totals, cooperation, time use) is
+server's record, not the client's); `judge report` writes the report card and `team.json` after a run. All three are
+`azbench` subcommands. Every measure they share (the score's rates, combat totals, cooperation, time use) is
 defined once, in [`azeroth-sdk/metrics`](../../azeroth-sdk/metrics), which the client's in-game progress events use
 too. The server saves characters every 15 s (`server/override.yml`), and the judge polls every 15 s by default.
 
@@ -10,7 +10,6 @@ too. The server saves characters every 15 s (`server/override.yml`), and the jud
 |---|---|
 | `azbench judge <Char> <goal> [flags]` | score a character live: samples, rates, score, board; exits when the goal is met or time runs out |
 | `azbench report <run dir \| team dir>` | after a run: `report.json` (the report card) and, for a team, `team.json` |
-| `azbench party [minutes]` | the agents' `party`: how your current party is doing (`bench/agent/bin/party`) |
 | `azbench signals <Char>` | every progress signal for a character |
 
 | File | |
@@ -18,7 +17,6 @@ too. The server saves characters every 15 s (`server/override.yml`), and the jud
 | `main.go` | the live judge |
 | `signals.go` | the progress signals |
 | `report.go` | `judge report` |
-| `party.go` | `judge party` |
 | `streams.go` | tails the event streams in a run or team dir |
 | `score.json` | the weights for `score:` goals, and their version (built into the binary: rebuild with `./build.sh`) |
 

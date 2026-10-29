@@ -60,7 +60,7 @@ func scoreText(goal string, mins int) (score, stop string) {
 	case "achpoints":
 		return fmt.Sprintf(`Your score is the total points of the achievements you earn during the next %d minutes
 (ones already earned don't count). There is no finish line: keep earning until time runs out. Achievement
-names, points and criteria are in worlddb (see AGENTS.md); me.achievements() shows your progress.`, mins),
+names, points and criteria are in the world database (azworld sql; see AGENTS.md); me.achievements() shows your progress.`, mins),
 			"Do not stop early: keep earning points until the time runs out."
 	case "score":
 		return fmt.Sprintf(`HOW YOU ARE JUDGED: every 15 seconds the judge reads your character from the server database. Your
@@ -106,6 +106,6 @@ you train and the gear you choose. %s is already logged in and waiting.`, a.Char
 	var out strings.Builder
 	err = promptTmpl.Execute(&out, map[string]any{"Identity": identity, "GoalText": goalText(s.Goal, s.Minutes),
 		"Hint": strings.TrimSpace(s.Hint), "ScoreText": score, "StopText": stop, "Repo": repo,
-		"Roster": strings.Join(roster, "\n"), "Notice": notice})
+		"Roster": strings.Join(roster, "\n"), "Notice": notice, "Minutes": s.Minutes})
 	return out.String(), err
 }

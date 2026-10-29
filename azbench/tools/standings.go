@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"github.com/pthm/leeroy/azeroth-sdk/jqjson"
 	"math"
 	"os"
 	"path/filepath"
@@ -34,15 +35,17 @@ func Standings(args []string) int {
 		d, _ := os.ReadFile(f)
 		all = append(all, d...)
 	}
-	vs, err := parseAll(all)
+	vs, err := jqjson.ParseAll(all)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "standings: %v\n", err)
 		return 2
 	}
-	sort.SliceStable(vs, func(i, j int) bool { return num(field(vs[i], "score")) > num(field(vs[j], "score")) })
+	sort.SliceStable(vs, func(i, j int) bool {
+		return jqjson.Num(jqjson.Field(vs[i], "score")) > jqjson.Num(jqjson.Field(vs[j], "score"))
+	})
 	var left any
 	for _, v := range vs {
-		if m := field(v, "minutes_left"); truthy(m) && (left == nil || num(m) > num(left)) {
+		if m := jqjson.Field(v, "minutes_left"); jqjson.Truthy(m) && (left == nil || jqjson.Num(m) > jqjson.Num(left)) {
 			left = m
 		}
 	}
@@ -50,8 +53,8 @@ func Standings(args []string) int {
 		var s float64
 		any := false
 		for _, v := range vs {
-			if x := field(v, k); x != nil {
-				s += num(x)
+			if x := jqjson.Field(v, k); x != nil {
+				s += jqjson.Num(x)
 				any = true
 			}
 		}
@@ -61,24 +64,24 @@ func Standings(args []string) int {
 		return math.Round(s*10) / 10
 	}
 	for i, v := range vs {
-		o := newObj()
-		o.set("rank", i+1)
-		o.set("char", field(v, "char"))
-		o.set("you", field(v, "char") == me)
+		o := jqjson.NewObj()
+		o.Set("rank", i+1)
+		o.Set("char", jqjson.Field(v, "char"))
+		o.Set("you", jqjson.Field(v, "char") == me)
 		for _, k := range []string{"score", "rate", "best_window", "recent_rate", "progress", "level", "role",
 			"damage_dealt", "damage_taken", "healing_done", "assist_share", "contested_hits", "avg_item_level", "money"} {
-			o.set(k, field(v, k))
+			o.Set(k, jqjson.Field(v, k))
 		}
-		o.set("minutes", math.Floor(num(field(v, "elapsed_s"))/60))
-		fmt.Println(compact(o))
+		o.Set("minutes", math.Floor(jqjson.Num(jqjson.Field(v, "elapsed_s"))/60))
+		fmt.Println(jqjson.Compact(o))
 	}
-	f := newObj()
-	f.set("faction", "Alliance")
-	f.set("players", len(vs))
-	f.set("minutes_left", left)
-	f.set("score", sum("score"))
-	f.set("progress", sum("progress"))
-	f.set("recent_rate", sum("recent_rate"))
-	fmt.Println(compact(f))
+	f := jqjson.NewObj()
+	f.Set("faction", "Alliance")
+	f.Set("players", len(vs))
+	f.Set("minutes_left", left)
+	f.Set("score", sum("score"))
+	f.Set("progress", sum("progress"))
+	f.Set("recent_rate", sum("recent_rate"))
+	fmt.Println(jqjson.Compact(f))
 	return 0
 }

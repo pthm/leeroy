@@ -51,7 +51,7 @@ theirs to discover and build. The guide they get explains how the game works, no
 
 ```
   agent (Claude Code or Codex, in its workspace)
-    │  shell: wow (Lua in the session), worlddb, azworld, standings, party
+    │  shell: wow (the game: Lua in the session), azworld (the world's data), standings (the score)
     │  JSON-RPC: script.eval, events.query, events.wait, api.call
     ▼
   azsdk (one daemon per agent)
@@ -77,7 +77,7 @@ sandboxed: they can write only in their workspace, read the docs and source, and
 |---|---|
 | [`server/`](server/README.md) | The AzerothCore server: upstream checkout (`azerothcore/`, gitignored), config overrides (`override.yml`), account creation (`account/`) and `recorder/mod-recorder`, the server-side event log |
 | [`bench/`](bench/README.md) | The benchmark's configs and data: scenarios and matrices (YAML), specs and places, what agents get (`agent/`: task docs and their tools), agent `workspaces/` and `runs/` |
-| [`azbench/`](azbench) | `azbench`: runs the benchmark from those configs (one supervisor per run: sessions, judges, agents; pause, resume, restart), the judge and report card, and the agents' tools (`wow`, `standings`, `worlddb`, `party`) |
+| [`azbench/`](azbench) | `azbench`: runs the benchmark from those configs (one supervisor per run: sessions, judges, agents; pause, resume, restart), the judge and report card, and the agents' `standings` |
 | [`azeroth-sdk/`](azeroth-sdk/README.md) | `azsdk`: the Go headless client and daemon the agents drive, plus the Lua API docs and example scripts. Only a game client: no database access |
 | [`azview/`](azview/README.md) | `azview`: the viewer (live and replay) and movement audit, from the recordings |
 | [`azworld/`](azworld/README.md) | `azworld`: world queries for agents, from the server's databases and the game data; `azworld setup` builds the `wowbench` schema they read |
@@ -123,8 +123,8 @@ bin/azbench matrix bench/matrices/starter.yaml --dry-run # a grid of solo runs
 
 A scenario ([bench/scenarios/README.md](bench/scenarios/README.md)) lists the agents, the characters they play, the
 goal and the starting conditions. Each agent gets a fresh non-GM account and runs as headless Claude Code (or Codex CLI) inside `bench/workspaces/<name>/` (its
-persistent script library). It can read and write only there, read the client and server source, and run `wow`, `worlddb`,
-`azworld` and read-only shell commands. Results go to `bench/runs/<id>/`:
+persistent script library). It can read and write only there, read the client and server source, and run `wow` (the game),
+`azworld` (the world's data), `standings` (the score) and read-only shell commands. Results go to `bench/runs/<id>/`:
 - `judge.json`: the score;
 - `samples.jsonl`: progress every 15 s;
 - `agent.jsonl`: the transcript;

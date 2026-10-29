@@ -399,6 +399,27 @@ type GroupMember struct {
 	Auras        []Aura    `json:"auras,omitempty" doc:"their buffs and debuffs (spell, name, harmful; details while in sight)"`
 }
 
+// GroupReport is how your party has spent the last minutes, from what you've seen of them (group.report).
+type GroupReport struct {
+	Minutes float64             `json:"minutes"`
+	Members []GroupMemberReport `json:"members" doc:"you first"`
+}
+
+// GroupMemberReport is one member's time over the report's window, in percent of the seconds sampled.
+type GroupMemberReport struct {
+	Name          string  `json:"name"`
+	You           bool    `json:"you,omitempty"`
+	Seconds       int     `json:"seconds" doc:"seconds sampled (while you were grouped with them)"`
+	FightingPct   float64 `json:"fighting_pct" doc:"in combat (seen only while they're in sight: out of sight it counts as travelling or idle)"`
+	TravellingPct float64 `json:"travelling_pct"`
+	IdlePct       float64 `json:"idle_pct" doc:"alive, not fighting, not moving: usually waiting"`
+	DeadPct       float64 `json:"dead_pct"`
+	WithGroupPct  float64 `json:"with_group_pct" doc:"within 50 yd of another member"`
+	InSightPct    float64 `json:"in_sight_pct" doc:"how much of it you saw them; out of sight it's from party updates: their position, not combat, and a death may be missed"`
+	Kills         int     `json:"kills" doc:"killing blows"`
+	Deaths        int     `json:"deaths"`
+}
+
 type TradeSide struct {
 	Money uint32 `json:"money"`
 	Items []Item `json:"items"`

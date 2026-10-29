@@ -137,6 +137,7 @@ type Bot struct {
 
 	// Stop channel
 	stopCh chan struct{}
+	group  *groupLog // group.report's record
 
 	// Validation (only allocated/wired when config.ValidationMode && ValidationLogPath != "")
 	// Follows zero-overhead rule: nothing allocated or written on normal paths.
@@ -782,6 +783,7 @@ func (b *Bot) runAILoop(worldErrCh chan error) {
 			tickStart := time.Now()
 			if b.lua != nil {
 				b.stateEvents()
+				b.sampleGroup()
 				b.lua.CallTick()
 			}
 			if elapsed := time.Since(tickStart); elapsed > 300*time.Millisecond {

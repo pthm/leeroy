@@ -204,8 +204,8 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 		}
 		args = append(args, "--add-dir", repo+"/azeroth-sdk/client", repo+"/azeroth-sdk/session", repo+"/azeroth-sdk/script",
 			repo+"/server/azerothcore/src/server/game", repo+"/server/azerothcore/src/server/shared",
-			"--allowedTools", "Bash(wow:*)", "Bash(worlddb:*)", "Bash(azworld:*)", "Bash(sleep:*)", "Bash(tail:*)",
-			"Bash(cat:*)", "Bash(ls:*)", "Bash(grep:*)", "Bash(mkdir:*)", "Bash(standings:*)", "Bash(party:*)", "Edit(./**)",
+			"--allowedTools", "Bash(wow:*)", "Bash(azworld:*)", "Bash(standings:*)", "Bash(sleep:*)", "Bash(tail:*)",
+			"Bash(cat:*)", "Bash(ls:*)", "Bash(grep:*)", "Bash(mkdir:*)", "Edit(./**)",
 			"--disallowedTools", "Edit(~/.claude/**)", "Read(~/.claude/**)")
 		cmd = exec.Command("claude", args...)
 	}
