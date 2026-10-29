@@ -1,7 +1,10 @@
 # wowbench
 
+<img width="1661" height="1123" alt="image" src="https://github.com/user-attachments/assets/fb8168af-c80b-4074-9616-df19c4c2b5c2" />
+
 AI agents play WoW 3.3.5a on a local AzerothCore server, writing their own Lua scripts, and get scored on what they
 achieve.
+
 
 | Folder | What's in it |
 |---|---|
