@@ -5,6 +5,7 @@
 b=${WOWBENCH_BOARD:?standings: not available in this run}
 cat "$b"/*.json 2>/dev/null | jq -s -c --arg me "$WOWBENCH_CHAR" 'sort_by(-.score) | to_entries | map({rank: (.key + 1), char: .value.char,
   you: (.value.char == $me), score: .value.score, rate: .value.rate, best_window: .value.best_window, recent_rate: .value.recent_rate,
-  progress: .value.progress, level: .value.level, minutes: (.value.elapsed_s / 60 | floor)})
+  progress: .value.progress, level: .value.level, avg_item_level: .value.avg_item_level, money: .value.money,
+  minutes: (.value.elapsed_s / 60 | floor)})
   | (.[], {faction: "Alliance", players: length, score: (map(.score) | add * 10 | round / 10),
      progress: (map(.progress) | add * 10 | round / 10), recent_rate: (map(.recent_rate) | add * 10 | round / 10)})'

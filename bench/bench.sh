@@ -52,7 +52,7 @@ score:*)
 progress is what the game itself rewards, gained since the start:
   XP earned: 1 point per XP (from kills, quests, exploring: the game already gives more for harder content)
   gear: 800 points per +1 average item level of what you wear (over your 17 gear slots)
-  wealth: 2 points per copper of money plus the vendor value of everything you own
+Money isn't scored: it's a means. Spend it on whatever makes you progress faster (gear, training, food, repairs).
 YOUR SCORE is the average of two rates, in progress points per hour: your rate over the whole $mins minutes, and
 your best rate over any 15-minute stretch. Sustained progress counts, and so does finding a better way to play:
 time spent trying a new strategy lowers your overall rate but not your best stretch. Deaths, stalls and time spent

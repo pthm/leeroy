@@ -18,7 +18,7 @@
 //   score        (rate + best_window) / 2: the headline for score goals. Sustained progress counts, and so does
 //                finding a better strategy: time spent trying one lowers the rate but not the best window. Deaths
 //                and stalls cost through the time they lose. For score goals, progress is the game's own rewards:
-//                XP earned, gear (average item level) and wealth, weighted in score.json.
+//                XP earned and gear (average item level), weighted in score.json; money is reported, not scored.
 // --board <dir> writes <dir>/<character>.json with the latest result each poll (the agents' `standings` tool reads them).
 // --resume <samples.jsonl> continues a paused run from its samples.
 import { appendFileSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -91,7 +91,8 @@ for (;;) {
     best_window: round(bestWindow), pace: round(pace), score: round((rate + bestWindow) / 2) };
   const sample = { elapsed_s, level, xp, money, value, ...rates, signals: sig };
   if (samples) appendFileSync(samples, JSON.stringify(sample) + "\n");
-  if (board) writeFileSync(`${board}/${char}.json`, JSON.stringify({ char, level: round(sig.level), progress: value, ...rates, elapsed_s }));
+  if (board) writeFileSync(`${board}/${char}.json`, JSON.stringify({ char, level: round(sig.level), progress: value, ...rates, elapsed_s,
+    money: sig.money_copper, avg_item_level: sig.avg_item_level }));
   if (record) appendFileSync(record, JSON.stringify({ t: Date.now(), ev: "score", n: char, value, level, ...rates }) + "\n");
   if (value >= need || Date.now() - start > timeout) {
     console.log(JSON.stringify({ char, goal, met: value >= need, ...sample, at: new Date().toISOString() }));
