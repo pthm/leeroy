@@ -35,6 +35,7 @@ type ChatMessage struct {
 	GUID    string `json:"guid"`
 	Channel string `json:"channel,omitempty"`
 	Text    string `json:"text"`
+	AgoS    int64  `json:"ago_s"` // seconds since it arrived, as of this read_chat
 }
 
 type RawPacket struct {
@@ -100,7 +101,9 @@ func (b *Bot) setupControl() {
 		defer c.mu.Unlock()
 		out := append([]ChatMessage{}, c.chat...) // [] not nil when empty, so Lua gets a table
 		c.chat, c.unread = nil, 0
+		now := time.Now().UnixMilli()
 		for i := range out {
+			out[i].AgoS = (now - out[i].Time) / 1000
 			if out[i].From == "" {
 				var g uint64
 				fmt.Sscan(out[i].GUID, &g)

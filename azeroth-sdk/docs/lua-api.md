@@ -89,7 +89,7 @@ after a teleport) · `log(msg)`
 **Chat:** `send_chat(msg)` (say) · `whisper(name, msg)` · `party(msg)` · `channel(name, msg)` ·
 `join_channel(name, id)` · `chat_pending()` → count of unread messages from other players ·
 `read_chat()` drains received messages: `{type, from, guid, channel, text,
-time_ms}`. Types: 0 system/server notices (e.g. "Inventory is full"), 1 say, 2 party, 7 whisper, 9 your own
+time_ms, ago_s}` (`ago_s`: seconds since it arrived). Types: 0 system/server notices (e.g. "Inventory is full"), 1 say, 2 party, 7 whisper, 9 your own
 whisper echoed, 17 channel, 0x0C+ NPC speech. You start in your zone's General channel (e.g.
 `"General - Elwynn Forest"`). Zone channels need their id (1 General, 2 Trade, 22 LocalDefense) and are
 not rejoined automatically when you change zone. Custom channels use id 0 and any name, and work
