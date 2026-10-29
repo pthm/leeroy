@@ -22,6 +22,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"math"
+	"strconv"
 	"time"
 
 	"github.com/pthm/leeroy/azeroth-sdk/client"
@@ -297,13 +298,26 @@ func (b *Bot) setupCoreAPI() {
 	})
 
 	// ---------- chat ----------
+	// The server drops chat over 255 bytes without a reply, so it'd look sent.
+	tooLong := func(op, msg string) map[string]any {
+		if len(msg) <= 255 {
+			return nil
+		}
+		return b.refuse(op, nil, "message_too_long", strconv.Itoa(len(msg))+" bytes: the server drops chat over 255 without telling you. Split it")
+	}
 	say := func(op string, typ uint32, to string) func(string) map[string]any {
 		return func(msg string) map[string]any {
+			if r := tooLong(op, msg); r != nil {
+				return r
+			}
 			b.sendChat(typ, to, msg)
 			return b.done(op, nil, nil)
 		}
 	}
 	e.Func("chat.say", "(msg) → request", "players within 40 yards hear it", func(msg string) map[string]any {
+		if r := tooLong("chat.say", msg); r != nil {
+			return r
+		}
 		return b.sent("chat.say", nil, b.SendChat(msg))
 	})
 	e.Func("chat.yell", "(msg) → request", "players within 300 yards hear it", say("chat.yell", 6, ""))
@@ -311,7 +325,7 @@ func (b *Bot) setupCoreAPI() {
 	e.Func("chat.whisper", "(name, msg) → request", "one player anywhere, by exact character name", func(to, msg string) map[string]any {
 		return say("chat.whisper", 7, to)(msg)
 	})
-	e.Func("chat.channel", "(name, msg) → request", "everyone in a channel you've joined", func(ch, msg string) map[string]any {
+	e.Func("chat.channel", "(name, msg) → request", "everyone in a channel you've joined. Every chat call takes at most 255 bytes (message_too_long)", func(ch, msg string) map[string]any {
 		return say("chat.channel", 0x11, ch)(msg)
 	})
 	e.Func("chat.join", "(name [, id = 0]) → request", "join a channel. Zone channels need their id: 1 General, 2 Trade, 22 LocalDefense (\"General - Elwynn Forest\"); custom channels use 0 and any name",

@@ -425,6 +425,9 @@ func (b *Bot) setupItems() {
 	e.Func("vendor.buy", "(npc, entry [, count = 1]) → request<ItemReceived>", "buy from a vendor within ~5 yd (count in purchases of buy_count each). Call vendor.items first",
 		func(vendor uint64, entry, count uint32) map[string]any {
 			args := map[string]any{"npc": gs(vendor), "item": entry, "count": max(count, 1)}
+			if r := b.noNPC("vendor.buy", args, vendor); r != nil {
+				return r
+			}
 			s.mu.Lock()
 			list, ok := s.vendors[vendor]
 			s.mu.Unlock()
@@ -467,6 +470,9 @@ func (b *Bot) setupItems() {
 	}
 	e.Func("vendor.sell", "(npc, item [, count = all]) → request<Sold>", "sell an item you carry (entry or guid) to a vendor within ~5 yd", func(vendor, item uint64, count uint32) map[string]any {
 		args := map[string]any{"npc": gs(vendor), "item": gs(item)}
+		if r := b.noNPC("vendor.sell", args, vendor); r != nil {
+			return r
+		}
 		it := findItem(w, item)
 		if it == nil {
 			return b.refuse("vendor.sell", args, "item_not_found", "no such item in your bags")
@@ -483,6 +489,9 @@ func (b *Bot) setupItems() {
 	})
 	e.Func("vendor.sell_junk", "(npc) → request<Sold>", "sell every grey (poor) item you carry. Items whose info hasn't loaded are skipped", func(vendor uint64) map[string]any {
 		args := map[string]any{"npc": gs(vendor)}
+		if r := b.noNPC("vendor.sell_junk", args, vendor); r != nil {
+			return r
+		}
 		n, before := 0, w.Money()
 		for _, it := range bagItems(w) {
 			if inBags(it) && it.Quality == "poor" && it.SellPrice > 0 {
@@ -498,6 +507,9 @@ func (b *Bot) setupItems() {
 	e.Func("vendor.repair", "(npc) → request<Repaired>", "repair everything you wear and carry at an NPC that repairs (role repair: armorers, weaponsmiths) within ~5 yd",
 		func(npc uint64) map[string]any {
 			args := map[string]any{"npc": gs(npc)}
+			if r := b.noNPC("vendor.repair", args, npc); r != nil {
+				return r
+			}
 			damaged := func() int {
 				n := 0
 				for _, it := range bagItems(w) {
@@ -531,6 +543,9 @@ func (b *Bot) setupItems() {
 	// ---------- trainer ----------
 	e.Func("trainer.learn", "(npc, spell) → request<Learned>", "learn a spell from a trainer within ~5 yd (costs money; wowdb npc <trainer> lists spells, levels and costs)",
 		func(trainer uint64, spell uint32) map[string]any {
+			if r := b.noNPC("trainer.learn", map[string]any{"npc": gs(trainer), "spell": spell}, trainer); r != nil {
+				return r
+			}
 			body := binary.LittleEndian.AppendUint64(nil, trainer)
 			w.SendPacketRaw(0x1B2, binary.LittleEndian.AppendUint32(body, spell)) // CMSG_TRAINER_BUY_SPELL
 			return b.request("trainer.learn", map[string]any{"npc": gs(trainer), "spell": spell}, 5*time.Second, nil,

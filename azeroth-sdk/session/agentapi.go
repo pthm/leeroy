@@ -157,21 +157,13 @@ func (b *Bot) setupAgentAPI() {
 	})
 	// AC doesn't push cooldowns for normal casts (the real client reads them from Spell.dbc), so they're tracked here.
 	e.Func("spells.cooldown", "(id) → ms", "milliseconds until it's ready (its cooldown, category cooldown and the global cooldown); 0 = ready", func(id uint32) float64 {
+		if left := s.cooldownLeft(id); left > 0 {
+			return float64(left.Milliseconds())
+		}
 		if !b.IsSpellReady(id) {
 			return 1500
 		}
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		at := s.cd[id]
-		if sp := spellInfo(id); sp != nil {
-			if c := s.catCD[sp.Category]; sp.Category != 0 && c.After(at) {
-				at = c
-			}
-			if sp.GCDCategory != 0 && s.gcdUntil.After(at) {
-				at = s.gcdUntil
-			}
-		}
-		return math.Max(0, float64(time.Until(at).Milliseconds()))
+		return 0
 	})
 
 	// ---------- world ----------
@@ -266,8 +258,12 @@ func (b *Bot) setupAgentAPI() {
 	})
 	e.Func("death.spirit_res", "(npc) → request", "as a ghost next to a spirit healer: resurrect there (resurrection sickness from level 11, and your gear loses durability)",
 		func(npc uint64) map[string]any {
+			args := map[string]any{"npc": gs(npc)}
 			if !b.IsGhost() {
-				return b.refuse("death.spirit_res", map[string]any{"npc": gs(npc)}, "not_a_ghost", "release first (death.release)")
+				return b.refuse("death.spirit_res", args, "not_a_ghost", "release first (death.release)")
+			}
+			if r := b.noNPC("death.spirit_res", args, npc); r != nil {
+				return r
 			}
 			w.SendPacketRaw(cmsgSpiritHealerAct, binary.LittleEndian.AppendUint64(nil, npc))
 			return b.request("death.spirit_res", map[string]any{"npc": gs(npc)}, 5*time.Second, alive, nil)
@@ -277,6 +273,9 @@ func (b *Bot) setupAgentAPI() {
 	e.Func("quests.log", "() → Quest[]", "your quests with their objectives and progress (titles fill in once the server answers)", b.questLog)
 	e.Func("quests.accept", "(npc, quest) → request<QuestDone>", "talk to a quest giver and accept a quest it offers", func(npc uint64, quest uint32) map[string]any {
 		args := map[string]any{"npc": gs(npc), "quest": quest}
+		if r := b.noNPC("quests.accept", args, npc); r != nil {
+			return r
+		}
 		has := func() bool {
 			for _, q := range b.questLog() {
 				if q.ID == quest {
@@ -319,6 +318,9 @@ func (b *Bot) setupAgentAPI() {
 	})
 	e.Func("quests.turn_in", "(npc, quest [, reward = 0]) → request<QuestDone>", "hand a complete quest in (reward: the index of the item to choose, 0 = first; wowdb quest <id> lists them)",
 		func(npc uint64, quest, reward uint32) map[string]any {
+			if r := b.noNPC("quests.turn_in", map[string]any{"npc": gs(npc), "quest": quest}, npc); r != nil {
+				return r
+			}
 			w.QuestgiverCompleteQuest(npc, quest)
 			body := binary.LittleEndian.AppendUint64(nil, npc)
 			w.SendPacketRaw(cmsgQuestRequestRew, binary.LittleEndian.AppendUint32(body, quest))
@@ -338,6 +340,22 @@ func (b *Bot) setupAgentAPI() {
 
 // castSent: is_casting covers the round trip between cast_spell and the server's SPELL_START, so a script that
 // checks it on the next tick doesn't move (which interrupts the cast) or recast before the server answers.
+// cooldownLeft is how long until the spell is off its own, category and global cooldown, from SPELL_GO.
+func (s *agentState) cooldownLeft(id uint32) time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	at := s.cd[id]
+	if sp := spellInfo(id); sp != nil {
+		if c := s.catCD[sp.Category]; sp.Category != 0 && c.After(at) {
+			at = c
+		}
+		if sp.GCDCategory != 0 && s.gcdUntil.After(at) {
+			at = s.gcdUntil
+		}
+	}
+	return max(0, time.Until(at))
+}
+
 func (s *agentState) castSent(spell uint32) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

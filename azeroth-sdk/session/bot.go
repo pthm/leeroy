@@ -724,6 +724,11 @@ func (b *Bot) runAILoop(worldErrCh chan error) {
 	for {
 		select {
 		case <-b.stopCh:
+			// Log out like the real client: a dropped connection leaves the character in the world (and in combat
+			// it can die there). AC takes ~20 s out of combat and refuses in combat, so cap the wait.
+			if b.world.SendLogout() == nil {
+				_ = b.world.WaitForLogout(25 * time.Second)
+			}
 			return
 		case err := <-worldErrCh:
 			if err != nil {
@@ -1349,6 +1354,10 @@ func (b *Bot) IsSpellReady(spellID uint32) bool {
 	}
 	b.noPowerMu.Unlock()
 	if b.world == nil {
+		return false
+	}
+	// AC doesn't push cooldowns for normal casts, so the world's list misses them; check the ones tracked from SPELL_GO.
+	if b.agent != nil && b.agent.cooldownLeft(spellID) > 0 {
 		return false
 	}
 	return b.world.IsSpellReady(spellID)

@@ -9,7 +9,7 @@ export type Call = (fn: string, args: unknown[]) => Promise<unknown>;
 export function gameApi(call: Call) {
   return {
     chat: {
-      /** chat.channel(name, msg) → request — everyone in a channel you've joined */
+      /** chat.channel(name, msg) → request — everyone in a channel you've joined. Every chat call takes at most 255 bytes (message_too_long) */
       channel: (name: string, msg: string) => call("chat.channel", [name, msg]) as Promise<Result<null>>,
       /** chat.command(text) → request — a server command (".help"); GM commands only work on GM accounts */
       command: (text: string) => call("chat.command", [text]) as Promise<Result<null>>,

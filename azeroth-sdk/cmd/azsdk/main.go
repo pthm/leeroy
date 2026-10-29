@@ -18,6 +18,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/pthm/leeroy/azeroth-sdk/api"
@@ -129,7 +130,7 @@ func main() {
 		log.Fatal(http.ListenAndServe(cfg.Listen, api.Handler(sessions)))
 	}()
 	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	ended := make(chan struct{})
 	go func() { running.Wait(); close(ended) }()
 	var timeout <-chan time.Time

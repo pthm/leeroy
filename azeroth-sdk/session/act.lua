@@ -112,7 +112,7 @@ function A.go_to(o)
     if not r.ok and r.error.code == "stuck" then sidestep(o, n) else wait(1) end
   end
   -- the failsafe: still stuck after every try -> the client's "Character stuck" (hearths you home)
-  if not r.ok and r.error.code == "stuck" and o.unstuck ~= false and not me.in_combat() then
+  if not r.ok and r.error.code == "stuck" and o.unstuck == true and not me.in_combat() then
     log("act.go_to: stuck at " .. math.floor(me.position().x) .. "," .. math.floor(me.position().y) .. " heading for " ..
       math.floor(o.x) .. "," .. math.floor(o.y) .. ": using the Stuck spell (hearth home)")
     local u = await(move.unstuck(), 30)
@@ -122,7 +122,7 @@ function A.go_to(o)
 end
 function A.travel(o)
   for i, p in ipairs(o.points) do
-    local r = A.go_to{ x = p[1] or p.x, y = p[2] or p.y, z = p[3] or p.z, tolerance = o.tolerance or 6 }
+    local r = A.go_to{ x = p[1] or p.x, y = p[2] or p.y, z = p[3] or p.z, tolerance = o.tolerance or 6, unstuck = o.unstuck }
     if not r.ok then return result("act.travel", false, { waypoint = i }, r.error.code, "waypoint " .. i .. ": " .. tostring(r.error.message)) end
   end
   return result("act.travel", true)
@@ -333,8 +333,8 @@ for name, d in pairs({
   make_room = { "() → bool", "destroy your cheapest grey item to free a bag slot" },
   cast = { "(id [, guid]) → result", "face the target and cast if ready (waits for the result in a task)" },
   buff = { "(id [, guid]) → result", "cast it unless the target already has the aura (nil then)" },
-  go_to = { "{x, y [, z, tolerance = 4, tries = 3, unstuck = true]} → result", "walk there; when stuck it sidesteps and jumps between tries, and as a last resort (unstuck = true, out of combat) uses the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs" },
-  travel = { "{points = {{x, y [, z]}, ...} [, tolerance = 6]} → result", "go_to each waypoint (e.g. from wowdb route)" },
+  go_to = { "{x, y [, z, tolerance = 4, tries = 3, unstuck = false]} → result", "walk there; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs" },
+  travel = { "{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false]} → result", "go_to each waypoint (e.g. from wowdb route)" },
   approach = { "{unit [, range = 4, timeout = 60]} → result<Creature>", "move within range of a unit and face it" },
   follow = { "{name [, distance = 5, until = fn]} → result", "stay near a player until until() is true" },
   reach_npc = { "{npc [, x, y, z]} → result<Creature>", "find an NPC by entry (walking to x, y, z first) and stand next to it" },

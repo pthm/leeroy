@@ -4020,6 +4020,7 @@ func (w *WorldClient) handleSpellCooldown(data []byte) {
 	if guid != w.charGUID {
 		return
 	}
+	r.ReadByte() // flags
 
 	w.cooldownsMu.Lock()
 	for r.Len() >= 8 {

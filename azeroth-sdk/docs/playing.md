@@ -167,7 +167,7 @@ parry, miss, resist: `fight_end.outcomes`). A mob that is `evading` can't be hur
 so leave it.
 
 **Getting stuck.** Walls, rocks and steep slopes stop you; side-stepping and jumping often frees you. If nothing
-works, the game's "Character stuck" option (`move.unstuck`, also the last resort of `act.go_to`) hearths you home.
+works, the game's "Character stuck" option (`move.unstuck`, or `act.go_to{..., unstuck = true}` as a last resort) hearths you home.
 
 **Crowd control and adds.** When a second mob joins (an add), take it out of the fight (Polymorph, Sap, Gouge,
 Hammer of Justice, Frost Nova, Psychic Scream) or fight it with defensive abilities ready, rather than trading hits

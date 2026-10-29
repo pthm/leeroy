@@ -20,7 +20,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `act.fail(code, message) → result` | a failed result |
 | `act.fly{to = node id or name [, npc = entry]} → result<Flight>` | walk to a flight master nearby, fly to a known destination and wait until you land |
 | `act.follow{name [, distance = 5, until = fn]} → result` | stay near a player until until() is true |
-| `act.go_to{x, y [, z, tolerance = 4, tries = 3, unstuck = true]} → result` | walk there; when stuck it sidesteps and jumps between tries, and as a last resort (unstuck = true, out of combat) uses the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs |
+| `act.go_to{x, y [, z, tolerance = 4, tries = 3, unstuck = false]} → result` | walk there; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs |
 | `act.hp() → 0..1` | your health fraction |
 | `act.in_range(id, guid) → bool` | within the spell's range of the unit |
 | `act.loot_nearby{[dist = 8]} → result<Item[]>` | loot every lootable corpse nearby |
@@ -37,7 +37,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `act.spirit_res() → result` | as a ghost, resurrect at the nearest spirit healer in sight (costs durability) |
 | `act.talk{npc, fn [, x, y, z]} → result` | walk to an NPC and run fn(npc) |
 | `act.train{npc, spells [, x, y, z]} → result` | learn spells at a trainer; data = {learned, failed} |
-| `act.travel{points = {{x, y [, z]}, ...} [, tolerance = 6]} → result` | go_to each waypoint (e.g. from wowdb route) |
+| `act.travel{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false]} → result` | go_to each waypoint (e.g. from wowdb route) |
 | `act.turn_in{npc, quest [, reward = 0, x, y, z]} → result` | walk to the quest ender and turn the quest in |
 | `act.use_object{entry [, count = 1, quest, x, y, z, radius = 80]} → result` | use objects (crates, chests, quest objects) count times or until the quest is complete |
 | `act.vendor{npc [, x, y, z, buy = {{entry, count}, ...}]} → result` | sell greys, repair if it can, buy; data = {sold, repaired, bought} |
@@ -54,7 +54,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 
 | Function | |
 |---|---|
-| `chat.channel(name, msg) → request` | everyone in a channel you've joined |
+| `chat.channel(name, msg) → request` | everyone in a channel you've joined. Every chat call takes at most 255 bytes (message_too_long) |
 | `chat.command(text) → request` | a server command (".help"); GM commands only work on GM accounts |
 | `chat.join(name [, id = 0]) → request` | join a channel. Zone channels need their id: 1 General, 2 Trade, 22 LocalDefense ("General - Elwynn Forest"); custom channels use 0 and any name |
 | `chat.party(msg) → request` | your party, at any distance |

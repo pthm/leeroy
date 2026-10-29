@@ -87,6 +87,15 @@ func (b *Bot) refuse(op string, args map[string]any, code, msg string) map[strin
 	return b.lua.Reqs.Now(script.Spec{Op: op, Args: args}, script.Fail(code, msg, nil))
 }
 
+// noNPC refuses a call whose npc isn't an object in sight: most often an entry passed where the guid belongs,
+// which the server would ignore without a reply.
+func (b *Bot) noNPC(op string, args map[string]any, guid uint64) map[string]any {
+	if b.world.GetObject(guid) != nil {
+		return nil
+	}
+	return b.refuse(op, args, "npc_not_found", "no such NPC in sight: pass its guid from units.nearby, not its entry")
+}
+
 func (b *Bot) done(op string, args map[string]any, data any) map[string]any {
 	return b.lua.Reqs.Now(script.Spec{Op: op, Args: args}, script.Ok(data))
 }
@@ -170,6 +179,19 @@ func (b *Bot) watchEvents() {
 			prevDeath()
 		}
 	}
+	// A character whose connection drops in combat stays in the world and can die there; it then logs in dead
+	// with no death event. Log it (no killer) once our own object has arrived.
+	go func() {
+		for range 20 {
+			time.Sleep(500 * time.Millisecond)
+			if w.GetObject(me) != nil {
+				if !b.IsAlive() {
+					b.emit("death", types.Death{})
+				}
+				return
+			}
+		}
+	}()
 	w.OnLevelUp = func(lvl uint32) {
 		b.emit("level_up", types.LevelUp{Level: lvl})
 		if prevLevel != nil {
