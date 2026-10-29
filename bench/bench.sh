@@ -85,7 +85,7 @@ sql() { docker exec ac-database mysql -uroot -ppassword -N acore_characters -e "
 if [ -n "$LEVEL$MONEY$START" ]; then
   # create the character with a short login, then edit it while offline
   for try in 1 2 3; do # concurrent logins can time out on the auth server
-    ACCOUNT=$acct client/play.sh "$char" --race "$race" --class "$class" --duration 8s > "$ws/session.log" 2>&1 || true
+	ACCOUNT=$acct WORKSPACE="$ws" client/play.sh "$char" --race "$race" --class "$class" --duration 8s > "$ws/session.log" 2>&1 || true
     [ -n "$(sql "SELECT 1 FROM characters WHERE name = '$char'")" ] && break
     sleep $((try * 5))
   done
@@ -100,7 +100,7 @@ fi
 trap 'kill $agent $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM
 [ -n "$LEVEL$MONEY$START" ] || : > "$ws/session.log" # the workspace (and old log) persists
 for try in 1 2 3; do # the auth server sometimes times out the logon proof
-  ACCOUNT=$acct RECORD="$record" EVENTS="$events" client/play.sh "$char" --race "$race" --class "$class" >> "$ws/session.log" 2>&1 &
+  ACCOUNT=$acct WORKSPACE="$ws" RECORD="$record" EVENTS="$events" client/play.sh "$char" --race "$race" --class "$class" >> "$ws/session.log" 2>&1 &
   session=$!
   until agent/bin/wow 'return 1' 2>/dev/null | grep -q result || ! kill -0 $session 2>/dev/null; do sleep 1; done
   kill -0 $session 2>/dev/null && break

@@ -17,7 +17,7 @@ export WOW_PORT=$port
 sql() { docker exec ac-database mysql -uroot -ppassword -N acore_characters -e "$1" 2>/dev/null; }
 pkill -f -- "-char $char " 2>/dev/null || true
 until [ "$(sql "SELECT online FROM characters WHERE name = '$char'")" = 0 ]; do sleep 2; done
-ACCOUNT=$acct RECORD="$team/$name.record.jsonl" EVENTS="$team" nohup client/play.sh "$char" >> "$ws/session.log" 2>&1 &
+ACCOUNT=$acct WORKSPACE="$ws" RECORD="$team/$name.record.jsonl" EVENTS="$team" nohup client/play.sh "$char" >> "$ws/session.log" 2>&1 &
 until agent/bin/wow 'return 1' 2>/dev/null | grep -q result; do sleep 1; done
 agent/bin/wow "LIB = '$ws/'; chat.join('${CHANNEL:-General - Stormwind City}', 1)" >/dev/null
 if [ "$(jq -r .runtime "$dir/meta.json" 2>/dev/null)" = codex ]; then

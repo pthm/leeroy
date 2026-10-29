@@ -24,7 +24,7 @@ resume_one() { # <agent> <port>
   [ -f "$ws/NOTES.md" ] || printf '# Notes\n\nYour own notes: what worked, what killed you, where things are. Kept between runs.\n' > "$ws/NOTES.md"
   until [ "$(sql "SELECT online FROM characters WHERE name = '$char'")" = 0 ]; do sleep 2; done
   for try in 1 2 3; do
-    ACCOUNT=$acct RECORD="$record" EVENTS="$team" client/play.sh "$char" >> "$ws/session.log" 2>&1 &
+    ACCOUNT=$acct WORKSPACE="$ws" RECORD="$record" EVENTS="$team" client/play.sh "$char" >> "$ws/session.log" 2>&1 &
     session=$!
     until agent/bin/wow 'return 1' 2>/dev/null | grep -q result || ! kill -0 $session 2>/dev/null; do sleep 1; done
     kill -0 $session 2>/dev/null && break

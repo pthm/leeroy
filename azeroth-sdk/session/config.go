@@ -21,8 +21,9 @@ type Config struct {
 	PathfindingAddress string `json:"pathfinding_address"` // optional remote (deprioritized)
 
 	// Lua
-	LuaScript string `json:"lua_script"` // path to .lua file (DoFile)
-	LuaCode   string `json:"lua_code"`   // inline script (DoString). Precedence: AIBundle > LuaCode > LuaScript
+	LuaScript    string `json:"lua_script"`    // path to .lua file (DoFile)
+	LuaCode      string `json:"lua_code"`      // inline script (DoString). Precedence: AIBundle > LuaCode > LuaScript
+	LuaWorkspace string `json:"lua_workspace"` // directory Lua may read with dofile/loadfile
 
 	// Behavior mode (preserved for backward compat with existing load tests)
 	Mode string `json:"mode"` // "grind", "hogger", "dungeon", "idle", "lua"

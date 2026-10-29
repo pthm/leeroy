@@ -1,5 +1,5 @@
 *.log
-azsdk
+/azsdk
 azsdk-dev
 data/
 node_modules/

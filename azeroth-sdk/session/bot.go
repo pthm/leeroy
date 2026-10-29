@@ -568,6 +568,11 @@ func (b *Bot) Run() BotResult {
 		bus = script.NewBus(b.config.EventsFile)
 	}
 	eng := script.NewEngine(b.log, bus)
+	if b.config.LuaWorkspace != "" {
+		if err := eng.SetWorkspace(b.config.LuaWorkspace); err != nil {
+			return b.fail("Lua workspace: %v", err)
+		}
+	}
 	b.mu.Lock()
 	b.lua = eng
 	b.mu.Unlock()

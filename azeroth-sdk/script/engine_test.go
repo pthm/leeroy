@@ -2,6 +2,8 @@ package script
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +15,60 @@ func tick(e *Engine, n int) {
 	for i := 0; i < n; i++ {
 		e.CallTick()
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestLuaWorkspaceAndExecutionDeadline(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "module.lua"), []byte("return 42"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "outside.lua")
+	if err := os.WriteFile(outside, []byte("return 99"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "escape.lua")); err != nil {
+		t.Fatal(err)
+	}
+	e := NewEngine(nolog, nil)
+	if err := e.SetWorkspace(dir); err != nil {
+		t.Fatal(err)
+	}
+	v, err := e.Eval(`return dofile("module.lua"), type(os.time), os.execute, io, package, require`)
+	if err != nil || fmt.Sprint(v) != "[42 function <nil> <nil> <nil> <nil>]" {
+		t.Fatalf("workspace and libraries: %v, %v", v, err)
+	}
+	for _, path := range []string{"escape.lua", outside, "../outside.lua"} {
+		_, err = e.Eval(`return dofile("` + path + `")`)
+		if err == nil {
+			t.Fatalf("escaped workspace via %q", path)
+		}
+	}
+	start := time.Now()
+	_, err = e.Eval(`while true do end`)
+	if err == nil || time.Since(start) > 5*time.Second {
+		t.Fatalf("evaluation did not stop promptly: %v", err)
+	}
+	if v, err = e.Eval(`return 7`); err != nil || v != 7.0 {
+		t.Fatalf("engine remained blocked: %v, %v", v, err)
+	}
+	_, err = e.Eval(`task.spawn("loop", function() while true do end end)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.CallTick()
+	tasks := e.TasksHeld()
+	if len(tasks) != 1 || tasks[0].State != "failed" || !strings.Contains(tasks[0].Error, "deadline") {
+		t.Fatalf("task was not stopped: %+v", tasks)
+	}
+	_, err = e.Eval(`task.spawn("nested", function() pcall(function() while true do end end) end)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start = time.Now()
+	e.CallTick()
+	if time.Since(start) > 5*time.Second {
+		t.Fatal("nested coroutine blocked the session")
 	}
 }
 

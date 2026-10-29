@@ -28,6 +28,10 @@ end)
   sets what the current task says it's doing. `task.stop(id or name)`, `task.pause(id)`, `task.resume(id)`.
 - A task that raises an error ends `failed`; the others keep running. Its end is a `task_finished` event, and
   failures show up in your next `wow` reply.
+- Each evaluation, task step, and `on_tick` call has a 3 second Lua execution deadline. Long-running tasks should
+  yield with `wait`, `await`, or `events.wait` so other work can run.
+- `dofile` and `loadfile` can read regular Lua files within the configured workspace. `os.time`, `os.date`,
+  `os.clock`, and `os.difftime` are available; process, environment, and filesystem operations are unavailable.
 - `on_tick()` still works: a plain function called every tick that can't wait.
 - `wow` evaluations run between ticks on the same state, so they never wait: start a task instead. Reloading a
   file doesn't stop the tasks it started: `task.stop("name")` first.

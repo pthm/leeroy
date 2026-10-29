@@ -5,9 +5,13 @@ package script
 
 import (
 	"bytes"
+	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
@@ -42,10 +46,14 @@ type Engine struct {
 	inboxMu sync.Mutex
 	inbox   []Event
 
-	tickErrs int
-	tickErr  string
-	cur      *Task // the task being resumed (nil on the main state)
+	tickErrs      int
+	tickErr       string
+	cur           *Task // the task being resumed (nil on the main state)
+	workspace     *os.Root
+	workspacePath string
 }
+
+const executionLimit = 3 * time.Second
 
 type handler struct {
 	id    int
@@ -73,7 +81,48 @@ func NewEngine(logf func(format string, args ...any), bus *Bus) *Engine {
 		e.inbox = append(e.inbox, ev)
 		e.inboxMu.Unlock()
 	})
-	e.L = lua.NewState()
+	e.L = lua.NewState(lua.Options{SkipOpenLibs: true})
+	for _, open := range []lua.LGFunction{lua.OpenBase, lua.OpenTable, lua.OpenString, lua.OpenMath, lua.OpenCoroutine} {
+		e.L.Push(e.L.NewFunction(open))
+		e.L.Push(lua.LString(""))
+		e.L.Call(1, 0)
+	}
+	// Existing scripts use os.time. Expose only clock functions, never the
+	// process, environment, or filesystem operations from the OS library.
+	e.L.Push(e.L.NewFunction(lua.OpenOs))
+	e.L.Call(0, 1)
+	osLib := e.L.Get(-1).(*lua.LTable)
+	safeOS := e.L.NewTable()
+	for _, name := range []string{"clock", "date", "difftime", "time"} {
+		safeOS.RawSetString(name, osLib.RawGetString(name))
+	}
+	e.L.Pop(1)
+	e.L.SetGlobal("os", safeOS)
+	// Base includes unrestricted file loaders; replace them with workspace loaders.
+	for _, name := range []string{"io", "package", "require", "module", "dofile", "loadfile"} {
+		e.L.SetGlobal(name, lua.LNil)
+	}
+	e.installFileLoaders()
+	// Nested coroutines (including runtime.lua's pcall wrapper) need the same
+	// deadline as their parent whenever they are resumed.
+	co := e.L.GetGlobal("coroutine").(*lua.LTable)
+	resume := co.RawGetString("resume")
+	co.RawSetString("resume", e.L.NewFunction(func(L *lua.LState) int {
+		thread := L.CheckThread(1)
+		if ctx := L.Context(); ctx != nil {
+			thread.SetContext(ctx)
+		}
+		args := make([]lua.LValue, L.GetTop())
+		for i := range args {
+			args[i] = L.Get(i + 1)
+		}
+		base := L.GetTop()
+		if err := L.CallByParam(lua.P{Fn: resume, NRet: lua.MultRet, Protect: true}, args...); err != nil {
+			L.RaiseError("%v", err)
+		}
+		return L.GetTop() - base
+	}))
+	co.RawSetString("wrap", lua.LNil)
 	e.registerRuntime()
 	e.registerCompat()
 	for _, d := range runtimeDocs {
@@ -103,6 +152,16 @@ func NewEngine(logf func(format string, args ...any), bus *Bus) *Engine {
 	if err := e.L.DoString(runtimeLua); err != nil {
 		panic("runtime.lua: " + err.Error())
 	}
+	if err := e.L.DoString(`coroutine.wrap = function(fn)
+    local co = coroutine.create(fn)
+    return function(...)
+      local result = {coroutine.resume(co, ...)}
+      if not result[1] then error(result[2]) end
+      return unpack(result, 2)
+    end
+  end`); err != nil {
+		panic(err)
+	}
 	return e
 }
 
@@ -115,6 +174,7 @@ func (e *Engine) Emit(typ string, data any) Event { return e.Bus.Emit(typ, data)
 func (e *Engine) DoString(code string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	defer e.deadline(e.L)()
 	return e.L.DoString(code)
 }
 
@@ -122,7 +182,12 @@ func (e *Engine) DoString(code string) error {
 func (e *Engine) DoFile(path string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.L.DoFile(path)
+	defer e.deadline(e.L)()
+	fn, err := e.loadFile(e.L, path)
+	if err != nil {
+		return err
+	}
+	return e.L.CallByParam(lua.P{Fn: fn, NRet: 0, Protect: true})
 }
 
 // Eval runs a chunk and returns its results as Go values (nil for none, the value for one, a slice for several).
@@ -130,6 +195,7 @@ func (e *Engine) DoFile(path string) error {
 func (e *Engine) Eval(code string) (any, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	defer e.deadline(e.L)()
 	fn, err := e.L.LoadString(code)
 	if err != nil {
 		return nil, err
@@ -159,6 +225,7 @@ func (e *Engine) Eval(code string) (any, error) {
 func (e *Engine) Call(name string, args []any) (any, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	defer e.deadline(e.L)()
 	var fn lua.LValue = e.L.GetGlobal(name)
 	if ns, field, ok := strings.Cut(name, "."); ok {
 		fn = lua.LNil
@@ -221,8 +288,13 @@ func (e *Engine) CallTick() bool {
 	e.Reqs.Poll()
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	done := e.deadline(e.L)
 	e.dispatchEvents()
 	e.runTasks()
+	done()
+	// on_tick gets its own deadline: _G's __index is Lua, so looking it up after the tasks used up the tick's
+	// deadline raised outside any pcall and took the daemon down
+	defer e.deadline(e.L)()
 	fn, ok := e.L.GetGlobal("on_tick").(*lua.LFunction)
 	if !ok {
 		return false
@@ -256,6 +328,9 @@ func (e *Engine) Close() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.L.Close()
+	if e.workspace != nil {
+		e.workspace.Close()
+	}
 }
 
 // ---------- binding Go to Lua ----------
@@ -670,6 +745,7 @@ func (e *Engine) resume(t *Task, args []lua.LValue) {
 // safeResume resumes a task's coroutine; a Lua VM panic (e.g. yielding where gopher-lua can't) fails that task
 // instead of taking the whole session down.
 func (e *Engine) safeResume(t *Task, args []lua.LValue) (st lua.ResumeState, err error) {
+	defer e.deadline(t.co)()
 	defer func() {
 		if r := recover(); r != nil {
 			st, err = lua.ResumeError, fmt.Errorf("%v", r)
@@ -677,6 +753,79 @@ func (e *Engine) safeResume(t *Task, args []lua.LValue) (st lua.ResumeState, err
 	}()
 	st, err, _ = e.L.Resume(t.co, t.fn, args...)
 	return st, err
+}
+
+func (e *Engine) deadline(L *lua.LState) func() {
+	ctx, cancel := context.WithTimeout(context.Background(), executionLimit)
+	L.SetContext(ctx)
+	return func() { L.RemoveContext(); cancel() }
+}
+
+// SetWorkspace grants Lua read access only to regular files within dir.
+func (e *Engine) SetWorkspace(dir string) error {
+	path, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		return err
+	}
+	e.workspace, e.workspacePath = root, path
+	return nil
+}
+
+func (e *Engine) loadFile(L *lua.LState, path string) (*lua.LFunction, error) {
+	if e.workspace == nil {
+		return nil, fmt.Errorf("Lua file access requires a workspace")
+	}
+	if filepath.IsAbs(path) {
+		var err error
+		path, err = filepath.Rel(e.workspacePath, path)
+		if err != nil {
+			return nil, err
+		}
+	}
+	f, err := e.workspace.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > 4<<20 {
+		return nil, fmt.Errorf("Lua source must be a regular file of at most 4 MiB")
+	}
+	code, err := io.ReadAll(io.LimitReader(f, 4<<20+1))
+	if err != nil {
+		return nil, err
+	}
+	return L.LoadString(string(code))
+}
+
+func (e *Engine) installFileLoaders() {
+	e.set("loadfile", func(L *lua.LState) int {
+		fn, err := e.loadFile(L, L.CheckString(1))
+		if err != nil {
+			L.Push(lua.LNil)
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		L.Push(fn)
+		return 1
+	})
+	e.set("dofile", func(L *lua.LState) int {
+		fn, err := e.loadFile(L, L.CheckString(1))
+		if err != nil {
+			L.RaiseError("%v", err)
+		}
+		if err := L.CallByParam(lua.P{Fn: fn, NRet: lua.MultRet, Protect: true}); err != nil {
+			L.RaiseError("%v", err)
+		}
+		return L.GetTop() - 1
+	})
 }
 
 func (e *Engine) finish(t *Task) {
