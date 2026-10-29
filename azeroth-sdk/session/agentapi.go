@@ -74,6 +74,7 @@ func (b *Bot) setupAgentAPI() {
 	e := b.lua
 
 	e.RegisterFunc("is_ghost", b.IsGhost)
+	e.RegisterFunc("get_name", func() string { return b.config.CharacterName }) // your character's name
 	// is_resting() -> true in an inn or city (rested XP builds up; set by the area trigger you walked into)
 	e.RegisterFunc("is_resting", func() bool {
 		o := w.GetObject(w.CharGUID())

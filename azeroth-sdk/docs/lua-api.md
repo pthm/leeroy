@@ -17,7 +17,7 @@ work as usual (`find`, `match`, `gmatch`, `gsub`).
 
 GUIDs are 64-bit and are returned as strings. Pass them back unchanged.
 
-**State:** `get_position()` → x,y,z,o · `get_health()`/`get_power()` → cur,max (rage and runic power are
+**State:** `get_name()` → your character's name · `get_position()` → x,y,z,o · `get_health()`/`get_power()` → cur,max (rage and runic power are
 x10: 0-1000) · `get_xp()` → xp, xp needed for next level · `get_power_type()` (0 mana, 1 rage, 3 energy,
 6 runic) · `get_level()` · `get_class()` · `get_faction()` · `get_own_guid()` · `get_stance()` ·
 `in_combat()` (the server's combat flag) · `is_alive()` (false while dead or a ghost) · `is_ghost()` · `is_resting()` (in an inn or city) ·

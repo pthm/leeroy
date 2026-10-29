@@ -391,7 +391,7 @@ function bot.status()
   local h, hm = bot.get_health()
   local p, pm = bot.get_power()
   local xp, xpn = bot.get_xp()
-  local s = { level = bot.get_level(), xp = xp, xp_next = xpn, hp = h, hp_max = hm, power = p, power_max = pm,
+  local s = { name = bot.get_name(), level = bot.get_level(), xp = xp, xp_next = xpn, hp = h, hp_max = hm, power = p, power_max = pm,
     money = bot.money(), pos = { math.floor(x), math.floor(y), math.floor(z) }, where = bot.location(),
     alive = bot.is_alive(), ghost = bot.is_ghost(), combat = bot.in_combat(), resting = bot.is_resting(),
     free_slots = bot.free_slots(), chat_pending = bot.chat_pending(), quests = {} }
