@@ -55,8 +55,8 @@ table names; `creature_spawn`/`gameobject_spawn` are the spawn tables with `area
 | `wowbench.map_overlay` | `id` (= `asset` of `explore_area` criteria), `area1..area4` (the area ids that reveal it) |
 | `wowbench.area_location` | `area, map, x, y` (a point inside the area), `min_x, max_x, min_y, max_y` |
 
-You get `explore_area` credit by entering the area: `bot.move_to(x, y, bot.ground_z(x, y))`. For NPCs and objects
-indoors (an inn's upstairs trainer, anything in Stormwind), pass their z: `bot.move_to(x, y, bot.ground_z(x, y, z))`.
+You get `explore_area` credit by entering the area: `move.to(x, y, world.ground_z(x, y))`. For NPCs and objects
+indoors (an inn's upstairs trainer, anything in Stormwind), pass their z: `move.to(x, y, world.ground_z(x, y, z))`.
 
 ```sh
 # level 3-5 mobs near Northshire (map 0 = Eastern Kingdoms), by spawn count
@@ -67,4 +67,4 @@ worlddb "SELECT t.entry, t.name, t.minlevel, t.maxlevel, COUNT(*) n, ROUND(AVG(c
   GROUP BY t.entry ORDER BY n DESC LIMIT 10"
 ```
 
-Coordinates match `bot.get_position()`. `rank` is a MySQL reserved word: write it as `` t.`rank` ``. Monster kill XP drops sharply for mobs well below your level.
+Coordinates match `me.position()`. `rank` is a MySQL reserved word: write it as `` t.`rank` ``. Monster kill XP drops sharply for mobs well below your level.

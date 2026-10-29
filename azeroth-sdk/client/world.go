@@ -5532,3 +5532,16 @@ func (w *WorldClient) logMovementPacket(opcode uint16, data []byte) {
 	w.log("[MOV] recv 0x%04X guid=%d flags=0x%08X f2=0x%04X ts=%d pos=(%.3f,%.3f,%.3f) o=%.3f len=%d dt=%.3fs dd=%.3f speed=%.2f",
 		opcode, guid, flags, flags2, mtime, px, py, pz, po, len(data), deltaT, deltaD, estSpeed)
 }
+
+// GameObjects returns the tracked game objects (doors, chests, quest objects, herbs...).
+func (w *WorldClient) GameObjects() []*WorldObject {
+	w.objectsMu.RLock()
+	defer w.objectsMu.RUnlock()
+	out := []*WorldObject{}
+	for _, obj := range w.objects {
+		if high := uint16(obj.GUID >> 48); obj.TypeID == ObjectTypeGameObj || high == 0xF110 || high == 0xF111 {
+			out = append(out, obj)
+		}
+	}
+	return out
+}

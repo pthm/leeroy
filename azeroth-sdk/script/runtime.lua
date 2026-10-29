@@ -18,9 +18,9 @@ end
 function ask(question, options, opts)
   opts = opts or {}
   local id = events.emit("attention", {question = question, options = options, default = opts.default})
-  local deadline = opts.timeout and (bot.now_ms() + opts.timeout * 1000)
+  local deadline = opts.timeout and (now() + opts.timeout * 1000)
   while true do
-    local left = deadline and (deadline - bot.now_ms()) / 1000
+    local left = deadline and (deadline - now()) / 1000
     if left and left <= 0 then return opts.default, "timeout" end
     local ev = events.wait("answer", left)
     if ev == nil then return opts.default, "timeout" end

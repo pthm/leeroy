@@ -66,9 +66,10 @@ type Bot struct {
 	nav        navigation.Navigator
 	wasCombat  bool // stateEvents: last tick's combat / alive
 	wasAlive   *bool
+	clog       *combatLog               // combat.log / combat.meter
 	agent      *agentState              // Lua agent API state (cast tracking); nil outside sessions
 	playerName func(guid uint64) string // name from the session's name-query cache ("" until the server answers)
-	notify     func(text string)        // post a system message to read_chat (set by setupControl)
+	notify     func(text string)        // a notice event (set by setupControl)
 	lua        *script.Engine
 
 	// Stats
@@ -563,7 +564,7 @@ func (b *Bot) Run() BotResult {
 	if b.config.EventsFile != "" {
 		bus = script.NewBus(b.config.EventsFile)
 	}
-	eng := script.NewEngine(b, bus)
+	eng := script.NewEngine(b.log, bus)
 	b.mu.Lock()
 	b.lua = eng
 	b.mu.Unlock()
@@ -1461,9 +1462,9 @@ func (b *Bot) GetTargetGUID() uint64 {
 	return b.world.TargetGUID()
 }
 
-func (b *Bot) GetNearbyUnits(maxDist float32) []script.UnitInfo {
+func (b *Bot) GetNearbyUnits(maxDist float32) []UnitInfo {
 	objects := b.world.GetNearbyUnits(maxDist)
-	result := make([]script.UnitInfo, 0, len(objects))
+	result := make([]UnitInfo, 0, len(objects))
 	for _, obj := range objects {
 		u := b.worldObjToUnitInfo(obj)
 		if u.Name == "" && u.IsPlayer && b.playerName != nil {
@@ -1474,9 +1475,9 @@ func (b *Bot) GetNearbyUnits(maxDist float32) []script.UnitInfo {
 	return result
 }
 
-func (b *Bot) GetNearbyPlayers(maxDist float32) []script.UnitInfo {
+func (b *Bot) GetNearbyPlayers(maxDist float32) []UnitInfo {
 	objects := b.world.GetNearbyPlayers(maxDist)
-	result := make([]script.UnitInfo, 0, len(objects))
+	result := make([]UnitInfo, 0, len(objects))
 	for _, obj := range objects {
 		u := b.worldObjToUnitInfo(obj)
 		if u.Name == "" && b.playerName != nil {
@@ -1487,7 +1488,7 @@ func (b *Bot) GetNearbyPlayers(maxDist float32) []script.UnitInfo {
 	return result
 }
 
-func (b *Bot) GetUnitInfo(guid uint64) *script.UnitInfo {
+func (b *Bot) GetUnitInfo(guid uint64) *UnitInfo {
 	obj := b.world.GetObject(guid)
 	if obj == nil {
 		return nil
@@ -1499,7 +1500,7 @@ func (b *Bot) GetUnitInfo(guid uint64) *script.UnitInfo {
 	return &info
 }
 
-func (b *Bot) worldObjToUnitInfo(obj *client.WorldObject) script.UnitInfo {
+func (b *Bot) worldObjToUnitInfo(obj *client.WorldObject) UnitInfo {
 	// Always expose the *current* estimated pose. Raw Pos* is the create/MONSTER_MOVE
 	// segment start; chasing it is the classic "run to where the mob used to be" bug.
 	px, py, pz := obj.InterpolatedPosition()
@@ -1507,7 +1508,7 @@ func (b *Bot) worldObjToUnitInfo(obj *client.WorldObject) script.UnitInfo {
 	dx, dy, dz := px-mx, py-my, pz-mz
 	dist := float32(math.Sqrt(float64(dx*dx + dy*dy + dz*dz)))
 	dyn := obj.Value(client.UnitDynamicFlags)
-	return script.UnitInfo{
+	return UnitInfo{
 		GUID:      obj.GUID,
 		Entry:     obj.Entry,
 		Health:    obj.Health(),
@@ -1611,20 +1612,8 @@ func (b *Bot) GetPetGUID() uint64 {
 	if b.world == nil {
 		return 0
 	}
-	// Basic discovery for validation/E2E (zero cost common path when no pet).
-	// Scan nearby units for a plausible pet: non-player, alive, within close range.
-	// Full impl would use SMSG_PET_SPELLS + owner/creator fields from UNIT_FIELD_*.
-	units := b.world.GetNearbyUnits(25)
-	px, py, pz, _, _ := b.world.Position()
-	for _, u := range units {
-		if u == nil || u.IsPlayer {
-			continue
-		}
-		d := u.DistanceTo(px, py, pz)
-		if u.IsAlive() && u.Health() > 0 && d > 0 && d < 12 {
-			// Heuristic good enough for call-pet validation runs in isolated areas.
-			return u.GUID
-		}
+	if me := b.world.GetObject(b.world.CharGUID()); me != nil { // UNIT_FIELD_SUMMON (OBJECT_END + 0x02)
+		return uint64(me.Value(0x08)) | uint64(me.Value(0x09))<<32
 	}
 	return 0
 }

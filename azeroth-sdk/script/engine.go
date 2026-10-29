@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pthm/wowbench/azeroth-sdk/types"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -24,11 +25,13 @@ var runtimeLua string
 // Engine owns the Lua state. Everything that touches it holds mu: the game loop's Tick and the agent's Eval are
 // serialized, so both always see the same world and the same script state.
 type Engine struct {
-	mu   sync.Mutex
-	L    *lua.LState
-	bot  BotAPI
-	Bus  *Bus
-	Reqs *Requests
+	mu      sync.Mutex
+	L       *lua.LState
+	logf    func(format string, args ...any)
+	docs    map[string]Doc
+	natives map[string]reflect.Value // Func registrations, for Native
+	Bus     *Bus
+	Reqs    *Requests
 
 	tasks    map[int]*Task
 	byThread map[*lua.LState]*Task
@@ -51,12 +54,19 @@ type handler struct {
 	name  string
 }
 
-// NewEngine creates the runtime. bus may be nil (an in-memory stream).
-func NewEngine(bot BotAPI, bus *Bus) *Engine {
+// Doc describes one function of the API: Sig is its arguments and result, e.g. "(x, y, z) → request".
+type Doc struct {
+	Name string `json:"name"`
+	Sig  string `json:"sig"`
+	Desc string `json:"desc"`
+}
+
+// NewEngine creates the runtime. logf receives log() and error lines; bus may be nil (an in-memory stream).
+func NewEngine(logf func(format string, args ...any), bus *Bus) *Engine {
 	if bus == nil {
 		bus = NewBus("")
 	}
-	e := &Engine{bot: bot, Bus: bus, tasks: map[int]*Task{}, byThread: map[*lua.LState]*Task{}, handlers: map[int]*handler{}}
+	e := &Engine{logf: logf, docs: map[string]Doc{}, natives: map[string]reflect.Value{}, Bus: bus, tasks: map[int]*Task{}, byThread: map[*lua.LState]*Task{}, handlers: map[int]*handler{}}
 	e.Reqs = NewRequests(bus)
 	bus.Listen(func(ev Event) {
 		e.inboxMu.Lock()
@@ -64,10 +74,32 @@ func NewEngine(bot BotAPI, bus *Bus) *Engine {
 		e.inboxMu.Unlock()
 	})
 	e.L = lua.NewState()
-	e.L.SetGlobal("bot", e.L.NewTable())
-	e.registerBindings()
 	e.registerRuntime()
 	e.registerCompat()
+	for _, d := range runtimeDocs {
+		e.doc(d[0], d[1], d[2])
+	}
+	e.set("doc", func(L *lua.LState) int {
+		e.doc(L.CheckString(1), L.OptString(2, ""), L.OptString(3, ""))
+		return 0
+	})
+	e.set("help", func(L *lua.LState) int {
+		prefix := L.OptString(1, "")
+		names := []string{}
+		for n := range e.docs {
+			if strings.HasPrefix(n, prefix) {
+				names = append(names, n)
+			}
+		}
+		sort.Strings(names)
+		out := L.CreateTable(len(names), 0)
+		for _, n := range names {
+			d := e.docs[n]
+			out.Append(lua.LString(n + d.Sig + "  " + d.Desc))
+		}
+		L.Push(out)
+		return 1
+	})
 	if err := e.L.DoString(runtimeLua); err != nil {
 		panic("runtime.lua: " + err.Error())
 	}
@@ -75,7 +107,7 @@ func NewEngine(bot BotAPI, bus *Bus) *Engine {
 }
 
 // Emit records an event (any goroutine). Use it for everything scripts and the agent should be able to see.
-func (e *Engine) Emit(typ string, data map[string]any) Event { return e.Bus.Emit(typ, data) }
+func (e *Engine) Emit(typ string, data any) Event { return e.Bus.Emit(typ, data) }
 
 // ---------- running code ----------
 
@@ -122,6 +154,67 @@ func (e *Engine) Eval(code string) (any, error) {
 	return out, nil
 }
 
+// Call runs an API function by name ("items.list", "move.to") with JSON-shaped arguments and returns its results
+// like Eval. It's how typed clients call the API without writing Lua.
+func (e *Engine) Call(name string, args []any) (any, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var fn lua.LValue = e.L.GetGlobal(name)
+	if ns, field, ok := strings.Cut(name, "."); ok {
+		fn = lua.LNil
+		if t, ok := e.L.GetGlobal(ns).(*lua.LTable); ok {
+			fn = t.RawGetString(field)
+		}
+	}
+	f, ok := fn.(*lua.LFunction)
+	if !ok {
+		return nil, fmt.Errorf("no function %s (help() lists them)", name)
+	}
+	largs := make([]lua.LValue, len(args))
+	for i, a := range args {
+		largs[i] = toLua(e.L, a)
+	}
+	base := e.L.GetTop()
+	if err := e.L.CallByParam(lua.P{Fn: f, NRet: lua.MultRet, Protect: true}, largs...); err != nil {
+		e.L.SetTop(base)
+		return nil, err
+	}
+	n := e.L.GetTop() - base
+	out := make([]any, n)
+	for i := range out {
+		out[i] = toGo(e.L.Get(base+i+1), 0)
+	}
+	e.L.SetTop(base)
+	switch n {
+	case 0:
+		return nil, nil
+	case 1:
+		return out[0], nil
+	}
+	return out, nil
+}
+
+// Native calls a Go function registered with Func directly (no Lua round trip), returning its first result as
+// the Go value it is (a types.* struct, typically). For composing queries in Go, e.g. me.status.
+func (e *Engine) Native(name string, args ...any) any {
+	fn, ok := e.natives[name]
+	if !ok {
+		return nil
+	}
+	in := make([]reflect.Value, fn.Type().NumIn())
+	for i := range in {
+		in[i] = reflect.New(fn.Type().In(i)).Elem()
+		if i < len(args) {
+			in[i] = reflect.ValueOf(args[i]).Convert(fn.Type().In(i))
+		}
+	}
+	out := fn.Call(in)
+	if len(out) == 0 {
+		return nil
+	}
+	return out[0].Interface()
+}
+
 // CallTick is one step of the runtime: deliver events (wake waiting tasks, start handlers), poll requests, resume
 // tasks that can run, then call on_tick.
 func (e *Engine) CallTick() bool {
@@ -143,8 +236,8 @@ func (e *Engine) CallTick() bool {
 func (e *Engine) noteError(where string, err error) {
 	e.tickErrs++
 	e.tickErr = err.Error()
-	e.bot.Log("[Lua] %s error: %v", where, err)
-	go e.Emit("script_error", map[string]any{"where": where, "error": err.Error()})
+	e.logf("[Lua] %s error: %v", where, err)
+	go e.Emit("script_error", types.ScriptError{Where: where, Error: err.Error()})
 }
 
 // TakeScriptErrors returns the script errors since the last call ({count, last}), or nil.
@@ -167,31 +260,88 @@ func (e *Engine) Close() {
 
 // ---------- binding Go to Lua ----------
 
-func (e *Engine) setBot(name string, fn lua.LGFunction) {
-	e.L.SetField(e.L.GetGlobal("bot"), name, e.L.NewFunction(fn))
+// set installs fn as a global or a namespaced function ("move.to" -> global table move, field to).
+func (e *Engine) set(name string, fn lua.LGFunction) {
+	ns, field, ok := strings.Cut(name, ".")
+	if !ok {
+		e.L.SetGlobal(name, e.L.NewFunction(fn))
+		return
+	}
+	t, isT := e.L.GetGlobal(ns).(*lua.LTable)
+	if !isT {
+		t = e.L.NewTable()
+		e.L.SetGlobal(ns, t)
+	}
+	e.L.SetField(t, field, e.L.NewFunction(fn))
 }
 
-// RegisterFunc exposes a Go func as bot.<name>(...) with reflected argument and result conversion. Tables convert
-// to map[string]any / []any parameters; error results become nil or the error's text.
-func (e *Engine) RegisterFunc(name string, fn any) {
+// doc records a function's documentation for help() (and the generated reference).
+func (e *Engine) doc(name, sig, desc string) { e.docs[name] = Doc{name, sig, desc} }
+
+// Func exposes a Go func to Lua as name ("ns.fn" or a global) with reflected argument and result conversion.
+// Tables convert to map[string]any / []any parameters. sig and desc document it for help().
+func (e *Engine) Func(name, sig, desc string, fn any) {
 	v := reflect.ValueOf(fn)
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.setBot(name, func(L *lua.LState) int { return callReflect(L, v, 1) })
+	e.doc(name, sig, desc)
+	e.natives[name] = v
+	e.set(name, func(L *lua.LState) int { return callReflect(L, v, 1) })
 }
 
-// RegisterCall exposes bot.<name>("Method", ...) calling any exported method of target.
-func (e *Engine) RegisterCall(name string, target any) {
+// Methods exposes name("Method", ...) calling any exported method of target.
+func (e *Engine) Methods(name, sig, desc string, target any) {
 	v := reflect.ValueOf(target)
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.setBot(name, func(L *lua.LState) int {
+	e.doc(name, sig, desc)
+	e.set(name, func(L *lua.LState) int {
 		m := v.MethodByName(L.CheckString(1))
 		if !m.IsValid() {
 			L.RaiseError("no client method '%s'", L.CheckString(1))
 		}
 		return callReflect(L, m, 2)
 	})
+}
+
+// TasksHeld lists the tasks; call it with the engine lock held (from a registered function).
+func (e *Engine) TasksHeld() []types.TaskInfo {
+	ids := []int{}
+	for id, t := range e.tasks {
+		if !t.Handler {
+			ids = append(ids, id)
+		}
+	}
+	sort.Ints(ids)
+	out := []types.TaskInfo{}
+	for _, id := range ids {
+		t := e.tasks[id]
+		ti := types.TaskInfo{ID: t.ID, Name: t.Name, State: t.State, Status: t.Status, Error: t.Err, Seconds: int(time.Since(t.Started).Seconds())}
+		if t.State == "waiting" {
+			switch t.wait.kind {
+			case "sleep":
+				ti.WaitingFor = fmt.Sprintf("%.1fs", time.Until(t.wait.until).Seconds())
+			case "await":
+				ti.WaitingFor = fmt.Sprintf("request %d", t.wait.req)
+			case "event":
+				ti.WaitingFor = "event " + strings.Join(t.wait.types, ",")
+			}
+		}
+		out = append(out, ti)
+	}
+	return out
+}
+
+// Docs returns the documented API, sorted by name.
+func (e *Engine) Docs() []Doc {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := make([]Doc, 0, len(e.docs))
+	for _, d := range e.docs {
+		out = append(out, d)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 var errType = reflect.TypeOf((*error)(nil)).Elem()
@@ -285,6 +435,9 @@ func toGo(lv lua.LValue, depth int) any {
 		if depth > 12 {
 			return "<table>"
 		}
+		if x.Len() == 0 && x.Metatable == arrayMT(nil) && arrayMT(nil) != lua.LNil {
+			return []any{} // an empty list (it came from Go as one)
+		}
 		if n := x.Len(); n > 0 {
 			count := 0
 			x.ForEach(func(_, _ lua.LValue) { count++ })
@@ -303,6 +456,24 @@ func toGo(lv lua.LValue, depth int) any {
 		return nil
 	}
 	return "<" + lv.Type().String() + ">"
+}
+
+// arrayMT marks empty tables that are lists, so they convert back to [] rather than {} (one per process: gopher-lua
+// tables don't belong to a state). arrayMT(nil) returns it if it exists.
+var (
+	arrayMeta lua.LValue = lua.LNil
+	arrayOnce sync.Once
+)
+
+func arrayMT(L *lua.LState) lua.LValue {
+	if L != nil {
+		arrayOnce.Do(func() {
+			t := L.NewTable()
+			t.RawSetString("__name", lua.LString("list"))
+			arrayMeta = t
+		})
+	}
+	return arrayMeta
 }
 
 // toLua converts JSON-shaped Go values (after jsonish) to Lua.
@@ -336,6 +507,9 @@ func toLua(L *lua.LState, v any) lua.LValue {
 		t := L.CreateTable(len(x), 0)
 		for i, vv := range x {
 			t.RawSetInt(i+1, toLua(L, vv))
+		}
+		if len(x) == 0 {
+			L.SetMetatable(t, arrayMT(L))
 		}
 		return t
 	case lua.LValue:
@@ -418,7 +592,7 @@ func (e *Engine) spawn(name string, fn *lua.LFunction, args []lua.LValue, isHand
 	e.tasks[t.ID] = t
 	e.byThread[co] = t
 	if !isHandler {
-		go e.Emit("task_started", map[string]any{"task": t.ID, "name": name})
+		go e.Emit("task_started", types.TaskEvent{Task: t.ID, Name: name})
 	}
 	return t
 }
@@ -496,11 +670,8 @@ func (e *Engine) resume(t *Task, args []lua.LValue) {
 func (e *Engine) finish(t *Task) {
 	delete(e.byThread, t.co)
 	if !t.Handler {
-		data := map[string]any{"task": t.ID, "name": t.Name, "state": t.State, "seconds": int(t.Ended.Sub(t.Started).Seconds())}
-		if t.Err != "" {
-			data["error"] = t.Err
-		}
-		go e.Emit("task_finished", data)
+		go e.Emit("task_finished", types.TaskEvent{Task: t.ID, Name: t.Name, State: t.State,
+			Seconds: int(t.Ended.Sub(t.Started).Seconds()), Error: t.Err})
 	}
 	// keep finished tasks around briefly for task.list(); handlers go at once
 	if t.Handler {
@@ -536,11 +707,23 @@ func (e *Engine) dispatchEvents() {
 		}
 		sort.Slice(hs, func(i, j int) bool { return hs[i].id < hs[j].id })
 		for _, h := range hs {
-			if typeIn(ev.Type, h.types) && ev.Data["task"] != h.name { // not its own output (a "*" handler that logs)
+			if typeIn(ev.Type, h.types) && taskOfEvent(ev) != h.name { // not its own output (a "*" handler that logs)
 				e.spawn(h.name, h.fn, []lua.LValue{eventToLua(e.L, ev)}, true)
 			}
 		}
 	}
+}
+
+// taskOfEvent: the task that produced an event (log, script events), "" if none
+func taskOfEvent(ev Event) string {
+	switch d := ev.Data.(type) {
+	case types.Log:
+		return d.Task
+	case map[string]any:
+		s, _ := d["task"].(string)
+		return s
+	}
+	return ""
 }
 
 func eventToLua(L *lua.LState, ev Event) lua.LValue {
@@ -609,7 +792,7 @@ func (e *Engine) registerRuntime() {
 		t.wait = waitCond{kind: "await", req: id, until: time.Now().Add(time.Duration(float64(L.OptNumber(2, 30)) * float64(time.Second)))}
 		return L.Yield()
 	}))
-	e.setBot("result", func(L *lua.LState) int {
+	e.set("result", func(L *lua.LState) int {
 		L.Push(toLua(L, e.Reqs.Result(int(L.CheckNumber(1)))))
 		return 1
 	})
@@ -629,36 +812,7 @@ func (e *Engine) registerRuntime() {
 			return 1
 		},
 		"list": func(L *lua.LState) int {
-			ids := []int{}
-			for id, t := range e.tasks {
-				if !t.Handler {
-					ids = append(ids, id)
-				}
-			}
-			sort.Ints(ids)
-			out := []any{}
-			for _, id := range ids {
-				t := e.tasks[id]
-				m := map[string]any{"id": t.ID, "name": t.Name, "state": t.State, "seconds": int(time.Since(t.Started).Seconds())}
-				if t.Status != "" {
-					m["status"] = t.Status
-				}
-				if t.Err != "" {
-					m["error"] = t.Err
-				}
-				if t.State == "waiting" {
-					switch t.wait.kind {
-					case "sleep":
-						m["waiting_for"] = fmt.Sprintf("%.1fs", time.Until(t.wait.until).Seconds())
-					case "await":
-						m["waiting_for"] = fmt.Sprintf("request %d", t.wait.req)
-					case "event":
-						m["waiting_for"] = "event " + strings.Join(t.wait.types, ",")
-					}
-				}
-				out = append(out, m)
-			}
-			L.Push(toLua(L, out))
+			L.Push(toLua(L, jsonish(e.TasksHeld())))
 			return 1
 		},
 		// task.status(text): what the current task is doing (shown in task.list and wow tasks)
@@ -795,17 +949,45 @@ func (e *Engine) registerRuntime() {
 			return 1
 		},
 	})
-	// bot.log(msg): a log event (tagged with the task) and a line in session.log
-	e.setBot("log", func(L *lua.LState) int {
+	// log(msg): a log event (tagged with the task) and a line in session.log
+	e.set("now", func(L *lua.LState) int { L.Push(lua.LNumber(time.Now().UnixMilli())); return 1 })
+	e.set("log", func(L *lua.LState) int {
 		msg := L.ToString(1)
-		data := map[string]any{"msg": msg}
+		data := types.Log{Msg: msg}
 		if t := e.taskOf(L); t != nil {
-			data["task"] = t.Name
+			data.Task = t.Name
 		}
-		e.bot.Log("[Lua] %s", msg)
+		e.logf("[Lua] %s", msg)
 		go e.Emit("log", data)
 		return 0
 	})
+}
+
+// runtimeDocs documents the runtime's own functions (the Go side of task, events, wait...).
+var runtimeDocs = [][3]string{
+	{"wait", "(seconds)", "pause the current task (tasks only)"},
+	{"await", "(request [, timeout_s = 30]) → result", "wait for an action's result (tasks only; elsewhere returns the result or the pending request)"},
+	{"result", "(id) → result", "an action's result, or {id, op, pending = true} while it's pending"},
+	{"log", "(msg)", "a log event (tagged with the task) and a line in session.log"},
+	{"now", "() → ms", "wall-clock time in milliseconds"},
+	{"help", "([prefix]) → {lines}", "this reference: every function whose name starts with prefix (\"items\", \"act.go\")"},
+	{"doc", "(name, sig, desc)", "document a function of your own so help() lists it"},
+	{"task.spawn", "([name,] fn, ...) → id", "run fn as a task: it can wait without blocking the game"},
+	{"task.list", "() → TaskInfo[]", "your tasks (finished ones stay listed for 10 minutes)"},
+	{"task.status", "(text)", "what the current task says it's doing (shown in task.list)"},
+	{"task.current", "() → id", "the current task's id (nil outside a task)"},
+	{"task.stop", "(id or name) → count", "stop tasks"},
+	{"task.pause", "(id)", "pause a waiting task"},
+	{"task.resume", "(id)", "resume a paused task"},
+	{"events.on", "(type or {types}, fn [, name]) → id", "run fn(event) as a task for each matching event; the same name replaces a handler"},
+	{"events.off", "(id)", "remove a handler"},
+	{"events.handlers", "() → {{id, types, name}}", "your event handlers"},
+	{"events.wait", "(type or {types} [, timeout_s]) → event", "the next matching event, nil on timeout (tasks only)"},
+	{"events.query", "{since, types, match, last = 50, limit} → {events}", "past events; types may end in * (\"quest_*\"), match searches the data"},
+	{"events.seq", "() → seq", "the latest event's sequence number"},
+	{"events.emit", "(name, data) → seq", "an event of your own, type \"script.<name>\""},
+	{"ask", "(question, {options} [, {default, timeout}]) → choice, \"answered\"|\"timeout\"", "ask the agent and wait for answer() (tasks only)"},
+	{"answer", "(id, choice)", "answer an ask(): id is the attention event's seq"},
 }
 
 // registerCompat adds the Lua 5.2 pieces scripts were written against (gopher-lua is 5.1): bit32, table.unpack,

@@ -1,7 +1,8 @@
 package session
 
 // Typed events and action requests (docs/runtime.md). Everything here is decoded from what a stock AzerothCore
-// server sends the client (SMSG opcodes on the world connection): no server-side modules or logs.
+// server sends the client (SMSG opcodes on the world connection): no server-side modules or logs. Event data
+// are the structs in package types (EventTypes lists them).
 
 import (
 	"bytes"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/pthm/wowbench/azeroth-sdk/client"
 	"github.com/pthm/wowbench/azeroth-sdk/script"
+	"github.com/pthm/wowbench/azeroth-sdk/types"
 )
 
 const (
@@ -29,6 +31,7 @@ const (
 	smsgLogXPGain          = 0x1D0
 	smsgInitWorldStates    = 0x2C2
 	smsgCreatureQueryResp  = 0x061
+	smsgAttackStart        = 0x143
 )
 
 // creature names by entry, from SMSG_CREATURE_QUERY_RESPONSE (the client asks once per entry)
@@ -55,45 +58,56 @@ func (b *Bot) objName(o *client.WorldObject) string {
 	return ""
 }
 
-// emit records an event on the character's stream (no-op before the engine exists).
-func (b *Bot) emit(typ string, data map[string]any) {
+// emit records an event on the character's stream (no-op before the engine exists). data is a types.* struct.
+func (b *Bot) emit(typ string, data any) {
 	if b.lua != nil {
 		b.lua.Emit(typ, data)
 	}
 }
 
-// request starts an action request; refuse resolves one at once (the action was never sent).
+// request starts an action request: check is polled each tick, match sees each event; either returns nil to wait.
 func (b *Bot) request(op string, args map[string]any, timeout time.Duration, check func() *script.Outcome,
 	match func(script.Event) *script.Outcome) map[string]any {
 	return b.lua.Reqs.Start(script.Spec{Op: op, Args: args, Timeout: timeout, Check: check, Match: match, Hint: timeoutHints[op]})
 }
 
-// timeoutHints: the usual reason the server stayed silent
-var timeoutHints = map[string]string{
-	"turn_in":      "the server ignores a turn-in when the quest isn't complete (bot.quest_log) or you aren't next to the NPC that takes it",
-	"train":        "stand within ~5 yd of the trainer",
-	"buy":          "stand within ~5 yd of the vendor",
-	"sell":         "stand within ~5 yd of the vendor",
-	"use_object":   "stand within ~5 yd of the object",
-	"cast":         "the cast never started: check range, facing and is_spell_ready",
-	"learn_talent": "check bot.talents(): free points, tier (5 points per row) and prerequisites",
-}
-
+// refuse resolves a request at once as failed (the action was never sent); done as ok.
 func (b *Bot) refuse(op string, args map[string]any, code, msg string) map[string]any {
 	return b.lua.Reqs.Now(script.Spec{Op: op, Args: args}, script.Fail(code, msg, nil))
 }
 
-func (b *Bot) done(op string, args, data map[string]any) map[string]any {
+func (b *Bot) done(op string, args map[string]any, data any) map[string]any {
 	return b.lua.Reqs.Now(script.Spec{Op: op, Args: args}, script.Ok(data))
 }
 
-// same compares event fields across Go number types (events carry uint32s, args float64s).
-func same(a, b any) bool { return fmt.Sprint(a) == fmt.Sprint(b) }
+// sent: an action the server doesn't answer resolves at once: ok, or the client's error.
+func (b *Bot) sent(op string, args map[string]any, err error) map[string]any {
+	if err != nil {
+		return b.refuse(op, args, "failed", err.Error())
+	}
+	return b.done(op, args, nil)
+}
+
+// timeoutHints: the usual reason the server stayed silent
+var timeoutHints = map[string]string{
+	"quests.accept":    "the quest giver didn't offer it: level, prerequisites, already done, or a different NPC",
+	"quests.turn_in":   "the server ignores a turn-in when the quest isn't complete (quests.log) or you aren't next to the NPC that takes it",
+	"combat.attack":    "no swing started: out of range or not facing it (move.face)",
+	"trainer.learn":    "stand within ~5 yd of the trainer",
+	"vendor.buy":       "stand within ~5 yd of the vendor",
+	"vendor.sell":      "stand within ~5 yd of the vendor",
+	"objects.use":      "stand within ~5 yd of the object",
+	"spells.cast":      "the cast never started: check range, facing and spells.usable",
+	"talents.learn":    "check talents.list(): free points, tier (5 points per row) and prerequisites",
+	"group.invite":     "no answer from the server",
+	"death.reclaim":    "too far from your corpse (within ~30 yd)",
+	"death.spirit_res": "stand within ~5 yd of the spirit healer",
+}
 
 // failOn turns an "error" event for op into a failed outcome.
 func failOn(ev script.Event, op string) *script.Outcome {
-	if ev.Type == "error" && ev.Data["op"] == op {
-		return script.Fail(fmt.Sprint(ev.Data["code"]), fmt.Sprint(ev.Data["message"]), nil)
+	if e, ok := ev.Data.(types.ErrorEvent); ok && ev.Type == "error" && e.Op == op {
+		return script.Fail(e.Code, e.Message, nil)
 	}
 	return nil
 }
@@ -109,28 +123,6 @@ func slug(s string) string {
 	}, s)
 }
 
-// who describes a unit for events: {name, guid, entry?, level?, player?}
-func (b *Bot) who(guid uint64) map[string]any {
-	m := map[string]any{"guid": fmt.Sprint(guid)}
-	if guid == b.world.CharGUID() {
-		m["name"], m["player"], m["me"] = b.config.CharacterName, true, true
-		return m
-	}
-	if o := b.world.GetObject(guid); o != nil {
-		m["name"], m["level"] = b.objName(o), o.Level()
-		if o.Entry != 0 {
-			m["entry"] = o.Entry
-		}
-	}
-	if guid>>48 == 0 {
-		m["player"] = true
-		if b.playerName != nil && (m["name"] == nil || m["name"] == "") {
-			m["name"] = b.playerName(guid)
-		}
-	}
-	return m
-}
-
 var chatKinds = map[uint8]string{0: "system", 1: "say", 2: "party", 3: "raid", 4: "guild", 5: "officer", 6: "yell",
 	7: "whisper", 8: "whisper_sent", 9: "whisper_sent", 0xA: "emote", 0xB: "emote", 0xC: "npc_say", 0xD: "npc_party",
 	0xE: "npc_yell", 0xF: "npc_whisper", 0x10: "npc_emote", 0x11: "channel", 0x29: "npc_emote", 0x2A: "npc_whisper",
@@ -143,6 +135,13 @@ func chatKind(t uint8) string {
 	return fmt.Sprintf("type_%d", t)
 }
 
+func spellName(id uint32) string {
+	if sp := spellInfo(id); sp != nil {
+		return sp.Name
+	}
+	return ""
+}
+
 // watchEvents decodes server packets into events (called from setupControl).
 func (b *Bot) watchEvents() {
 	w := b.world
@@ -150,17 +149,18 @@ func (b *Bot) watchEvents() {
 	prevDeath, prevLevel := w.OnDeath, w.OnLevelUp
 	var lastAttacker uint64
 	w.OnDeath = func() {
-		data := map[string]any{}
+		var d types.Death
 		if lastAttacker != 0 {
-			data["killer"] = b.who(lastAttacker)
+			r := b.ref(lastAttacker)
+			d.Killer = &r
 		}
-		b.emit("death", data)
+		b.emit("death", d)
 		if prevDeath != nil {
 			prevDeath()
 		}
 	}
 	w.OnLevelUp = func(lvl uint32) {
-		b.emit("level_up", map[string]any{"level": lvl})
+		b.emit("level_up", types.LevelUp{Level: lvl})
 		if prevLevel != nil {
 			prevLevel(lvl)
 		}
@@ -170,7 +170,7 @@ func (b *Bot) watchEvents() {
 		for _, m := range st.Members {
 			members = append(members, m.Name)
 		}
-		b.emit("party_changed", map[string]any{"in_group": st.InGroup, "members": members})
+		b.emit("party_changed", types.PartyChanged{InGroup: st.InGroup, Members: members})
 	})
 	var zone, area uint32
 	w.AddPacketHook(func(op uint16, data []byte) {
@@ -184,14 +184,7 @@ func (b *Bot) watchEvents() {
 			if dst == me && kind == "damage" {
 				lastAttacker = src
 			}
-			d := map[string]any{"src": b.who(src), "dst": b.who(dst), "amount": amount, "taken": dst == me}
-			if spell != 0 {
-				d["spell"] = spell
-				if sp := spellInfo(spell); sp != nil {
-					d["spell_name"] = sp.Name
-				}
-			}
-			b.emit(kind, d)
+			b.emit(kind, types.Damage{Src: b.ref(src), Dst: b.ref(dst), Amount: amount, Spell: spell, SpellName: spellName(spell), Taken: dst == me})
 		}
 		switch op {
 		case smsgCreatureQueryResp: // entry (high bit: unknown), name
@@ -203,9 +196,14 @@ func (b *Bot) watchEvents() {
 		case smsgPartyKillLog: // killer, victim: sent to the killer and their party
 			killer, victim := u64(), u64()
 			if killer == me {
-				b.emit("kill", map[string]any{"victim": b.who(victim)})
+				b.emit("kill", types.Kill{Victim: b.ref(victim)})
 			} else if victim != me {
-				b.emit("party_kill", map[string]any{"killer": b.who(killer), "victim": b.who(victim)})
+				k := b.ref(killer)
+				b.emit("party_kill", types.Kill{Victim: b.ref(victim), Killer: &k})
+			}
+		case smsgAttackStart: // attacker, victim
+			if u64() == me {
+				b.emit("attack_start", types.AttackStart{Target: types.GUID(u64())})
 			}
 		case smsgAttackerState: // hitInfo, attacker, target, damage
 			u32()
@@ -222,20 +220,21 @@ func (b *Bot) watchEvents() {
 		case smsgLogXPGain: // victim (u64), amount, 0 = kill / 1 = other
 			victim, amount := u64(), u32()
 			typ, _ := r.ReadByte()
-			d := map[string]any{"amount": amount, "source": "other"}
+			x := types.XPGain{Amount: amount, Source: "other"}
 			if typ == 0 {
-				d["source"] = "kill"
-				d["victim"] = b.who(victim)
+				v := b.ref(victim)
+				x.Source, x.Victim = "kill", &v
 			}
-			b.emit("xp", d)
+			b.emit("xp", x)
 		case smsgQuestComplete: // quest, xp, money
 			q := u32()
-			b.emit("quest_turned_in", map[string]any{"quest": q, "xp": u32(), "money": u32()})
+			b.emit("quest_turned_in", types.QuestDone{Quest: q, Title: questTitle(w, q), XP: u32(), Money: u32()})
 		case smsgQuestUpdateAddKill: // quest, entry, count, required, guid
 			q, entry, n, need := u32(), u32(), u32(), u32()
-			b.emit("quest_progress", map[string]any{"quest": q, "entry": entry & 0x7FFFFFFF, "count": n, "required": need})
+			b.emit("quest_progress", types.QuestProgress{Quest: q, Entry: entry & 0x7FFFFFFF, Have: n, Need: need})
 		case smsgQuestUpdateDone:
-			b.emit("quest_complete", map[string]any{"quest": u32()})
+			q := u32()
+			b.emit("quest_complete", types.QuestDone{Quest: q, Title: questTitle(w, q)})
 		case smsgQuestInvalid, smsgQuestFailed:
 			code := "quest_invalid"
 			if op == smsgQuestFailed {
@@ -243,12 +242,12 @@ func (b *Bot) watchEvents() {
 				code = "quest_failed"
 			}
 			reason := u32()
-			b.emit("error", map[string]any{"op": "quest", "code": code, "reason": reason,
-				"message": fmt.Sprintf("the quest giver refused (reason %d): level, prerequisites, or already done", reason)})
+			b.emit("error", types.ErrorEvent{Op: "quests", Code: code,
+				Message: fmt.Sprintf("the quest giver refused (reason %d): level, prerequisites, or already done", reason)})
 		case smsgQuestLogFull:
-			b.emit("error", map[string]any{"op": "quest", "code": "quest_log_full", "message": "your quest log is full (25)"})
+			b.emit("error", types.ErrorEvent{Op: "quests", Code: "quest_log_full", Message: "your quest log is full (25)"})
 		case smsgLootMoneyNotify:
-			b.emit("money", map[string]any{"amount": u32(), "source": "loot"})
+			b.emit("money", types.Money{Amount: u32(), Source: "loot"})
 		case smsgItemPushResult: // player, received, created, show, bag, slot, entry, suffix, random, count
 			if u64() != me {
 				return // also sent to party members
@@ -258,20 +257,30 @@ func (b *Bot) watchEvents() {
 			u32()
 			r.ReadByte()
 			u32()
-			entry := u32()
+			it := itemTemplate(w, u32())
 			u32()
 			u32()
-			d := map[string]any{"item": entry, "count": u32(), "from": "loot"}
+			it.Count = u32()
+			ev := types.ItemReceived{Item: it, From: "loot"}
 			if received == 1 {
-				d["from"] = "npc" // quest reward or purchase
+				ev.From = "npc" // quest reward or purchase
 			}
-			if p := itemInfo(w, entry); p != nil {
-				d["name"], d["quality"] = p.Name, p.Quality
+			if it.Name != "" {
+				b.emit("item_received", ev)
+				return
 			}
-			b.emit("item_received", d)
+			go func() { // the item's template may still be on its way
+				for i := 0; i < 10 && ev.Item.Name == ""; i++ {
+					time.Sleep(100 * time.Millisecond)
+					count := ev.Item.Count
+					ev.Item = itemTemplate(w, ev.Item.Entry)
+					ev.Item.Count = count
+				}
+				b.emit("item_received", ev)
+			}()
 		case smsgAchievementEarned:
 			if readPackedGUID(r) == me {
-				b.emit("achievement", map[string]any{"id": u32()})
+				b.emit("achievement", types.AchievementEarned{ID: u32()})
 			}
 		case smsgSpellStart, smsgSpellGo:
 			readPackedGUID(r)
@@ -280,16 +289,13 @@ func (b *Bot) watchEvents() {
 			}
 			r.ReadByte()
 			spell := u32()
-			d := map[string]any{"spell": spell}
-			if sp := spellInfo(spell); sp != nil {
-				d["name"] = sp.Name
-			}
+			c := types.Cast{Spell: spell, Name: spellName(spell)}
 			if op == smsgSpellStart {
 				u32()
-				d["cast_ms"] = u32()
-				b.emit("cast_start", d)
+				c.CastMS = u32()
+				b.emit("cast_start", c)
 			} else {
-				b.emit("cast_done", d)
+				b.emit("cast_done", c)
 			}
 		case smsgSpellFailure: // caster, cast count, spell, reason
 			if readPackedGUID(r) != me {
@@ -298,30 +304,30 @@ func (b *Bot) watchEvents() {
 			r.ReadByte()
 			spell := u32()
 			code, _ := r.ReadByte()
-			b.emit("cast_failed", map[string]any{"spell": spell, "code": castResultNames[code], "interrupted": true})
+			b.emit("cast_failed", types.Cast{Spell: spell, Name: spellName(spell), Code: castResultNames[code], Interrupted: true})
 		case smsgCastFailed: // cast count, spell, reason
 			r.ReadByte()
 			spell := u32()
 			code, _ := r.ReadByte()
-			d := map[string]any{"spell": spell, "code": castResultNames[code]}
+			c := types.Cast{Spell: spell, Name: spellName(spell), Code: castResultNames[code]}
 			if code >= 28 && code <= 30 {
-				d["hint"] = "needs a working weapon: check bot.broken_gear() and repair at an armorer"
+				c.Hint = "needs a working weapon: check items.broken() and repair at an armorer (vendor.repair)"
 			}
-			b.emit("cast_failed", d)
+			b.emit("cast_failed", c)
 		case smsgInitWorldStates: // map, zone, area: sent on login and on every zone/area change
 			u32()
 			z, a := u32(), u32()
 			if z != zone || a != area {
 				zone, area = z, a
 				names := areaNames()
-				b.emit("area_changed", map[string]any{"zone": z, "area": a, "zone_name": names[z], "area_name": names[a]})
+				b.emit("area_changed", types.Location{Zone: names[z], Area: names[a], ZoneID: z, AreaID: a})
 			}
 		}
 	})
 	prevReject := w.OnAttackReject
 	w.OnAttackReject = func(r client.AttackReject) {
 		if r.Reason != "ATTACK_STOP" { // the server stopping your swings (target died, you moved off): not a failure
-			b.emit("attack_failed", map[string]any{"code": strings.ToLower(fmt.Sprint(r.Reason)), "target": fmt.Sprint(r.GUID)})
+			b.emit("attack_failed", types.AttackFailed{Code: strings.ToLower(r.Reason), Target: types.GUID(r.GUID)})
 		}
 		if prevReject != nil {
 			prevReject(r)
@@ -335,117 +341,117 @@ func (b *Bot) stateEvents() {
 	combat, alive := b.InCombat(), b.IsAlive() && !b.IsGhost()
 	if b.wasAlive != nil {
 		if combat != b.wasCombat {
-			b.emit(map[bool]string{true: "combat_start", false: "combat_end"}[combat], nil)
+			b.emit(map[bool]string{true: "combat_start", false: "combat_end"}[combat], types.None{})
 		}
 		if alive && !*b.wasAlive {
-			b.emit("resurrected", nil)
-			broken := []any{}
+			b.emit("resurrected", types.None{})
+			broken := []types.Item{}
 			for _, it := range bagItems(b.world) {
-				if it["bag"] == uint8(255) && it["slot"].(uint8) < 19 && it["max_durability"] != nil && it["durability"] == uint32(0) {
-					broken = append(broken, it["entry"])
+				if it.Equipped && it.Broken {
+					broken = append(broken, it)
 				}
 			}
 			if len(broken) > 0 {
-				b.emit("gear_broken", map[string]any{"items": broken, "message": fmt.Sprintf("%d equipped item(s) at 0 durability give no stats (a broken weapon: fighting bare-handed): repair at an armorer, bot.repair(npc)", len(broken))})
+				b.emit("gear_broken", types.GearBroken{Items: broken, Message: fmt.Sprintf("%d equipped item(s) at 0 durability give no stats (a broken weapon: fighting bare-handed): repair at an armorer (vendor.repair)", len(broken))})
 			}
 		}
 	}
 	b.wasCombat, b.wasAlive = combat, &alive
+	if b.ConsumeTeleport() {
+		x, y, z, _, m := b.world.Position()
+		b.emit("teleported", types.Position{X: round1(x), Y: round1(y), Z: round1(z), Map: m})
+	}
 }
 
-// setupActions: move and cast as requests.
+// setupActions: move.to / move.stop and spells.cast as requests.
 func (b *Bot) setupActions() {
 	e := b.lua
 	type move struct {
-		id       int
-		x, y, z  float32
-		started  time.Time
-		deadline time.Time
-		straight bool
+		id                int
+		x, y, z           float32
+		started, deadline time.Time
+		straight          bool
 	}
 	var cur *move // ponytail: guarded by the engine lock (Lua calls) and only read in Check (tick goroutine)
 	dist := func(m *move) float64 {
 		x, y, z, _ := b.GetPosition()
 		return math.Sqrt(float64((x-m.x)*(x-m.x) + (y-m.y)*(y-m.y) + (z-m.z)*(z-m.z)))
 	}
-	// move_to(x, y, z) -> request "move_to": ok on arrival; stuck / timeout with how far short. Calling it again
-	// with a nearby point (chasing) keeps the same request; a different destination supersedes it.
-	e.RegisterFunc("move_to", func(x, y, z float32) map[string]any {
-		args := map[string]any{"x": x, "y": y, "z": z}
-		if m := cur; m != nil && b.lua.Reqs.Result(m.id)["pending"] == true {
-			if dx, dy := m.x-x, m.y-y; dx*dx+dy*dy < 100 {
-				m.x, m.y, m.z = x, y, z
-				b.MoveTo(x, y, z)
-				return b.lua.Reqs.Result(m.id)
-			}
-			b.lua.Reqs.Resolve(m.id, script.Fail("superseded", "a newer move_to replaced this one", nil))
-		}
-		m := &move{x: x, y: y, z: z, started: time.Now()}
-		m.straight = b.MoveTo(x, y, z) != nil
-		m.deadline = m.started.Add(time.Duration(dist(m)/5*1.5+10) * time.Second)
-		cur = m
-		req := b.request("move_to", args, time.Hour, func() *script.Outcome {
-			d := dist(m)
-			short := map[string]any{"distance": math.Round(d*10) / 10}
-			switch {
-			case d < 2.5 || (d < 5 && !b.IsMoving()):
-				return script.Ok(short)
-			case !b.IsMoving() && time.Since(m.started) > time.Second:
-				msg := fmt.Sprintf("stopped %.0f yd short", d)
-				if m.straight {
-					msg += " (no navmesh path, walked a straight line: blocked by terrain?)"
+	e.Func("move.to", "(x, y, z) → request<MoveDone>", "walk there along the navmesh: ok on arrival, else stuck or timeout. Calling it again near the same point (chasing) keeps the same request; a different point supersedes it. With no navmesh path it walks a straight line (no_path)",
+		func(x, y, z float32) map[string]any {
+			args := map[string]any{"x": x, "y": y, "z": z}
+			if m := cur; m != nil && b.lua.Reqs.Result(m.id)["pending"] == true {
+				if dx, dy := m.x-x, m.y-y; dx*dx+dy*dy < 100 {
+					m.x, m.y, m.z = x, y, z
+					b.MoveTo(x, y, z)
+					return b.lua.Reqs.Result(m.id)
 				}
-				return script.Fail("stuck", msg, short)
-			case time.Now().After(m.deadline):
-				b.StopMoving()
-				return script.Fail("timeout", fmt.Sprintf("still %.0f yd away", d), short)
+				b.lua.Reqs.Resolve(m.id, script.Fail("superseded", "a newer move.to replaced this one", nil))
 			}
-			return nil
-		}, nil)
-		m.id = req["id"].(int)
-		if m.straight {
-			req["no_path"] = true
-		}
-		return req
-	})
-	e.RegisterFunc("stop_moving", func() {
+			m := &move{x: x, y: y, z: z, started: time.Now()}
+			m.straight = b.MoveTo(x, y, z) != nil
+			m.deadline = m.started.Add(time.Duration(dist(m)/5*1.5+10) * time.Second)
+			cur = m
+			req := b.request("move.to", args, time.Hour, func() *script.Outcome {
+				d := math.Round(dist(m)*10) / 10
+				res := types.MoveDone{Distance: d, NoPath: m.straight}
+				switch {
+				case d < 2.5 || (d < 5 && !b.IsMoving()):
+					return script.Ok(res)
+				case !b.IsMoving() && time.Since(m.started) > time.Second:
+					msg := fmt.Sprintf("stopped %.0f yd short", d)
+					if m.straight {
+						msg += " (no navmesh path, walked a straight line: blocked by terrain?)"
+					}
+					return script.Fail("stuck", msg, res)
+				case time.Now().After(m.deadline):
+					b.StopMoving()
+					return script.Fail("timeout", fmt.Sprintf("still %.0f yd away", d), res)
+				}
+				return nil
+			}, nil)
+			m.id = req["id"].(int)
+			return req
+		})
+	e.Func("move.stop", "() → request<MoveDone>", "stop walking (a pending move.to resolves ok with stopped = true)", func() map[string]any {
 		if cur != nil {
-			b.lua.Reqs.Resolve(cur.id, script.Ok(map[string]any{"stopped": true, "distance": math.Round(dist(cur)*10) / 10}))
+			b.lua.Reqs.Resolve(cur.id, script.Ok(types.MoveDone{Stopped: true, Distance: math.Round(dist(cur)*10) / 10}))
 		}
 		b.StopMoving()
+		return b.done("move.stop", nil, nil)
 	})
-	// cast_spell(spell, target) -> request "cast": ok when the spell goes off, else the server's reason
-	e.RegisterFunc("cast_spell", func(spell uint32, target uint64) map[string]any {
-		args := map[string]any{"spell": spell, "target": fmt.Sprint(target)}
-		if !b.world.KnowsSpell(spell) { // the server silently ignores these
-			return b.refuse("cast", args, "not_known", "you don't know this spell (train it, or check the rank id)")
-		}
-		if err := b.CastSpell(spell, target); err != nil {
-			return b.refuse("cast", args, "refused", err.Error())
-		}
-		timeout := 5 * time.Second
-		if sp := spellInfo(spell); sp != nil {
-			timeout += time.Duration(sp.CastMS) * time.Millisecond
-		}
-		return b.request("cast", args, timeout, nil, castMatch(spell))
-	})
+	e.Func("spells.cast", "(id [, guid = you]) → request<CastDone>", "cast a spell on a unit: ok when it goes off, else the server's reason (out_of_range, line_of_sight, not_ready, no_power, bad_targets, moving, interrupted, not_infront, equipped_item_class, ...) or not_known",
+		func(spell uint32, target uint64) map[string]any {
+			if target == 0 {
+				target = b.world.CharGUID()
+			}
+			args := map[string]any{"spell": spell, "target": gs(target)}
+			if !b.world.KnowsSpell(spell) { // the server silently ignores these
+				return b.refuse("spells.cast", args, "not_known", "you don't know this spell (train it, or check the rank id)")
+			}
+			if err := b.CastSpell(spell, target); err != nil {
+				return b.refuse("spells.cast", args, "failed", err.Error())
+			}
+			return b.request("spells.cast", args, castTimeout(spell), nil, castMatch(spell))
+		})
 }
 
 // castMatch resolves a request on the spell's cast_done / cast_failed.
 func castMatch(spell uint32) func(script.Event) *script.Outcome {
 	return func(ev script.Event) *script.Outcome {
-		if !same(ev.Data["spell"], spell) {
+		c, ok := ev.Data.(types.Cast)
+		if !ok || c.Spell != spell {
 			return nil
 		}
 		switch ev.Type {
 		case "cast_done":
-			return script.Ok(map[string]any{"spell": spell})
+			return script.Ok(types.CastDone{Spell: spell})
 		case "cast_failed":
-			msg := fmt.Sprint(ev.Data["code"])
-			if h, ok := ev.Data["hint"]; ok {
-				msg += ": " + fmt.Sprint(h)
+			msg := c.Code
+			if c.Hint != "" {
+				msg += ": " + c.Hint
 			}
-			return script.Fail(fmt.Sprint(ev.Data["code"]), msg, nil)
+			return script.Fail(c.Code, msg, nil)
 		}
 		return nil
 	}

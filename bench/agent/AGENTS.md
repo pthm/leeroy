@@ -10,12 +10,12 @@ them.
 
 Your working directory is your **script library**. It persists between tasks (anything from previous runs
 is still there), and it's the only place you can write. `session.log` in it is the live log of your
-character: `bot.log()` output, script errors, kills, level-ups. `example.lua` is a complete
+character: `log()` output, script errors, kills, level-ups. `example.lua` is a complete
 fight-loot-repeat loop to start from.
 
 ```sh
-wow 'return bot.get_level(), bot.get_health()'   # query -> {"result":[3,72,72], "events": {...}}
-wow 'return bot.get_nearby_units(40)'            # what's around you
+wow 'return me.level(), me.health()'   # query -> {"result":[3,72,72], "events": {...}}
+wow 'return units.nearby(40)'            # what's around you
 wow status                                       # one-call snapshot of your character
 wow -f grind.lua                                 # load a script file (it starts its tasks)
 wow tasks                                        # your running tasks: state, status, what each waits for
@@ -56,8 +56,8 @@ task.spawn("grind", function()
     local mob = combat.pick_target(80)
     if not mob then wait(3) else
       task.status("fighting " .. mob.name)
-      local r = act.approach(mob.guid, 4)
-      if r.ok then combat.fight(mob) else bot.log("can't reach " .. mob.name .. ": " .. r.error.code) end
+      local r = act.approach{ unit = mob.guid, range = 4 }
+      if r.ok then combat.fight(mob) else log("can't reach " .. mob.name .. ": " .. r.error.code) end
     end
   end
 end)
@@ -68,5 +68,5 @@ While it runs, you're watching: `wow wait` wakes you for anything important, `wo
 and a script can hand a decision to you with `ask(question, options)`.
 
 The rest of this file: a guide to playing well with the SDK (bags, vendors, trainers, death, unreachable
-targets, other players), then the reference for the Lua runtime and `bot` API, then the world data tools
+targets, other players), then the runtime (tasks, actions, events), the Lua API and its full reference, then the world data tools
 (`wowdb`, `worlddb`).

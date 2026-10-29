@@ -17,6 +17,7 @@ import (
 	"github.com/pthm/wowbench/azeroth-sdk/client"
 	"github.com/pthm/wowbench/azeroth-sdk/navigation"
 	"github.com/pthm/wowbench/azeroth-sdk/script"
+	"github.com/pthm/wowbench/azeroth-sdk/types"
 )
 
 const (
@@ -74,11 +75,8 @@ func (b *Bot) setupAgentAPI() {
 	w.AddPacketHook(func(op uint16, data []byte) { s.onPacket(w.CharGUID(), op, data) })
 	e := b.lua
 
-	e.RegisterFunc("is_ghost", b.IsGhost)
-	e.RegisterFunc("get_name", func() string { return b.config.CharacterName }) // your character's name
-	// stats() -> your character sheet: primary stats, armor, attack power, weapon damage and speed, crit/dodge/parry %,
-	// spell power and bonus healing (what gear, buffs and talents actually add up to)
-	e.RegisterFunc("stats", func() map[string]any {
+	// ---------- me ----------
+	e.Func("me.stats", "() → Stats?", "your character sheet: what gear, buffs and talents add up to", func() any {
 		o := w.GetObject(w.CharGUID())
 		if o == nil {
 			return nil
@@ -97,40 +95,70 @@ func (b *Bot) setupAgentAPI() {
 		}
 		speed := float64(o.Value(0x3E)) / 1000
 		minD, maxD := f(0x46), f(0x47)
-		st := map[string]any{"strength": o.Value(0x54), "agility": o.Value(0x55), "stamina": o.Value(0x56), "intellect": o.Value(0x57),
-			"spirit": o.Value(0x58), "armor": o.Value(0x63), "attack_power": o.Value(0x7B), "ranged_attack_power": o.Value(0x7E),
-			"weapon_damage": []float64{minD, maxD}, "weapon_speed": speed, "crit_pct": f(0x405), "dodge_pct": f(0x401),
-			"parry_pct": f(0x402), "spell_crit_pct": maxOf(0x408, 7, true), "spell_power": maxOf(0x493, 7, false),
-			"bonus_healing": o.Value(0x4A8)}
+		st := types.Stats{Strength: o.Value(0x54), Agility: o.Value(0x55), Stamina: o.Value(0x56), Intellect: o.Value(0x57),
+			Spirit: o.Value(0x58), Armor: o.Value(0x63), AttackPower: o.Value(0x7B), RangedAttackPower: o.Value(0x7E),
+			WeaponDamage: [2]float64{minD, maxD}, WeaponSpeed: speed, CritPct: f(0x405), DodgePct: f(0x401), ParryPct: f(0x402),
+			SpellCritPct: maxOf(0x408, 7, true), SpellPower: uint32(maxOf(0x493, 7, false)), BonusHealing: o.Value(0x4A8)}
 		if speed > 0 {
-			st["melee_dps"] = math.Round((minD+maxD)/2/speed*10) / 10 // white damage per second, attack power included
+			st.MeleeDPS = math.Round((minD+maxD)/2/speed*10) / 10
 		}
 		return st
 	})
-	// is_resting() -> true in an inn or city (rested XP builds up; set by the area trigger you walked into)
-	e.RegisterFunc("is_resting", func() bool {
+	e.Func("me.resting", "() → bool", "in an inn or city: rested XP builds up", func() bool {
 		o := w.GetObject(w.CharGUID())
 		return o != nil && o.Value(fieldPlayerFlags)&0x20 != 0
 	})
-	e.RegisterFunc("is_casting", func() (any, float64) {
+	e.Func("me.casting", "() → Casting?", "the cast or channel in progress (from the moment you send it); nil when idle. Moving interrupts it", func() any {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if left := time.Until(s.castUntil); s.castSpell != 0 && left > 0 {
-			return s.castSpell, float64(left.Milliseconds())
+			return types.Casting{Spell: s.castSpell, Name: spellName(s.castSpell), MSLeft: uint32(left.Milliseconds())}
 		}
-		return nil, 0
+		return nil
 	})
-	e.RegisterFunc("last_cast_error", func() map[string]any {
+	e.Func("me.location", "() → Location", "where you are, by the game's own zone and area names", func() types.Location {
+		s.mu.Lock()
+		z, a := s.zone, s.area
+		s.mu.Unlock()
+		names := areaNames() // loads areaParent too
+		if a == 0 {          // the server's world-states packet came before we were listening: read the map's area grid
+			x, y, _, _, m := w.Position()
+			if a = areaAt(b.config.DataDir, m, x, y); a != 0 {
+				if z = areaParent[a]; z == 0 {
+					z = a
+				}
+			}
+		}
+		return types.Location{Zone: names[z], Area: names[a], ZoneID: z, AreaID: a}
+	})
+	e.Func("me.achievements", "() → Achievements", "what you've earned and your criteria progress (worlddb's wowbench.achievement tables have names). The first call asks the server", func() types.Achievements {
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		return s.castErr
+		if !s.achAsked {
+			s.achAsked = true
+			w.SendPacketRaw(cmsgInspectAchieves, packGUID(w.CharGUID()))
+		}
+		out := types.Achievements{Earned: []uint32{}, Criteria: [][2]uint64{}}
+		for id := range s.earned {
+			out.Earned = append(out.Earned, id)
+		}
+		for id, n := range s.criteria {
+			out.Criteria = append(out.Criteria, [2]uint64{uint64(id), n})
+		}
+		return out
 	})
-	// is_spell_ready(id) -> ready, ms until ready. The client only knew server-pushed cooldowns, which
-	// AC doesn't send for normal casts (the real client reads them from Spell.dbc), so it said "ready"
-	// for spells on cooldown.
-	e.RegisterFunc("is_spell_ready", func(id uint32) (bool, float64) {
+
+	// ---------- spells ----------
+	e.Func("spells.info", "(id) → Spell?", "a spell's name, rank, cast time, cooldown, range and cost; nil if unknown", func(id uint32) any {
+		if sp := spellOf(w, id); sp != nil {
+			return *sp
+		}
+		return nil
+	})
+	// AC doesn't push cooldowns for normal casts (the real client reads them from Spell.dbc), so they're tracked here.
+	e.Func("spells.cooldown", "(id) → ms", "milliseconds until it's ready (its cooldown, category cooldown and the global cooldown); 0 = ready", func(id uint32) float64 {
 		if !b.IsSpellReady(id) {
-			return false, 0
+			return 1500
 		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -143,60 +171,29 @@ func (b *Bot) setupAgentAPI() {
 				at = s.gcdUntil
 			}
 		}
-		left := time.Until(at)
-		return left <= 0, math.Max(0, float64(left.Milliseconds()))
+		return math.Max(0, float64(time.Until(at).Milliseconds()))
 	})
-	// last_attack_error() -> {reason, guid, time_ms} for the latest rejected melee swing: NOT_IN_RANGE,
-	// BAD_FACING (face_target), DEAD_TARGET, CANT_ATTACK
-	e.RegisterFunc("last_attack_error", func() map[string]any {
-		r := b.lastAttackReject.Load()
-		if r == nil {
-			return nil
-		}
-		return map[string]any{"reason": r.Reason, "guid": fmt.Sprint(r.GUID), "time_ms": r.at.UnixMilli()}
-	})
-	// achievements() -> {earned = {ids...}, criteria = {{id, counter}...}}. Join with worlddb's
-	// wowbench.achievement / achievement_criteria. The first call asks the server for the full list.
-	e.RegisterFunc("achievements", func() map[string]any {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		if !s.achAsked {
-			s.achAsked = true
-			w.SendPacketRaw(cmsgInspectAchieves, packGUID(w.CharGUID()))
-		}
-		earned, crit := []uint32{}, []map[string]any{}
-		for id := range s.earned {
-			earned = append(earned, id)
-		}
-		for id, n := range s.criteria {
-			crit = append(crit, map[string]any{"id": id, "counter": n})
-		}
-		return map[string]any{"earned": earned, "criteria": crit}
-	})
-	// ground_z(x, y [, z]) -> the height to stand at (x, y) on your current map, for move_to; nil if no map data.
-	// With z (e.g. an NPC's spawn z from wowdb) it returns the walkable floor nearest that height, so indoor and
-	// upstairs targets work; without it, the outdoor terrain height (under any building).
-	e.RegisterFunc("ground_z", func(x, y, hint float32) any {
-		_, _, _, _, m := w.Position()
-		if hint != 0 {
-			if fn, ok := b.nav.(interface {
-				FloorHeight(mapID uint32, x, y, hint float32) (float32, bool)
-			}); ok {
-				if f, ok := fn.FloorHeight(m, x, y, hint); ok {
-					return f
+
+	// ---------- world ----------
+	e.Func("world.ground_z", "(x, y [, z]) → number?", "the height to stand at (x, y) on your map, for move.to; nil without map data. With z (an NPC's spawn z from wowdb) it finds the floor nearest that height: upstairs rooms, buildings, Stormwind's streets. Without it, the outdoor terrain (under any building)",
+		func(x, y, hint float32) any {
+			_, _, _, _, m := w.Position()
+			if hint != 0 {
+				if fn, ok := b.nav.(interface {
+					FloorHeight(mapID uint32, x, y, hint float32) (float32, bool)
+				}); ok {
+					if f, ok := fn.FloorHeight(m, x, y, hint); ok {
+						return f
+					}
 				}
 			}
-		}
-		if tn, ok := b.nav.(terrainHeightNavigator); ok && b.nav != nil {
-			if gh, ok := tn.GetTerrainHeight(m, x, y); ok {
-				return gh
+			if tn, ok := b.nav.(terrainHeightNavigator); ok && b.nav != nil {
+				if gh, ok := tn.GetTerrainHeight(m, x, y); ok {
+					return gh
+				}
 			}
-		}
-		return nil
-	})
-	e.RegisterFunc("spell_info", func(id uint32) *spellRec { return spellInfo(id) })
-	// los_unit(guid) / los_point(x, y, z): line of sight from your eyes, like the server's spell check; nil without
-	// collision data. bot.in_los(guid | x, y, z) in act.lua picks one.
+			return nil
+		})
 	los := func(to navigation.Point3D) any {
 		l, ok := b.nav.(interface {
 			InLineOfSight(mapID uint32, a, b navigation.Point3D) (bool, bool)
@@ -211,122 +208,120 @@ func (b *Bot) setupAgentAPI() {
 		}
 		return clear
 	}
-	e.RegisterFunc("los_unit", func(guid uint64) any {
-		o := w.GetObject(guid)
+	e.Func("world.in_sight", "(x, y, z) → bool?", "nothing solid (walls, rock, buildings) between your eyes and the point, as the server checks spells; nil without collision data",
+		func(x, y, z float32) any { return los(navigation.Point3D{X: x, Y: y, Z: z + 1.5}) })
+	e.Func("units.in_sight", "(guid) → bool?", "line of sight to a unit (see world.in_sight)", func(g uint64) any {
+		o := w.GetObject(g)
 		if o == nil {
 			return nil
 		}
 		x, y, z := o.InterpolatedPosition()
 		return los(navigation.Point3D{X: x, Y: y, Z: z + 1.5})
 	})
-	e.RegisterFunc("los_point", func(x, y, z float32) any { return los(navigation.Point3D{X: x, Y: y, Z: z + 1.5}) })
-	// reaction(guid) -> "hostile" (attacks on sight), "neutral" (fights back) or "friendly", toward you
-	e.RegisterFunc("reaction", func(g uint64) any {
-		o, me := w.GetObject(g), w.GetObject(w.CharGUID())
-		if o == nil || me == nil {
-			return nil
-		}
-		return factionReaction(o.Value(fieldUnitFaction), me.Value(fieldUnitFaction))
-	})
-	// location() -> {zone, area, zone_id, area_id}: where you are, by the game's own area names
-	e.RegisterFunc("location", func() map[string]any {
-		s.mu.Lock()
-		z, a := s.zone, s.area
-		s.mu.Unlock()
-		names := areaNames()
-		areaNames() // loads areaParent too
-		if a == 0 { // the server's world-states packet came before we were listening: read the map's area grid
-			x, y, _, _, m := w.Position()
-			if a = areaAt(b.config.DataDir, m, x, y); a != 0 {
-				z = areaParent[a]
-				if z == 0 {
-					z = a
-				}
-			}
-		}
-		return map[string]any{"zone": names[z], "area": names[a], "zone_id": z, "area_id": a}
-	})
 
-	// corpse_position() -> x, y, z, seconds until it can be reclaimed; nil when not dead. The first call
-	// after dying asks the server and returns nil; ask again a moment later.
-	e.RegisterFunc("corpse_position", func() (any, any, any, any) {
+	// ---------- death ----------
+	e.Func("death.corpse", "() → Corpse?", "your corpse and when you can reclaim it; nil while alive. Right after dying it asks the server: call again a moment later",
+		func() any {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if b.world.Health() > 0 && !b.IsGhost() {
+				s.corpse = nil
+				return nil
+			}
+			if time.Since(s.corpseAt) > 3*time.Second {
+				s.corpseAt = time.Now()
+				w.SendPacketRaw(msgCorpseQuery, nil)
+			}
+			if s.corpse == nil {
+				return nil
+			}
+			return types.Corpse{X: round1(s.corpse[0]), Y: round1(s.corpse[1]), Z: round1(s.corpse[2]), Map: uint32(s.corpse[3]),
+				ReclaimIn: math.Max(0, math.Round(time.Until(s.reclaimAt).Seconds()))}
+		})
+	alive := func() *script.Outcome {
+		if b.IsAlive() && !b.IsGhost() {
+			return script.Ok(nil)
+		}
+		return nil
+	}
+	e.Func("death.release", "() → request", "release your spirit: ok once you're a ghost at the graveyard", func() map[string]any {
+		if b.IsGhost() {
+			return b.done("death.release", nil, nil)
+		}
+		if b.IsAlive() {
+			return b.refuse("death.release", nil, "not_dead", "you're alive")
+		}
+		w.RepopRequest()
+		return b.request("death.release", nil, 10*time.Second, func() *script.Outcome {
+			if b.IsGhost() {
+				return script.Ok(nil)
+			}
+			return nil
+		}, nil)
+	})
+	e.Func("death.reclaim", "() → request", "as a ghost within ~30 yd of your corpse, come back to life there", func() map[string]any {
+		if !b.IsGhost() {
+			return b.refuse("death.reclaim", nil, "not_a_ghost", "release first (death.release)")
+		}
 		s.mu.Lock()
-		defer s.mu.Unlock()
-		if b.world.Health() > 0 && !b.IsGhost() {
-			s.corpse = nil
-			return nil, nil, nil, nil
+		wait := time.Until(s.reclaimAt)
+		s.mu.Unlock()
+		if wait > 0 {
+			return b.refuse("death.reclaim", nil, "not_yet", fmt.Sprintf("you can reclaim in %.0f s", wait.Seconds()))
 		}
-		if time.Since(s.corpseAt) > 3*time.Second {
-			s.corpseAt = time.Now()
-			w.SendPacketRaw(msgCorpseQuery, nil)
-		}
-		if s.corpse == nil {
-			return nil, nil, nil, nil
-		}
-		return s.corpse[0], s.corpse[1], s.corpse[2], math.Max(0, time.Until(s.reclaimAt).Seconds())
+		w.ReclaimCorpse()
+		return b.request("death.reclaim", nil, 5*time.Second, alive, nil)
 	})
-	e.RegisterFunc("spirit_res", func(npc uint64) { // resurrect at a spirit healer (with res sickness)
-		w.SendPacketRaw(cmsgSpiritHealerAct, binary.LittleEndian.AppendUint64(nil, npc))
-	})
-	// get_attackers(dist) -> living units within dist that are targeting you
-	e.RegisterFunc("get_attackers", func(dist float32) []map[string]any {
-		me := w.CharGUID()
-		out := []map[string]any{}
-		for _, u := range b.GetNearbyUnits(dist) {
-			if u.Target == me && u.IsAlive {
-				out = append(out, map[string]any{"guid": fmt.Sprint(u.GUID), "entry": u.Entry, "level": u.Level,
-					"health": u.Health, "max_health": u.MaxHealth, "distance": u.Distance, "is_player": u.IsPlayer})
+	e.Func("death.spirit_res", "(npc) → request", "as a ghost next to a spirit healer: resurrect there (resurrection sickness from level 11, and your gear loses durability)",
+		func(npc uint64) map[string]any {
+			if !b.IsGhost() {
+				return b.refuse("death.spirit_res", map[string]any{"npc": gs(npc)}, "not_a_ghost", "release first (death.release)")
 			}
-		}
-		return out
-	})
-	e.RegisterFunc("bag_items", func() []map[string]any { return bagItems(w) })
-	e.RegisterFunc("has_item", func(entry uint32) uint32 {
-		n := uint32(0)
-		for _, it := range bagItems(w) {
-			if it["entry"] == entry {
-				n += it["count"].(uint32)
-			}
-		}
-		return n
-	})
-	e.RegisterFunc("quest_log", func() []map[string]any {
-		out := []map[string]any{}
-		o := w.GetObject(w.CharGUID())
-		if o == nil {
-			return out
-		}
-		for slot := uint16(0); slot < 25; slot++ {
-			f := fieldQuestLog + slot*5
-			id := o.Value(f)
-			if id == 0 {
-				continue
-			}
-			c1, c2 := o.Value(f+2), o.Value(f+3)
-			out = append(out, map[string]any{"id": id, "complete": o.Value(f+1)&1 != 0, "failed": o.Value(f+1)&2 != 0,
-				"counts": []uint32{c1 & 0xFFFF, c1 >> 16, c2 & 0xFFFF, c2 >> 16}}) // kill/object counters (items: has_item)
-		}
-		return out
-	})
-	// turn_in(npc, quest, reward_index): complete -> request reward -> choose reward in one go.
-	// Check quest_log()/has_item first; the server silently ignores an incomplete turn-in. Returns a warning when
-	// your bags are full: the server refuses quests with item rewards then ("Inventory is full" in read_chat).
-	e.RegisterFunc("turn_in", func(npc uint64, quest, reward uint32) map[string]any {
-		w.QuestgiverCompleteQuest(npc, quest)
-		body := binary.LittleEndian.AppendUint64(nil, npc)
-		w.SendPacketRaw(cmsgQuestRequestRew, binary.LittleEndian.AppendUint32(body, quest))
-		w.QuestgiverChooseReward(npc, quest, reward)
-		return b.request("turn_in", map[string]any{"npc": fmt.Sprint(npc), "quest": quest, "reward": reward}, 5*time.Second,
-			nil, func(ev script.Event) *script.Outcome {
-				switch {
-				case ev.Type == "quest_turned_in" && same(ev.Data["quest"], quest):
-					return script.Ok(ev.Data)
-				case ev.Type == "error" && ev.Data["op"] == "inventory":
-					return script.Fail("bags_full", "bags full: the item reward was refused; sell or destroy something", nil)
+			w.SendPacketRaw(cmsgSpiritHealerAct, binary.LittleEndian.AppendUint64(nil, npc))
+			return b.request("death.spirit_res", map[string]any{"npc": gs(npc)}, 5*time.Second, alive, nil)
+		})
+
+	// ---------- quests ----------
+	e.Func("quests.log", "() → Quest[]", "your quests with their objectives and progress (titles fill in once the server answers)", b.questLog)
+	e.Func("quests.accept", "(npc, quest) → request<QuestDone>", "talk to a quest giver and accept a quest it offers", func(npc uint64, quest uint32) map[string]any {
+		args := map[string]any{"npc": gs(npc), "quest": quest}
+		has := func() bool {
+			for _, q := range b.questLog() {
+				if q.ID == quest {
+					return true
 				}
-				return failOn(ev, "quest")
-			})
+			}
+			return false
+		}
+		if has() {
+			return b.done("quests.accept", args, types.QuestDone{Quest: quest, Title: questTitle(w, quest)})
+		}
+		w.QuestgiverHello(npc)
+		w.QuestgiverAcceptQuest(npc, quest)
+		return b.request("quests.accept", args, 5*time.Second, func() *script.Outcome {
+			if has() {
+				return script.Ok(types.QuestDone{Quest: quest, Title: questTitle(w, quest)})
+			}
+			return nil
+		}, func(ev script.Event) *script.Outcome { return failOn(ev, "quests") })
 	})
+	e.Func("quests.turn_in", "(npc, quest [, reward = 0]) → request<QuestDone>", "hand a complete quest in (reward: the index of the item to choose, 0 = first; wowdb quest <id> lists them)",
+		func(npc uint64, quest, reward uint32) map[string]any {
+			w.QuestgiverCompleteQuest(npc, quest)
+			body := binary.LittleEndian.AppendUint64(nil, npc)
+			w.SendPacketRaw(cmsgQuestRequestRew, binary.LittleEndian.AppendUint32(body, quest))
+			w.QuestgiverChooseReward(npc, quest, reward)
+			return b.request("quests.turn_in", map[string]any{"npc": gs(npc), "quest": quest, "reward": reward}, 5*time.Second,
+				nil, func(ev script.Event) *script.Outcome {
+					if d, ok := ev.Data.(types.QuestDone); ok && ev.Type == "quest_turned_in" && d.Quest == quest {
+						return script.Ok(d)
+					}
+					if e, ok := ev.Data.(types.ErrorEvent); ok && e.Op == "items" {
+						return script.Fail("bags_full", "bags full: the item reward was refused; sell or destroy something", nil)
+					}
+					return failOn(ev, "quests")
+				})
+		})
 }
 
 // castSent: is_casting covers the round trip between cast_spell and the server's SPELL_START, so a script that
@@ -447,48 +442,6 @@ func packGUID(g uint64) []byte {
 
 func guidAt(o *client.WorldObject, f uint16) uint64 {
 	return uint64(o.Value(f)) | uint64(o.Value(f+1))<<32
-}
-
-// bagItems: bag 255 = the character's own slots (0-18 equipped, 19-22 bags, 23-38 backpack, the
-// same numbering as AutoEquipItem), bag 19-22 = slot inside that bag.
-func bagItems(w *client.WorldClient) []map[string]any {
-	out := []map[string]any{}
-	me := w.GetObject(w.CharGUID())
-	if me == nil {
-		return out
-	}
-	add := func(bag, slot uint8, guid uint64) {
-		if it := w.GetObject(guid); guid != 0 && it != nil {
-			m := map[string]any{"bag": bag, "slot": slot, "guid": fmt.Sprint(guid),
-				"entry": it.Value(3), "count": max(it.Value(fieldItemStack), 1)}
-			if it.Value(fieldItemFlags)&1 != 0 { // ITEM_FIELD_FLAG_SOULBOUND: can't be traded or mailed
-				m["soulbound"] = true
-			}
-			if p := itemInfo(w, it.Value(3)); p != nil { // nil until the server answers the item query
-				m["name"], m["quality"], m["sell_price"], m["inv_type"], m["use_spell"] = p.Name, p.Quality, p.SellPrice, p.InvType, p.UseSpell
-				if p.InvType != 0 {
-					m["slot_name"], m["item_level"], m["usable"] = p.Slot, p.ItemLevel, usable(w, p) == ""
-				}
-			}
-			if maxDur := it.Value(fieldItemMaxDur); maxDur > 0 { // gear wears down with each death; 0 = broken, does nothing
-				m["durability"], m["max_durability"] = it.Value(fieldItemDur), maxDur
-			}
-			out = append(out, m)
-		}
-	}
-	for slot := uint8(0); slot < 39; slot++ {
-		add(255, slot, guidAt(me, fieldInvSlots+uint16(slot)*2))
-	}
-	for bag := uint8(19); bag < 23; bag++ {
-		c := w.GetObject(guidAt(me, fieldInvSlots+uint16(bag)*2))
-		if c == nil {
-			continue
-		}
-		for slot := uint8(0); uint32(slot) < c.Value(fieldContainerSize) && slot < 36; slot++ {
-			add(bag, slot, guidAt(c, fieldContainerSlot+uint16(slot)*2))
-		}
-	}
-	return out
 }
 
 // --- Spell.dbc (copied to <data-dir>/dbc by the setup) ---

@@ -25,7 +25,7 @@ board="$root/$dir/board"; [ -z "$GO" ] || board="$(dirname "$GO")/board" # judge
 events="$root/$dir"; [ -z "$GO" ] || events="$(dirname "$GO")" # <char>.events.jsonl: the character's event stream for the run
 mkdir -p "$dir" "$ws"
 # refreshed each run: bench task docs, the playing guide, the SDK reference, and an example script
-cat agent/AGENTS.md ../azeroth-sdk/docs/guide.md ../azeroth-sdk/docs/runtime.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/world-data.md > "$ws/AGENTS.md"
+cat agent/AGENTS.md ../azeroth-sdk/docs/guide.md ../azeroth-sdk/docs/runtime.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/api-reference.md ../azeroth-sdk/docs/world-data.md > "$ws/AGENTS.md"
 cp ../azeroth-sdk/examples/lua/grind.lua "$ws/example.lua"
 [ -f "$ws/NOTES.md" ] || printf '# Notes\n\nYour own notes: what worked, what killed you, where things are. Kept between runs.\n' > "$ws/NOTES.md"
 acct=$(printf %s "$name" | tr -cd 'a-zA-Z0-9' | cut -c1-16)
@@ -46,7 +46,7 @@ stop_text="Do not stop until the goal is met: confirm it yourself with wow befor
 case "$goal" in achpoints:*)
   score_text="Your score is the total points of the achievements you earn during the next $mins minutes
 (ones already earned don't count). There is no finish line: keep earning until time runs out. Achievement
-names, points and criteria are in worlddb (see AGENTS.md); bot.achievements() shows your progress."
+names, points and criteria are in worlddb (see AGENTS.md); me.achievements() shows your progress."
   stop_text="Do not stop early: keep earning points until the time runs out." ;;
 score:*)
   score_text="HOW YOU ARE JUDGED: every 15 seconds the judge reads your character from the server database. Your
@@ -93,7 +93,7 @@ for try in 1 2 3; do # the auth server sometimes times out the logon proof
   [ $try = 3 ] && exit 1
   sleep $((try * 5))
 done
-agent/bin/wow "LIB = '$ws/'; bot.join_channel('${CHANNEL:-General - Elwynn Forest}', 1)" >/dev/null
+agent/bin/wow "LIB = '$ws/'; chat.join('${CHANNEL:-General - Elwynn Forest}', 1)" >/dev/null
 # ponytail: one zone channel joined at start; no auto-rejoin on zone change (agents can join_channel)
 
 [ -z "$GO" ] || { touch "$GO.$name.ready"; until [ -e "$GO" ]; do sleep 1; done; }
@@ -109,7 +109,7 @@ GOAL: $goal_text.${HINT:+ $HINT}
 $score_text
 
 Read AGENTS.md first. It documents your session (wow), how to play well with the SDK (bags, vendors,
-trainers, death, other players), the bot API, and the world data tools: wowdb (where a quest's targets are,
+trainers, death, other players), the runtime and the Lua API, and the world data tools: wowdb (where a quest's targets are,
 what drops an item, the nearest trainer) and worlddb (read-only SQL over the game's world database).
 Reference source (read-only): the client and its Lua bindings in $repo/azeroth-sdk (client/, session/,
 script/), the server in $repo/server/azerothcore/src/server/game and $repo/server/azerothcore/src/server/shared.
@@ -118,8 +118,8 @@ HOW TO WORK
 - Start earning progress within your first few minutes, then improve. Don't plan at length before you have
   a working baseline.
 - Iterate in small steps: try one action with wow, check it worked, then build it into a script.
-- Measure, don't guess: check what your script is achieving (wow 'return bot.get_level(), {bot.get_xp()}',
-  quest_log(), money()) and change strategy when progress stalls (mobs too low level, frequent deaths,
+- Measure, don't guess: check what your script is achieving (wow 'return me.level(), me.xp()',
+  quests.log(), me.money()) and change strategy when progress stalls (mobs too low level, frequent deaths,
   full bags, a target you can't reach).
 - While your scripts run, watch them: wow wait (blocks until something important happens: chat, a death, a
   failed task, a script asking you a question), wow events (the log), wow tasks (what each is doing). Don't end
@@ -133,7 +133,7 @@ killed you, good spots and routes. It's how your next run starts ahead of this o
 
 OTHER PLAYERS: the other characters on this server are other AI agents like you, each playing their own run at the
 same time. You can talk to them: say (nearby), whispers, party chat, the zone's General channel, or a channel of your
-own (bot.join_channel(name, 0)). Messages to you arrive as chat events: every wow reply shows new ones, and
+own (chat.join(name)). Messages to you arrive as chat events: every wow reply shows new ones, and
 wow wait --types chat blocks until the next. You
 can invite them to groups, trade information, plan together or ignore them: how you deal with them is up to you.
 AGENTS.md ("Other players") explains the game mechanics of playing together.

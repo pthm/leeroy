@@ -1,14 +1,12 @@
-// bun examples/smoke.ts <character>: state, a short walk, chat, and a whisper wait.
+// bun examples/smoke.ts <character>: status, a short walk, chat, and the event stream.
 import { Azeroth } from "../src/index.ts";
 
-const az = new Azeroth(process.env.AZSDK_URL);
-const name = process.argv[2] ?? "Garrick";
+const az = new Azeroth((globalThis as any).process?.env.AZSDK_URL);
+const me = az.character((globalThis as any).process?.argv[2] ?? "Garrick");
 console.log("sessions", await az.sessions());
-const me = az.character(name);
-const s = await me.state();
-console.log("state", { level: s.level, hp: `${s.health}/${s.health_max}`, pos: s.position, units: s.units.length, bags: s.bags.length });
-const { x, y } = s.position;
-console.log("moveTo", await me.moveTo(x + 15, y));
-console.log("idle", await me.waitIdle(30));
-await me.say("hello from the azeroth-sdk smoke test");
-console.log("chat", await me.readChat());
+const s = await me.api.me.status();
+console.log("status", { level: s.level, hp: s.health, where: s.location, mobs: s.mobs_nearby, quests: s.quests.map((q) => q.title) });
+const walk = await me.await(await me.api.move.to(s.position.x + 15, s.position.y, s.position.z));
+console.log("walk", walk.ok ? walk.data : walk.error);
+await me.api.chat.say("hello from the azeroth-sdk smoke test");
+console.log("recent", (await me.query({ last: 5 })).map((e) => e.type));

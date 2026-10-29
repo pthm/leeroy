@@ -1,41 +1,25 @@
-// azeroth-sdk TypeScript client: typed access to the azsdk daemon's JSON-RPC API.
+// azeroth-sdk TypeScript client for the azsdk daemon's JSON-RPC API. The game API and its types are generated from
+// the SDK itself (api.ts, types.ts: cmd/apigen), so they match the Lua API exactly: same names, same fields.
 //
 //   const az = new Azeroth("http://127.0.0.1:8780");
 //   const me = az.character("Garrick");
-//   const s = await me.state();
-//   await me.moveTo(-9460, 70); await me.waitIdle();
+//   const status = await me.api.me.status();
+//   const r = await me.api.move.to(-9460, 70, 56);           // a Result<MoveDone>: pending until it resolves
+//   const done = await me.await(r);                           // wait for the result
+//   for await (const ev of me.events({ types: ["chat"] })) console.log(ev.data.from, ev.data.text);
 //
-// GUIDs are strings (64-bit). Rage and runic power are x10 (0-1000), as the server sends them.
+// GUIDs are strings. Rage and runic power are x10 (0-1000), as the server sends them.
+import { gameApi, type GameApi } from "./api.ts";
+import type { AnyEvent, Event, Result } from "./types.ts";
 
-export type Guid = string;
-
-export interface Unit {
-  guid: Guid; entry: number; name?: string; level: number; health: number; max_health: number;
-  x: number; y: number; z: number; distance: number; is_alive: boolean; is_player: boolean;
-  faction: number; npc_flags: number; flags: number; dyn_flags: number; lootable: boolean; target: Guid;
-}
-
-export interface BagItem { bag: number; slot: number; guid: Guid; entry: number; count: number }
-export interface QuestEntry { id: number; complete: boolean; failed: boolean; counts: number[] }
-export interface ChatMessage { type: number; from: string; guid: Guid; channel?: string; text: string; time_ms: number }
-
-export interface State {
-  level: number; xp: number; xp_max: number; health: number; health_max: number;
-  power: number; power_max: number; power_type: number; money: number;
-  position: { x: number; y: number; z: number; o: number; map: number };
-  alive: boolean; ghost: boolean; in_combat: boolean; moving: boolean; target: Guid;
-  casting?: { spell: number; ms_left: number };
-  units: Unit[]; players: Unit[]; attackers: Unit[]; bags: BagItem[]; quests: QuestEntry[]; chat_pending: number;
-}
-
-export interface WaitResult<T> { timed_out: boolean; result: T }
+export * from "./types.ts";
+export type { GameApi } from "./api.ts";
 
 export class RpcError extends Error {
   constructor(public code: number, message: string) { super(message); }
 }
 
-// Lua returns empty tables as {} rather than []; normalise list fields.
-const list = <T>(v: unknown): T[] => (Array.isArray(v) ? v : []) as T[];
+export interface EventQuery { since?: number; types?: string[]; match?: string; last?: number; limit?: number }
 
 export class Azeroth {
   private id = 0;
@@ -56,43 +40,49 @@ export class Azeroth {
 }
 
 export class Character {
-  constructor(private az: Azeroth, public readonly name: string) {}
+  /** The game API (docs/api-reference.md): me, units, objects, world, move, combat, spells, items, vendor, ... */
+  readonly api: GameApi;
+
+  constructor(private az: Azeroth, public readonly name: string) {
+    this.api = gameApi((fn, args) => this.call("api.call", { fn, args }));
+  }
   private call<T>(method: string, params: Record<string, unknown> = {}) {
     return this.az.call<T>(method, { char: this.name, ...params });
   }
 
-  async state(radius = 40): Promise<State> {
-    const s = await this.call<State>("state.get", { radius });
-    for (const k of ["units", "players", "attackers", "bags", "quests"] as const) (s as any)[k] = list((s as any)[k]);
-    return s;
+  /** Run Lua in the character's session (what its scripts see). */
+  eval<T = unknown>(code: string) { return this.call<{ result: T; events?: unknown; script_errors?: unknown }>("script.eval", { code }); }
+
+  /** Past events (nothing is consumed). */
+  query(q: EventQuery = {}) { return this.call<AnyEvent[]>("events.query", { ...q }); }
+
+  /** The next events matching q after since (default: now), or [] after timeoutS. */
+  wait(q: EventQuery = {}, timeoutS = 60) {
+    return this.call<{ events: AnyEvent[]; timed_out: boolean; seq: number }>("events.wait", { ...q, timeout_s: timeoutS });
   }
-  /** Run Lua in the character's session (same environment as its scripts). */
-  eval<T = unknown>(code: string) { return this.call<T>("script.eval", { code }); }
 
-  /** Path to x, y (z defaults to the ground). Resolves false if there is no walkable path. */
-  moveTo(x: number, y: number, z?: number) { return this.call<boolean>("move.to", { x, y, z }); }
-  stop() { return this.call("move.stop"); }
-  attack(guid: Guid) { return this.call("combat.attack", { guid }); }
-  stopAttack() { return this.call("combat.stop"); }
-  /** Cast on a target (default: yourself). */
-  cast(spell: number, target?: Guid) { return this.call("spell.cast", { spell, target }); }
-  lootAll(guid: Guid) { return this.call("loot.all", { guid }); }
-  acceptQuest(npc: Guid, quest: number) { return this.call("quest.accept", { npc, quest }); }
-  turnIn(npc: Guid, quest: number, reward = 0) { return this.call("quest.turnIn", { npc, quest, reward }); }
-  release() { return this.call("death.release"); }
-  reclaimCorpse() { return this.call("death.reclaim"); }
-
-  say(text: string) { return this.call("chat.send", { kind: "say", text }); }
-  party(text: string) { return this.call("chat.send", { kind: "party", text }); }
-  whisper(to: string, text: string) { return this.call("chat.send", { kind: "whisper", to, text }); }
-  channel(name: string, text: string) { return this.call("chat.send", { kind: "channel", to: name, text }); }
-  async readChat(): Promise<ChatMessage[]> { return list(await this.call("chat.read")); }
-
-  /** Resolves when another player messages you (or after timeoutS), with the messages (drained). */
-  async waitForChat(timeoutS = 60): Promise<WaitResult<ChatMessage[]>> {
-    const r = await this.call<WaitResult<number>>("wait.chat", { timeout_s: timeoutS });
-    return { timed_out: r.timed_out, result: await this.readChat() };
+  /** Every matching event from now on (or from q.since). */
+  async *events(q: EventQuery = {}): AsyncGenerator<AnyEvent> {
+    let since = q.since;
+    for (;;) {
+      const r = await this.call<{ events: AnyEvent[]; seq: number }>("events.wait", { ...q, since, timeout_s: 60 });
+      for (const ev of r.events) yield ev;
+      since = r.events.length ? r.events[r.events.length - 1].seq : r.seq;
+    }
   }
-  /** Resolves when the character stops moving, with its position. */
-  waitIdle(timeoutS = 120) { return this.call<WaitResult<{ x: number; y: number; z: number }>>("wait.idle", { timeout_s: timeoutS }); }
+
+  /** Wait for an action's result (the request an api call returned). */
+  async await<T>(req: Result<T>, timeoutS = 60): Promise<Result<T>> {
+    if (!req.pending) return req;
+    const deadline = Date.now() + timeoutS * 1000;
+    let since: number | undefined;
+    while (Date.now() < deadline) {
+      const r = await this.call<{ events: Event<Result<T>>[]; seq: number }>("events.wait",
+        { types: ["result"], match: `"id":${req.id},`, since, timeout_s: Math.max(1, (deadline - Date.now()) / 1000) });
+      const hit = r.events.find((e) => e.data.id === req.id);
+      if (hit) return hit.data;
+      since = r.seq;
+    }
+    return { ...req, ok: false, error: { code: "wait_timeout", message: "stopped waiting; the request may still finish" } };
+  }
 }

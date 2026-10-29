@@ -14,11 +14,11 @@ type Outcome struct {
 	OK      bool
 	Code    string
 	Message string
-	Data    map[string]any
+	Data    any
 }
 
-func Ok(data map[string]any) *Outcome { return &Outcome{OK: true, Data: data} }
-func Fail(code, msg string, data map[string]any) *Outcome {
+func Ok(data any) *Outcome { return &Outcome{OK: true, Data: data} }
+func Fail(code, msg string, data any) *Outcome {
 	return &Outcome{Code: code, Message: msg, Data: data}
 }
 
@@ -66,14 +66,17 @@ func (r *Requests) Start(s Spec) map[string]any {
 	return map[string]any{"id": id, "op": s.Op, "pending": true}
 }
 
-// Now resolves a request immediately (for an action refused before it was sent) and returns its result.
+// Now resolves a request immediately and returns its result. The caller has the result in hand, so only a failure
+// becomes a "result" event (instant oks would flood the log).
 func (r *Requests) Now(s Spec, o *Outcome) map[string]any {
 	h := r.Start(s)
-	return r.Resolve(h["id"].(int), o)
+	return r.resolve(h["id"].(int), o, !o.OK)
 }
 
 // Resolve ends a pending request with o and emits the "result" event. Resolving twice is a no-op.
-func (r *Requests) Resolve(id int, o *Outcome) map[string]any {
+func (r *Requests) Resolve(id int, o *Outcome) map[string]any { return r.resolve(id, o, true) }
+
+func (r *Requests) resolve(id int, o *Outcome, emit bool) map[string]any {
 	r.mu.Lock()
 	p := r.pending[id]
 	if p == nil {
@@ -99,7 +102,9 @@ func (r *Requests) Resolve(id int, o *Outcome) map[string]any {
 		r.order = r.order[1:]
 	}
 	r.mu.Unlock()
-	r.bus.Emit("result", res)
+	if emit {
+		r.bus.Emit("result", res)
+	}
 	return res
 }
 

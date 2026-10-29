@@ -1,7 +1,8 @@
 package session
 
-// Agent control surface: extra Lua bindings (chat inbox, raw packets, events, reflective
-// client access). The daemon (cmd/azsdk) serves them over JSON-RPC.
+// Agent control surface: wires the Lua API together (setupControl) and handles the chat, group and system-message
+// side of the protocol: player names, chat events, server errors as "error" events, groups, and raw packets
+// (client.*). The daemon (cmd/azsdk) serves it over JSON-RPC.
 
 import (
 	"bytes"
@@ -14,6 +15,8 @@ import (
 	"time"
 
 	"github.com/pthm/wowbench/azeroth-sdk/client"
+	"github.com/pthm/wowbench/azeroth-sdk/script"
+	"github.com/pthm/wowbench/azeroth-sdk/types"
 )
 
 const (
@@ -25,17 +28,16 @@ const (
 	smsgPartyResult   = 0x007F
 	cmsgMessageChat   = 0x0095
 	cmsgJoinChannel   = 0x0097
-	inboxCap          = 1000 // ponytail: drop-oldest cap; agents that don't drain lose old messages
+	packetsCap        = 1000 // ponytail: drop-oldest cap for client.packets()
 )
 
+// ChatMessage is a decoded SMSG_MESSAGECHAT.
 type ChatMessage struct {
-	Time    int64  `json:"time_ms"`
-	Type    uint8  `json:"type"` // 1 say, 2 party, 6 yell, 7 whisper, 0x11 channel, 0x0C+ monster ...
-	From    string `json:"from"`
-	GUID    string `json:"guid"`
-	Channel string `json:"channel,omitempty"`
-	Text    string `json:"text"`
-	AgoS    int64  `json:"ago_s"` // seconds since it arrived, as of this read_chat
+	Type    uint8
+	From    string
+	GUID    uint64
+	Channel string
+	Text    string
 }
 
 type RawPacket struct {
@@ -46,30 +48,21 @@ type RawPacket struct {
 
 type controlState struct {
 	mu        sync.Mutex
-	chat      []ChatMessage
 	packets   []RawPacket
 	watched   map[uint16]bool
 	names     map[uint64]string
-	unread    int    // player chat from others since the last read_chat (wakes `wow -c`)
 	invitedBy string // pending group invite
 }
 
-func capAppend[T any](s []T, v T) []T {
-	if len(s) >= inboxCap {
-		s = s[1:]
-	}
-	return append(s, v)
-}
-
 //go:embed act.lua
-var actLua string // the built-in `act` routines and bot.status() (Lua, on top of the bindings below)
+var actLua string // the built-in act library and me.status() (Lua, on top of the API)
 
 func (b *Bot) setupControl() {
 	c := &controlState{watched: map[uint16]bool{}, names: map[uint64]string{}}
 	w := b.world
 	w.AddPacketHook(func(op uint16, data []byte) { c.onPacket(b, op, data) })
 
-	// player names for get_nearby_players/get_unit: the client only knows names it asked for
+	// player names: the client only knows names it asked for
 	asked := map[uint64]time.Time{}
 	b.playerName = func(g uint64) string {
 		c.mu.Lock()
@@ -83,102 +76,79 @@ func (b *Bot) setupControl() {
 		}
 		return ""
 	}
-	b.notify = func(text string) { // a system message in read_chat that also wakes `wow -c`
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		c.chat = capAppend(c.chat, ChatMessage{Time: time.Now().UnixMilli(), GUID: "0", Text: text})
-		c.unread++
-		b.emit("notice", map[string]any{"message": text})
-	}
+	b.notify = func(text string) { b.emit("notice", types.Notice{Message: text}) }
+	b.setupCoreAPI()
 	b.setupAgentAPI()
 	b.setupItems()
 	b.setupCombatLog()
 	b.setupTalents()
-	b.setupTrade(b.notify)
+	b.setupTrade()
 	b.watchAreaTriggers()
 	b.watchEvents()
 	b.startRecording()
 	e := b.lua
-	e.RegisterCall("call", w) // bot.call("QuestgiverHello", guid) etc. — any exported WorldClient method
-	e.RegisterFunc("read_chat", func() []ChatMessage {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		out := append([]ChatMessage{}, c.chat...) // [] not nil when empty, so Lua gets a table
-		c.chat, c.unread = nil, 0
-		now := time.Now().UnixMilli()
-		for i := range out {
-			out[i].AgoS = (now - out[i].Time) / 1000
-			if out[i].From == "" {
-				var g uint64
-				fmt.Sscan(out[i].GUID, &g)
-				out[i].From = c.names[g]
+
+	// ---------- group ----------
+	e.Func("group.info", "() → Group?", "your party (the others, not you); nil when you're solo", func() any {
+		st := w.GroupState()
+		if !st.InGroup {
+			return nil
+		}
+		g := types.Group{Members: []types.GroupMember{}}
+		if st.LeaderGUID == w.CharGUID() {
+			g.Leader = b.config.CharacterName
+		}
+		for _, m := range st.Members {
+			g.Members = append(g.Members, types.GroupMember{Name: m.Name, GUID: types.GUID(m.GUID), Online: m.Online != 0})
+			if m.GUID == st.LeaderGUID {
+				g.Leader = m.Name
 			}
 		}
-		return out
+		return g
 	})
-	e.RegisterFunc("chat_pending", func() int {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		return c.unread
-	})
-	e.RegisterFunc("watch", func(op uint16, on bool) {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		c.watched[op] = on
-	})
-	e.RegisterFunc("read_packets", func() []RawPacket {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		out := append([]RawPacket{}, c.packets...)
-		c.packets = nil
-		return out
-	})
-	e.RegisterFunc("send_packet", func(op uint16, hexBody string) error {
-		body, err := hex.DecodeString(strings.ReplaceAll(hexBody, " ", ""))
-		if err != nil {
-			return err
+	e.Func("group.invite", "(name) → request", "invite a player (by exact character name) to your group: ok once the invite is sent; they answer with group.accept", func(name string) map[string]any {
+		args := map[string]any{"name": name}
+		if err := w.GroupInvite(name); err != nil {
+			return b.refuse("group.invite", args, "failed", err.Error())
 		}
-		w.SendPacketRaw(op, body)
-		return nil
+		start := time.Now()
+		return b.request("group.invite", args, 5*time.Second, func() *script.Outcome {
+			if time.Since(start) > 1500*time.Millisecond { // the server only answers failures
+				return script.Ok(nil)
+			}
+			return nil
+		}, func(ev script.Event) *script.Outcome { return failOn(ev, "group") })
 	})
-	e.RegisterFunc("whisper", func(to, msg string) { b.sendChat(7, to, msg) })
-	e.RegisterFunc("party", func(msg string) { b.sendChat(2, "", msg) })
-	e.RegisterFunc("yell", func(msg string) { b.sendChat(6, "", msg) }) // heard within 300 yd
-	// bot.join_channel("General - Elwynn Forest", 1): built-in zone channels need their DBC id
-	// (1 General, 2 Trade, 22 LocalDefense); custom channels use id 0 and any name.
-	e.RegisterFunc("join_channel", func(name string, id uint32) {
-		var buf bytes.Buffer
-		binary.Write(&buf, binary.LittleEndian, id)
-		buf.Write([]byte{0, 0})
-		buf.WriteString(name + "\x00\x00") // name, empty password
-		w.SendPacketRaw(cmsgJoinChannel, buf.Bytes())
+	e.Func("group.accept", "() → request", "accept a pending invite (party_invite event)", func() map[string]any {
+		if err := w.GroupAccept(); err != nil {
+			return b.refuse("group.accept", nil, "failed", err.Error())
+		}
+		return b.request("group.accept", nil, 5*time.Second, func() *script.Outcome {
+			if w.InGroup() {
+				return script.Ok(nil)
+			}
+			return nil
+		}, nil)
 	})
-	e.RegisterFunc("channel", func(name, msg string) { b.sendChat(0x11, name, msg) })
-	if !b.config.ValidationMode {
-		// set_level only overwrites the client's cached level (for GM test setup); for an agent it
-		// just makes get_level() lie, e.g. bundled grind.lua's ".level 6" prep on a non-GM account.
-		e.RegisterFunc("set_level", func(uint32) {})
-	}
-	// Groups. An invite arrives in read_chat as a system message (and wakes `wow -c`).
-	w.AddGroupInviteHook(func(name string, _ bool) {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		c.invitedBy = name
-		c.chat = capAppend(c.chat, ChatMessage{Time: time.Now().UnixMilli(), From: name, GUID: "0",
-			Text: name + " invites you to a group: bot.accept_invite() or bot.decline_invite()"})
-		c.unread++
-		b.emit("party_invite", map[string]any{"from": name})
-	})
-	e.RegisterFunc("invite", func(name string) error { return w.GroupInvite(name) })
-	e.RegisterFunc("accept_invite", func() error { return w.GroupAccept() })
-	e.RegisterFunc("decline_invite", func() error {
+	e.Func("group.decline", "() → request", "decline a pending invite", func() map[string]any {
 		c.mu.Lock()
 		c.invitedBy = ""
 		c.mu.Unlock()
-		return w.GroupDecline()
+		return b.sent("group.decline", nil, w.GroupDecline())
 	})
-	e.RegisterFunc("leave_group", func() error { return w.GroupLeave() })
-	e.RegisterFunc("pending_invite", func() any { // inviter name, or nil
+	e.Func("group.leave", "() → request", "leave your group", func() map[string]any {
+		if !w.InGroup() {
+			return b.refuse("group.leave", nil, "not_in_group", "you aren't in a group")
+		}
+		w.GroupLeave()
+		return b.request("group.leave", nil, 5*time.Second, func() *script.Outcome {
+			if !w.InGroup() {
+				return script.Ok(nil)
+			}
+			return nil
+		}, nil)
+	})
+	e.Func("group.invited_by", "() → string?", "who invited you, nil if no invite is pending", func() any {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		if c.invitedBy == "" {
@@ -186,32 +156,32 @@ func (b *Bot) setupControl() {
 		}
 		return c.invitedBy
 	})
-	// group() -> nil when solo, else {leader = name, members = {{name, guid, online}...}} (others, not you)
-	e.RegisterFunc("group", func() any {
-		st := w.GroupState()
-		if !st.InGroup {
-			return nil
-		}
-		leader, members := "", []map[string]any{}
-		if st.LeaderGUID == w.CharGUID() {
-			leader = b.config.CharacterName
-		}
-		for _, m := range st.Members {
-			members = append(members, map[string]any{"name": m.Name, "guid": fmt.Sprint(m.GUID), "online": m.Online != 0})
-			if m.GUID == st.LeaderGUID {
-				leader = m.Name
-			}
-		}
-		return map[string]any{"leader": leader, "members": members}
+	w.AddGroupInviteHook(func(name string, _ bool) {
+		c.mu.Lock()
+		c.invitedBy = name
+		c.mu.Unlock()
+		b.emit("party_invite", types.PartyInvite{From: name})
 	})
-	e.RegisterFunc("events", func() []BotEvent { return b.Events() })
-	e.RegisterFunc("money", func() uint32 { return w.Money() })
-	// bot.get_xp() -> xp, xp needed for next level (PLAYER_XP / PLAYER_NEXT_LEVEL_XP update fields)
-	e.RegisterFunc("get_xp", func() (uint32, uint32) {
-		if o := w.GetObject(w.CharGUID()); o != nil {
-			return o.Value(0x027A), o.Value(0x027B)
+
+	// ---------- client: the raw protocol ----------
+	e.Func("client.watch", "(opcode [, on = true])", "capture a server opcode for client.packets()", func(op uint16, on any) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.watched[op] = on != false
+	})
+	e.Func("client.packets", "() → {{opcode, hex, time_ms}}", "drain the captured packets", func() []RawPacket {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		out := append([]RawPacket{}, c.packets...)
+		c.packets = nil
+		return out
+	})
+	e.Func("client.send", "(opcode, hex)", "send a client packet (the header and encryption are added)", func(op uint16, hexBody string) error {
+		body, err := hex.DecodeString(strings.ReplaceAll(hexBody, " ", ""))
+		if err != nil {
+			return err
 		}
-		return 0, 0
+		return w.SendPacketRaw(op, body)
 	})
 	if err := e.DoString(actLua); err != nil {
 		b.log("act.lua: %v", err)
@@ -220,55 +190,48 @@ func (b *Bot) setupControl() {
 
 func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
 	w := b.world
-	now := time.Now().UnixMilli()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.watched[op] {
-		c.packets = capAppend(c.packets, RawPacket{now, op, hex.EncodeToString(data)})
-	}
-	// sys: a system line in read_chat and an "error" event {op, code, message} that requests resolve on
-	sys := func(op, code, text string, extra ...any) {
-		c.chat = capAppend(c.chat, ChatMessage{Time: now, GUID: "0", Text: text})
-		d := map[string]any{"op": op, "code": code, "message": text}
-		for i := 0; i+1 < len(extra); i += 2 {
-			d[extra[i].(string)] = extra[i+1]
+		if len(c.packets) >= packetsCap {
+			c.packets = c.packets[1:]
 		}
-		b.emit("error", d)
+		c.packets = append(c.packets, RawPacket{time.Now().UnixMilli(), op, hex.EncodeToString(data)})
 	}
+	fail := func(op, code, text string) { b.emit("error", types.ErrorEvent{Op: op, Code: code, Message: text}) }
 	switch op {
 	case smsgInvChangeFail: // bag errors, e.g. a loot or quest reward that doesn't fit
 		if len(data) > 0 && data[0] != 0 {
 			if msg, ok := equipErrors[data[0]]; ok {
-				sys("inventory", slug(msg), msg)
+				fail("items", slug(msg), msg)
 			} else {
-				sys("inventory", fmt.Sprintf("inventory_%d", data[0]), fmt.Sprintf("inventory error %d", data[0]))
+				fail("items", fmt.Sprintf("inventory_%d", data[0]), fmt.Sprintf("inventory error %d", data[0]))
 			}
 		}
 	case 0x1A5: // SMSG_BUY_FAILED: vendor, item, reason
 		if len(data) >= 13 {
 			code := map[byte]string{0: "not_sold_here", 2: "not_enough_money", 5: "out_of_range", 7: "sold_out", 8: "cant_carry_more"}[data[12]]
-			sys("buy", code, "buy failed: "+map[byte]string{0: "vendor doesn't have that item", 2: "not enough money", 5: "too far from the vendor",
-				7: "sold out", 8: "you can't carry more of that"}[data[12]], "item", binary.LittleEndian.Uint32(data[8:]))
+			fail("vendor.buy", code, "buy failed: "+map[byte]string{0: "vendor doesn't have that item", 2: "not enough money", 5: "too far from the vendor",
+				7: "sold out", 8: "you can't carry more of that"}[data[12]])
 		}
 	case 0x1A1: // SMSG_SELL_ITEM: vendor, item, error (0 = sold)
 		if len(data) >= 17 && data[16] != 0 {
 			code := map[byte]string{1: "item_not_found", 2: "wont_buy", 3: "vendor_not_found", 4: "not_yours"}[data[16]]
-			sys("sell", code, "sell failed: "+map[byte]string{1: "item not found", 2: "the vendor won't buy that", 3: "vendor not found",
+			fail("vendor.sell", code, "sell failed: "+map[byte]string{1: "item not found", 2: "the vendor won't buy that", 3: "vendor not found",
 				4: "you don't own that"}[data[16]])
 		}
 	case 0x1B4: // SMSG_TRAINER_BUY_FAILED: trainer, spell, reason
 		if len(data) >= 16 {
 			spell := binary.LittleEndian.Uint32(data[8:])
 			reason := binary.LittleEndian.Uint32(data[12:])
-			sys("train", map[uint32]string{0: "unavailable", 1: "not_enough_money", 2: "skill_too_low"}[reason],
+			fail("trainer.learn", map[uint32]string{0: "unavailable", 1: "not_enough_money", 2: "skill_too_low"}[reason],
 				fmt.Sprintf("can't learn spell %d: %s", spell, map[uint32]string{0: "not available to you (level, class or already known)",
-					1: "not enough money", 2: "skill too low"}[reason]), "spell", spell)
+					1: "not enough money", 2: "skill too low"}[reason]))
 		}
 	case 0x1B3: // SMSG_TRAINER_BUY_SUCCEEDED: trainer, spell
 		if len(data) >= 12 {
 			spell := binary.LittleEndian.Uint32(data[8:])
-			c.chat = capAppend(c.chat, ChatMessage{Time: now, GUID: "0", Text: fmt.Sprintf("learned spell %d", spell)})
-			b.emit("learned", map[string]any{"spell": spell})
+			b.emit("learned", types.Learned{Spell: spell, Name: spellName(spell)})
 		}
 	case smsgPartyResult: // operation, member name, result
 		r := bytes.NewReader(data)
@@ -278,15 +241,12 @@ func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
 		var res uint32
 		binary.Read(r, binary.LittleEndian, &res)
 		if res != 0 {
-			sys("party", slug(partyErrors[res]), fmt.Sprintf("group command failed for %q: %s (%d)", name, partyErrors[res], res), "name", name)
-			c.unread++
+			fail("group", slug(partyErrors[res]), fmt.Sprintf("group command failed for %q: %s", name, partyErrors[res]))
 		}
 	case 0x0077, 0x007D: // SMSG_GROUP_UNINVITE, SMSG_GROUP_LIST: no invite pending any more
 		c.invitedBy = ""
-	case smsgNotification: // server feedback like "Inventory is full" -> system chat
-		text := readCString(bytes.NewReader(data))
-		c.chat = capAppend(c.chat, ChatMessage{Time: now, Type: 0, From: "", GUID: "0", Text: text})
-		b.emit("notice", map[string]any{"message": text})
+	case smsgNotification: // server feedback like "Inventory is full"
+		b.emit("notice", types.Notice{Message: readCString(bytes.NewReader(data))})
 	case smsgNameQueryResp:
 		r := bytes.NewReader(data)
 		guid := readPackedGUID(r)
@@ -294,24 +254,41 @@ func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
 			c.names[guid] = readCString(r)
 		}
 	case smsgMessageChat, smsgGMMessageChat:
-		if m, guid, ok := parseChat(op, data); ok {
-			m.Time = now
+		if m, guid, ok := parseChat(op, data); ok && (guid != w.CharGUID() || m.Type == 8 || m.Type == 9) {
 			if m.From == "" && guid != 0 {
-				if n, ok := c.names[guid]; ok {
-					m.From = n
-				} else {
-					go w.NameQuery(guid) // resolved lazily in read_chat
+				m.From = c.names[guid]
+				if m.From == "" {
+					go w.NameQuery(guid)
 				}
 			}
-			c.chat = capAppend(c.chat, m)
-			if guid != w.CharGUID() || m.Type == 8 || m.Type == 9 {
-				c.chatEvent(b, m, guid)
-			}
-			if m.Type != 0 && m.Type != 9 && !monsterChat(m.Type) && guid != w.CharGUID() { // not system, echo, NPC or self
-				c.unread++
-			}
+			c.chatEvent(b, m, guid)
 		}
 	}
+}
+
+// chatEvent emits a "chat" event. A player's name may need a name query first: the event waits for it (up to a
+// second) on its own goroutine.
+func (c *controlState) chatEvent(b *Bot, m ChatMessage, guid uint64) {
+	ev := func(from string) {
+		b.emit("chat", types.Chat{Kind: chatKind(m.Type), From: from, GUID: types.GUID(guid), Channel: m.Channel, Text: m.Text})
+	}
+	if m.From != "" || guid == 0 || guid>>48 != 0 {
+		ev(m.From)
+		return
+	}
+	go func() {
+		for i := 0; i < 10; i++ {
+			c.mu.Lock()
+			n := c.names[guid]
+			c.mu.Unlock()
+			if n != "" {
+				ev(n)
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		ev("")
+	}()
 }
 
 // chatLang: AC rejects LANG_UNIVERSAL from players and Horde can't speak Common.
@@ -360,7 +337,7 @@ func parseChat(op uint16, data []byte) (m ChatMessage, sender uint64, ok bool) {
 	if monster {
 		m.Text = strings.ReplaceAll(m.Text, "%s", m.From) // emotes: "%s attempts to run away in fear!"
 	}
-	m.GUID = fmt.Sprint(sender)
+	m.GUID = sender
 	return m, sender, true
 }
 
@@ -405,32 +382,3 @@ var equipErrors = map[byte]string{4: "Bag is full", 17: "You can't carry any mor
 
 var partyErrors = map[uint32]string{1: "no player by that name online", 2: "not in your group", 4: "group is full",
 	5: "already in a group", 6: "you aren't in a group", 7: "you aren't the leader", 8: "wrong faction", 9: "they're ignoring you"}
-
-// chatEvent emits "chat" {kind, from, guid, channel?, text}. A player's name may need a name query first: the
-// event waits for it (up to a second) on its own goroutine.
-func (c *controlState) chatEvent(b *Bot, m ChatMessage, guid uint64) {
-	ev := func(from string) {
-		d := map[string]any{"kind": chatKind(m.Type), "from": from, "guid": m.GUID, "text": m.Text}
-		if m.Channel != "" {
-			d["channel"] = m.Channel
-		}
-		b.emit("chat", d)
-	}
-	if m.From != "" || guid == 0 || guid>>48 != 0 {
-		ev(m.From)
-		return
-	}
-	go func() {
-		for i := 0; i < 10; i++ {
-			c.mu.Lock()
-			n := c.names[guid]
-			c.mu.Unlock()
-			if n != "" {
-				ev(n)
-				return
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		ev("")
-	}()
-}

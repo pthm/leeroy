@@ -1,5 +1,5 @@
 #!/bin/sh
-# wow 'return bot.get_level()'        evaluate Lua in the live session (shared with your running scripts), print JSON
+# wow 'return me.level()'              evaluate Lua in the live session (shared with your running scripts), print JSON
 # wow < snippet.lua                   same, from stdin
 # wow -f grind.lua                    (re)load a script file
 # wow status                          one-call snapshot: level, xp, hp, position, state, bags, quests, group, nearby
@@ -35,13 +35,13 @@ params() {
 # one event per line: {seq, ago_s, type, ...data}
 lines() { jq -c 'if type == "array" then .[] else . end | if .seq then {seq, ago_s: ((now * 1000 - .t) / 1000 | floor), type} + (.data // {}) else . end'; }
 case "$1" in
-  status) eval_ "return bot.status()"; exit ;;
+  status) eval_ "return me.status()"; exit ;;
   tasks) eval_ "return task.list()"; exit ;;
   answer) eval_ "return answer($2, $(jq -n --arg v "$3" '$v'))"; exit ;;
   events) shift; rpc events.query "$(params "$@")" | lines; exit ;;
   wait) shift
     p=$(params "$@")
-    printf '%s' "$p" | jq -e .types >/dev/null || p=$(printf '%s' "$p" | jq -c '. + {types: ["chat","attention","death","level_up","script_error","task_finished","party_invite","error","gear_broken","trade_*"]}')
+    printf '%s' "$p" | jq -e .types >/dev/null || p=$(printf '%s' "$p" | jq -c '. + {types: ["chat","attention","death","level_up","script_error","task_finished","party_invite","error","gear_broken","trade"]}')
     out=$(rpc events.wait "$p")
     printf '%s\n' "$out" | jq -c '{timed_out, seq}'
     printf '%s\n' "$out" | jq -c '.events // []' | lines

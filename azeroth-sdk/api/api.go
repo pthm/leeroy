@@ -1,8 +1,8 @@
 // Package api serves the agent API as JSON-RPC 2.0 over HTTP (POST /rpc).
 //
-// Phase 0: every method is a thin, typed wrapper over the session's Lua bindings, so behaviour matches
-// what in-session scripts see. Long waits (wait.chat, wait.idle) long-poll. A WebSocket event stream and
-// verified ActionResults come in phase 1. sdk/ts mirrors these method names and shapes.
+// The surface is small on purpose: the game API itself is the Lua API (docs/lua-api.md), reached three ways:
+// script.eval (Lua), api.call (one function with JSON args: what the generated TypeScript SDK uses) and the
+// event stream (events.query / events.wait). Values are the structs of package types.
 package api
 
 import (
@@ -15,6 +15,7 @@ import (
 
 	"github.com/pthm/wowbench/azeroth-sdk/script"
 	"github.com/pthm/wowbench/azeroth-sdk/session"
+	"github.com/pthm/wowbench/azeroth-sdk/types"
 )
 
 // Sessions is the set of characters the daemon runs, by character name.
@@ -69,38 +70,6 @@ func engine(s Sessions, char string) (*script.Engine, error) {
 	return e, nil
 }
 
-// eval runs Lua in a character's session (the same environment as its scripts).
-func eval(s Sessions, char, code string) (any, error) {
-	e, err := engine(s, char)
-	if err != nil {
-		return nil, err
-	}
-	return e.Eval(code)
-}
-
-// lua quotes a string as a Lua literal.
-func lua(s string) string {
-	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\r", `\r`)
-	return `"` + r.Replace(s) + `"`
-}
-
-const stateLua = `
-local x, y, z, o, map = bot.call("Position")
-local hp, hpmax = bot.get_health()
-local pw, pwmax = bot.get_power()
-local xp, xpmax = bot.get_xp()
-local spell, left = bot.is_casting()
-local r = %g
-return {
-  level = bot.get_level(), xp = xp, xp_max = xpmax, health = hp, health_max = hpmax,
-  power = pw, power_max = pwmax, power_type = bot.get_power_type(), money = bot.money(),
-  position = { x = x, y = y, z = z, o = o, map = map },
-  alive = bot.is_alive(), ghost = bot.is_ghost(), in_combat = bot.in_combat(), moving = bot.is_moving(),
-  target = bot.get_target(), casting = spell and { spell = spell, ms_left = left } or nil,
-  units = bot.get_nearby_units(r), players = bot.get_nearby_players(r), attackers = bot.get_attackers(r),
-  bags = bot.bag_items(), quests = bot.quest_log(), chat_pending = bot.chat_pending(),
-}`
-
 var methods = map[string]method{
 	"sessions.list": typed(func(s Sessions, _ struct{}) (any, error) {
 		out := []map[string]any{}
@@ -110,17 +79,8 @@ var methods = map[string]method{
 		}
 		return out, nil
 	}),
-	// state.get: one consistent snapshot of the character and its surroundings (radius, default 40 yd)
-	"state.get": typed(func(s Sessions, p struct {
-		Char   string  `json:"char"`
-		Radius float64 `json:"radius"`
-	}) (any, error) {
-		if p.Radius <= 0 {
-			p.Radius = 40
-		}
-		return eval(s, p.Char, fmt.Sprintf(stateLua, p.Radius))
-	}),
-	// script.eval -> {result, script_errors?}: script_errors = on_tick failures since the last eval
+	// script.eval -> {result, events?, script_errors?}: run Lua in the character's session (what its scripts see).
+	// events = what happened since the previous eval; script_errors = script failures since then.
 	"script.eval": typed(func(s Sessions, p struct {
 		Char string `json:"char"`
 		Code string `json:"code"`
@@ -144,6 +104,26 @@ var methods = map[string]method{
 			}
 		}
 		return out, nil
+	}),
+	// api.call: one API function by name with JSON arguments ("items.list", "move.to" [x, y, z]); its result
+	"api.call": typed(func(s Sessions, p struct {
+		Char string `json:"char"`
+		Fn   string `json:"fn"`
+		Args []any  `json:"args"`
+	}) (any, error) {
+		e, err := engine(s, p.Char)
+		if err != nil {
+			return nil, err
+		}
+		return e.Call(p.Fn, p.Args)
+	}),
+	// api.docs: every API function's signature and description
+	"api.docs": typed(func(s Sessions, p charParams) (any, error) {
+		e, err := engine(s, p.Char)
+		if err != nil {
+			return nil, err
+		}
+		return e.Docs(), nil
 	}),
 	// events.query: the event history (nothing is consumed). since = seq, types = {"chat", "quest_*"}, match =
 	// text in the event, last = n most recent (default 50), limit = first n after since.
@@ -181,97 +161,6 @@ var methods = map[string]method{
 		evs := e.Bus.Wait(p.Query, time.Duration(p.Timeout*float64(time.Second)))
 		return map[string]any{"events": evs, "timed_out": len(evs) == 0, "seq": e.Bus.Seq()}, nil
 	}),
-	"move.to": typed(func(s Sessions, p struct {
-		Char string   `json:"char"`
-		X    float64  `json:"x"`
-		Y    float64  `json:"y"`
-		Z    *float64 `json:"z"`
-	}) (any, error) {
-		z := "bot.ground_z(x, y)"
-		if p.Z != nil {
-			z = fmt.Sprint(*p.Z)
-		}
-		return eval(s, p.Char, fmt.Sprintf("local x, y = %g, %g; return bot.move_to(x, y, %s)", p.X, p.Y, z))
-	}),
-	"move.stop": typed(func(s Sessions, p charParams) (any, error) { return eval(s, p.Char, "bot.stop_moving()") }),
-	"combat.attack": typed(func(s Sessions, p struct {
-		Char string `json:"char"`
-		GUID string `json:"guid"`
-	}) (any, error) {
-		g := lua(p.GUID)
-		return eval(s, p.Char, fmt.Sprintf("bot.set_target(%s); bot.face_target(%s); return bot.attack(%s)", g, g, g))
-	}),
-	"combat.stop": typed(func(s Sessions, p charParams) (any, error) { return eval(s, p.Char, "bot.stop_attack()") }),
-	"spell.cast": typed(func(s Sessions, p struct {
-		Char   string `json:"char"`
-		Spell  uint32 `json:"spell"`
-		Target string `json:"target"`
-	}) (any, error) {
-		t := "bot.get_own_guid()"
-		if p.Target != "" {
-			t = lua(p.Target)
-		}
-		return eval(s, p.Char, fmt.Sprintf("return bot.cast_spell(%d, %s)", p.Spell, t))
-	}),
-	"loot.all": typed(func(s Sessions, p struct {
-		Char string `json:"char"`
-		GUID string `json:"guid"`
-	}) (any, error) {
-		return eval(s, p.Char, fmt.Sprintf("return bot.loot_all(%s)", lua(p.GUID)))
-	}),
-	"quest.accept": typed(func(s Sessions, p struct {
-		Char  string `json:"char"`
-		NPC   string `json:"npc"`
-		Quest uint32 `json:"quest"`
-	}) (any, error) {
-		return eval(s, p.Char, fmt.Sprintf("return bot.call(\"QuestgiverAcceptQuest\", %s, %d)", lua(p.NPC), p.Quest))
-	}),
-	"quest.turnIn": typed(func(s Sessions, p struct {
-		Char   string `json:"char"`
-		NPC    string `json:"npc"`
-		Quest  uint32 `json:"quest"`
-		Reward uint32 `json:"reward"`
-	}) (any, error) {
-		return eval(s, p.Char, fmt.Sprintf("return bot.turn_in(%s, %d, %d)", lua(p.NPC), p.Quest, p.Reward))
-	}),
-	"death.release": typed(func(s Sessions, p charParams) (any, error) {
-		return eval(s, p.Char, `return bot.call("RepopRequest")`)
-	}),
-	"death.reclaim": typed(func(s Sessions, p charParams) (any, error) {
-		return eval(s, p.Char, `return bot.call("ReclaimCorpse")`)
-	}),
-	// chat.send: kind = say | party | whisper (to = name) | channel (to = channel name)
-	"chat.send": typed(func(s Sessions, p struct {
-		Char string `json:"char"`
-		Kind string `json:"kind"`
-		To   string `json:"to"`
-		Text string `json:"text"`
-	}) (any, error) {
-		code := map[string]string{
-			"say": "bot.send_chat(%[2]s)", "party": "bot.party(%[2]s)",
-			"whisper": "bot.whisper(%[1]s, %[2]s)", "channel": "bot.channel(%[1]s, %[2]s)",
-		}[p.Kind]
-		if code == "" {
-			return nil, fmt.Errorf("chat.send: kind must be say, party, whisper or channel")
-		}
-		return eval(s, p.Char, fmt.Sprintf(code, lua(p.To), lua(p.Text)))
-	}),
-	"chat.read": typed(func(s Sessions, p charParams) (any, error) { return eval(s, p.Char, "return bot.read_chat()") }),
-	// wait.chat: returns once another player messages the character (or timeout_s passes) with the number of
-	// unread messages; read them with chat.read
-	"wait.chat": typed(func(s Sessions, p struct {
-		Char    string  `json:"char"`
-		Timeout float64 `json:"timeout_s"`
-	}) (any, error) {
-		return waitFor(s, p.Char, p.Timeout, "return bot.chat_pending() > 0", "return bot.chat_pending()")
-	}),
-	// wait.idle: returns once the character has stopped moving (arrived or gave up), with its position
-	"wait.idle": typed(func(s Sessions, p struct {
-		Char    string  `json:"char"`
-		Timeout float64 `json:"timeout_s"`
-	}) (any, error) {
-		return waitFor(s, p.Char, p.Timeout, "return not bot.is_moving()", `local x, y, z = bot.get_position(); return {x = x, y = y, z = z}`)
-	}),
 }
 
 // The agent's position in each character's event stream: every eval reply says what happened since the last one.
@@ -282,7 +171,7 @@ var (
 
 // important event types are shown in full in eval replies; the rest are counted
 var important = []string{"chat", "attention", "death", "resurrected", "level_up", "script_error", "error", "notice",
-	"party_invite", "party_changed", "quest_complete", "quest_turned_in", "gear_broken", "trade_*"}
+	"party_invite", "party_changed", "quest_complete", "quest_turned_in", "gear_broken", "trade"}
 
 // news summarises the events since the agent's last eval: {seq, counts by type, important events (last 20)}.
 func news(e *script.Engine) map[string]any {
@@ -298,8 +187,18 @@ func news(e *script.Engine) map[string]any {
 	counts, keep := map[string]int{}, []script.Event{}
 	for _, ev := range evs {
 		counts[ev.Type]++
-		failed := (ev.Type == "result" && ev.Data["ok"] == false) || (ev.Type == "task_finished" && ev.Data["state"] != "done")
-		if failed || matchAny(ev.Type, important) && !(ev.Type == "chat" && ev.Data["kind"] == "whisper_sent") {
+		failed := false
+		switch d := ev.Data.(type) {
+		case map[string]any: // a result
+			failed = ev.Type == "result" && d["ok"] == false
+		case types.TaskEvent:
+			failed = ev.Type == "task_finished" && d.State != "done"
+		case types.Chat:
+			if d.Kind == "whisper_sent" {
+				continue
+			}
+		}
+		if failed || matchAny(ev.Type, important) {
 			keep = append(keep, ev)
 		}
 	}
@@ -325,25 +224,6 @@ func matchAny(t string, pats []string) bool {
 	return false
 }
 
-// waitFor long-polls a Lua condition every 250 ms, then returns the result of `then`.
-func waitFor(s Sessions, char string, timeout float64, cond, then string) (any, error) {
-	if timeout <= 0 || timeout > 600 {
-		timeout = 60
-	}
-	deadline := time.Now().Add(time.Duration(timeout * float64(time.Second)))
-	for {
-		ok, err := eval(s, char, cond)
-		if err != nil {
-			return nil, err
-		}
-		if ok == true || time.Now().After(deadline) {
-			res, err := eval(s, char, then)
-			return map[string]any{"timed_out": ok != true, "result": res}, err
-		}
-		time.Sleep(250 * time.Millisecond)
-	}
-}
-
 // session_ finds a character's session (char may be empty for a single-character daemon), or nil.
 func session_(s Sessions, char string) *session.Bot {
 	if char == "" && len(s) == 1 {
@@ -359,7 +239,7 @@ func session_(s Sessions, char string) *session.Bot {
 func callRecorded(s Sessions, name string, params json.RawMessage, m method) (any, error) {
 	var p charParams
 	json.Unmarshal(params, &p)
-	if b := session_(s, p.Char); b != nil && name != "sessions.list" && name != "state.get" && name != "wait.chat" && name != "wait.idle" {
+	if b := session_(s, p.Char); b != nil && name != "sessions.list" && name != "api.docs" && name != "events.query" && name != "events.wait" {
 		raw := string(params)
 		if len(raw) > 500 {
 			raw = raw[:500] + "..."

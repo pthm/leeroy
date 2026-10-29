@@ -10,7 +10,7 @@ cd "$(dirname "$0")" # relative to bench/
 [ -f "$msg" ] || { sed -n 2,6p "$0"; exit 1; }
 root=$(pwd); repo=$(dirname "$root")
 sql() { docker exec ac-database mysql -uroot -ppassword -N acore_characters -e "$1" 2>/dev/null; }
-cat agent/AGENTS.md ../azeroth-sdk/docs/guide.md ../azeroth-sdk/docs/runtime.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/world-data.md > "$team/AGENTS.md"
+cat agent/AGENTS.md ../azeroth-sdk/docs/guide.md ../azeroth-sdk/docs/runtime.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/api-reference.md ../azeroth-sdk/docs/world-data.md > "$team/AGENTS.md"
 
 resume_one() { # <agent> <port>
   name=$1 port=$2
@@ -31,7 +31,7 @@ resume_one() { # <agent> <port>
     [ $try = 3 ] && { echo "$name: session login failed" >&2; return 1; }
     sleep $((try * 5))
   done
-  agent/bin/wow "LIB = '$ws/'; bot.join_channel('${CHANNEL:-General - Elwynn Forest}', 1)" >/dev/null
+  agent/bin/wow "LIB = '$ws/'; chat.join('${CHANNEL:-General - Elwynn Forest}', 1)" >/dev/null
   trap 'kill $agent $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM
   bun judge/judge.ts "$char" score:100000 --timeout "${mins}m" --resume "$dir/samples.jsonl" --samples "$dir/samples.jsonl" \
     --record "$record" --board "$team/board" > "$dir/judge.json" &

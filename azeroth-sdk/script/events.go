@@ -15,10 +15,10 @@ import (
 
 // Event is one thing that happened. Data holds JSON-able values only.
 type Event struct {
-	Seq  uint64         `json:"seq"`
-	T    int64          `json:"t"` // unix ms
-	Type string         `json:"type"`
-	Data map[string]any `json:"data,omitempty"`
+	Seq  uint64 `json:"seq"`
+	T    int64  `json:"t"` // unix ms
+	Type string `json:"type"`
+	Data any    `json:"data,omitempty"` // a types.* struct live; a map when read back from the file
 }
 
 const busKeep = 50000 // ponytail: in-memory window; the file has everything
@@ -66,7 +66,7 @@ func (b *Bus) Listen(fn func(Event)) {
 }
 
 // Emit records an event and wakes everyone waiting for one.
-func (b *Bus) Emit(typ string, data map[string]any) Event {
+func (b *Bus) Emit(typ string, data any) Event {
 	b.mu.Lock()
 	b.seq++
 	e := Event{Seq: b.seq, T: time.Now().UnixMilli(), Type: typ, Data: data}

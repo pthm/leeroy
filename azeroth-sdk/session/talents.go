@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/pthm/wowbench/azeroth-sdk/script"
+	"github.com/pthm/wowbench/azeroth-sdk/types"
 	"os"
 	"path/filepath"
 	"sort"
@@ -109,19 +110,22 @@ func (b *Bot) setupTalents() {
 		sort.Slice(tabs, func(i, j int) bool { return tabs[i].order < tabs[j].order })
 		return tabs
 	}
-	// talents() -> {points = unspent, trees = {{name, spent, talents = {{id, name, rank, max_rank, row, requires, available}}}}}
-	// row r needs 5*r points spent in that tree; some talents need another talent at full rank first (`requires`).
-	e.RegisterFunc("talents", func() map[string]any {
-		points := uint32(0)
+	e.Func("talents.list", "() → Talents", "your unspent points and your class's trees: each talent's rank, whether you can learn its next rank now, and what it requires", func() types.Talents {
+		out := types.Talents{Trees: []types.TalentTree{}}
 		if me := w.GetObject(w.CharGUID()); me != nil {
-			points = me.Value(fieldCharacterPoints)
+			out.Points = me.Value(fieldCharacterPoints)
 		}
-		trees := []map[string]any{}
+		name := func(t talentEntry) string {
+			if sp := spellInfo(t.ranks[0]); sp != nil {
+				return sp.Name
+			}
+			return fmt.Sprint(t.id)
+		}
 		for _, tab := range myTabs() {
-			spent, list := 0, []map[string]any{}
+			tree := types.TalentTree{Name: tab.name, Talents: []types.Talent{}}
 			for _, t := range talentList {
 				if t.tab == tab.id {
-					spent += rank(t)
+					tree.Spent += rank(t)
 				}
 			}
 			for _, t := range talentList {
@@ -129,53 +133,43 @@ func (b *Bot) setupTalents() {
 					continue
 				}
 				r := rank(t)
-				name := fmt.Sprint(t.id)
-				if sp := spellInfo(t.ranks[0]); sp != nil {
-					name = sp.Name
-				}
-				m := map[string]any{"id": t.id, "name": name, "rank": r, "max_rank": len(t.ranks), "row": t.row, "col": t.col,
-					"spell": t.ranks[min(r, len(t.ranks)-1)]}
-				ok := points > 0 && r < len(t.ranks) && spent >= int(t.row)*5
+				tl := types.Talent{ID: t.id, Name: name(t), Rank: r, MaxRank: len(t.ranks), Row: t.row, Col: t.col,
+					Spell: t.ranks[min(r, len(t.ranks)-1)]}
+				ok := out.Points > 0 && r < len(t.ranks) && tree.Spent >= int(t.row)*5
 				if t.dependsOn != 0 {
 					for _, d := range talentList {
 						if d.id == t.dependsOn {
-							dn := fmt.Sprint(d.id)
-							if sp := spellInfo(d.ranks[0]); sp != nil {
-								dn = sp.Name
-							}
-							m["requires"] = fmt.Sprintf("%s rank %d", dn, t.depRnk+1)
+							tl.Requires = fmt.Sprintf("%s rank %d", name(d), t.depRnk+1)
 							ok = ok && rank(d) > int(t.depRnk)
 						}
 					}
 				}
-				m["available"] = ok
-				list = append(list, m)
+				tl.Available = ok
+				tree.Talents = append(tree.Talents, tl)
 			}
-			trees = append(trees, map[string]any{"name": tab.name, "spent": spent, "talents": list})
+			out.Trees = append(out.Trees, tree)
 		}
-		return map[string]any{"points": points, "trees": trees}
+		return out
 	})
-	// learn_talent(id): spend a point on the next rank of a talent (see talents() for ids and what's available).
-	// bot.spell_info(talents' spell) says what a talent does by name; wowdb spell <id> has the description.
-	e.RegisterFunc("learn_talent", func(id uint32) map[string]any {
+	e.Func("talents.learn", "(id) → request<TalentLearned>", "spend a point on the next rank of a talent (ids from talents.list)", func(id uint32) map[string]any {
 		args := map[string]any{"talent": id}
 		loadTalents()
 		for _, t := range talentList {
 			if t.id == id {
 				r := rank(t)
 				if r >= len(t.ranks) {
-					return b.refuse("learn_talent", args, "max_rank", "already at max rank")
+					return b.refuse("talents.learn", args, "max_rank", "already at max rank")
 				}
 				body := binary.LittleEndian.AppendUint32(nil, id)
 				w.SendPacketRaw(cmsgLearnTalent, binary.LittleEndian.AppendUint32(body, uint32(r)))
-				return b.request("learn_talent", args, 3*time.Second, func() *script.Outcome {
+				return b.request("talents.learn", args, 3*time.Second, func() *script.Outcome {
 					if rank(t) > r {
-						return script.Ok(map[string]any{"rank": r + 1})
+						return script.Ok(types.TalentLearned{Rank: r + 1})
 					}
 					return nil
-				}, func(script.Event) *script.Outcome { return nil })
+				}, nil)
 			}
 		}
-		return b.refuse("learn_talent", args, "no_such_talent", fmt.Sprintf("no talent %d", id))
+		return b.refuse("talents.learn", args, "no_such_talent", fmt.Sprintf("no talent %d", id))
 	})
 }

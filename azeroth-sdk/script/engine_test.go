@@ -6,9 +6,7 @@ import (
 	"time"
 )
 
-type fakeBot struct{ BotAPI }
-
-func (fakeBot) Log(string, ...interface{}) {}
+func nolog(string, ...any) {}
 
 func tick(e *Engine, n int) {
 	for i := 0; i < n; i++ {
@@ -18,18 +16,18 @@ func tick(e *Engine, n int) {
 }
 
 func TestRuntime(t *testing.T) {
-	e := NewEngine(fakeBot{}, nil)
+	e := NewEngine(nolog, nil)
 	var got map[string]any
-	e.RegisterFunc("sum", func(m map[string]any) float64 { got = m; return m["a"].(float64) + m["b"].(float64) })
-	e.RegisterFunc("act", func() map[string]any { return e.Reqs.Start(Spec{Op: "act", Timeout: time.Second}) })
-	v, err := e.Eval(`return bot.sum{a = 1, b = 2}`)
+	e.Func("t.sum", "", "", func(m map[string]any) float64 { got = m; return m["a"].(float64) + m["b"].(float64) })
+	e.Func("t.act", "", "", func() map[string]any { return e.Reqs.Start(Spec{Op: "act", Timeout: time.Second}) })
+	v, err := e.Eval(`return t.sum{a = 1, b = 2}`)
 	if err != nil || v != 3.0 || got == nil {
 		t.Fatalf("table arg: %v %v", v, err)
 	}
 	_, err = e.Eval(`
 		log = {}
 		task.spawn("w", function() wait(0.02); log[#log+1] = "waited"
-			local r = await(bot.act()); log[#log+1] = r.ok and "ok" or r.error.code
+			local r = await(t.act()); log[#log+1] = r.ok and "ok" or r.error.code
 			local ev = events.wait("ping", 5); log[#log+1] = ev.data.n
 			local c = ask("go?", {"yes","no"}); log[#log+1] = c
 		end)
@@ -53,6 +51,13 @@ func TestRuntime(t *testing.T) {
 	if r := v.([]any); r[0] != "waited,ok,7,yes" || r[1] != 7.0 {
 		t.Fatalf("log: %v", v)
 	}
+	if v, _ := e.Eval(`return help("task.sp")[1]`); v != "task.spawn([name,] fn, ...) → id  run fn as a task: it can wait without blocking the game" {
+		t.Fatalf("help: %v", v)
+	}
+	e.Func("t.empty", "", "", func() []int { return []int{} })
+	if v, _ := e.Eval(`return t.empty()`); fmt.Sprint(v) != "[]" {
+		t.Fatalf("empty list: %#v", v)
+	}
 	if _, err := e.Eval(`wait(1)`); err == nil {
 		t.Fatal("wait outside a task should fail")
 	}
@@ -69,5 +74,4 @@ func TestRuntime(t *testing.T) {
 	}
 }
 
-func itoa(n uint64) string    { return string(fmtUint(n)) }
-func fmtUint(n uint64) []byte { return []byte(gstr(n)) }
+func itoa(n uint64) string { return fmt.Sprint(n) }
