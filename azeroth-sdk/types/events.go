@@ -280,6 +280,13 @@ type Stall struct {
 	WindowS   float64 `json:"window_s,omitempty"`
 }
 
+type SlowTick struct {
+	MS     int    `json:"ms" doc:"how long the tick took (the game waits for it: movement, combat and replies stall)"`
+	Task   string `json:"task,omitempty" doc:"the task that ran longest in it"`
+	TaskMS int    `json:"task_ms,omitempty" doc:"how long that task ran"`
+	Count  int    `json:"count" doc:"slow ticks since the last slow_tick event (they're at most 30 s apart; each is a line in session.log)"`
+}
+
 type Progress struct {
 	XP        uint32  `json:"xp" doc:"XP gained in the period"`
 	XPPerHour float64 `json:"xp_per_hour"`
@@ -351,6 +358,7 @@ var EventTypes = map[string]EventType{
 	"script_error":         {ScriptError{}, "a script raised an error"},
 	"attention":            {Attention{}, "a script asks the agent (ask)"},
 	"stall":                {Stall{}, "no XP for a while, or the XP rate fell below your threshold (events.watch); once until progress resumes"},
+	"slow_tick":            {SlowTick{}, "a tick took over 300 ms: a script's work held the game up (wow tasks shows each task's busy_ms)"},
 	"progress":             {Progress{}, "a periodic digest of your progress (events.watch{every_s = ...}; off by default)"},
 	"answer":               {Answer{}, "the agent answered (answer)"},
 }

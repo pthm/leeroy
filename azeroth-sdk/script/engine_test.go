@@ -197,3 +197,51 @@ func TestTaskControl(t *testing.T) {
 		}
 	}
 }
+
+// A failing task says which file and line, and how it got there; wait() still works through the trampoline.
+func TestTaskErrorWhere(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "lib"), 0o755)
+	os.WriteFile(filepath.Join(dir, "lib", "util.lua"), []byte("function check(x)\n  return x.hp > 0\nend\n"), 0o600)
+	os.WriteFile(filepath.Join(dir, "main.lua"), []byte("dofile(\"lib/util.lua\")\nfunction pull(u)\n  local ok = check(u)\n  return ok\nend\ntask.spawn(\"main\", function(a, b)\n  got = a + b\n  wait(0.01)\n  pull({})\nend, 2, 3)\n"), 0o600)
+	e := NewEngine(nolog, nil)
+	if err := e.SetWorkspace(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Eval(`dofile("main.lua")`); err != nil {
+		t.Fatal(err)
+	}
+	tick(e, 10)
+	if v, _ := e.Eval(`return got`); v != 5.0 {
+		t.Fatalf("args through the trampoline: %v", v)
+	}
+	ts := e.TasksHeld()
+	if len(ts) != 1 || ts[0].State != "failed" {
+		t.Fatalf("tasks: %+v", ts)
+	}
+	for _, want := range []string{"lib/util.lua:2:", "traceback:", "  lib/util.lua:2 in check", "  main.lua:3 in pull", "  main.lua:9"} {
+		if !strings.Contains(ts[0].Error, want) {
+			t.Errorf("missing %q in:\n%s", want, ts[0].Error)
+		}
+	}
+	if _, err := e.Eval("local x = nil\nreturn x.y"); err == nil || !strings.HasPrefix(err.Error(), "wow:2:") {
+		t.Errorf("eval error: %v", err)
+	}
+	e.Eval("task.spawn(\"spin\", function()\n  while true do check({hp = 1}) end\nend)")
+	e.CallTick()
+	for _, ti := range e.TasksHeld() {
+		if ti.Name == "spin" && (!strings.Contains(ti.Error, "without waiting") || !strings.Contains(ti.Error, "wow:2")) {
+			t.Errorf("spin: %s", ti.Error)
+		}
+	}
+	e.Eval(`task.spawn("busy", function() local n = 0 for i = 1, 3e6 do n = n + i end wait(10) end)`)
+	e.CallTick()
+	if name, d := e.SlowestTask(); name != "busy" || d <= 0 {
+		t.Errorf("slowest: %s %v", name, d)
+	}
+	for _, ti := range e.TasksHeld() {
+		if ti.Name == "busy" && ti.BusyMS <= 0 && ti.State != "waiting" {
+			t.Errorf("busy: %+v", ti)
+		}
+	}
+}

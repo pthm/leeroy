@@ -1000,7 +1000,8 @@ LootRoll: a group loot roll waiting for your choice.
 | `status?` | string | what it says it's doing (task.status) |
 | `waiting_for?` | string | e.g. 1.5s, request 12, event kill |
 | `seconds` | number | since it started |
-| `error?` | string |  |
+| `busy_ms` | number | time it has spent running Lua (and the API calls it made) since it started: the game waits while it does |
+| `error?` | string | why it failed: file:line: message, then a traceback when the error was deeper than one call |
 
 ### Threat
 
@@ -1571,6 +1572,15 @@ ResurrectOffer: another player cast a resurrection on you.
 | `where` | string |  |
 | `error` | string |  |
 
+### SlowTick
+
+| Field | Type | |
+|---|---|---|
+| `ms` | number | how long the tick took (the game waits for it: movement, combat and replies stall) |
+| `task?` | string | the task that ran longest in it |
+| `task_ms?` | number | how long that task ran |
+| `count` | number | slow ticks since the last slow_tick event (they're at most 30 s apart; each is a line in session.log) |
+
 ### Stall
 
 | Field | Type | |
@@ -1689,6 +1699,7 @@ An event is an [Event](#event) whose `data` is the type below.
 | `resurrect_offered` | ResurrectOffer | a player is resurrecting you: death.accept_res() (works dead or as a ghost) |
 | `resurrected` | None | you're alive again |
 | `script_error` | ScriptError | a script raised an error |
+| `slow_tick` | SlowTick | a tick took over 300 ms: a script's work held the game up (wow tasks shows each task's busy_ms) |
 | `stall` | Stall | no XP for a while, or the XP rate fell below your threshold (events.watch); once until progress resumes |
 | `summon_request` | SummonRequest | a player is summoning you: summon.accept() or summon.decline() |
 | `task_finished` | TaskEvent | a task ended (done, failed or stopped) |

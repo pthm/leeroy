@@ -14,6 +14,7 @@ import (
 	"github.com/pthm/leeroy/azeroth-sdk/movement"
 	"github.com/pthm/leeroy/azeroth-sdk/navigation"
 	"github.com/pthm/leeroy/azeroth-sdk/script"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
 type BotStatus string
@@ -79,6 +80,8 @@ type Bot struct {
 	acked          func(key string) bool    // takes a server confirmation (chat echo, invite ok) setupControl recorded
 	wm             *worldMsgs               // reputation, MOTD, refused travel... (worldmsg.go)
 	lua            *script.Engine
+	slowTicks      int       // slow ticks since the last slow_tick event
+	slowEmitted    time.Time // the last slow_tick event
 
 	// Stats
 	kills  int
@@ -265,7 +268,10 @@ func (b *Bot) Run() BotResult {
 		victim := b.world.GetObject(victimGUID)
 		name := fmt.Sprintf("GUID:%d", victimGUID)
 		if victim != nil {
-			name = fmt.Sprintf("Entry:%d", victim.Entry)
+			name = fmt.Sprintf("entry %d", victim.Entry)
+			if n := b.objName(victim); n != "" {
+				name = fmt.Sprintf("%s (entry %d)", n, victim.Entry)
+			}
 		}
 		b.addEvent("kill", "Killed %s (total kills: %d)", name, b.kills)
 		b.logDecision("Killed %s (kills=%d)", name, b.kills)
@@ -318,7 +324,7 @@ func (b *Bot) Run() BotResult {
 	}
 	b.world.OnCombatStart = func(attacker, victim uint64) {
 		if victim == b.world.CharGUID() || attacker == b.world.CharGUID() {
-			b.log("Combat started (attacker: %d, victim: %d)", attacker, victim)
+			b.debugf("Combat started (attacker: %d, victim: %d)", attacker, victim)
 		}
 	}
 	// OnAttackReject is the preferred path: classifies AC swing feedback so we
@@ -731,7 +737,7 @@ func (b *Bot) ensureMovementControllerLocked() {
 	}
 	b.moveController.OnSwimChange = func(on bool) {
 		w.SetSwimming(on)
-		b.log("swimming=%v", on)
+		b.debugf("swimming=%v", on)
 	}
 	w.SetGroundFunc(func(mapID uint32, x, y, z float32) (float32, bool) {
 		nav := b.nav
@@ -803,7 +809,7 @@ func (b *Bot) runAILoop(worldErrCh chan error) {
 				b.lua.CallTick()
 			}
 			if elapsed := time.Since(tickStart); elapsed > 300*time.Millisecond {
-				b.log("script tick took %dms", elapsed.Milliseconds())
+				b.slowTick(elapsed)
 			}
 		}
 	}
@@ -1128,7 +1134,7 @@ func (b *Bot) handleTeleportResume(reason string) {
 		return
 	}
 	x, y, z, o, mapID := b.world.Position()
-	b.log("Teleport resume (%s): map=%d pos=(%.1f,%.1f,%.1f) — interrupt everything, restart AI",
+	b.debugf("Teleport resume (%s): map=%d pos=(%.1f,%.1f,%.1f) — interrupt everything, restart AI",
 		reason, mapID, x, y, z)
 
 	// Local combat interrupt first (always). Best-effort CMSG when socket is live.
@@ -1203,7 +1209,7 @@ func (b *Bot) wireServerRelocateHandling() {
 	}
 	prevReloc := b.world.OnServerRelocate
 	b.world.OnServerRelocate = func(x, y, z, o float32, reason string) {
-		b.log("Server relocate (%s): pos=(%.1f,%.1f,%.1f) — abort local path", reason, x, y, z)
+		b.debugf("Server relocate (%s): pos=(%.1f,%.1f,%.1f) — abort local path", reason, x, y, z)
 		b.movementMu.Lock()
 		b.isMoving = false
 		b.lastMoveCommandTime = time.Time{}
@@ -1852,16 +1858,49 @@ func (b *Bot) fail(format string, args ...interface{}) BotResult {
 	}
 }
 
+// log writes a line to the session's output (the agent's session.log), stamped with the time of day so it lines up
+// with the events (their t is the same clock).
 func (b *Bot) log(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
 	// Combat thrash lines only in validation / observation / packet-trace —
 	// army load must not fmt.Printf every melee tick.
-	if strings.HasPrefix(msg, "ATTACK ") {
-		if !b.config.ValidationMode && !b.config.LogDecisionsToChat && !b.config.EnablePacketTrace {
-			return
-		}
+	if strings.HasPrefix(msg, "ATTACK ") && !b.verbose() {
+		return
 	}
-	fmt.Printf("[Bot %s] %s\n", b.id, msg)
+	fmt.Printf("%s [Bot %s] %s\n", time.Now().Format("15:04:05"), b.id, msg)
+}
+
+// slowTick reports a tick that held the game up: a line each time, and a slow_tick event at most every 30 s (with
+// how many there were), naming the task that took longest.
+func (b *Bot) slowTick(d time.Duration) {
+	ev := types.SlowTick{MS: int(d.Milliseconds())}
+	if b.lua != nil {
+		task, td := b.lua.SlowestTask()
+		ev.Task, ev.TaskMS = task, int(td.Milliseconds())
+	}
+	if ev.Task != "" {
+		b.log("script tick took %dms (task %s %dms)", ev.MS, ev.Task, ev.TaskMS)
+	} else {
+		b.log("script tick took %dms", ev.MS)
+	}
+	b.slowTicks++
+	if time.Since(b.slowEmitted) < 30*time.Second {
+		return
+	}
+	ev.Count, b.slowTicks, b.slowEmitted = b.slowTicks, 0, time.Now()
+	b.emit("slow_tick", ev)
+}
+
+// debugf is for the client's own bookkeeping (combat flags, swimming, teleports): only when validating or tracing,
+// so it doesn't bury what a script logged.
+func (b *Bot) debugf(format string, args ...interface{}) {
+	if b.verbose() {
+		b.log(format, args...)
+	}
+}
+
+func (b *Bot) verbose() bool {
+	return b.config.ValidationMode || b.config.LogDecisionsToChat || b.config.EnablePacketTrace
 }
 
 // logDecision logs an important AI/behavior decision both to the console and

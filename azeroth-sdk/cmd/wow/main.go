@@ -33,7 +33,8 @@ wow subscribe [types | +types | -types]
 wow answer <id> <choice>            answer a script's ask() (an "attention" event)
 wow -w 60 'lua'                     sleep 60s first, then evaluate
 Every eval reply carries "events": what happened since your last call (counts by type, important ones in full).
-Subscribed chat, invites, trades and script questions are also printed to stderr ("wow: chat ...").
+Subscribed chat, invites, trades, script questions, script errors and slow ticks are also printed to stderr
+("wow: chat ...", "wow: script_errors ..."), so a reply piped through jq or cut can't hide them.
 Session: the azsdk daemon on port $WOW_PORT (default 8090).
 `
 
@@ -92,8 +93,15 @@ func evalLua(code string) int {
 				fmt.Fprintf(os.Stderr, "wow: %s %s from %s: %s\n", t, jqjson.Interp(jqjson.Field(d, "kind")), jqjson.Interp(jqjson.Field(d, "from")), jqjson.Interp(jqjson.Field(d, "text")))
 			case "party_invite", "trade", "attention":
 				fmt.Fprintf(os.Stderr, "wow: %s %s\n", t, jqjson.Compact(d))
+			case "slow_tick":
+				fmt.Fprintf(os.Stderr, "wow: slow_tick %s\n", jqjson.Compact(d))
 			}
 		}
+	}
+	if se := jqjson.Field(r, "script_errors"); se != nil {
+		last, _ := jqjson.Field(se, "last").(string)
+		last, _, _ = strings.Cut(last, "\n") // the traceback is in wow tasks and the script_error event
+		fmt.Fprintf(os.Stderr, "wow: script_errors %s, last: %s\n", jqjson.Interp(jqjson.Field(se, "count")), last)
 	}
 	return 0
 }

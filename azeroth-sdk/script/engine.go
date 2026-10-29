@@ -8,6 +8,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -48,7 +49,9 @@ type Engine struct {
 
 	tickErrs      int
 	tickErr       string
-	cur           *Task // the task being resumed (nil on the main state)
+	cur           *Task                    // the task being resumed (nil on the main state)
+	tickCost      map[string]time.Duration // the last tick: Lua time by task name (handlers by theirs)
+	trampoline    *lua.LFunction
 	workspace     *os.Root
 	workspacePath string
 
@@ -153,7 +156,8 @@ func NewEngine(logf func(format string, args ...any), bus *Bus) *Engine {
 		L.Push(out)
 		return 1
 	})
-	if err := e.L.DoString(runtimeLua); err != nil {
+	e.trampoline, _ = e.L.Load(strings.NewReader("local fn, n, args = ..., select('#', ...) - 1, {select(2, ...)} coroutine.yield() return fn(unpack(args, 1, n))"), "trampoline")
+	if err := e.doChunk("runtime.lua", runtimeLua); err != nil {
 		panic("runtime.lua: " + err.Error())
 	}
 	if err := e.L.DoString(`coroutine.wrap = function(fn)
@@ -176,10 +180,23 @@ func (e *Engine) Emit(typ string, data any) Event { return e.Bus.Emit(typ, data)
 
 // DoString runs a chunk on the main state.
 func (e *Engine) DoString(code string) error {
+	return e.DoChunk("<string>", code)
+}
+
+// DoChunk runs code on the main state under a name, which its errors and tracebacks report (act.lua:120:).
+func (e *Engine) DoChunk(name, code string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	defer e.deadline(e.L)()
-	return e.L.DoString(code)
+	return e.doChunk(name, code)
+}
+
+func (e *Engine) doChunk(name, code string) error {
+	fn, err := e.L.Load(strings.NewReader(code), name)
+	if err != nil {
+		return err
+	}
+	return e.L.CallByParam(lua.P{Fn: fn, NRet: 0, Protect: true})
 }
 
 // DoFile runs a file on the main state.
@@ -200,7 +217,7 @@ func (e *Engine) Eval(code string) (any, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	defer e.deadline(e.L)()
-	fn, err := e.L.LoadString(code)
+	fn, err := e.L.Load(strings.NewReader(code), "wow") // errors read wow:1:, files loaded by it their own names
 	if err != nil {
 		return nil, err
 	}
@@ -293,6 +310,7 @@ func (e *Engine) CallTick() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	done := e.deadline(e.L)
+	e.tickCost = map[string]time.Duration{}
 	e.dispatchEvents()
 	e.runTasks()
 	done()
@@ -307,6 +325,19 @@ func (e *Engine) CallTick() bool {
 		e.noteError("on_tick", err)
 	}
 	return true
+}
+
+// SlowestTask is the task that ran longest in the last tick, and for how long (for the session's slow-tick report).
+func (e *Engine) SlowestTask() (string, time.Duration) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	name, most := "", time.Duration(0)
+	for n, d := range e.tickCost {
+		if d > most {
+			name, most = n, d
+		}
+	}
+	return name, most
 }
 
 func (e *Engine) noteError(where string, err error) {
@@ -395,7 +426,8 @@ func (e *Engine) TasksHeld() []types.TaskInfo {
 	out := []types.TaskInfo{}
 	for _, id := range ids {
 		t := e.tasks[id]
-		ti := types.TaskInfo{ID: t.ID, Name: t.Name, State: t.State, Status: t.Status, Error: t.Err, Seconds: int(time.Since(t.Started).Seconds())}
+		ti := types.TaskInfo{ID: t.ID, Name: t.Name, State: t.State, Status: t.Status, Error: t.Err, Seconds: int(time.Since(t.Started).Seconds()),
+			BusyMS: int(t.busy.Milliseconds())}
 		if t.State == "waiting" {
 			switch t.wait.kind {
 			case "sleep":
@@ -656,7 +688,10 @@ type Task struct {
 	Started time.Time
 	Ended   time.Time
 	Handler bool
-	paused  string // the state task.pause took it from (new or waiting)
+	paused  string        // the state task.pause took it from (new or waiting)
+	started bool          // resumed at least once (past the trampoline)
+	trace   string        // where it was when it failed (panicWithTrace)
+	busy    time.Duration // Lua time so far: the game waits while a task runs
 }
 
 type waitCond struct {
@@ -731,9 +766,15 @@ func (e *Engine) runTasks() {
 }
 
 func (e *Engine) resume(t *Task, args []lua.LValue) {
-	t.State, t.wait = "running", waitCond{}
+	t.State, t.wait, t.trace = "running", waitCond{}, ""
 	e.cur = t
+	start := time.Now()
 	st, err := e.safeResume(t, args)
+	cost := time.Since(start)
+	t.busy += cost
+	if e.tickCost != nil {
+		e.tickCost[t.Name] += cost
+	}
 	e.cur = nil
 	switch {
 	case err != nil:
@@ -741,9 +782,12 @@ func (e *Engine) resume(t *Task, args []lua.LValue) {
 		if strings.Contains(msg, "context deadline exceeded") {
 			msg = strings.Replace(msg, "context deadline exceeded", fmt.Sprintf("ran %v without waiting: a loop in a task must wait(), await() or events.wait() on every pass", executionLimit), 1)
 		}
+		if t.trace != "" {
+			msg += "\n" + t.trace
+		}
 		t.State, t.Err, t.Ended = "failed", msg, time.Now()
 		e.finish(t)
-		e.noteError("task "+t.Name, err)
+		e.noteError("task "+t.Name, errors.New(msg))
 	case st == lua.ResumeOK:
 		t.State, t.Ended = "done", time.Now()
 		e.finish(t)
@@ -763,8 +807,52 @@ func (e *Engine) safeResume(t *Task, args []lua.LValue) (st lua.ResumeState, err
 			st, err = lua.ResumeError, fmt.Errorf("%v", r)
 		}
 	}()
+	if !t.started {
+		// gopher-lua starts a coroutine with a Panic that drops the traceback. Start it on a trampoline that
+		// yields at once, then give it one that keeps it.
+		t.started = true
+		if st, err, _ = e.L.Resume(t.co, e.trampoline, append([]lua.LValue{t.fn}, args...)...); err != nil || st != lua.ResumeYield {
+			return st, err
+		}
+		t.co.Panic, args = e.panicWithTrace, nil
+	}
 	st, err, _ = e.L.Resume(t.co, t.fn, args...)
 	return st, err
+}
+
+// panicWithTrace is a task's Panic: gopher-lua's own, but the failing task keeps where it was (file:line, innermost
+// first), which the error that reaches the scheduler no longer has.
+func (e *Engine) panicWithTrace(L *lua.LState) {
+	if t := e.byThread[L]; t != nil {
+		t.trace = traceback(L)
+	}
+	panic(&lua.ApiError{Type: lua.ApiErrorRun, Object: L.Get(-1)})
+}
+
+// traceback: the Lua frames of L's stack, innermost first ("  main.lua:22 in pull"), at most 8.
+func traceback(L *lua.LState) string {
+	var lines []string
+	for i := 0; len(lines) < 8; i++ {
+		dbg, ok := L.GetStack(i)
+		if !ok {
+			break
+		}
+		if _, err := L.GetInfo("nSl", dbg, lua.LNil); err != nil || dbg.CurrentLine <= 0 || dbg.Source == "trampoline" {
+			continue
+		}
+		line := fmt.Sprintf("  %s:%d", dbg.Source, dbg.CurrentLine)
+		if dbg.Name != "" && !strings.HasPrefix(dbg.Name, "<") && dbg.Name != "corountine" { // gopher-lua's names for unnamed ones
+			line += " in " + dbg.Name
+		}
+		if len(lines) > 0 && lines[len(lines)-1] == line { // past a tail call it repeats the outermost frame
+			break
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) < 2 { // the error's own position says as much
+		return ""
+	}
+	return "traceback:\n" + strings.Join(lines, "\n")
 }
 
 func (e *Engine) deadline(L *lua.LState) func() {
@@ -814,7 +902,7 @@ func (e *Engine) loadFile(L *lua.LState, path string) (*lua.LFunction, error) {
 	if err != nil {
 		return nil, err
 	}
-	return L.LoadString(string(code))
+	return L.Load(bytes.NewReader(code), filepath.ToSlash(path)) // errors read main.lua:22:, not <string>:22:
 }
 
 func (e *Engine) installFileLoaders() {
@@ -1170,7 +1258,11 @@ func (e *Engine) registerRuntime() {
 		if t := e.taskOf(L); t != nil {
 			data.Task = t.Name
 		}
-		e.logf("[Lua] %s", msg)
+		if data.Task != "" {
+			e.logf("[Lua %s] %s", data.Task, msg)
+		} else {
+			e.logf("[Lua] %s", msg)
+		}
 		go e.Emit("log", data)
 		return 0
 	})

@@ -400,7 +400,7 @@ func (b *Bot) setupControl() {
 		}
 		return w.SendPacketRaw(op, body)
 	})
-	if err := e.DoString(actLua); err != nil {
+	if err := e.DoChunk("act.lua", actLua); err != nil {
 		b.log("act.lua: %v", err)
 	}
 	// the API's namespaces and runtime functions can't be overwritten by a script's own globals

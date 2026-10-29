@@ -40,7 +40,7 @@ end)
 - A task that raises an error ends `failed`; the others keep running. Each end is a `task_finished` event.
 - Every evaluation, task step and `on_tick` call has a 3-second execution limit: a loop must `wait`, `await` or
   `events.wait` on every pass to let the rest run, including passes where nothing happens (a check that returns at
-  once, a target that's already in range). A task that doesn't fails with "ran 3s without waiting". `on_tick()`, if you define it, is called every tick and can't wait.
+  once, a target that's already in range). A task that doesn't fails with "main.lua:22: ran 3s without waiting", at the line it was running. `on_tick()`, if you define it, is called every tick and can't wait.
 - `wow` evaluations run between ticks on the same state and can't wait: start a task for anything that takes time.
 - `dofile` and `loadfile` read Lua files within your workspace; `LIB` is its absolute path (ending in `/`).
   `os.time`, `os.date`, `os.clock` and `os.difftime` exist; process, environment and other file access don't.
@@ -127,7 +127,8 @@ wow subscribe death,stall,chat:whisper           # replace it
 
 **Every `wow` reply** carries `"events"`: what happened since your previous call, counted by type, with these in
 full: the types you subscribe to, failed actions and tasks, channel chat, level-ups, resurrections, errors, notices,
-group changes and quest completions. Subscribed chat, invites, trades and questions from scripts also go to stderr.
+group changes, quest completions and slow ticks. Subscribed chat, invites, trades, questions from scripts, script
+errors and slow ticks also go to stderr, so piping a reply through `cut` or `jq` doesn't hide them.
 The log keeps the whole run, through session restarts, and reading it consumes nothing.
 
 **Scripts asking you.** `ask(question, options [, {default, timeout}])`, inside a task, emits an `attention` event
@@ -137,6 +138,28 @@ and waits for `wow answer <seq> <choice>` (seq is the attention event's). After 
 ```lua
 local choice = ask("Bags full. Destroy greys or go sell?", {"destroy", "sell"}, { default = "destroy", timeout = 120 })
 ```
+
+## Seeing what your scripts do
+
+- **`log(msg)`** writes a `log` event tagged with the task that wrote it (`wow events --types log --last 20`: each
+  with its time and task) and a line in `session.log` (`12:04:31 [Bot Name] [Lua main] msg`).
+- **`task.status(text)`** is what the task says it's doing, in `wow tasks`; keep it current and you can see where
+  each task is without reading logs.
+- **Globals** are readable from the shell: keep what a script knows in a table (`state`) and `wow 'return state'`.
+- **`events.emit(name, data)`** records structured data of your own as a `script.<name>` event: one per pull with
+  its target, time and outcome, say. `wow events --types script.pull --last 30` or `events.query` reads them back.
+- **Errors** say where: `main.lua:22: attempt to compare number with nil`, and a traceback (innermost call first)
+  when the error was deeper than one call. A file's lines are named by its path in your workspace; `act.lua:`
+  is the SDK's `act` library (its source is readable, the paths are in your task prompt) and `wow:` is a `wow`
+  evaluation. The full error is in `wow tasks` (failed tasks keep theirs), the `script_error` event and
+  `session.log`; replies carry the latest as `"script_errors"`.
+- **Cost.** The game waits while Lua runs: a tick over 300 ms delays movement, combat and replies. Each one is a
+  line in `session.log` naming the task that took longest, and a `slow_tick` event (at most every 30 s, with a
+  count) shows in replies. `wow tasks` shows each task's `busy_ms`, its Lua time so far. Path queries are the
+  usual cost: `path_distance` on every unit of a wide `units.nearby` each pass.
+- **`session.log`**, in your workspace, has each line stamped with the time of day (the clock of events' `t`):
+  `log()` lines, script errors, slow ticks, kills, deaths and level-ups. It's the session's own output, so it
+  also has its start-up and the odd warning from the client.
 
 ## The Lua API
 

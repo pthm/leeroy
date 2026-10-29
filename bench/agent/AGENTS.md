@@ -16,7 +16,7 @@ Your working directory is your workspace. It's the only place you can write, and
 | `api-reference.md` | every function, type and event |
 | `example.lua` | the shape of a script |
 | `NOTES.md` | your notebook (below) |
-| `session.log` | your session's log: `log()` output, script errors, kills, level-ups |
+| `session.log` | your session's log, timestamped: `log()` lines, script errors, slow ticks, kills, deaths, level-ups |
 
 The SDK's source is readable, not writable, at the paths in your task prompt.
 
@@ -35,6 +35,7 @@ wow 'task.stop("main")'                          # stop one
 wow subscribe                                    # what wakes you; +types adds, -types removes, a list replaces
 wow wait 300                                     # block until something you subscribe to happens (or 300 s)
 wow events --types chat,death --last 20          # the event log for the whole run
+wow events --types log --last 20                 # your scripts' log() lines, with time and task
 wow answer 812 sell                              # answer a script's ask()
 azworld quest 176                                # a quest's giver, objectives and where its targets are
 standings                                        # the score, and the minutes left
@@ -43,7 +44,10 @@ standings                                        # the score, and the minutes le
 - A `wow` call runs between your scripts' steps, on the same Lua state: it sees what they see, and what it sets
   they see. It can't wait: anything that takes time goes in a task.
 - Every `wow` reply carries `"events"`: what happened since your last call, counted, with the important ones in
-  full (sdk.md, "Events"), and `"script_errors"` if a script failed. Chat you subscribe to also goes to stderr.
+  full (sdk.md, "Events"), and `"script_errors"` if a script failed. Script errors, slow ticks and chat you
+  subscribe to also go to stderr.
+- An error names the file and line (`main.lua:22:`) with a traceback; `wow tasks` keeps a failed task's error and
+  shows each task's `busy_ms`. sdk.md, "Seeing what your scripts do", has the rest: logging your own data, cost.
 - `wow wait` and `wow -w` take whole seconds, at most 600. If your shell tool returns before a long wait ends (some
   stop waiting after 30 s), use shorter waits in a loop.
 - Create and edit files with your file-editing tools (some setups block shell redirects, heredocs and `sed -i`).

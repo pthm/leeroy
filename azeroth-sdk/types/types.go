@@ -509,7 +509,8 @@ type TaskInfo struct {
 	Status     string `json:"status,omitempty" doc:"what it says it's doing (task.status)"`
 	WaitingFor string `json:"waiting_for,omitempty" doc:"e.g. 1.5s, request 12, event kill"`
 	Seconds    int    `json:"seconds" doc:"since it started"`
-	Error      string `json:"error,omitempty"`
+	BusyMS     int    `json:"busy_ms" doc:"time it has spent running Lua (and the API calls it made) since it started: the game waits while it does"`
+	Error      string `json:"error,omitempty" doc:"why it failed: file:line: message, then a traceback when the error was deeper than one call"`
 }
 
 // Gear grades what you wear against your level, from the game's own numbers: item level, quality, durability.

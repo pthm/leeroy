@@ -211,7 +211,7 @@ func subscribed(e *script.Engine) []string {
 // informational events eval replies always show in full (they don't wake the agent unless subscribed). Channel
 // chat is how players broadcast to each other, so it's shown even though it doesn't wake by default.
 var shown = []string{"level_up", "resurrected", "error", "notice", "party_changed", "quest_complete", "quest_turned_in",
-	"chat:channel"}
+	"chat:channel", "slow_tick"}
 
 // news summarises the events since the agent's last eval: {seq, counts by type, important events (last 20)}.
 func news(e *script.Engine) map[string]any {
