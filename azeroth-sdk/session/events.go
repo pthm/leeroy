@@ -357,10 +357,7 @@ func (b *Bot) stateEvents() {
 		}
 	}
 	b.wasCombat, b.wasAlive = combat, &alive
-	if b.ConsumeTeleport() {
-		x, y, z, _, m := b.world.Position()
-		b.emit("teleported", types.Position{X: round1(x), Y: round1(y), Z: round1(z), Map: m})
-	}
+	b.travelEvents(b.ConsumeTeleport())
 }
 
 // setupActions: move.to / move.stop and spells.cast as requests.
@@ -380,6 +377,12 @@ func (b *Bot) setupActions() {
 	e.Func("move.to", "(x, y, z) → request<MoveDone>", "walk there along the navmesh: ok on arrival, else stuck or timeout. Calling it again near the same point (chasing) keeps the same request; a different point supersedes it. With no navmesh path it walks a straight line (no_path)",
 		func(x, y, z float32) map[string]any {
 			args := map[string]any{"x": x, "y": y, "z": z}
+			if lock := b.world.MovementLock(); lock != "" {
+				return b.refuse("move.to", args, lock, map[string]string{"in_flight": "you're on a flight: wait for flight_end",
+					"teleporting": "you're being teleported: wait a moment", "feared": "you're feared: the server moves you",
+					"confused": "you're confused: the server moves you", "charmed": "something controls you",
+					"stunned": "you're stunned", "rooted": "you're rooted"}[lock])
+			}
 			if m := cur; m != nil && b.lua.Reqs.Result(m.id)["pending"] == true {
 				if dx, dy := m.x-x, m.y-y; dx*dx+dy*dy < 100 {
 					m.x, m.y, m.z = x, y, z

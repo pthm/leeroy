@@ -83,6 +83,7 @@ func (b *Bot) setupControl() {
 	b.setupCombatLog()
 	b.setupTalents()
 	b.setupTrade()
+	b.setupTravel()
 	b.watchAreaTriggers()
 	b.watchEvents()
 	b.startRecording()

@@ -936,10 +936,11 @@ type WorldClient struct {
 	posX, posY, posZ, orientation float32
 	mapID                         uint32
 	moveSpeed                     float32
-	swimSpeed                     float32 // from the server (create block / SMSG_FORCE_SWIM_SPEED_CHANGE)
-	rooted                        bool    // SMSG_FORCE_MOVE_ROOT (roots, stuns): no movement until unrooted
-	swimming                      bool    // set by the movement controller; adds MOVEMENTFLAG_SWIMMING + pitch
-	currentMoveFlags              uint32  // last used for movement (to use in acks etc)
+	swimSpeed                     float32    // from the server (create block / SMSG_FORCE_SWIM_SPEED_CHANGE)
+	rooted                        bool       // SMSG_FORCE_MOVE_ROOT (roots, stuns): no movement until unrooted
+	spline                        selfSpline // the server's path for our character (flights, fear), see control.go
+	swimming                      bool       // set by the movement controller; adds MOVEMENTFLAG_SWIMMING + pitch
+	currentMoveFlags              uint32     // last used for movement (to use in acks etc)
 
 	// Cached packed GUID to avoid repeated allocation in hot send path
 	packedGUID []byte
@@ -1508,6 +1509,9 @@ func (w *WorldClient) sendPacketUnencrypted(opcode uint16, data []byte) error {
 }
 
 func (w *WorldClient) sendPacket(opcode uint16, data []byte) error {
+	if playerMoveOpcodes[opcode] && w.serverDriven() {
+		return ErrServerDriven // like the real client: no movement of our own while the server moves us
+	}
 	w.checkOutboundPhase(opcode)
 	if w.OnPacketSend != nil {
 		w.OnPacketSend(opcode, data)
@@ -3275,11 +3279,17 @@ func (w *WorldClient) UpdatePosition(x, y, z, o float32) {
 	w.setPositionLocked(x, y, z, o)
 }
 
-// Position returns the current position of the character.
+// Position returns the current position of the character. While the server moves it along a spline (a flight),
+// that's where along the spline it is now.
 func (w *WorldClient) Position() (x, y, z, o float32, mapID uint32) {
 	w.moveMu.Lock()
 	defer w.moveMu.Unlock()
-
+	if p, done, ok := w.spline.at(); ok {
+		w.setPositionLocked(p[0], p[1], p[2], w.orientation)
+		if done {
+			w.spline.clear()
+		}
+	}
 	return w.posX, w.posY, w.posZ, w.orientation, w.mapID
 }
 
@@ -5040,6 +5050,9 @@ func (w *WorldClient) handleMonsterMove(data []byte) {
 	}
 
 	if moveType == 1 { // MonsterMoveStop
+		if selfMove {
+			w.spline.clear()
+		}
 		obj.IsMoving = false
 		obj.MoveDuration = 0
 		// snap to the stop pos
@@ -5076,8 +5089,8 @@ func (w *WorldClient) handleMonsterMove(data []byte) {
 		return
 	}
 
-	// animation (if flag 0x00000100 - Animation)
-	if splineFlags&0x00000100 != 0 {
+	// animation
+	if splineFlags&splineAnimation != 0 {
 		var animID uint8
 		var animStartTime uint32
 		binary.Read(r, binary.LittleEndian, &animID)
@@ -5090,8 +5103,8 @@ func (w *WorldClient) handleMonsterMove(data []byte) {
 		return
 	}
 
-	// parabolic (if flag 0x00000200 - Parabolic)
-	if splineFlags&0x00000200 != 0 {
+	// parabolic
+	if splineFlags&splineParabolic != 0 {
 		var verticalAccel float32
 		var effectStartTime uint32
 		binary.Read(r, binary.LittleEndian, &verticalAccel)
@@ -5111,22 +5124,9 @@ func (w *WorldClient) handleMonsterMove(data []byte) {
 		return
 	}
 
-	// For CatmullRom (flag 0x00000008), waypoints are full Vector3 positions
-	// For linear paths, first point after count is the destination, rest are packed
-	var destX, destY, destZ float32
-	if splineFlags&0x00000008 != 0 {
-		// CatmullRom: read all waypoints, last one is destination
-		for i := uint32(0); i < waypointCount; i++ {
-			binary.Read(r, binary.LittleEndian, &destX)
-			binary.Read(r, binary.LittleEndian, &destY)
-			binary.Read(r, binary.LittleEndian, &destZ)
-		}
-	} else {
-		// Linear: destination is the first Vector3 after the count
-		binary.Read(r, binary.LittleEndian, &destX)
-		binary.Read(r, binary.LittleEndian, &destY)
-		binary.Read(r, binary.LittleEndian, &destZ)
-	}
+	path := readSplinePath(r, splineFlags, waypointCount, [3]float32{posX, posY, posZ})
+	last := path[len(path)-1]
+	destX, destY, destZ := last[0], last[1], last[2]
 	obj.StartX = obj.PosX
 	obj.StartY = obj.PosY
 	obj.StartZ = obj.PosZ
@@ -5140,10 +5140,13 @@ func (w *WorldClient) handleMonsterMove(data []byte) {
 	if selfMove {
 		// Charge/intercept/etc.: server owns the spline. Snap to the destination so
 		// local path following cannot rubber-band us back to the cast origin.
-		// Short-duration forced moves should land immediately for AI purposes.
+		// Short-duration forced moves should land immediately for AI purposes; longer ones (flights, fear) are
+		// followed: Position() walks the spline.
 		if duration <= 1500 || duration == 0 {
+			w.spline.clear()
 			w.applySelfServerRelocate(destX, destY, destZ, "monster_move_charge")
 		} else {
+			w.spline.set(path, time.Duration(duration)*time.Millisecond)
 			w.applySelfServerRelocate(posX, posY, posZ, "monster_move_self")
 		}
 	}

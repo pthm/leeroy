@@ -55,7 +55,7 @@ type UnitInfo struct {
 func gs(g uint64) any { return types.GUID(g) }
 
 var goTypes = map[uint32]string{0: "door", 1: "button", 2: "questgiver", 3: "chest", 5: "generic", 6: "trap", 8: "spell_focus",
-	10: "goober", 17: "fishing_hole", 19: "mailbox", 22: "spellcaster", 23: "meeting_stone", 25: "fishing_node"}
+	10: "goober", 11: "elevator", 15: "ship", 17: "fishing_hole", 19: "mailbox", 22: "portal", 23: "meeting_stone", 25: "fishing_node"}
 
 // game object names by entry, from SMSG_GAMEOBJECT_QUERY_RESPONSE
 var goNames = struct {
@@ -331,6 +331,7 @@ func (b *Bot) snapshot() types.Status {
 	}
 	e := b.lua
 	st.Location, _ = e.Native("me.location").(types.Location)
+	st.Movement, _ = e.Native("me.movement").(types.Movement)
 	if c, ok := e.Native("me.casting").(types.Casting); ok {
 		st.Casting = &c
 	}

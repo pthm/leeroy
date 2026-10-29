@@ -18,6 +18,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `act.corpse_run() → result` | as a ghost, walk to your corpse and reclaim it |
 | `act.dist(x, y [, z]) → yards` | distance from you (2D without z) |
 | `act.fail(code, message) → result` | a failed result |
+| `act.fly{to = node id or name [, npc = entry]} → result<Flight>` | walk to a flight master nearby, fly to a known destination and wait until you land |
 | `act.follow{name [, distance = 5, until = fn]} → result` | stay near a player until until() is true |
 | `act.go_to{x, y [, z, tolerance = 4, tries = 3]} → result` | walk there, retrying after getting stuck. Pass z indoors and upstairs |
 | `act.hp() → 0..1` | your health fraction |
@@ -109,6 +110,14 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `events.seq() → seq` | the latest event's sequence number |
 | `events.wait(type or {types} [, timeout_s]) → event` | the next matching event, nil on timeout (tasks only) |
 
+### flights
+
+| Function | |
+|---|---|
+| `flights.map(npc) → request<FlightMap>` | talk to a flight master within ~5 yd (role flight_master): discovers its flight point the first time, and lists the known points you can fly to from there, with costs |
+| `flights.nodes([map]) → TaxiNode[]` | every flight point for your faction (on one map: 0 Eastern Kingdoms, 1 Kalimdor, 530 Outland, 571 Northrend). known is only accurate after you've opened a flight map |
+| `flights.take(npc, node) → request<Flight>` | fly from this flight master to a known node (by id; via other known nodes if there's no direct path). Resolves when you land; await it with a long timeout (flights take minutes). You can't move while flying |
+
 ### group
 
 | Function | |
@@ -162,6 +171,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `me.level() → number` | your level |
 | `me.location() → Location` | where you are, by the game's own zone and area names |
 | `me.money() → copper` | your money |
+| `me.movement() → Movement` | who's moving you: free, or the server (in_flight, teleporting, feared, confused, charmed: move.to is refused), or stunned / rooted; with where the server is taking you |
 | `me.moving() → bool` | walking somewhere (move.to) |
 | `me.name() → string` | your character's name |
 | `me.pet() → GUID?` | your pet, nil for none |
@@ -381,7 +391,7 @@ UnitRef names a unit in events and results.
 | `guid` | GUID |  |
 | `entry` | number | game object template id |
 | `name` | string | empty for a moment after it first comes into view |
-| `type` | string | chest, door, button, goober (quest objects), questgiver, mailbox, fishing_node, ... |
+| `type` | string | chest, door, button, goober (quest objects), questgiver, portal (use it: you're teleported), ship (boats and zeppelins), elevator, mailbox, fishing_node, ... |
 | `x` | number |  |
 | `y` | number |  |
 | `z` | number |  |
@@ -683,6 +693,7 @@ Status is a one-call snapshot of your character (me.status, `wow status`).
 | `ghost` | bool |  |
 | `in_combat` | bool |  |
 | `resting` | bool |  |
+| `movement` | Movement | who's moving you (free, in_flight, feared...) |
 | `casting?` | Casting |  |
 | `free_slots` | number |  |
 | `stats?` | Stats |  |
@@ -697,6 +708,42 @@ Status is a one-call snapshot of your character (me.status, `wow status`).
 | `last_minute?` | Meter | your fighting over the last minute |
 | `corpse?` | Corpse |  |
 | `tasks` | TaskInfo[] |  |
+
+### Movement
+
+Movement says who's moving your character.
+
+| Field | Type | |
+|---|---|---|
+| `state` | string | free (you are), in_flight, teleporting, feared, confused, charmed (the server moves you: move.to is refused), stunned, rooted |
+| `destination?` | Position | where the server is taking you (a flight, fear) |
+| `seconds_left?` | number |  |
+| `flight?` | Flight |  |
+
+### Flight
+
+| Field | Type | |
+|---|---|---|
+| `from` | TaxiNode |  |
+| `to` | TaxiNode |  |
+| `cost` | number | copper |
+| `seconds?` | number | flight_start: how long it will take; flight_end and results: how long it took |
+
+### TaxiNode
+
+TaxiNode is a flight point (TaxiNodes.dbc).
+
+| Field | Type | |
+|---|---|---|
+| `id` | number |  |
+| `name` | string | e.g. Stormwind, Elwynn |
+| `map` | number |  |
+| `x` | number |  |
+| `y` | number |  |
+| `z` | number |  |
+| `known` | bool | you've discovered it (talk to its flight master once). Only accurate after you've opened a flight map (flights.map) |
+| `cost?` | number | copper from the flight master you asked (flights.map), over known nodes |
+| `hops?` | number | stops on the way (1 = direct) |
 
 ### MobSummary
 
@@ -754,6 +801,16 @@ Result is an action's request (Pending) or its outcome.
 | Field | Type | |
 |---|---|---|
 | `already?` | bool | you were already attacking it |
+
+### FlightMap
+
+FlightMap is a flight master's map: where you are and where you can fly from there.
+
+| Field | Type | |
+|---|---|---|
+| `current` | TaxiNode |  |
+| `destinations` | TaxiNode[] | known nodes you can reach from here, with the cost |
+| `learned?` | bool | talking to this flight master discovered its node |
 
 ### Equipped
 
@@ -910,6 +967,12 @@ Result is an action's request (Pending) or its outcome.
 | `code` | string |  |
 | `message` | string |  |
 
+### FlightLearned
+
+| Field | Type | |
+|---|---|---|
+| `node` | TaxiNode |  |
+
 ### GearBroken
 
 | Field | Type | |
@@ -943,6 +1006,13 @@ Result is an action's request (Pending) or its outcome.
 |---|---|---|
 | `amount` | number | copper |
 | `source` | string | loot |
+
+### MovementChanged
+
+| Field | Type | |
+|---|---|---|
+| `state` | string | see Movement |
+| `previous` | string |  |
 
 ### Notice
 
@@ -989,6 +1059,14 @@ Result is an action's request (Pending) or its outcome.
 | `seconds?` | number |  |
 | `error?` | string |  |
 
+### Teleport
+
+| Field | Type | |
+|---|---|---|
+| `from` | Position |  |
+| `to` | Position |  |
+| `far` | bool | to another map (a loading screen) |
+
 ### XPGain
 
 | Field | Type | |
@@ -1018,6 +1096,9 @@ An event is an [Event](#event) whose `data` is the type below.
 | `damage` | Damage | a hit involving you (melee or spell) |
 | `death` | Death | you died |
 | `error` | ErrorEvent | the server refused something |
+| `flight_end` | Flight | you landed |
+| `flight_learned` | FlightLearned | you discovered a flight point |
+| `flight_start` | Flight | you took off: the server flies you, and move.to is refused until you land |
 | `gear_broken` | GearBroken | you revived with equipped items at 0 durability |
 | `heal` | Damage | a heal involving you |
 | `item_received` | ItemReceived | an item went into your bags |
@@ -1026,6 +1107,7 @@ An event is an [Event](#event) whose `data` is the type below.
 | `level_up` | LevelUp | you reached a new level |
 | `log` | Log | log(msg) from a script |
 | `money` | Money | you looted money |
+| `movement_changed` | MovementChanged | who moves you changed: a flight, a teleport, fear, a stun or a root began or ended |
 | `notice` | Notice | a server notice ("Inventory is full") |
 | `party_changed` | PartyChanged | your group changed |
 | `party_invite` | PartyInvite | someone invited you to their group |
@@ -1038,7 +1120,7 @@ An event is an [Event](#event) whose `data` is the type below.
 | `script_error` | ScriptError | a script raised an error |
 | `task_finished` | TaskEvent | a task ended (done, failed or stopped) |
 | `task_started` | TaskEvent | a task started |
-| `teleported` | Position | you were teleported (summon, hearthstone, instance portal) |
+| `teleported` | Teleport | you were teleported: a portal, hearthstone, summon, the graveyard, an instance |
 | `trade` | Trade | the trade window changed: someone asked (requested: trade.open), opened, accepted, completed or cancelled |
 | `xp` | XPGain | you gained XP |
 
@@ -1049,6 +1131,8 @@ The `data` of an ok result, per op.
 | Op | Data |
 |---|---|
 | `combat.attack` | Attacking |
+| `flights.map` | FlightMap |
+| `flights.take` | Flight |
 | `items.equip` | Equipped |
 | `items.loot` | Looted |
 | `items.use` | CastDone |

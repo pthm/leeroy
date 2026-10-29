@@ -101,7 +101,7 @@ type Object struct {
 	GUID     GUID    `json:"guid"`
 	Entry    uint32  `json:"entry" doc:"game object template id"`
 	Name     string  `json:"name" doc:"empty for a moment after it first comes into view"`
-	Type     string  `json:"type" doc:"chest, door, button, goober (quest objects), questgiver, mailbox, fishing_node, ..."`
+	Type     string  `json:"type" doc:"chest, door, button, goober (quest objects), questgiver, portal (use it: you're teleported), ship (boats and zeppelins), elevator, mailbox, fishing_node, ..."`
 	X        float64 `json:"x"`
 	Y        float64 `json:"y"`
 	Z        float64 `json:"z"`
@@ -402,6 +402,7 @@ type Status struct {
 	Ghost       bool         `json:"ghost"`
 	InCombat    bool         `json:"in_combat"`
 	Resting     bool         `json:"resting"`
+	Movement    Movement     `json:"movement" doc:"who's moving you (free, in_flight, feared...)"`
 	Casting     *Casting     `json:"casting,omitempty"`
 	FreeSlots   int          `json:"free_slots"`
 	Stats       *Stats       `json:"stats,omitempty"`
@@ -416,4 +417,56 @@ type Status struct {
 	LastMinute  *Meter       `json:"last_minute,omitempty" doc:"your fighting over the last minute"`
 	Corpse      *Corpse      `json:"corpse,omitempty"`
 	Tasks       []TaskInfo   `json:"tasks"`
+}
+
+// ---------- travel ----------
+
+// TaxiNode is a flight point (TaxiNodes.dbc).
+type TaxiNode struct {
+	ID    uint32  `json:"id"`
+	Name  string  `json:"name" doc:"e.g. Stormwind, Elwynn"`
+	Map   uint32  `json:"map"`
+	X     float64 `json:"x"`
+	Y     float64 `json:"y"`
+	Z     float64 `json:"z"`
+	Known bool    `json:"known" doc:"you've discovered it (talk to its flight master once). Only accurate after you've opened a flight map (flights.map)"`
+	Cost  uint32  `json:"cost,omitempty" doc:"copper from the flight master you asked (flights.map), over known nodes"`
+	Hops  int     `json:"hops,omitempty" doc:"stops on the way (1 = direct)"`
+}
+
+// FlightMap is a flight master's map: where you are and where you can fly from there.
+type FlightMap struct {
+	Current      TaxiNode   `json:"current"`
+	Destinations []TaxiNode `json:"destinations" doc:"known nodes you can reach from here, with the cost"`
+	Learned      bool       `json:"learned,omitempty" doc:"talking to this flight master discovered its node"`
+}
+
+type Flight struct {
+	From    TaxiNode `json:"from"`
+	To      TaxiNode `json:"to"`
+	Cost    uint32   `json:"cost" doc:"copper"`
+	Seconds int      `json:"seconds,omitempty" doc:"flight_start: how long it will take; flight_end and results: how long it took"`
+}
+
+// Movement says who's moving your character.
+type Movement struct {
+	State       string    `json:"state" doc:"free (you are), in_flight, teleporting, feared, confused, charmed (the server moves you: move.to is refused), stunned, rooted"`
+	Destination *Position `json:"destination,omitempty" doc:"where the server is taking you (a flight, fear)"`
+	SecondsLeft float64   `json:"seconds_left,omitempty"`
+	Flight      *Flight   `json:"flight,omitempty"`
+}
+
+type Teleport struct {
+	From Position `json:"from"`
+	To   Position `json:"to"`
+	Far  bool     `json:"far" doc:"to another map (a loading screen)"`
+}
+
+type MovementChanged struct {
+	State    string `json:"state" doc:"see Movement"`
+	Previous string `json:"previous"`
+}
+
+type FlightLearned struct {
+	Node TaxiNode `json:"node"`
 }

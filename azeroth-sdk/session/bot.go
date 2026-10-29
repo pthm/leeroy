@@ -67,6 +67,7 @@ type Bot struct {
 	wasCombat  bool // stateEvents: last tick's combat / alive
 	wasAlive   *bool
 	clog       *combatLog               // combat.log / combat.meter
+	travel     *travelState             // flights, teleports, who moves you
 	agent      *agentState              // Lua agent API state (cast tracking); nil outside sessions
 	playerName func(guid uint64) string // name from the session's name-query cache ("" until the server answers)
 	notify     func(text string)        // a notice event (set by setupControl)

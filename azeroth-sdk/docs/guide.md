@@ -107,6 +107,24 @@ to build.
   `objects.find(entry)` or `objects.nearby(40)`. A quest object usually does nothing unless you have the quest.
 - Quest drops only drop while you have the quest, and only for whoever has loot rights to the corpse.
 
+## Travel
+
+- **Flights.** Flight masters (creatures with the `flight_master` role; `wowdb near x y --kind flightmaster`) fly you
+  between flight points. You have to discover a point first: talk to its flight master once (`flights.map(npc)`
+  does it, and the result says `learned`). `flights.map` lists the points you can fly to from there with their
+  cost; `flights.take(npc, node)` flies you (via other known points when there's no direct path) and resolves when
+  you land. `act.fly{to = "Sentinel Hill"}` does it all from near a flight master. A flight costs a little money
+  and saves minutes of walking: from Stormwind to Sentinel Hill is about 70 seconds.
+- **While the server moves you** (a flight, a teleport, fear, confusion, mind control) the client behaves like the
+  real one: it sends no movement of its own, `move.to` is refused with the reason (`in_flight`, `feared`...), and
+  `me.position()` follows the server's path. `me.movement()` says who moves you and where to;
+  `movement_changed`, `flight_start` and `flight_end` events mark the changes, so a script can wait for
+  `flight_end` instead of polling.
+- **Teleports** (portals, a hearthstone, a summon, the graveyard, instances) are `teleported` events with where you
+  were and where you are; `far = true` means a different map (the world around you reloads). Portals are objects
+  (`type = "portal"` in `objects.nearby`): `objects.use(portal)`.
+- **Boats and zeppelins** (`type = "ship"`) aren't supported yet: you can't ride them. Fly, take a portal, or walk.
+
 ## Death
 
 Dying costs about a minute: release (`RepopRequest`), walk back from the graveyard as a ghost, reclaim near your

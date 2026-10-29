@@ -218,6 +218,32 @@ function A.loot_nearby(o)
   return result("act.loot_nearby", true, got)
 end
 
+-- fly{to = node id or name [, npc = entry]}: walk to the nearest flight master (or that one), open its map, fly
+-- to the destination and wait until you land
+function A.fly(o)
+  local master
+  for _, u in ipairs(units.nearby(80)) do
+    for _, role in ipairs(u.roles or {}) do
+      if role == "flight_master" and u.alive and (not o.npc or u.entry == o.npc) then master = master or u end
+    end
+  end
+  if not master then return result("act.fly", false, nil, "no_flight_master", "no flight master within 80 yd (wowdb near x y --kind flightmaster)") end
+  if master.distance > 4 then
+    local r = A.approach{ unit = master.guid, range = 4 }
+    if not r.ok then r.op = "act.fly" return r end
+  end
+  local m = await(flights.map(master.guid))
+  if not m.ok then m.op = "act.fly" return m end
+  local dest
+  for _, n in ipairs(m.data.destinations) do
+    if n.id == o.to or (type(o.to) == "string" and n.name:lower():find(o.to:lower(), 1, true)) then dest = dest or n end
+  end
+  if not dest then return result("act.fly", false, m.data, "unknown_destination", "not a known destination from here: " .. tostring(o.to)) end
+  local r = await(flights.take(master.guid, dest.id), 1800)
+  r.op = "act.fly"
+  return r
+end
+
 -- ---------- recovery ----------
 function A.rest(o)
   o = o or {}
@@ -259,7 +285,7 @@ end
 
 -- the functions above that wait need a task: say so plainly instead of failing deep inside
 for _, n in ipairs({ "go_to", "travel", "approach", "follow", "reach_npc", "accept", "turn_in", "vendor", "train", "talk",
-  "use_object", "rest", "release", "corpse_run", "spirit_res", "loot_nearby" }) do
+  "use_object", "rest", "release", "corpse_run", "spirit_res", "loot_nearby", "fly" }) do
   local f = A[n]
   A[n] = function(...)
     if not task.current() then
@@ -299,6 +325,7 @@ for name, d in pairs({
   use_object = { "{entry [, count = 1, quest, x, y, z, radius = 80]} → result", "use objects (crates, chests, quest objects) count times or until the quest is complete" },
   loot_nearby = { "{[dist = 8]} → result<Item[]>", "loot every lootable corpse nearby" },
   rest = { "{[hp = 0.95, mana = 0.9, max_s = 40]} → result", "eat/drink if you carry food/water and wait until topped up; fails if attacked" },
+  fly = { "{to = node id or name [, npc = entry]} → result<Flight>", "walk to a flight master nearby, fly to a known destination and wait until you land" },
   release = { "() → result", "release your spirit" },
   corpse_run = { "() → result", "as a ghost, walk to your corpse and reclaim it" },
   spirit_res = { "() → result", "as a ghost, resurrect at the nearest spirit healer in sight (costs durability)" },

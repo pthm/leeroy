@@ -83,7 +83,7 @@ export interface Object {
   entry: number;
   /** empty for a moment after it first comes into view */
   name: string;
-  /** chest, door, button, goober (quest objects), questgiver, mailbox, fishing_node, ... */
+  /** chest, door, button, goober (quest objects), questgiver, portal (use it: you're teleported), ship (boats and zeppelins), elevator, mailbox, fishing_node, ... */
   type: string;
   x: number;
   y: number;
@@ -380,6 +380,8 @@ export interface Status {
   ghost: boolean;
   in_combat: boolean;
   resting: boolean;
+  /** who's moving you (free, in_flight, feared...) */
+  movement: Movement;
   casting?: Casting;
   free_slots: number;
   stats?: Stats;
@@ -397,6 +399,42 @@ export interface Status {
   last_minute?: Meter;
   corpse?: Corpse;
   tasks: TaskInfo[];
+}
+
+/** Movement says who's moving your character. */
+export interface Movement {
+  /** free (you are), in_flight, teleporting, feared, confused, charmed (the server moves you: move.to is refused), stunned, rooted */
+  state: string;
+  /** where the server is taking you (a flight, fear) */
+  destination?: Position;
+  seconds_left?: number;
+  flight?: Flight;
+}
+
+export interface Flight {
+  from: TaxiNode;
+  to: TaxiNode;
+  /** copper */
+  cost: number;
+  /** flight_start: how long it will take; flight_end and results: how long it took */
+  seconds?: number;
+}
+
+/** TaxiNode is a flight point (TaxiNodes.dbc). */
+export interface TaxiNode {
+  id: number;
+  /** e.g. Stormwind, Elwynn */
+  name: string;
+  map: number;
+  x: number;
+  y: number;
+  z: number;
+  /** you've discovered it (talk to its flight master once). Only accurate after you've opened a flight map (flights.map) */
+  known: boolean;
+  /** copper from the flight master you asked (flights.map), over known nodes */
+  cost?: number;
+  /** stops on the way (1 = direct) */
+  hops?: number;
 }
 
 export interface MobSummary {
@@ -455,6 +493,15 @@ export interface Event<T = unknown> {
 export interface Attacking {
   /** you were already attacking it */
   already?: boolean;
+}
+
+/** FlightMap is a flight master's map: where you are and where you can fly from there. */
+export interface FlightMap {
+  current: TaxiNode;
+  /** known nodes you can reach from here, with the cost */
+  destinations: TaxiNode[];
+  /** talking to this flight master discovered its node */
+  learned?: boolean;
 }
 
 export interface Equipped {
@@ -591,6 +638,10 @@ export interface ErrorEvent {
   message: string;
 }
 
+export interface FlightLearned {
+  node: TaxiNode;
+}
+
 export interface GearBroken {
   items: Item[];
   message: string;
@@ -616,6 +667,12 @@ export interface Money {
   amount: number;
   /** loot */
   source: string;
+}
+
+export interface MovementChanged {
+  /** see Movement */
+  state: string;
+  previous: string;
 }
 
 export interface Notice {
@@ -652,6 +709,13 @@ export interface TaskEvent {
   state?: string;
   seconds?: number;
   error?: string;
+}
+
+export interface Teleport {
+  from: Position;
+  to: Position;
+  /** to another map (a loading screen) */
+  far: boolean;
 }
 
 export interface XPGain {
@@ -693,6 +757,12 @@ export interface EventMap {
   death: Death;
   /** the server refused something */
   error: ErrorEvent;
+  /** you landed */
+  flight_end: Flight;
+  /** you discovered a flight point */
+  flight_learned: FlightLearned;
+  /** you took off: the server flies you, and move.to is refused until you land */
+  flight_start: Flight;
   /** you revived with equipped items at 0 durability */
   gear_broken: GearBroken;
   /** a heal involving you */
@@ -709,6 +779,8 @@ export interface EventMap {
   log: Log;
   /** you looted money */
   money: Money;
+  /** who moves you changed: a flight, a teleport, fear, a stun or a root began or ended */
+  movement_changed: MovementChanged;
   /** a server notice ("Inventory is full") */
   notice: Notice;
   /** your group changed */
@@ -733,8 +805,8 @@ export interface EventMap {
   task_finished: TaskEvent;
   /** a task started */
   task_started: TaskEvent;
-  /** you were teleported (summon, hearthstone, instance portal) */
-  teleported: Position;
+  /** you were teleported: a portal, hearthstone, summon, the graveyard, an instance */
+  teleported: Teleport;
   /** the trade window changed: someone asked (requested: trade.open), opened, accepted, completed or cancelled */
   trade: Trade;
   /** you gained XP */
