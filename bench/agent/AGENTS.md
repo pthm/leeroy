@@ -22,6 +22,7 @@ wow -w 60 'return bot.get_level(), bot.get_xp()' # wait 60s (max 600), then quer
 wow -c 60 'return bot.read_chat()'               # same, but returns as soon as another player messages you
 tail -20 session.log
 standings                                        # where everyone in this run stands (rank, score, recent rate)
+party [10]                                       # your party over the last 10 min: each member's XP/hour, time fighting/travelling/idle/dead/with the group
 ```
 
 - `wow` runs Lua in the session and prints the returned values as JSON (`{"error": ...}` on failure).

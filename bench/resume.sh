@@ -41,7 +41,7 @@ resume_one() { # <agent> <port>
     --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
     --add-dir "$repo/azeroth-sdk/client" "$repo/azeroth-sdk/session" "$repo/azeroth-sdk/script" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
     --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(wowdb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
-      "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Bash(standings:*)" "Edit(./**)" --disallowedTools "Edit(~/.claude/**)" "Read(~/.claude/**)" \
+      "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Bash(standings:*)" "Bash(party:*)" "Edit(./**)" --disallowedTools "Edit(~/.claude/**)" "Read(~/.claude/**)" \
     >> "$dir/agent.jsonl" 2>&1) &
   agent=$!
   wait $judge || true

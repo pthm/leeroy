@@ -146,6 +146,10 @@ same time and often with the same goal. The rules that shape how you interact:
 - **Trading.** Players can hand each other items and money directly: `bot.trade(name)`, both put things in the
   window (`bot.trade_offer{...}`), both `bot.trade_accept()`. Items you picked up as quest rewards or that are
   "soulbound" can't be traded.
+- **How well is the party doing?** The `party` command shows, for the last few minutes, each member's XP/hour,
+  kills and deaths, and how their time went: fighting, travelling, idle (standing around), dead, and with the group;
+  plus your XP/hour in the party against before you joined. A party that waits for stragglers, runs back from the
+  graveyard one by one or splits up spends its time idle or travelling instead of fighting.
 - **Inviting.** `bot.invite(name)`, and the other player gets a system message in `read_chat` and accepts with
   `bot.accept_invite()`. `bot.group()` shows your party, `bot.leave_group()` leaves it. Everyone uses the same
   SDK, so they have the same calls.
