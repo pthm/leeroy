@@ -109,12 +109,24 @@ export interface Object {
   entry: number;
   /** empty for a moment after it first comes into view */
   name: string;
-  /** chest, door, button, goober (quest objects), questgiver, portal (use it: you're teleported), ship (boats and zeppelins), elevator, mailbox, fishing_node, ... */
+  /** chest, door, button, goober (quest objects), questgiver, portal (use it: you're teleported), ship (boats and zeppelins), elevator, mailbox, fishing_pool (fish here), fishing_bobber, ... Mining veins and herbs are chests: see gather */
   type: string;
   x: number;
   y: number;
   z: number;
   distance: number;
+  /** the skill it takes: mining, herbalism, lockpicking, fishing or inscription */
+  gather?: string;
+  /** the skill level it needs */
+  skill?: number;
+  /** with gather: your skill is high enough (false without the skill: learn it from a trainer) */
+  can_use?: boolean;
+  /** item entry of a key that opens it */
+  key?: number;
+  /** the quest it's for */
+  quest?: number;
+  /** the server marks it usable for you (it sparkles): a quest you have needs it (GM characters see every chest lit) */
+  lit?: boolean;
 }
 
 export interface Path {
@@ -470,6 +482,8 @@ export interface Status {
   mobs_nearby: MobSummary;
   /** within 60 yd */
   players: Player[];
+  /** within 40 yd, nearest first, at most 5: chests, gathering nodes (see gather / can_use), fishing pools and objects lit up for your quests */
+  objects: Object[];
   group?: Group;
   quests: Quest[];
   broken_gear: Item[];

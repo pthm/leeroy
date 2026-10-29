@@ -111,11 +111,17 @@ type Object struct {
 	GUID     GUID    `json:"guid"`
 	Entry    uint32  `json:"entry" doc:"game object template id"`
 	Name     string  `json:"name" doc:"empty for a moment after it first comes into view"`
-	Type     string  `json:"type" doc:"chest, door, button, goober (quest objects), questgiver, portal (use it: you're teleported), ship (boats and zeppelins), elevator, mailbox, fishing_node, ..."`
+	Type     string  `json:"type" doc:"chest, door, button, goober (quest objects), questgiver, portal (use it: you're teleported), ship (boats and zeppelins), elevator, mailbox, fishing_pool (fish here), fishing_bobber, ... Mining veins and herbs are chests: see gather"`
 	X        float64 `json:"x"`
 	Y        float64 `json:"y"`
 	Z        float64 `json:"z"`
 	Distance float64 `json:"distance"`
+	Gather   string  `json:"gather,omitempty" doc:"the skill it takes: mining, herbalism, lockpicking, fishing or inscription"`
+	Skill    uint32  `json:"skill,omitempty" doc:"the skill level it needs"`
+	CanUse   *bool   `json:"can_use,omitempty" doc:"with gather: your skill is high enough (false without the skill: learn it from a trainer)"`
+	Key      uint32  `json:"key,omitempty" doc:"item entry of a key that opens it"`
+	Quest    uint32  `json:"quest,omitempty" doc:"the quest it's for"`
+	Lit      bool    `json:"lit,omitempty" doc:"the server marks it usable for you (it sparkles): a quest you have needs it (GM characters see every chest lit)"`
 }
 
 type Path struct {
@@ -480,6 +486,7 @@ type Status struct {
 	Attackers   []Creature   `json:"attackers"`
 	Mobs        MobSummary   `json:"mobs_nearby"`
 	Players     []Player     `json:"players" doc:"within 60 yd"`
+	Objects     []Object     `json:"objects" doc:"within 40 yd, nearest first, at most 5: chests, gathering nodes (see gather / can_use), fishing pools and objects lit up for your quests"`
 	Group       *Group       `json:"group,omitempty"`
 	Quests      []Quest      `json:"quests"`
 	Broken      []Item       `json:"broken_gear"`

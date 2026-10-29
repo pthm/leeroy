@@ -55,13 +55,19 @@ type UnitInfo struct {
 func gs(g uint64) any { return types.GUID(g) }
 
 var goTypes = map[uint32]string{0: "door", 1: "button", 2: "questgiver", 3: "chest", 5: "generic", 6: "trap", 8: "spell_focus",
-	10: "goober", 11: "elevator", 15: "ship", 17: "fishing_hole", 19: "mailbox", 22: "portal", 23: "meeting_stone", 25: "fishing_node"}
+	10: "goober", 11: "elevator", 15: "ship", 17: "fishing_bobber", 19: "mailbox", 22: "portal", 23: "meeting_stone", 25: "fishing_pool"}
 
 // game object names by entry, from SMSG_GAMEOBJECT_QUERY_RESPONSE
 var goNames = struct {
 	m     map[uint32]string
+	t     map[uint32]*goTemplate
 	asked map[uint32]time.Time
-}{m: map[uint32]string{}, asked: map[uint32]time.Time{}}
+}{m: map[uint32]string{}, t: map[uint32]*goTemplate{}, asked: map[uint32]time.Time{}}
+
+type goTemplate struct {
+	typ  uint32
+	data [24]uint32 // per-type fields (lock, loot, quest...), see GameObjectTemplate
+}
 
 const (
 	cmsgGameObjectQuery     = 0x05E
@@ -77,14 +83,17 @@ func (b *Bot) object(o *client.WorldObject) types.Object {
 	}
 	creatures.Lock()
 	goName, known := goNames.m[entry]
+	tmpl := goNames.t[entry]
 	if !known && time.Since(goNames.asked[entry]) > 5*time.Second {
 		goNames.asked[entry] = time.Now()
 		body := binary.LittleEndian.AppendUint32(nil, entry)
 		go b.world.SendPacketRaw(cmsgGameObjectQuery, binary.LittleEndian.AppendUint64(body, o.GUID))
 	}
 	creatures.Unlock()
-	return types.Object{GUID: types.GUID(o.GUID), Entry: entry, Name: goName, Type: name(goTypes, (o.Value(fieldGOBytes1)>>8)&0xFF),
+	ob := types.Object{GUID: types.GUID(o.GUID), Entry: entry, Name: goName, Type: name(goTypes, (o.Value(fieldGOBytes1)>>8)&0xFF),
 		X: round1(x), Y: round1(y), Z: round1(z), Distance: round1(float32(math.Sqrt(float64((x-mx)*(x-mx) + (y-my)*(y-my) + (z-mz)*(z-mz)))))}
+	objectNeeds(b.world, o, &ob, tmpl)
+	return ob
 }
 
 func (b *Bot) setupCoreAPI() {
@@ -101,8 +110,15 @@ func (b *Bot) setupCoreAPI() {
 		}
 		binary.Read(r, binary.LittleEndian, &typ)
 		binary.Read(r, binary.LittleEndian, &display)
+		name := readCString(r)
+		t := &goTemplate{typ: typ}
+		r.Seek(3, 1)   // name2-4
+		readCString(r) // icon
+		readCString(r) // cast bar caption
+		readCString(r) // unk1
+		binary.Read(r, binary.LittleEndian, &t.data)
 		creatures.Lock()
-		goNames.m[entry] = readCString(r)
+		goNames.m[entry], goNames.t[entry] = name, t
 		creatures.Unlock()
 	})
 	w.AddPacketHook(func(op uint16, data []byte) {
@@ -383,6 +399,17 @@ func (b *Bot) snapshot() types.Status {
 		}
 	}
 	st.Players = b.players(b.GetNearbyPlayers(60))
+	st.Objects = []types.Object{}
+	for _, o := range w.GameObjects() {
+		ob := b.object(o)
+		if ob.Distance <= 40 && (ob.Type == "chest" || ob.Type == "fishing_pool" || ob.Lit || ob.Gather != "") {
+			st.Objects = append(st.Objects, ob)
+		}
+	}
+	sortBy(st.Objects, func(o types.Object) float64 { return o.Distance })
+	if len(st.Objects) > 5 {
+		st.Objects = st.Objects[:5]
+	}
 	for _, it := range bagItems(w) {
 		if it.Equipped && it.Broken {
 			st.Broken = append(st.Broken, it)

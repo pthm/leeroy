@@ -428,11 +428,17 @@ UnitRef names a unit in events and results.
 | `guid` | GUID |  |
 | `entry` | number | game object template id |
 | `name` | string | empty for a moment after it first comes into view |
-| `type` | string | chest, door, button, goober (quest objects), questgiver, portal (use it: you're teleported), ship (boats and zeppelins), elevator, mailbox, fishing_node, ... |
+| `type` | string | chest, door, button, goober (quest objects), questgiver, portal (use it: you're teleported), ship (boats and zeppelins), elevator, mailbox, fishing_pool (fish here), fishing_bobber, ... Mining veins and herbs are chests: see gather |
 | `x` | number |  |
 | `y` | number |  |
 | `z` | number |  |
 | `distance` | number |  |
+| `gather?` | string | the skill it takes: mining, herbalism, lockpicking, fishing or inscription |
+| `skill?` | number | the skill level it needs |
+| `can_use?` | bool | with gather: your skill is high enough (false without the skill: learn it from a trainer) |
+| `key?` | number | item entry of a key that opens it |
+| `quest?` | number | the quest it's for |
+| `lit?` | bool | the server marks it usable for you (it sparkles): a quest you have needs it (GM characters see every chest lit) |
 
 ### Path
 
@@ -773,6 +779,7 @@ Status is a one-call snapshot of your character (me.status, `wow status`).
 | `attackers` | Creature[] |  |
 | `mobs_nearby` | MobSummary |  |
 | `players` | Player[] | within 60 yd |
+| `objects` | Object[] | within 40 yd, nearest first, at most 5: chests, gathering nodes (see gather / can_use), fishing pools and objects lit up for your quests |
 | `group?` | Group |  |
 | `quests` | Quest[] |  |
 | `broken_gear` | Item[] |  |
