@@ -21,7 +21,7 @@
 //                XP earned (score.json); gear, money and the rest are reported, not scored.
 // --board <dir> writes <dir>/<character>.json with the latest result each poll (the agents' `standings` tool reads them).
 // --resume <samples.jsonl> continues a paused run from its samples.
-import { appendFileSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync, mkdirSync, openSync, readSync, fstatSync } from "node:fs";
 import { sql, signals, weights, composite } from "./signals.ts";
 
 const [char, goal, ...rest] = process.argv.slice(2);
@@ -31,6 +31,32 @@ const flag = (name: string, def: string) => { const i = rest.indexOf(`--${name}`
 const dur = (s: string) => { const [, n, u] = s.match(/^(\d+)(s|m|h)$/)!; return +n * { s: 1e3, m: 6e4, h: 36e5 }[u]!; };
 const timeout = dur(flag("timeout", "4h")), every = dur(flag("every", "15s")), samples = flag("samples", ""), record = flag("record", "");
 const board = flag("board", ""); // dir: the latest result per character, for the agents' `standings`
+// --events <file> --role <DPS|Tank|Healer>: the character's event stream (client-side, azsdk -events); its damage
+// dealt / taken and healing done since the start go on the board. Reported, not scored.
+const eventsFile = flag("events", ""), role = flag("role", "");
+const roleStats = { damage_dealt: 0, damage_taken: 0, healing_done: 0 };
+let eventsAt = 0, eventsTail = "";
+function tallyEvents(since: number) {
+  if (!eventsFile) return;
+  try {
+    const fd = openSync(eventsFile, "r"), size = fstatSync(fd).size;
+    if (size < eventsAt) eventsAt = 0;
+    const buf = Buffer.alloc(size - eventsAt);
+    readSync(fd, buf, 0, buf.length, eventsAt);
+    eventsAt = size;
+    const lines = (eventsTail + buf.toString("utf8")).split("\n");
+    eventsTail = lines.pop() ?? "";
+    for (const l of lines) {
+      if (!l.includes('"type":"damage"') && !l.includes('"type":"heal"')) continue;
+      const e = JSON.parse(l);
+      if (e.t < since) continue;
+      const d = e.data;
+      if (e.type === "damage" && d.src?.me) roleStats.damage_dealt += d.amount;
+      if (e.type === "damage" && d.taken) roleStats.damage_taken += d.amount;
+      if (e.type === "heal" && d.src?.me) roleStats.healing_done += d.amount;
+    }
+  } catch { /* not there yet */ }
+}
 if (board) mkdirSync(board, { recursive: true });
 
 const [kind, n] = goal.split(":");
@@ -91,8 +117,9 @@ for (;;) {
     best_window: round(bestWindow), pace: round(pace), score: round((rate + bestWindow) / 2) };
   const sample = { elapsed_s, level, xp, money, value, ...rates, signals: sig };
   if (samples) appendFileSync(samples, JSON.stringify(sample) + "\n");
+  tallyEvents(start);
   if (board) writeFileSync(`${board}/${char}.json`, JSON.stringify({ char, level: round(sig.level), progress: value, ...rates, elapsed_s,
-    money: sig.money_copper, avg_item_level: sig.avg_item_level }));
+    money: sig.money_copper, avg_item_level: sig.avg_item_level, ...(role ? { role } : {}), ...(eventsFile ? roleStats : {}) }));
   if (record) appendFileSync(record, JSON.stringify({ t: Date.now(), ev: "score", n: char, value, level, ...rates }) + "\n");
   if (value >= need || Date.now() - start > timeout) {
     console.log(JSON.stringify({ char, goal, met: value >= need, ...sample, at: new Date().toISOString() }));

@@ -9,7 +9,9 @@
 # Starting conditions (applied in the DB before the agent's session): $LEVEL, $MONEY (copper),
 # $START="x y z map zone" (e.g. Goldshire: "-9460 70 56.6 0 12"). $CHANNEL: zone channel auto-joined
 # (default "General - Elwynn Forest"; real clients join their zone's General automatically).
-# $HINT: extra line appended to the task prompt. $GO: file to wait for before the judge/agent start
+# $HINT: extra line appended to the task prompt. $SPEC: a key from specs.tsv (class spec, role, what to optimise, key
+# stats) for the character's identity line. $ROSTER: the other players (one per line). $NOTICE: a file whose text
+# is added to the prompt (e.g. what changed since the agent's last run). $GO: file to wait for before the judge/agent start
 # (team.sh uses it to start every clock together; touches $GO.<name>.ready once the session is up).
 set -e
 { # parsed whole before running, so editing this file can't break runs in progress
@@ -36,10 +38,21 @@ case "$goal" in
   money:*) goal_text="hold $n copper" ;;
   item:*) goal_text="own item $n (item_template entry)" ;;
   quality:*) goal_text="own any item of quality $n or better (3 = rare)" ;;
-  score:*) goal_text="make as much overall progress with your character as you can" ;;
+  score:*) goal_text="progress as much as you can in $mins minutes. You choose your own adventure: where to go, what to
+fight, which quests to take, who to play with" ;;
   achpoints:*) goal_text="earn as many achievement points as you can" ;;
   quest:*) goal_text="complete the quest \"$(agent/bin/worlddb "SELECT LogTitle FROM quest_template WHERE ID = $n" | tail -1)\" (quest $n): accept it, do its objectives, and turn it in" ;;
 esac
+identity="Your character $char is already logged in and waiting."
+if [ -n "$SPEC" ]; then
+  line=$(awk -F'\t' -v k="$SPEC" '$1 == k' specs.tsv)
+  [ -n "$line" ] || { echo "$name: unknown SPEC $SPEC (see specs.tsv)" >&2; exit 1; }
+  spec_title=$(printf %s "$line" | cut -f2) role=$(printf %s "$line" | cut -f3) optimise=$(printf %s "$line" | cut -f4) stats=$(printf %s "$line" | cut -f5)
+  race_name=$(echo "1 Human|2 Orc|3 Dwarf|4 Night Elf|5 Undead|6 Tauren|7 Gnome|8 Troll|10 Blood Elf|11 Draenei" | tr '|' '\n' | awk -v r="$race" '$1 == r { $1 = ""; sub(/^ /, ""); print }')
+  identity="You are $char, a $race_name $spec_title. Your role is $role: you should optimise for $optimise.
+Your key stats are $stats. Build your character for that: your talents (talents.list, talents.learn), the spells
+you train and the gear you choose. $char is already logged in and waiting."
+fi
 score_text="You are scored on wall-clock time until an external judge sees the goal met; if time
 runs out ($mins minutes), your progress toward it is the score."
 stop_text="Do not stop until the goal is met: confirm it yourself with wow before finishing."
@@ -59,7 +72,8 @@ stuck cost you through the time they lose. There is no finish line.
 FACTION SCORE: every player on this server is on your faction (Alliance), and the faction's score is the sum of
 all players' scores. It is reported alongside yours; your own score is still yours alone.
 The standings command shows where every player in this run stands right now (rank, score, recent rate, level) and
-the faction total."
+the faction total. It also shows each player's role and their damage dealt, damage taken and healing done this
+run: the measure of how each plays their role. That's not scored: it's for you to see how you and others play."
   stop_text="Do not stop early: keep improving your score until the time runs out." ;;
 esac
 
@@ -97,12 +111,13 @@ agent/bin/wow "LIB = '$ws/'; chat.join('${CHANNEL:-General - Elwynn Forest}', 1)
 # ponytail: one zone channel joined at start; no auto-rejoin on zone change (agents can join_channel)
 
 [ -z "$GO" ] || { touch "$GO.$name.ready"; until [ -e "$GO" ]; do sleep 1; done; }
-bun judge/judge.ts "$char" "$goal" --timeout "${mins}m" --samples "$dir/samples.jsonl" --record "$record" --board "$board" > "$dir/judge.json" &
+bun judge/judge.ts "$char" "$goal" --timeout "${mins}m" --samples "$dir/samples.jsonl" --record "$record" --board "$board" \
+  --events "$events/$char.events.jsonl" ${role:+--role "$role"} > "$dir/judge.json" &
 judge=$!
 
 cat > "$dir/prompt.md" <<PROMPT
-You are playing World of Warcraft (3.3.5a) on a local private server set up for AI benchmarking. Your
-character $char is already logged in and waiting.
+You are playing World of Warcraft (3.3.5a) on a local private server set up for AI benchmarking.
+$identity
 
 GOAL: $goal_text.${HINT:+ $HINT}
 
@@ -132,11 +147,15 @@ save anything reusable as you go. Read NOTES.md first and keep it up to date: wh
 killed you, good spots and routes. It's how your next run starts ahead of this one.
 
 OTHER PLAYERS: the other characters on this server are other AI agents like you, each playing their own run at the
-same time. You can talk to them: say (nearby), whispers, party chat, the zone's General channel, or a channel of your
+same time. You can team up with them or compete with them.${ROSTER:+ This run:
+$ROSTER
+}You can talk to them: say (nearby), whispers, party chat, the zone's General channel, or a channel of your
 own (chat.join(name)). Messages to you arrive as chat events: every wow reply shows new ones, and
 wow wait --types chat blocks until the next. You
 can invite them to groups, trade information, plan together or ignore them: how you deal with them is up to you.
 AGENTS.md ("Other players") explains the game mechanics of playing together.
+
+$( [ -n "$NOTICE" ] && cat "$NOTICE")
 
 RULES: Progress through legitimate gameplay only. You have no GM access; don't try to modify the server,
 the database, the judge or the harness. Your session log is session.log in your working directory.

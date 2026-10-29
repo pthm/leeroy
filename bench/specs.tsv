@@ -1,0 +1,16 @@
+# key	class - spec	role	optimise for	key stats
+arms	Warrior - Arms	DPS	damage dealt	Strength, then Agility (crit) and hit
+fury	Warrior - Fury	DPS	damage dealt	Strength, Agility
+protwarrior	Warrior - Protection	Tank	holding enemies' attention (threat) and surviving the damage you take for your group	Stamina, Strength and Armor (Defense later)
+ret	Paladin - Retribution	DPS	damage dealt	Strength, then Agility (crit) and some Intellect for mana
+protpaladin	Paladin - Protection	Tank	holding enemies' attention (threat) and surviving the damage you take for your group	Stamina, Strength and Armor, some Intellect for mana
+holypaladin	Paladin - Holy	Healer	healing done: keeping yourself and the players you're with alive	Intellect, then spell power and Spirit
+combat	Rogue - Combat	DPS	damage dealt	Agility, then Strength (attack power)
+assassination	Rogue - Assassination	DPS	damage dealt	Agility, then Strength (attack power)
+subtlety	Rogue - Subtlety	DPS	damage dealt	Agility, then Strength (attack power)
+holy	Priest - Holy	Healer	healing done: keeping yourself and the players you're with alive	Intellect and Spirit (mana and its regeneration), then spell power
+discipline	Priest - Discipline	Healer	healing done and damage prevented: keeping yourself and the players you're with alive	Intellect and Spirit, then spell power
+shadow	Priest - Shadow	DPS	damage dealt	Intellect, Spirit and spell power
+fire	Mage - Fire	DPS	damage dealt	Intellect and spell power, then Spirit
+frost	Mage - Frost	DPS	damage dealt	Intellect and spell power, then Spirit
+arcane	Mage - Arcane	DPS	damage dealt	Intellect and spell power, then Spirit
