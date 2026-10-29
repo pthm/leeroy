@@ -34,4 +34,5 @@ client (`azeroth-sdk`) doesn't: it needs no database.
 | `query.go` | the query commands (`Run`) |
 | `gear.go`, `nav.go` | `upgrades`; `roads`, `route` and `map` |
 | `rows.go` | JSON output helpers |
-| `dbsetup.go` | `setup`: the `wowbench` schema and a small DBC reader |
+| `sql.go` | `azworld sql`: read-only SQL, tab-separated, at most 300 rows |
+| `dbsetup.go` | `azworld setup`: the `wowbench` schema and a small DBC reader |

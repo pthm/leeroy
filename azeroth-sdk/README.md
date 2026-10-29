@@ -33,12 +33,12 @@ worldserver ──> client ─────> session ─────> script ─�
 
 ## Build and run
 
-The root `go.work` includes this module, so build from the repo root:
+The root `go.work` includes this module, so build from the repo root (`./build.sh` puts every tool in `bin/`):
 
 ```sh
-go build -o azeroth-sdk/azsdk ./azeroth-sdk/cmd/azsdk
-azeroth-sdk/azsdk -config azsdk.json             # several characters from a config file
-azeroth-sdk/azsdk -char Garrick -account agent1  # one character, no config file (as the bench runs it)
+./build.sh
+bin/azsdk -config azsdk.json             # several characters from a config file
+bin/azsdk -char Garrick -account agent1  # one character, no config file (as the bench runs it)
 ```
 
 `data_dir` needs the server's `maps/`, `mmaps/`, `vmaps/` and `dbc/` (copied out of AzerothCore's client-data
@@ -111,8 +111,8 @@ cd azeroth-sdk && go run ./cmd/apigen -rpc http://127.0.0.1:8090/rpc   # or agai
 
 ```sh
 cd azeroth-sdk
-go test ./script/ ./client/ ./navigation/                       # offline
-AC_DATA_DIR=$PWD/../data go test ./pathfinding/ ./movement/   # tests that need the server data skip without it
+go test ./...                                  # tests that need the server data skip without it
+AC_DATA_DIR=$PWD/../data go test ./...         # with it: pathfinding and movement on the real maps
 ```
 
 ## Other tools

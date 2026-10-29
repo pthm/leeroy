@@ -52,8 +52,8 @@ the auth server), on ports 8090, 8091, ...:
    scenario's `channel`.
 
 Once every session is up it writes the start time to `go`, and every judge and agent starts at that moment: the
-judge (in the supervisor), the prompt (`prompt.md`: goal, how it's scored, how to work, the other players, the
-notice, the rules) and the agent in its workspace until the clock runs out. `meta.json` is written once the runtime
+judge (in the supervisor), the prompt (`prompt.md`: who it plays, the goal, how it's scored, the run's length, the other
+players, the notice, the rules) and the agent in its workspace until the clock runs out. `meta.json` is written once the runtime
 reports its model.
 
 When a judge is done the supervisor stops that agent (its whole process group), calms the character (stops its
@@ -96,11 +96,11 @@ restarts on the current build and its conversation resumes. Its judge keeps runn
 | `<agent>/session.log` | the session log, copied from the workspace when the session stops |
 | `<agent>.record.jsonl` | the client-side event log for the viewer (positions, combat, chat, API calls) |
 | `<Char>.events.jsonl` | the character's event stream; the judge reads combat and cooperation from it |
-| `board/<Char>.json` | each judge's latest result (with `minutes_left`), read by `standings` and `wow` |
+| `board/<Char>.json` | each judge's latest result (with `minutes_left`), read by `standings` |
 | `alerts.log` | agents that stopped early |
 | `control.json` | while the supervisor runs: its control API |
 | `paused` | the run was paused |
-| `team.json`, `report.json` | the results and the report card ([judge](../azbench/judge/README.md#judge-report)) |
+| `team.json`, `report.json` | the results and the report card ([judge](../azbench/judge/README.md#azbench-report)) |
 | `replay.html` | the replay |
 
 `team.json`:

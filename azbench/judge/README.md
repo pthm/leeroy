@@ -1,7 +1,7 @@
 # judge
 
 Scoring and reporting, in one place. The judge scores one character by polling the character database (the
-server's record, not the client's); `judge report` writes the report card and `team.json` after a run. All three are
+server's record, not the client's); `azbench report` writes the report card and `team.json` after a run. All three are
 `azbench` subcommands. Every measure they share (the score's rates, combat totals, cooperation, time use) is
 defined once, in [`azeroth-sdk/metrics`](../../azeroth-sdk/metrics), which the client's in-game progress events use
 too. The server saves characters every 15 s (`server/override.yml`), and the judge polls every 15 s by default.
@@ -16,8 +16,9 @@ too. The server saves characters every 15 s (`server/override.yml`), and the jud
 |---|---|
 | `main.go` | the live judge |
 | `signals.go` | the progress signals |
-| `report.go` | `judge report` |
+| `report.go` | `azbench report` |
 | `streams.go` | tails the event streams in a run or team dir |
+| `obj.go` | key-ordered JSON objects for samples, the board and the result line |
 | `score.json` | the weights for `score:` goals, and their version (built into the binary: rebuild with `./build.sh`) |
 
 ## The judge
@@ -123,7 +124,7 @@ gave you XP; a heal is useful if its target lands a useful hit within 30 s.
 
 Reported, not scored. Last run: 0.61 while grouped vs 0.02 solo; the healer led (0.37 overall).
 
-## judge report
+## azbench report
 
 `azbench report <run dir | team dir>` writes `report.json` and prints a table; for a team dir it also writes
 `team.json` (each judge's result ranked by score, `faction_score`, `by_runtime`, `team_s`). `azbench run` and `resume`

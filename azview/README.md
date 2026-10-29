@@ -115,8 +115,9 @@ Without files or `--run` it tails `server/azerothcore/env/dist/logs/recorder.jso
 follows the newest data until you seek back; the Live button returns to it.
 
 With `--run`, player chat comes once from the server log, with sender names (when it exists), instead of each agent's
-received copy; NPC chat from the client records is kept, once per speaker, text and 2 s. A team dir's agents are found
-by their run dirs beside it (`<time>-<agent>/`), and the character name is read from each run's `prompt.md`.
+received copy; NPC chat from the client records is kept, once per speaker, text and 2 s. Each agent's transcript is
+`<run dir>/<agent>/agent.jsonl` (older team runs: a `<time>-<agent>/` dir beside it), and its character name is read
+from the `prompt.md` next to it.
 
 The map is served as tiles (`/tile/<map>/<gx>/<gy>.png`, one per 533-yard grid square), rendered on demand and kept
 in memory:

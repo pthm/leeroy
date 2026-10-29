@@ -19,7 +19,7 @@ docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml d
 docker logs -f ac-worldserver
 ```
 
-Always pass both compose files (the `package.json` scripts do). `override.yml` sets `name: server`, which pins the
+Always pass both compose files. `override.yml` sets `name: server`, which pins the
 compose project name, so the volumes are always `server_ac-database` (MySQL) and `server_ac-client-data` (maps,
 vmaps, mmaps, DBC files) whatever directory compose runs from.
 
@@ -87,7 +87,7 @@ and so by the agents.
 
 ## Resetting characters
 
-To delete a character so its name can be used again, soft-delete it in SQL (with the character logged out), then
+`bin/azbench reset <Char>...` does this. By hand: to delete a character so its name can be used again, soft-delete it in SQL (with the character logged out), then
 restart the worldserver, which caches character names:
 
 ```sh

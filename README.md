@@ -45,7 +45,7 @@ for each role but not scored. Agents can see the standings during the run.
 
 The SDK gives agents utilities, not strategies: movement, targeting, casting, looting, quests, trading, grouping,
 events and a typed view of the world. Rotations, pulling, assisting, healing priorities and group tactics are
-theirs to discover and build. The guide they get explains how the game works, not what to do.
+theirs to discover and build. The docs they get describe how the game and the SDK work, not what to do.
 
 ## Architecture
 
@@ -64,7 +64,8 @@ theirs to discover and build. The guide they get explains how the game works, no
     ▼
   AzerothCore (docker: authserver, worldserver, MySQL): stock, plus config and the optional mod-recorder
     ▲
-  judge (one per agent): reads the character database every 15 s → score samples, standings
+  azbench: one supervisor per run: sessions, agents, and a judge per player that reads the character
+           database every 15 s → score samples, standings, report card
   azview: live view / replay from the recordings → map, routes, chat, combat, agent transcripts, scores
   azworld: world queries (NPCs, quests, items, routes, maps) from the world database and the game data
 ```
@@ -124,12 +125,14 @@ bin/azbench matrix bench/matrices/starter.yaml --dry-run # a grid of solo runs
 A scenario ([bench/scenarios/README.md](bench/scenarios/README.md)) lists the agents, the characters they play, the
 goal and the starting conditions. Each agent gets a fresh non-GM account and runs as headless Claude Code (or Codex CLI) inside `bench/workspaces/<name>/` (its
 persistent script library). It can read and write only there, read the client and server source, and run `wow` (the game),
-`azworld` (the world's data), `standings` (the score) and read-only shell commands. Results go to `bench/runs/<id>/`:
+`azworld` (the world's data), `standings` (the score) and read-only shell commands. Results go to `bench/runs/<time>-<scenario>/`, with each agent's files in `<agent>/`:
 - `judge.json`: the score;
 - `samples.jsonl`: progress every 15 s;
 - `agent.jsonl`: the transcript;
 - `session.log`;
-- `replay.html`.
+
+and for the whole run `team.json`, `report.json` (the report card) and `replay.html`
+([bench/README.md](bench/README.md#run-directories)).
 
 Goals: `level:<n>`, `item:<entry>`, `quality:<n>` (3 = rare), `money:<copper>`, `quests:<n>`, `quest:<id>`,
 `achpoints:<n>`, and `score:<n>`: progress per hour (`azbench/judge/score.json` sets which signals count; v6 counts XP
@@ -167,7 +170,7 @@ conventions: class colours, health/power bar colours, chat-type colours and item
 bin/account agent1 agent1                                         # non-GM account
 bin/azsdk -char Agentone -account agent1 -race 1 -class 1 -listen 127.0.0.1:8090 -data data > agent1.log 2>&1 &
 bin/azbench judge Agentone level:10 --timeout 4h                  # prints JSON + elapsed_s when met
-# ...give the agent the docs (see bench/README.md) + the goal; it drives the session with bench/agent/bin/wow
+# ...give the agent the docs (see bench/README.md#the-agent) + the goal; it drives the session with bench/agent/bin/wow
 ```
 
 ## License
