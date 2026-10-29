@@ -22,6 +22,7 @@ name=$1 char=$2 race=$3 class=$4 goal=$5 mins=${6:-60}
 export WOW_PORT=${WOW_PORT:-8090}
 id="$(date +%Y%m%d-%H%M%S)-$name"; dir="runs/$id"
 root=$(pwd); repo=$(dirname "$root"); ws="$root/workspaces/$name"
+[ -n "$GO" ] || "$repo/build.sh" || exit 1 # the judge, viewer and agent tools in bin/ (team.sh builds them once)
 # client-side event log for replays: in the team dir when run by team.sh (one replay for everyone)
 record="$root/$dir/record.jsonl"; [ -z "$GO" ] || record="$(dirname "$GO")/$name.record.jsonl"
 board="$root/$dir/board"; [ -z "$GO" ] || board="$(dirname "$GO")/board" # judges' latest results, for `standings`
@@ -42,6 +43,9 @@ case "$goal" in
   score:*) goal_text="progress as much as you can in $mins minutes. You choose your own adventure: where to go, what to
 fight, which quests to take, who to play with" ;;
   achpoints:*) goal_text="earn as many achievement points as you can" ;;
+  skill:*) sk=${n%%:*}; goal_text="raise $(case $sk in 164) echo Blacksmithing;; 165) echo Leatherworking;; 171) echo Alchemy;; \
+    182) echo Herbalism;; 185) echo Cooking;; 186) echo Mining;; 197) echo Tailoring;; 202) echo Engineering;; 333) echo Enchanting;; \
+    356) echo Fishing;; 393) echo Skinning;; 129) echo \"First Aid\";; 755) echo Jewelcrafting;; 773) echo Inscription;; *) echo "skill $sk";; esac) to ${n#*:}: learn it from a trainer and practise it" ;;
   quest:*) goal_text="complete the quest \"$(agent/bin/worlddb "SELECT LogTitle FROM quest_template WHERE ID = $n" | tail -1)\" (quest $n): accept it, do its objectives, and turn it in" ;;
 esac
 identity="Your character $char is already logged in and waiting."
@@ -78,7 +82,7 @@ run: the measure of how each plays their role. That's not scored: it's for you t
   stop_text="Do not stop early: keep improving your score until the time runs out." ;;
 esac
 
-bun ../server/account.ts "$acct" "$acct" # non-GM
+"$repo/bin/account" "$acct" "$acct" # non-GM
 docker exec ac-database mysql -uroot -ppassword -e "CREATE USER IF NOT EXISTS 'worldreader'@'%' IDENTIFIED BY 'worldreader';
   GRANT SELECT ON acore_world.* TO 'worldreader'@'%';" 2>/dev/null # for worlddb
 sql() { docker exec ac-database mysql -uroot -ppassword -N acore_characters -e "$1" 2>/dev/null; }
@@ -112,7 +116,7 @@ agent/bin/wow "LIB = '$ws/'; chat.join('${CHANNEL:-General - Elwynn Forest}', 1)
 # ponytail: one zone channel joined at start; no auto-rejoin on zone change (agents can join_channel)
 
 [ -z "$GO" ] || { touch "$GO.$name.ready"; until [ -e "$GO" ]; do sleep 1; done; }
-bun judge/judge.ts "$char" "$goal" --timeout "${mins}m" --samples "$dir/samples.jsonl" --record "$record" --board "$board" \
+"$repo/bin/judge" "$char" "$goal" --timeout "${mins}m" --samples "$dir/samples.jsonl" --record "$record" --board "$board" \
   --events "$events/$char.events.jsonl" ${role:+--role "$role"} --runtime "${RUNTIME:-claude}" > "$dir/judge.json" &
 judge=$!
 
@@ -126,7 +130,7 @@ $score_text
 
 Read AGENTS.md first. It covers playing the game well (gear, spells, combat, pulls), your session (wow), how to
 play well with the SDK (bags, vendors,
-trainers, death, other players), the runtime and the Lua API, and the world data tools: wowdb (where a quest's targets are,
+trainers, death, other players), the runtime and the Lua API, and the world data tools: azworld (where a quest's targets are,
 what drops an item, the nearest trainer) and worlddb (read-only SQL over the game's world database).
 Reference source (read-only): the client and its Lua bindings in $repo/azeroth-sdk (client/, session/,
 script/), the server in $repo/server/azerothcore/src/server/game and $repo/server/azerothcore/src/server/shared.
@@ -197,7 +201,7 @@ codex)
   (cd "$ws" && PATH="$root/agent/bin:$PATH" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 WOWBENCH_BOARD="$board" WOWBENCH_CHAR="$char" exec timeout "${mins}m" claude -p "$(cat "$root/$dir/prompt.md")" \
     --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
     --add-dir "$repo/azeroth-sdk/client" "$repo/azeroth-sdk/session" "$repo/azeroth-sdk/script" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
-    --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(wowdb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
+    --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(azworld:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
       "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Bash(standings:*)" "Bash(party:*)" "Edit(./**)" --disallowedTools "Edit(~/.claude/**)" "Read(~/.claude/**)" \
     > "$root/$dir/agent.jsonl" 2>&1) &
   agent=$! ;;
@@ -226,6 +230,6 @@ watch=$!
 
 wait $judge || true
 cat "$dir/judge.json"
-[ -n "$GO" ] || bun ../server/recorder/replay.ts "$dir" >/dev/null 2>&1 || true # team.sh builds one replay for the whole team
+[ -n "$GO" ] || "$repo/bin/azview" replay "$dir" >/dev/null 2>&1 || true # team.sh builds one replay for the whole team
 exit
 }

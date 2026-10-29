@@ -9,6 +9,7 @@ team=$(cd "$1" && pwd) mins=$2 msg=$(cd "$(dirname "$3")" && pwd)/$(basename "$3
 cd "$(dirname "$0")" # relative to bench/
 [ -f "$msg" ] || { sed -n 2,6p "$0"; exit 1; }
 root=$(pwd); repo=$(dirname "$root")
+"$repo/build.sh"
 sql() { docker exec ac-database mysql -uroot -ppassword -N acore_characters -e "$1" 2>/dev/null; }
 cat agent/AGENTS.md ../azeroth-sdk/docs/playing.md ../azeroth-sdk/docs/guide.md ../azeroth-sdk/docs/runtime.md ../azeroth-sdk/docs/lua-api.md ../azeroth-sdk/docs/api-reference.md ../azeroth-sdk/docs/world-data.md > "$team/AGENTS.md"
 
@@ -36,7 +37,7 @@ resume_one() { # <agent> <port>
   done
   agent/bin/wow "LIB = '$ws/'; chat.join('${CHANNEL:-General - Elwynn Forest}', 1)" >/dev/null
   trap 'kill $agent $watch 2>/dev/null; "$root/agent/calm.sh"; kill $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM
-  bun judge/judge.ts "$char" "$goal" --timeout "${mins}m" --resume "$dir/samples.jsonl" --samples "$dir/samples.jsonl" \
+  "$repo/bin/judge" "$char" "$goal" --timeout "${mins}m" --resume "$dir/samples.jsonl" --samples "$dir/samples.jsonl" \
     --record "$record" --board "$team/board" --events "$team/$char.events.jsonl" \
     $(jq -r 'if .role != "" then "--role \(.role)" else empty end, "--runtime \(.runtime)"' "$dir/meta.json" 2>/dev/null) > "$dir/judge.json" &
   judge=$!
@@ -48,7 +49,7 @@ resume_one() { # <agent> <port>
       -p "$(LEFT=$left envsubst '$LEFT' < "$msg")" --resume "$sid" \
       --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
       --add-dir "$repo/azeroth-sdk/client" "$repo/azeroth-sdk/session" "$repo/azeroth-sdk/script" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
-      --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(wowdb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
+      --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(azworld:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
         "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Bash(standings:*)" "Bash(party:*)" "Edit(./**)" --disallowedTools "Edit(~/.claude/**)" "Read(~/.claude/**)" \
       >> "$dir/agent.jsonl" 2>&1) &
   fi
@@ -70,4 +71,4 @@ n=$(ls "$team"/*.record.jsonl | wc -l)
 for f in "$team"/*.out; do grep '^{' "$f" | tail -n 1; done | jq -s --argjson n $n '{agents: sort_by(-(.score // .value)), faction_score: (map(.score // 0) | add),
   by_runtime: (group_by(.runtime // "claude") | map({runtime: (.[0].runtime // "claude"), players: length, score: (map(.score // 0) | add), best: (map(.score // 0) | max)})),
   team_s: (if length == $n and all(.met) then map(.elapsed_s) | max else null end)}' | tee "$team/team.json"
-bun ../server/recorder/replay.ts "$team" || true
+"$repo/bin/azview" replay "$team" || true

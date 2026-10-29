@@ -6,7 +6,7 @@
 // The second form runs one character without a config file (one daemon per agent, as LEEROY's bench does).
 // -duration stops after that long (e.g. a short first login that only creates the character).
 // Each character logs in (creating it if needed) and stays in the world until the daemon stops. Agents
-// talk to http://<listen>/rpc (JSON-RPC 2.0); see api/ and sdk/ts.
+// talk to http://<listen>/rpc (JSON-RPC 2.0); see api/.
 package main
 
 import (

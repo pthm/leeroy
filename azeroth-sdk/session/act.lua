@@ -155,7 +155,7 @@ function A.reach_npc(o)
     if not r.ok then return result("act.reach_npc", false, nil, r.error.code, r.error.message) end
     npc = A.npc(o.npc)
   end
-  if not npc then return result("act.reach_npc", false, nil, "npc_not_found", "npc " .. tostring(o.npc) .. " not found nearby (pass its x, y, z from wowdb)") end
+  if not npc then return result("act.reach_npc", false, nil, "npc_not_found", "npc " .. tostring(o.npc) .. " not found nearby (pass its x, y, z from azworld)") end
   if npc.distance > 4 then
     local r = A.go_to{ x = npc.x, y = npc.y, z = npc.z, tolerance = 3 }
     if not r.ok then return result("act.reach_npc", false, nil, r.error.code, r.error.message) end
@@ -248,7 +248,7 @@ function A.fly(o)
       if role == "flight_master" and u.alive and (not o.npc or u.entry == o.npc) then master = master or u end
     end
   end
-  if not master then return result("act.fly", false, nil, "no_flight_master", "no flight master within 80 yd (wowdb near x y --kind flightmaster)") end
+  if not master then return result("act.fly", false, nil, "no_flight_master", "no flight master within 80 yd (azworld near x y --kind flightmaster)") end
   if master.distance > 4 then
     local r = A.approach{ unit = master.guid, range = 4 }
     if not r.ok then r.op = "act.fly" return r end
@@ -334,7 +334,7 @@ for name, d in pairs({
   cast = { "(id [, guid]) → result", "face the target and cast if ready (waits for the result in a task)" },
   buff = { "(id [, guid]) → result", "cast it unless the target already has the aura (nil then)" },
   go_to = { "{x, y [, z, tolerance = 4, tries = 3, unstuck = false]} → result", "walk there; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs" },
-  travel = { "{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false]} → result", "go_to each waypoint (e.g. from wowdb route)" },
+  travel = { "{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false]} → result", "go_to each waypoint (e.g. from azworld route)" },
   approach = { "{unit [, range = 4, timeout = 60]} → result<Creature>", "move within range of a unit and face it" },
   follow = { "{name [, distance = 5, until = fn]} → result", "stay near a player until until() is true" },
   reach_npc = { "{npc [, x, y, z]} → result<Creature>", "find an NPC by entry (walking to x, y, z first) and stand next to it" },

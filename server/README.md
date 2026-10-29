@@ -6,17 +6,17 @@ The local AzerothCore 3.3.5a server the agents play on, and the tools around it.
 |---|---|
 | `azerothcore/` | Upstream [azerothcore-wotlk](https://github.com/azerothcore/azerothcore-wotlk) checkout (gitignored) |
 | `override.yml` | Compose overrides layered on `azerothcore/docker-compose.yml` |
-| `account.ts` | Create or reset a game account (and its GM level) |
-| [`recorder/`](recorder/README.md) | `mod-recorder` (server-side event log) and the live viewer, replay builder and movement audit that read it |
+| `account/` | Create or reset a game account (and its GM level): `bin/account` |
+| `recorder/mod-recorder/` | `mod-recorder`: the server-side event log the viewer reads ([azview](../azview/README.md#recording-format)) |
 
 All commands run from the repo root. First-time setup (clone, build, client data) is in the [root README](../README.md).
 
 ## Running the server
 
 ```sh
-bun run server        # docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml up -d
-bun run server:down   # same files, down
-bun run server:logs   # docker logs -f ac-worldserver
+docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml up -d
+docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml down
+docker logs -f ac-worldserver
 ```
 
 Always pass both compose files (the `package.json` scripts do). `override.yml` sets `name: server`, which pins the
@@ -43,13 +43,14 @@ Ports are upstream's defaults and the override doesn't touch them:
 ## Accounts
 
 ```sh
-bun server/account.ts <user> <pass> [gmLevel]
-bun server/account.ts agent1 agent1      # non-GM
-bun server/account.ts dev dev 3          # GM level 3
+./build.sh                          # builds bin/account (and the other tools)
+bin/account <user> <pass> [gmLevel]
+bin/account agent1 agent1           # non-GM
+bin/account dev dev 3               # GM level 3
 ```
 
-`account.ts` computes the SRP6 salt and verifier itself and writes them to `acore_auth.account` through
-`docker exec ac-database mysql`, so the database container must be running. Details:
+`account` computes the SRP6 salt and verifier itself and writes them to `acore_auth.account` over the database
+port (3306), so the database container must be running. Details:
 - The username is upper-cased (as the client does); it must be alphanumeric, at most 16 characters.
 - An existing account is reset: new salt and verifier, so the new password applies.
 - GM access is always cleared first; a `gmLevel` other than 0 then adds an `account_access` row for all realms
@@ -71,7 +72,7 @@ set realmlist 127.0.0.1
 The realm list the authserver hands out comes from `acore_auth.realmlist`; its `address` must be reachable from the
 client (`127.0.0.1` when the client runs on the same machine).
 
-Log in with a GM account (`bun server/account.ts dev dev 3`) and, in game:
+Log in with a GM account (`bin/account dev dev 3`) and, in game:
 
 | Command | Effect |
 |---|---|
@@ -109,7 +110,7 @@ don't do it during a run. The in-game alternatives don't work here: `.character 
 | `server/azerothcore/env/dist/logs/Errors.log` | worldserver errors |
 | `server/azerothcore/env/dist/logs/Auth.log` | authserver log |
 | `server/azerothcore/env/dist/logs/DBImport.log` | database import (first boot, updates) |
-| `server/azerothcore/env/dist/logs/recorder.jsonl` | `mod-recorder` events, if installed ([recorder/](recorder/README.md)) |
-| `docker logs ac-worldserver` | worldserver console output (`bun run server:logs`) |
+| `server/azerothcore/env/dist/logs/recorder.jsonl` | `mod-recorder` events, if installed ([azview](../azview/README.md#recording-format)) |
+| `docker logs ac-worldserver` | worldserver console output (`docker logs -f ac-worldserver`) |
 
 Each container mounts `server/azerothcore/env/dist/logs` as `/azerothcore/env/dist/logs`.

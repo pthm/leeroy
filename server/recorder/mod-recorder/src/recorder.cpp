@@ -1,4 +1,4 @@
-// mod-recorder: writes one JSON line per player event to a file, for replaying runs (see replay.ts).
+// mod-recorder: writes one JSON line per player event to a file, for replaying runs (see server/recorder/replay).
 //   pos     every RECORDER_INTERVAL_MS (default 1000) per online player: position, health, power, level, state
 //   chat, dmg, heal, cast, kill, death, pvp, release, resurrect, level, xp, money, quest, achievement, loot,
 //   zone, spell (learned), login, logout, group (party changes: grp, leader, members; grp 0 = left)

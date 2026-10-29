@@ -51,7 +51,7 @@ theirs to discover and build. The guide they get explains how the game works, no
 
 ```
   agent (Claude Code or Codex, in its workspace)
-    │  shell: wow (Lua in the session), worlddb, wowdb, standings, party
+    │  shell: wow (Lua in the session), worlddb, azworld, standings, party
     │  JSON-RPC: script.eval, events.query, events.wait, api.call
     ▼
   azsdk (one daemon per agent)
@@ -65,7 +65,8 @@ theirs to discover and build. The guide they get explains how the game works, no
   AzerothCore (docker: authserver, worldserver, MySQL): stock, plus config and the optional mod-recorder
     ▲
   judge (one per agent): reads the character database every 15 s → score samples, standings
-  viewer: live.ts / replay.ts → map, routes, chat, combat, agent transcripts, scores
+  azview: live view / replay from the recordings → map, routes, chat, combat, agent transcripts, scores
+  azworld: world queries (NPCs, quests, items, routes, maps) from the world database and the game data
 ```
 
 The client only uses what a stock server sends, so the same SDK works on any AzerothCore server. Agents run
@@ -74,12 +75,15 @@ sandboxed: they can write only in their workspace, read the docs and source, and
 
 | Folder | What's in it |
 |---|---|
-| [`server/`](server/README.md) | The AzerothCore server: upstream checkout (`azerothcore/`, gitignored), config overrides (`override.yml`), account creation (`account.ts`), and `recorder/`: the `mod-recorder` module plus the viewers and tools that read the recordings ([`recorder/README.md`](server/recorder/README.md)) |
-| [`bench/`](bench/README.md) | The benchmark: launchers (`bench.sh`, `team.sh`), scoring (`judge/`), what agents get (`agent/`: task docs and the `wow`, `worlddb`, `wowdb` tools), the session runner (`client/play.sh`, one `azsdk` per agent), agent `workspaces/` and `runs/` |
-| [`azeroth-sdk/`](azeroth-sdk/README.md) | The Go headless client, `azsdk` daemon and TypeScript SDK, plus the Lua API docs, world data API (`worlddata/`: `wowdb`, `dbsetup`) and example scripts (a root `go.work` includes it: `go build ./azeroth-sdk/...`) |
+| [`server/`](server/README.md) | The AzerothCore server: upstream checkout (`azerothcore/`, gitignored), config overrides (`override.yml`), account creation (`account/`) and `recorder/mod-recorder`, the server-side event log |
+| [`bench/`](bench/README.md) | The benchmark: launchers (`bench.sh`, `team.sh`), scoring (`judge/`), what agents get (`agent/`: task docs and the `wow`, `worlddb`, `azworld` tools), the session runner (`client/play.sh`, one `azsdk` per agent), agent `workspaces/` and `runs/` |
+| [`azeroth-sdk/`](azeroth-sdk/README.md) | `azsdk`: the Go headless client and daemon the agents drive, plus the Lua API docs and example scripts. Only a game client: no database access |
+| [`azview/`](azview/README.md) | `azview`: the viewer (live and replay) and movement audit, from the recordings |
+| [`azworld/`](azworld/README.md) | `azworld`: world queries for agents, from the server's databases and the game data; `azworld setup` builds the `wowbench` schema they read |
 | `data/` | Client data copied out of the server (maps, navmesh, DBC files), shared by all of the above (gitignored) |
 
-All commands below run from the repo root.
+All Go code builds with `./build.sh` (binaries in `bin/`; `go.work` ties the root module to `azeroth-sdk`). All
+commands below run from the repo root.
 
 ## Setup (once)
 
@@ -88,17 +92,17 @@ All commands below run from the repo root.
 git clone --depth 1 https://github.com/azerothcore/azerothcore-wotlk.git server/azerothcore
 cp -r server/recorder/mod-recorder server/azerothcore/modules/   # replays (see below)
 docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml build   # ~10-20 min
-bun run server                                       # first boot downloads client data + imports DBs
+docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml up -d   # first boot downloads client data + imports DBs
 
 # client data, copied out of the server's volume (~3GB)
 mkdir -p data/dbc && docker run --rm -v server_ac-client-data:/src:ro -v $PWD/data:/dst alpine sh -c \
   'cp -r /src/maps /src/mmaps /src/vmaps /dst/ && cd /src/dbc && cp Spell.dbc Achievement.dbc Achievement_Criteria.dbc \
    Achievement_Category.dbc AreaTable.dbc WorldMapOverlay.dbc Faction.dbc FactionTemplate.dbc SpellCastTimes.dbc \
    SpellRange.dbc AreaTrigger.dbc Talent.dbc TalentTab.dbc TaxiNodes.dbc TaxiPath.dbc TaxiPathNode.dbc SkillLine.dbc SkillLineAbility.dbc Lock.dbc /dst/dbc/'
-bun azeroth-sdk/worlddata/dbsetup.ts   # wowbench schema: achievements, areas, spawn zones, faction hostility, spells
+./build.sh && bin/azworld setup   # wowbench schema: achievements, areas, spawn zones, faction hostility, spells
 
-# optional, from a 3.3.5a game install: the game's minimap (viewer and `wowdb map`) and its road textures (road
-# map for `wowdb route`); ~150MB, a few seconds
+# optional, from a 3.3.5a game install: the game's minimap (viewer and `azworld map`) and its road textures (road
+# map for `azworld route`); ~150MB, a few seconds
 go run ./azeroth-sdk/cmd/clientdata -client ~/path/to/WoW_3.3.5a extract data
 
 # the client (bench/client/play.sh also builds it on first use)
@@ -117,7 +121,7 @@ LEVEL=10 START="-9460 70 56.6 0 12" bench/team.sh score:100000 60 a1:Garrick:1:1
 
 Each agent gets a fresh non-GM account and runs as headless Claude Code (or Codex CLI, `RUNTIME=codex`) inside `bench/workspaces/<name>/` (its
 persistent script library). It can read and write only there, read the client and server source, and run `wow`, `worlddb`,
-`wowdb` and read-only shell commands. Results go to `bench/runs/<id>/`:
+`azworld` and read-only shell commands. Results go to `bench/runs/<id>/`:
 - `judge.json`: the score;
 - `samples.jsonl`: progress every 15 s;
 - `agent.jsonl`: the transcript;
@@ -140,13 +144,13 @@ quests, achievements, loot):
 - **Server side, optional and authoritative:** the `mod-recorder` module (`server/recorder/mod-recorder`) logs every
   player to `server/azerothcore/env/dist/logs/recorder.jsonl`.
 
-Viewers (`server/recorder/`):
-- `bun server/recorder/live.ts [log ...] [--run bench/runs/<ts>-team] [--port 8800] [--since 60]`: live view at
+Viewers ([`azview/`](azview/README.md)):
+- `bin/azview live [log ...] [--run bench/runs/<ts>-team] [--port 8800] [--since 60]`: live view at
   http://localhost:8800/ that tails the logs (default: the server log; `--run` reads a team run's records and agent
   transcripts); the playhead follows the newest data until you seek back.
-- `bun server/recorder/replay.ts bench/runs/<id>`: a self-contained `replay.html` for a finished run (the run's own
+- `bin/azview replay bench/runs/<id>`: a self-contained `replay.html` for a finished run (the run's own
   records if it has them, else the server log; `--log`, `--chars`, `--from`, `--to` to choose).
-- `bun server/recorder/movecheck.ts [log]` audits recorded movement for speed, slopes and swimming.
+- `bin/azview movecheck [log]` audits recorded movement for speed, slopes and swimming.
 
 Both viewers show the game's minimap (when client data is extracted, else a terrain map rendered from `data/maps`),
 every player's route, a seek bar with key events marked,
@@ -157,9 +161,9 @@ conventions: class colours, health/power bar colours, chat-type colours and item
 ## Run a task by hand
 
 ```sh
-bun server/account.ts agent1 agent1                               # non-GM account
+bin/account agent1 agent1                                         # non-GM account
 WOW_PORT=8090 ACCOUNT=agent1 bench/client/play.sh Agentone > bench/runs/agent1.log 2>&1 &
-bun bench/judge/judge.ts Agentone level:10 --timeout 4h           # prints JSON + elapsed_s when met
+bin/judge Agentone level:10 --timeout 4h                          # prints JSON + elapsed_s when met
 # ...give the agent the docs (see bench/README.md) + the goal; it drives the session with bench/agent/bin/wow
 ```
 

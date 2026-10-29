@@ -38,8 +38,8 @@ to build.
 - Some mobs are unreachable: on a ledge, inside a closed building, in a mine level below you. If the distance to
   a target hasn't dropped for ~5 seconds, give up on it and remember its guid so you don't pick it again. In
   mines and caves, prefer targets with a small height difference (`|mob.z - my_z| < 10`).
-- Plan long trips with `wowdb route x1 y1 x2 y2 --level <yours>`: waypoints that prefer roads and steer around
-  hostile mobs near or above your level, plus the camps it still passes. `wowdb map x y --level <yours>` draws the
+- Plan long trips with `azworld route x1 y1 x2 y2 --level <yours>`: waypoints that prefer roads and steer around
+  hostile mobs near or above your level, plus the camps it still passes. `azworld map x y --level <yours>` draws the
   area (terrain, roads, hostile mobs by danger) as a PNG you can look at with your Read tool. `move_to` alone takes
   the shortest walkable line, straight through camps.
 - Entering a place triggers it like in the real game: "explore the mine" objectives complete when you walk in, and
@@ -63,17 +63,17 @@ to build.
   Keep an eye on `items.free_slots()`.
 - `items.list()` gives each item's name, quality and vendor price once its info has loaded (a second after it
   first shows up). Grey items (quality 0) exist only to be sold.
-- At a vendor (`wowdb near x y --kind vendor`), `vendor.sell_junk(vendor)` sells all grey items;
+- At a vendor (`azworld near x y --kind vendor`), `vendor.sell_junk(vendor)` sells all grey items;
   `vendor.sell(vendor, item)` sells anything else with a price. `items.destroy(item)` frees a slot anywhere.
   Selling also earns money (wealth is part of most scores).
 - Buy with `vendor.items(vendor)` (call it twice: the first call asks the vendor) then
   `vendor.buy(vendor, entry, count)`. Bags (more slots) are sold by general goods and bag vendors.
-- New class spells come from your class trainer every couple of levels: `wowdb npc <trainer>` lists them with
+- New class spells come from your class trainer every couple of levels: `azworld npc <trainer>` lists them with
   level and cost, `trainer.learn(trainer, spell)` learns one (its result says if it didn't). The level-70
   "<Class> Trainer" NPCs in Northshire are dummies; use the named trainers.
 - Gear wears down with every death. At 0 durability an item does nothing: a broken weapon means fighting bare-handed
   and weapon skills fail with `equipped_item_class`; a `gear_broken` event tells you after you revive. Check `items.broken()` and `items.list()` durability, and
-  repair at an armorer or weaponsmith (a creature with the `repair` role; `wowdb near x y --kind repair`) with `vendor.repair(npc)`.
+  repair at an armorer or weaponsmith (a creature with the `repair` role; `azworld near x y --kind repair`) with `vendor.repair(npc)`.
 - Your race's capital flight path is known from the start (humans: Stormwind); new ones are learned by talking to
   their flight master.
 - From level 10 you get a talent point every level: `talents.list()` shows your trees and what's available,
@@ -92,16 +92,16 @@ to build.
 - Not everything is wearable: each class can wear certain armor types (cloth, leather, mail, plate, shields) and use
   certain weapons, and some weapon skills must be learned from a trainer first. `compare` and `item_info` say
   `usable = false` with the reason; equipping an unusable item fails.
-- Quest rewards: many quests let you choose one of several items. `wowdb quest <id>` lists the choices (`choose_one`,
+- Quest rewards: many quests let you choose one of several items. `azworld quest <id>` lists the choices (`choose_one`,
   in order); pass the index (0 = first) to `quests.turn_in(npc, quest, index)` or `act.turn_in{..., reward = index}`.
   The first choice is often not one you can use.
-- Finding gear: `wowdb upgrades --class <yours> --level <yours> --near x,y [--slot chest]` lists items you can use,
+- Finding gear: `azworld upgrades --class <yours> --level <yours> --near x,y [--slot chest]` lists items you can use,
   best first, with where to get them (quest rewards, vendors, and mob drops with their drop chance, including
-  uncommon/rare drops from named mobs). `wowdb item <id>` has every source of one item.
+  uncommon/rare drops from named mobs). `azworld item <id>` has every source of one item.
 
 ## Quests and objects
 
-- `wowdb quest <id>` gives the giver, objectives with spawn locations, the turn-in NPC and the next quest in
+- `azworld quest <id>` gives the giver, objectives with spawn locations, the turn-in NPC and the next quest in
   the chain. Many quests only become available after an earlier one, or at a minimum level.
 - Quest objects (crates, barrels, chests) are used with `objects.use(guid)` within ~5 yards. Find them with
   `objects.find(entry)` or `objects.nearby(40)`. A quest object usually does nothing unless you have the quest
@@ -111,7 +111,7 @@ to build.
 
 ## Travel
 
-- **Flights.** Flight masters (creatures with the `flight_master` role; `wowdb near x y --kind flightmaster`) fly you
+- **Flights.** Flight masters (creatures with the `flight_master` role; `azworld near x y --kind flightmaster`) fly you
   between flight points. You have to discover a point first: talk to its flight master once (`flights.map(npc)`
   does it, and the result says `learned`). `flights.map` lists the points you can fly to from there with their
   cost; `flights.take(npc, node)` flies you (via other known points when there's no direct path) and resolves when
@@ -141,8 +141,8 @@ when you're low. You can't earn exploration credit as a ghost.
 
 | You see | It usually means | Try |
 |---|---|---|
-| `move_to` with `no_path` / ends `stuck` | no walkable route to that point (inside a building, under the map, wrong floor) | pass the target's z (`world.ground_z(x, y, z)`), a point a few yards away, or `wowdb route` |
-| `go_to` "stuck" / distance not dropping | blocked by terrain or a wall | step sideways, or route around with `wowdb route` |
+| `move_to` with `no_path` / ends `stuck` | no walkable route to that point (inside a building, under the map, wrong floor) | pass the target's z (`world.ground_z(x, y, z)`), a point a few yards away, or `azworld route` |
+| `go_to` "stuck" / distance not dropping | blocked by terrain or a wall | step sideways, or route around with `azworld route` |
 | cast result `line_of_sight` | a wall, rock or slope is between you | `units.in_sight(guid)` before casting; move closer or around |
 | `out_of_range` | too far for that spell | check `spells.info(id).range` |
 | `bad_targets` | not a valid target (dead, friendly, tapped, wrong object) | pick another, or check what you're targeting |
@@ -150,9 +150,9 @@ when you're low. You can't earn exploration credit as a ghost.
 | `not_ready` / `no_power` | cooldown or not enough mana/rage/energy | `spells.cooldown(id)`, `spells.usable(id, guid)` |
 | `interrupted` | you moved or were hit mid-cast | don't move while `me.casting()` |
 | "Inventory is full", `bags_full`, loot left on corpses | no bag space | `items.free_slots()`, sell (`act.vendor`) or `act.make_room()` |
-| `turn_in` times out | the quest isn't complete (`quest_log`), or it's turned in to a different NPC | `wowdb quest <id>` for the ender |
-| quest accept does nothing | level too low, missing prerequisite quest, or already done | `wowdb quest <id>` shows min level and the chain |
-| an exploration objective doesn't complete | you didn't go deep enough into the area | walk to the spot in `wowdb quest` |
+| `turn_in` times out | the quest isn't complete (`quest_log`), or it's turned in to a different NPC | `azworld quest <id>` for the ender |
+| quest accept does nothing | level too low, missing prerequisite quest, or already done | `azworld quest <id>` shows min level and the chain |
+| an exploration objective doesn't complete | you didn't go deep enough into the area | walk to the spot in `azworld quest` |
 | mob doesn't take damage / you never hit it | it's evading (unreachable) or someone else tagged it | `u.tapped_by_other`, pick another |
 | you die again right after reviving | the corpse or graveyard is in a camp | spirit res, or wait for the reclaim timer and run in from another side |
 

@@ -31,8 +31,8 @@ empty and broken ones), `spellbook` (the class spells you could know at your lev
   purple (epic). A green item at your level usually beats a white one, but a better colour isn't always better for
   you: check the armor type, whether your class can use the weapon, and whether its stats are ones you need.
 - **Where to get it, early on:** quest rewards are the best source below level 20, and many quests let you choose
-  (`wowdb quest <id>` lists the choices). Weaponsmiths and armorers sell white weapons and armor for a few silver
-  that are far better than starting gear. Mobs drop greens now and then. `wowdb upgrades --class <yours> --level
+  (`azworld quest <id>` lists the choices). Weaponsmiths and armorers sell white weapons and armor for a few silver
+  that are far better than starting gear. Mobs drop greens now and then. `azworld upgrades --class <yours> --level
   <yours>` lists what you could use and where it comes from; `items.compare(item)` tells you if something beats
   what you wear.
 - **Armor types:** cloth (mages, priests, warlocks), leather (rogues, druids), mail (hunters, shamans), plate
@@ -68,13 +68,13 @@ empty and broken ones), `spellbook` (the class spells you could know at your lev
 ## Spells, skills and items
 
 - **Train every time you can.** Visit your class trainer every two levels (`me.spellbook()` lists what's missing;
-  `wowdb npc <trainer>` lists spells, levels and costs). Training is cheap compared with what it adds.
+  `azworld npc <trainer>` lists spells, levels and costs). Training is cheap compared with what it adds.
 - **Ranks.** Most spells have ranks, each a separate spell id, learned at higher levels. Learning a new rank doesn't
   change what an old script casts: a script that casts the rank-1 id keeps casting rank 1. Cast the highest rank
   you know (`act.best({rank ids...})`, `spells.known`).
 - **Weapon skill.** Each weapon type has its own skill, which rises as you hit things with it. With a low skill
   you miss, and get dodged and parried, far more. A new weapon type starts low: it pays to keep using the same
-  types. Some weapon types have to be learned first from a weapon master (in Stormwind; `wowdb near x y --kind
+  types. Some weapon types have to be learned first from a weapon master (in Stormwind; `azworld near x y --kind
   trainer`); `items.info` says when you lack the skill (`why_not`).
 - **Use what you have.** Classes have openers, finishers, crowd control, defensive cooldowns and buffs; a fight
   that uses only one ability is usually a long fight. `combat.meter()` and the `fight_end` event show which
@@ -101,8 +101,8 @@ empty and broken ones), `spellbook` (the class spells you could know at your lev
 
 - Quest givers offer quests (`quest_giver` role); the quest log holds 25. When it fills up, drop the quests you
   won't do (`quests.abandon`): grey quests (far below your level) give little XP.
-- Read what a quest asks (`quests.log()` has its summary and objectives; `wowdb quest <id>` has the details and
-  where its targets are) and what your spells do (`wowdb spell <id>`): both often tell you how to do it well.
+- Read what a quest asks (`quests.log()` has its summary and objectives; `azworld quest <id>` has the details and
+  where its targets are) and what your spells do (`azworld spell <id>`): both often tell you how to do it well.
 - Quests that send you to the same area can be done together in one trip; turning several in at once saves the
   walk.
 - When a quest is too hard alone, ask for help: other players are on the same quests.

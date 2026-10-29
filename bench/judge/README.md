@@ -5,15 +5,17 @@ characters every 15 s (`server/override.yml`), and the judge polls every 15 s by
 
 | File | |
 |---|---|
-| `judge.ts` | the judge: samples, rates, score, board, exit when the goal is met or time runs out |
-| `signals.ts` | every progress signal for a character; `bun bench/judge/signals.ts <Char>` prints them |
-| `score.json` | the weights for `score:` goals, and their version |
+| `main.go` | the judge: samples, rates, score, board, exit when the goal is met or time runs out |
+| `signals.go` | every progress signal for a character; `bin/judge signals <Char>` prints them |
+| `score.json` | the weights for `score:` goals, and their version (built into the binary: rebuild with `./build.sh`) |
 
-## judge.ts
+## The judge
+
+Built into `bin/judge` by `./build.sh` (from the repo root; `bench.sh` and `team.sh` run it).
 
 ```sh
-bun bench/judge/judge.ts <Character> <goal> [flags]
-bun bench/judge/judge.ts Agentone level:10 --timeout 4h
+bin/judge <Character> <goal> [flags]
+bin/judge Agentone level:10 --timeout 4h
 ```
 
 | Goal | Value |
@@ -22,9 +24,10 @@ bun bench/judge/judge.ts Agentone level:10 --timeout 4h
 | `money:<copper>` | money held |
 | `quests:<n>` | quests turned in |
 | `quest:<id>` | 1 once that quest is turned in |
+| `skill:<id>:<n>` | that skill line's level (e.g. 164 Blacksmithing, 186 Mining); met at n |
 | `item:<entry>` | 1 once the character owns that item |
 | `quality:<0-5>` | 1 once it owns any item of that quality or better (3 = rare) |
-| `achpoints:<n>` | achievement points earned since the judge started (needs `bun azeroth-sdk/worlddata/dbsetup.ts`) |
+| `achpoints:<n>` | achievement points earned since the judge started (needs the `wowbench` schema from `bin/azworld setup`) |
 | `score:<n>` | weighted change in the signals since the judge started (weights in `score.json`) |
 
 The goal is met when the value reaches n (1 for `quest`, `item`, `quality`). For "as much as possible", pass a large
@@ -64,7 +67,7 @@ deaths and stalls cost through the time they lose.
 Version 6: progress is `xp_earned` with weight 1, so `score` is in XP per hour. Gear, money and the other signals
 are reported in each sample but not scored. Change the weights here to score on other signals.
 
-## signals.ts
+## Signals
 
 | Signal | |
 |---|---|
@@ -82,7 +85,7 @@ are reported in each sample but not scored. Change the weights here to score on 
 | `deaths`, `creatures_killed` | from the achievement statistics |
 | `played_s` | played time |
 
-It also exports `sql` (a query on `acore_characters` via `docker exec ac-database`), `weights` and `composite`.
+They're read over the database port (`azworld/world`, `$LEEROY_DB_ADDR`, default 127.0.0.1:3306).
 
 ## Outputs
 
@@ -93,5 +96,5 @@ A sample (`--samples`, and the last one in the final result):
 ```
 
 The final line adds `char`, `goal`, `met`, `runtime` (if given) and `at` (ISO time). The board file has `char`,
-`level` (fractional), `progress` (the value), the rates, `elapsed_s`, `money`, `avg_item_level`, and `role`,
+`level` (fractional), `progress` (the value), the rates, `elapsed_s`, `minutes_left` (on the run's clock), `money`, `avg_item_level`, and `role`,
 `runtime` and `damage_dealt`, `damage_taken`, `healing_done` when those flags are given.

@@ -1,7 +1,7 @@
 // Package types is the data model of the agent API: every value the Lua API returns, every action result and
 // every event's data is one of these structs, with the same field names everywhere. Lua sees them as tables
-// (through their json names), the RPC API as JSON, and the TypeScript SDK as generated interfaces (cmd/apigen
-// writes sdk/ts/src/types.ts and docs/api-reference.md from this file), so all three stay in sync.
+// (through their json names) and the RPC API as JSON; cmd/apigen writes docs/api-reference.md from this file, so
+// the two stay in sync.
 //
 // Field docs live in `doc` tags: they're what the generated references show.
 package types
@@ -75,7 +75,7 @@ type Unit struct {
 
 type Creature struct {
 	Unit
-	Entry         uint32   `json:"entry" doc:"creature template id (wowdb npc <entry>)"`
+	Entry         uint32   `json:"entry" doc:"creature template id (azworld npc <entry>)"`
 	Elite         bool     `json:"elite" doc:"much stronger than its level suggests: meant for groups"`
 	Rank          string   `json:"rank,omitempty" doc:"normal, elite, rare, rare_elite or boss"`
 	Type          string   `json:"type,omitempty" doc:"beast, humanoid, undead, demon, elemental, giant, dragonkin, mechanical, critter, totem, ... (spells like Polymorph only work on some types). Known a moment after first sight"`
@@ -189,7 +189,7 @@ type Achievements struct {
 // Item is an item template and, for one you carry, where it is and its state. The template fields fill in once
 // the server has answered the item query (Name is empty until then: ask again a moment later).
 type Item struct {
-	Entry         uint32           `json:"entry" doc:"item template id (wowdb item <entry>)"`
+	Entry         uint32           `json:"entry" doc:"item template id (azworld item <entry>)"`
 	Name          string           `json:"name"`
 	Quality       string           `json:"quality" doc:"poor (grey: junk to sell), common, uncommon, rare, epic, legendary"`
 	Class         string           `json:"class" doc:"weapon, armor, consumable, container, quest, trade_goods, reagent, projectile, key, misc, ..."`
@@ -280,7 +280,7 @@ type Talent struct {
 	MaxRank   int    `json:"max_rank"`
 	Row       uint32 `json:"row" doc:"row r needs 5 × r points in the tree"`
 	Col       uint32 `json:"col"`
-	Spell     uint32 `json:"spell" doc:"the spell of your current (or first) rank: spells.info / wowdb spell"`
+	Spell     uint32 `json:"spell" doc:"the spell of your current (or first) rank: spells.info / azworld spell"`
 	Requires  string `json:"requires,omitempty"`
 	Available bool   `json:"available" doc:"you can learn the next rank now"`
 }

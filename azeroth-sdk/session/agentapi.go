@@ -167,7 +167,7 @@ func (b *Bot) setupAgentAPI() {
 	})
 
 	// ---------- world ----------
-	e.Func("world.ground_z", "(x, y [, z]) → number?", "the height to stand at (x, y) on your map, for move.to; nil without map data. With z (an NPC's spawn z from wowdb) it finds the floor nearest that height: upstairs rooms, buildings, Stormwind's streets. Without it, the outdoor terrain (under any building)",
+	e.Func("world.ground_z", "(x, y [, z]) → number?", "the height to stand at (x, y) on your map, for move.to; nil without map data. With z (an NPC's spawn z from azworld) it finds the floor nearest that height: upstairs rooms, buildings, Stormwind's streets. Without it, the outdoor terrain (under any building)",
 		func(x, y, hint float32) any {
 			_, _, _, _, m := w.Position()
 			if hint != 0 {
@@ -316,7 +316,7 @@ func (b *Bot) setupAgentAPI() {
 			return nil
 		}, nil)
 	})
-	e.Func("quests.turn_in", "(npc, quest [, reward = 0]) → request<QuestDone>", "hand a complete quest in (reward: the index of the item to choose, 0 = first; wowdb quest <id> lists them)",
+	e.Func("quests.turn_in", "(npc, quest [, reward = 0]) → request<QuestDone>", "hand a complete quest in (reward: the index of the item to choose, 0 = first; azworld quest <id> lists them)",
 		func(npc uint64, quest, reward uint32) map[string]any {
 			if r := b.noNPC("quests.turn_in", map[string]any{"npc": gs(npc), "quest": quest}, npc); r != nil {
 				return r

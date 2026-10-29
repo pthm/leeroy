@@ -37,7 +37,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `act.spirit_res() → result` | as a ghost, resurrect at the nearest spirit healer in sight (costs durability) |
 | `act.talk{npc, fn [, x, y, z]} → result` | walk to an NPC and run fn(npc) |
 | `act.train{npc, spells [, x, y, z]} → result` | learn spells at a trainer; data = {learned, failed} |
-| `act.travel{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false]} → result` | go_to each waypoint (e.g. from wowdb route) |
+| `act.travel{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false]} → result` | go_to each waypoint (e.g. from azworld route) |
 | `act.turn_in{npc, quest [, reward = 0, x, y, z]} → result` | walk to the quest ender and turn the quest in |
 | `act.use_object{entry [, count = 1, quest, x, y, z, radius = 80]} → result` | use objects (crates, chests, quest objects) count times or until the quest is complete |
 | `act.vendor{npc [, x, y, z, buy = {{entry, count}, ...}]} → result` | sell greys, repair if it can, buy; data = {sold, repaired, bought} |
@@ -230,7 +230,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 | `quests.abandon(quest) → request` | drop a quest from your log (to make room: the log holds 25) |
 | `quests.accept(npc, quest) → request<QuestDone>` | talk to a quest giver and accept a quest it offers |
 | `quests.log() → Quest[]` | your quests with their objectives and progress (titles fill in once the server answers) |
-| `quests.turn_in(npc, quest [, reward = 0]) → request<QuestDone>` | hand a complete quest in (reward: the index of the item to choose, 0 = first; wowdb quest <id> lists them) |
+| `quests.turn_in(npc, quest [, reward = 0]) → request<QuestDone>` | hand a complete quest in (reward: the index of the item to choose, 0 = first; azworld quest <id> lists them) |
 
 ### runtime
 
@@ -284,7 +284,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 
 | Function | |
 |---|---|
-| `trainer.learn(npc, spell) → request<Learned>` | learn a spell from a trainer within ~5 yd (costs money; wowdb npc <trainer> lists spells, levels and costs) |
+| `trainer.learn(npc, spell) → request<Learned>` | learn a spell from a trainer within ~5 yd (costs money; azworld npc <trainer> lists spells, levels and costs) |
 
 ### units
 
@@ -321,7 +321,7 @@ Conventions are in lua-api.md. `request<T>`: an action's request, whose result's
 
 | Function | |
 |---|---|
-| `world.ground_z(x, y [, z]) → number?` | the height to stand at (x, y) on your map, for move.to; nil without map data. With z (an NPC's spawn z from wowdb) it finds the floor nearest that height: upstairs rooms, buildings, Stormwind's streets. Without it, the outdoor terrain (under any building) |
+| `world.ground_z(x, y [, z]) → number?` | the height to stand at (x, y) on your map, for move.to; nil without map data. With z (an NPC's spawn z from azworld) it finds the floor nearest that height: upstairs rooms, buildings, Stormwind's streets. Without it, the outdoor terrain (under any building) |
 | `world.in_sight(x, y, z) → bool?` | nothing solid (walls, rock, buildings) between your eyes and the point, as the server checks spells; nil without collision data |
 | `world.path(x, y, z) → Path?` | the walking route from you: its length, and the gap between where it ends and the point (over a few yards: unreachable). nil if there's no path at all |
 
@@ -384,7 +384,7 @@ Everything in [Unit](#unit), plus:
 
 | Field | Type | |
 |---|---|---|
-| `entry` | number | creature template id (wowdb npc <entry>) |
+| `entry` | number | creature template id (azworld npc <entry>) |
 | `elite` | bool | much stronger than its level suggests: meant for groups |
 | `rank?` | string | normal, elite, rare, rare_elite or boss |
 | `type?` | string | beast, humanoid, undead, demon, elemental, giant, dragonkin, mechanical, critter, totem, ... (spells like Polymorph only work on some types). Known a moment after first sight |
@@ -510,7 +510,7 @@ Item is an item template and, for one you carry, where it is and its state. The 
 
 | Field | Type | |
 |---|---|---|
-| `entry` | number | item template id (wowdb item <entry>) |
+| `entry` | number | item template id (azworld item <entry>) |
 | `name` | string |  |
 | `quality` | string | poor (grey: junk to sell), common, uncommon, rare, epic, legendary |
 | `class` | string | weapon, armor, consumable, container, quest, trade_goods, reagent, projectile, key, misc, ... |
@@ -627,7 +627,7 @@ Everything in [Item](#item), plus:
 | `max_rank` | number |  |
 | `row` | number | row r needs 5 × r points in the tree |
 | `col` | number |  |
-| `spell` | number | the spell of your current (or first) rank: spells.info / wowdb spell |
+| `spell` | number | the spell of your current (or first) rank: spells.info / azworld spell |
 | `requires?` | string |  |
 | `available` | bool | you can learn the next rank now |
 

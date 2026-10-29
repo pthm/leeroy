@@ -11,6 +11,7 @@ set -e
 cd "$(dirname "$0")" # relative to bench/
 goal=$1 mins=$2; shift 2
 [ $# -gt 0 ] || { sed -n 2,7p "$0"; exit 1; }
+../build.sh # the judge, viewer and agent tools in bin/, once for every bench.sh
 id="$(date +%Y%m%d-%H%M%S)-team"; dir="$PWD/runs/$id"; mkdir -p "$dir"
 # the roster: "- Char: Warrior - Protection (Tank)" per agent with a spec
 roster=""
@@ -37,4 +38,4 @@ wait
 for f in "$dir"/*.out; do grep '^{' "$f" | tail -n 1; done | jq -s --argjson n $# '{agents: sort_by(-(.score // .value)), faction_score: (map(.score // 0) | add),
   by_runtime: (group_by(.runtime // "claude") | map({runtime: (.[0].runtime // "claude"), players: length, score: (map(.score // 0) | add), best: (map(.score // 0) | max)})),
   team_s: (if length == $n and all(.met) then map(.elapsed_s) | max else null end)}' | tee "$dir/team.json"
-bun ../server/recorder/replay.ts "$dir" || echo "no replay (is mod-recorder installed? see README)"
+../bin/azview replay "$dir" || echo "no replay (is mod-recorder installed? see README)"

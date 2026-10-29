@@ -541,7 +541,7 @@ func (b *Bot) setupItems() {
 		})
 
 	// ---------- trainer ----------
-	e.Func("trainer.learn", "(npc, spell) → request<Learned>", "learn a spell from a trainer within ~5 yd (costs money; wowdb npc <trainer> lists spells, levels and costs)",
+	e.Func("trainer.learn", "(npc, spell) → request<Learned>", "learn a spell from a trainer within ~5 yd (costs money; azworld npc <trainer> lists spells, levels and costs)",
 		func(trainer uint64, spell uint32) map[string]any {
 			if r := b.noNPC("trainer.learn", map[string]any{"npc": gs(trainer), "spell": spell}, trainer); r != nil {
 				return r

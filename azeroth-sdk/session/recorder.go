@@ -1,7 +1,7 @@
 package session
 
 // Recorder: the client-side twin of the server's mod-recorder. Writes one JSON line per event in the same
-// format ({"t","ev","p","n",...}), so server/recorder/live.ts and replay.ts read either. It sees the daemon's
+// format ({"t","ev","p","n",...}), so the viewer (azview: live, replay) reads either. It sees the daemon's
 // own characters and what their clients observe, plus agent-side events the server can't: "api" (each API
 // call and the Lua it ran) and "script_error".
 

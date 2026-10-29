@@ -86,4 +86,4 @@ end, "chat watch")
 
 The rest of this file: a guide to playing well with the SDK (bags, vendors, trainers, death, unreachable
 targets, other players), then the runtime (tasks, actions, events), the Lua API and its full reference, then the world data tools
-(`wowdb`, `worlddb`).
+(`azworld`, `worlddb`).

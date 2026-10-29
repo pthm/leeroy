@@ -1,3 +1,0 @@
-#!/bin/sh
-# wowdb <command> ...  structured world-data lookups as JSON (`wowdb help`). See wowdb.ts.
-exec bun "$(dirname "$0")/../../../azeroth-sdk/worlddata/wowdb.ts" "$@"

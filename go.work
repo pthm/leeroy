@@ -1,3 +1,6 @@
 go 1.27.3
 
-use ./azeroth-sdk
+use (
+	.
+	./azeroth-sdk
+)

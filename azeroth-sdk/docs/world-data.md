@@ -1,24 +1,24 @@
-# World data: `wowdb` (structured) and `worlddb` (raw SQL)
+# World data: `azworld` (structured) and `worlddb` (raw SQL)
 
-`wowdb` answers the usual planning questions in one call, as JSON, with relations already resolved: where
+`azworld` answers the usual planning questions in one call, as JSON, with relations already resolved: where
 an item drops (with chances and spawn locations), who gives a quest and where its targets are, which NPCs
 are hostile to you, the nearest trainer or vendor. Start here; drop to `worlddb` SQL for anything else.
 
 ```sh
-wowdb search "Hogger"                          # items, quests, npcs, objects, spells, zones, achievements by name
-wowdb item 1931                                # stats + sources: drops, chests/nodes, vendors, quest rewards, crafting
-wowdb quest 176                                # giver/turn-in with coordinates, objectives with spawns, rewards, chain
-wowdb npc 448                                  # level, elite?, hostile/neutral/friendly to you, spawns, loot, vendor stock, trainer spells
-wowdb spell 6673                               # cost, cast time, range, cooldowns, which trainers teach it and for how much
-wowdb zone "Elwynn Forest"                     # sub-areas, mobs by level, graveyards, inns, flight masters, vendors, trainers
-wowdb near -9460 70 --kind trainer             # nearest trainer|vendor|questgiver|flightmaster|innkeeper|repair|banker|graveyard|object
-wowdb near -9460 70 --kind mob --hostile --level 9-11   # nearest mobs that attack on sight, levels 9-11
-wowdb quests --level 10 --race 1 --class 1 --near -9460,70   # quests you can pick up, nearest givers first
-wowdb area -9460 70                            # which area/zone a point is in
-wowdb route -9460 70 -9660 690 --level 7       # walking waypoints: prefers roads, avoids hostile mobs near/above level 7
-wowdb map -9460 70 --level 7 [--to -9660,690]  # writes map.png (the game's minimap: roads, buildings, water; hostile mobs, route): view it with Read
-wowdb roads -9460 70                           # guard patrol paths near a point (the roads themselves are on the map)
-wowdb upgrades --class priest --level 7 --near -9460,70 [--slot chest]   # gear you can use, best first, and where to get it
+azworld search "Hogger"                          # items, quests, npcs, objects, spells, zones, achievements by name
+azworld item 1931                                # stats + sources: drops, chests/nodes, vendors, quest rewards, crafting
+azworld quest 176                                # giver/turn-in with coordinates, objectives with spawns, rewards, chain
+azworld npc 448                                  # level, elite?, hostile/neutral/friendly to you, spawns, loot, vendor stock, trainer spells
+azworld spell 6673                               # cost, cast time, range, cooldowns, which trainers teach it and for how much
+azworld zone "Elwynn Forest"                     # sub-areas, mobs by level, graveyards, inns, flight masters, vendors, trainers
+azworld near -9460 70 --kind trainer             # nearest trainer|vendor|questgiver|flightmaster|innkeeper|repair|banker|graveyard|object
+azworld near -9460 70 --kind mob --hostile --level 9-11   # nearest mobs that attack on sight, levels 9-11
+azworld quests --level 10 --race 1 --class 1 --near -9460,70   # quests you can pick up, nearest givers first
+azworld area -9460 70                            # which area/zone a point is in
+azworld route -9460 70 -9660 690 --level 7       # walking waypoints: prefers roads, avoids hostile mobs near/above level 7
+azworld map -9460 70 --level 7 [--to -9660,690]  # writes map.png (the game's minimap: roads, buildings, water; hostile mobs, route): view it with Read
+azworld roads -9460 70                           # guard patrol paths near a point (the roads themselves are on the map)
+azworld upgrades --class priest --level 7 --near -9460,70 [--slot chest]   # gear you can use, best first, and where to get it
 ```
 
 `reaction` is relative to a new character of each side (`hostile` attacks on sight; `neutral` only fights

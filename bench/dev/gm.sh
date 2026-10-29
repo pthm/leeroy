@@ -3,7 +3,7 @@
 # (mobs ignore you) and god mode, optionally teleported. For testing SDK changes without walking or dying; never use a
 # GM account in a scored run. Query it with: WOW_PORT=8112 bench/agent/bin/wow '...'
 cd "$(dirname "$0")/../.." || exit 1
-bun server/account.ts devgm devgm 3 >/dev/null
+./build.sh && bin/account devgm devgm 3 >/dev/null
 bin=azeroth-sdk/azsdk-dev; [ -x "$bin" ] || bin=azeroth-sdk/azsdk
 pkill -f -- "-char Devgm" 2>/dev/null; sleep 1
 "$bin" -char Devgm -account devgm -race 1 -class 1 -listen 127.0.0.1:8112 -data "$PWD/data" -events /tmp/devgm-events > /tmp/devgm.log 2>&1 &

@@ -7,6 +7,7 @@ the repo root; server and client setup is in the [repo README](../README.md).
 | Path | |
 |---|---|
 | `bench.sh` | one agent: account, character, session, judge, agent; results in `runs/<ts>-<agent>/` |
+| `matrix.sh` | a grid of solo runs (task × race × class × minutes × reps) from a config in `matrices/`; writes `summary.json` |
 | `team.sh` | several `bench.sh` on one clock; writes `team.json` and one replay to `runs/<ts>-team/` |
 | `resume.sh` | resumes a paused team run |
 | `restart-agent.sh` | mid-run, brings back one agent whose session or conversation ended |
@@ -99,7 +100,7 @@ that moment. When all have finished it writes `team.json` and builds `replay.htm
 Watch a team run live:
 
 ```sh
-bun server/recorder/live.ts bench/runs/<ts>-team/*.record.jsonl   # http://localhost:8800/
+bin/azview live --run bench/runs/<ts>-team   # http://localhost:8800/
 ```
 
 ## Run directories
@@ -211,7 +212,7 @@ missing. The agent's tools come from `agent/bin/` on its `PATH`, outside the wor
 |---|---|
 | `wow` | the session on `$WOW_PORT`: `wow '<lua>'`, `wow < file`, `wow -f file.lua`, `wow status`, `wow tasks`, `wow events [--types a,b] [--last n] [--since seq] [--match s]`, `wow wait [--types ...] [--match s] [seconds]` (max 600), `wow answer <id> <choice>`, `wow -w <s> '<lua>'`. Chat from players, invites, trades and script questions also go to stderr |
 | `worlddb` | read-only SQL on `acore_world` as `worldreader`; tab-separated, at most 300 rows |
-| `wowdb` | structured world-data lookups (`../azeroth-sdk/worlddata/wowdb.ts`; `wowdb help`) |
+| `azworld` | structured world-data lookups (`bin/azworld`, from `azeroth-sdk/cmd/azworld`; `azworld help`) |
 | `standings` | every player's rank, score, rates, level, role stats, item level and money from `$WOWBENCH_BOARD`, plus a faction total |
 | `party [minutes]` | the agent's current party over the last minutes (default 10): per member XP/hour, kills, deaths, time fighting, travelling, idle, dead and with the group. Reads the server's `mod-recorder` log |
 
@@ -227,7 +228,7 @@ Claude Code runs as `claude -p` in the workspace with:
 - `--setting-sources project --strict-mcp-config`: no user settings and no MCP servers;
 - `--add-dir` on `azeroth-sdk/client`, `session`, `script` and `server/azerothcore/src/server/game`, `shared`: the
   source it may read;
-- `--allowedTools`: `Bash` for `wow`, `worlddb`, `wowdb`, `standings`, `party`, `sleep`, `tail`, `cat`, `ls`, `grep`,
+- `--allowedTools`: `Bash` for `wow`, `worlddb`, `azworld`, `standings`, `party`, `sleep`, `tail`, `cat`, `ls`, `grep`,
   `mkdir`, and `Edit(./**)` (the workspace); `--disallowedTools` `Read` and `Edit` on `~/.claude/**`;
 - `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`: auto-memory is keyed by the git root, so agents would otherwise share notes.
 
@@ -261,4 +262,4 @@ Runs one character in its own `azsdk` daemon until killed (or `--duration`), ser
 | Script | |
 |---|---|
 | `dev/gm.sh [x y z [map]]` | GM test character Devgm (account `devgm`, GM level 3) on port 8112, with `.gm on` and `.cheat god on`, optionally teleported. Uses `azsdk-dev` if built. Log in `/tmp/devgm.log`. Query it with `WOW_PORT=8112 bench/agent/bin/wow '...'`. Never use a GM account in a scored run |
-| `dev/apidoc.sh` | regenerates `azeroth-sdk/docs/api-reference.md` and `azeroth-sdk/sdk/ts/src/types.ts`, `api.ts` from a live session (starts `gm.sh` if 8112 isn't up). Run it after changing the Lua API or package types |
+| `dev/apidoc.sh` | regenerates `azeroth-sdk/docs/api-reference.md` from a live session (starts `gm.sh` if 8112 isn't up). Run it after changing the Lua API or package types |

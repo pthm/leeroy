@@ -6,4 +6,4 @@ services:
   ac-worldserver:
     environment:
       AC_WARDEN_ENABLED: "0"           # headless client can't answer anti-cheat probes
-      AC_PLAYER_SAVE_INTERVAL: "15000" # ms; judge.ts reads progress from the DB (default 15 min)
+      AC_PLAYER_SAVE_INTERVAL: "15000" # ms; the judge reads progress from the DB (default 15 min)

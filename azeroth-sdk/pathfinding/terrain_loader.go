@@ -62,6 +62,7 @@ type gridTerrain struct {
 	flags uint32 // height header flags
 
 	water *gridWater // nil when the grid has no liquid
+	area  []uint16   // 16*16 area ids, one per 8x8-vertex cell (nil when absent)
 }
 
 // gridWater mirrors GridTerrainData's liquid data: a surface level per 129-grid vertex inside an offset
@@ -139,7 +140,9 @@ func (tm *TerrainManager) getOrLoadGrid(mapID uint32, gx, gy int) (*gridTerrain,
 func (tm *TerrainManager) loadGrid(mapID uint32, gx, gy int) (*gridTerrain, error) {
 	gt, err := tm.loadGridHeights(mapID, gx, gy)
 	if err == nil && gt != nil {
-		gt.water = loadWater(fmt.Sprintf("%s/%03d%02d%02d.map", tm.mapsDir, mapID, gx, gy))
+		file := fmt.Sprintf("%s/%03d%02d%02d.map", tm.mapsDir, mapID, gx, gy)
+		gt.water = loadWater(file)
+		gt.area = loadArea(file)
 	}
 	return gt, err
 }
@@ -175,6 +178,42 @@ func loadWater(fileName string) *gridWater {
 		}
 	}
 	return g
+}
+
+// loadArea reads the area section (GridTerrainData::LoadAreaData): one area id per 8x8-vertex cell; nil if absent.
+func loadArea(fileName string) []uint16 {
+	b, err := os.ReadFile(fileName)
+	if err != nil || len(b) < 40 {
+		return nil
+	}
+	off := int(binary.LittleEndian.Uint32(b[12:]))
+	if off == 0 || off+8 > len(b) {
+		return nil
+	}
+	area := make([]uint16, 256)
+	flags := binary.LittleEndian.Uint16(b[off+4:])
+	for i := range area {
+		if flags&1 != 0 { // MAP_AREA_NO_AREA: one id for the grid
+			area[i] = binary.LittleEndian.Uint16(b[off+6:])
+		} else if off+8+2*i+2 <= len(b) {
+			area[i] = binary.LittleEndian.Uint16(b[off+8+2*i:])
+		}
+	}
+	return area
+}
+
+// GetArea returns the area id at (x, y) from the map files (0 if unknown), as GridTerrainData::getArea.
+func (tm *TerrainManager) GetArea(mapID uint32, x, y float32) uint16 {
+	gx, gy := gameToGridCoords(x, y)
+	if gx < 0 || gy < 0 || gx >= 64 || gy >= 64 {
+		return 0
+	}
+	gt, err := tm.getOrLoadGrid(mapID, gx, gy)
+	if err != nil || gt == nil || gt.area == nil {
+		return 0
+	}
+	i, j := int(128*(32-x/sizeOfGrids))&127, int(128*(32-y/sizeOfGrids))&127
+	return gt.area[(i>>3)*16+(j>>3)]
 }
 
 // GetWaterLevel returns the liquid surface height at (x, y), as GridTerrainData::getLiquidLevel.

@@ -36,7 +36,7 @@ cd "$ws" && PATH="$root/agent/bin:$PATH" CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 WOWBE
   -p "$(LEFT=$left envsubst '$LEFT' < "$msg")" --resume "$sid" \
   --setting-sources project --strict-mcp-config --output-format stream-json --verbose ${MODEL:+--model "$MODEL"} \
   --add-dir "$repo/azeroth-sdk/client" "$repo/azeroth-sdk/session" "$repo/azeroth-sdk/script" "$repo/server/azerothcore/src/server/game" "$repo/server/azerothcore/src/server/shared" \
-  --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(wowdb:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
+  --allowedTools "Bash(wow:*)" "Bash(worlddb:*)" "Bash(azworld:*)" "Bash(sleep:*)" "Bash(tail:*)" "Bash(cat:*)" \
     "Bash(ls:*)" "Bash(grep:*)" "Bash(mkdir:*)" "Bash(standings:*)" "Bash(party:*)" "Edit(./**)" --disallowedTools "Edit(~/.claude/**)" "Read(~/.claude/**)" \
   >> "$dir/agent.jsonl" 2>&1 &
 nohup "$root/agent/watch-exit.sh" $! "$dir/agent.jsonl" "$team/board/$char.json" "$name ($char)" "$team/alerts.log" > /dev/null 2>&1 &
