@@ -34,7 +34,8 @@ resume_one() { # <agent> <port>
   agent/bin/wow "LIB = '$ws/'; chat.join('${CHANNEL:-General - Elwynn Forest}', 1)" >/dev/null
   trap 'kill $agent $judge $session 2>/dev/null; cp "$ws/session.log" "$dir/"' EXIT INT TERM
   bun judge/judge.ts "$char" score:100000 --timeout "${mins}m" --resume "$dir/samples.jsonl" --samples "$dir/samples.jsonl" \
-    --record "$record" --board "$team/board" > "$dir/judge.json" &
+    --record "$record" --board "$team/board" --events "$team/$char.events.jsonl" \
+    $(jq -r 'if .role != "" then "--role \(.role)" else empty end, "--runtime \(.runtime)"' "$dir/meta.json" 2>/dev/null) > "$dir/judge.json" &
   judge=$!
   if [ "$(jq -r .runtime "$dir/meta.json" 2>/dev/null)" = codex ]; then
     (PATH="$root/agent/bin:$PATH" WOWBENCH_BOARD="$team/board" WOWBENCH_CHAR="$char" exec "$root/agent/codex-resume.sh" "$dir" "$ws" "$left" \

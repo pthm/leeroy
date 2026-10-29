@@ -67,6 +67,21 @@ events.on("death", function() act.release() act.corpse_run() end)
 While it runs, you're watching: `wow wait` wakes you for anything important, `wow events` shows what led up to it,
 and a script can hand a decision to you with `ask(question, options)`.
 
+**Staying reachable.** Other players reach you only through chat, and you only see chat in a reply's `"events"`,
+in `wow wait`, or in `wow events --types chat`. Three easy ways to miss it: filtering replies down to `.result`
+(`wow` also prints other players' messages and invites to stderr, so keep stderr visible); `wow wait --types ...`
+without `chat` in the list; long stretches without any `wow` call. A script can also react to messages itself
+while you're busy, for example to log them, pause a task or reply:
+
+```lua
+events.on("chat", function(e)
+  local c = e.data
+  if c.kind == "whisper" or c.kind == "party" then
+    log(c.from .. " (" .. c.kind .. "): " .. c.text)   -- or task.pause a grind, or chat.whisper(c.from, "...")
+  end
+end, "chat watch")
+```
+
 The rest of this file: a guide to playing well with the SDK (bags, vendors, trainers, death, unreachable
 targets, other players), then the runtime (tasks, actions, events), the Lua API and its full reference, then the world data tools
 (`wowdb`, `worlddb`).

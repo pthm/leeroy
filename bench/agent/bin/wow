@@ -11,13 +11,21 @@
 # wow answer <id> <choice>            answer a script's ask() (an "attention" event)
 # wow -w 60 'lua'                     sleep 60s first, then evaluate
 # Every eval reply carries "events": what happened since your last call (counts by type, important ones in full).
+# Chat from other players, invites, trades and script questions are also printed to stderr ("wow: chat ...").
 # Session: the azsdk daemon on port $WOW_PORT (default 8090).
 rpc() { # method, params JSON
   jq -n --arg m "$1" --argjson p "$2" '{jsonrpc: "2.0", id: 1, method: $m, params: $p}' |
     curl -sS "127.0.0.1:${WOW_PORT:-8090}/rpc" --data-binary @- |
     jq -c 'if .error then {error: .error.message} else .result end'
 }
-eval_() { rpc script.eval "$(jq -n --arg code "$1" '{code: $code}')"; }
+# messages from other players (and script questions) also go to stderr, so piping the reply through jq can't hide them
+eval_() {
+  out=$(rpc script.eval "$(jq -n --arg code "$1" '{code: $code}')")
+  printf '%s\n' "$out"
+  printf '%s\n' "$out" | jq -r '.events.important[]? |
+    select((.type == "chat" and (.data.kind | test("^npc|_sent$|^system$") | not)) or .type == "party_invite" or .type == "trade" or .type == "attention") |
+    "wow: \(.type) " + (if .type == "chat" then "\(.data.kind) from \(.data.from): \(.data.text)" else (.data | tojson) end)' >&2
+}
 # --types a,b --last n --since n --match s [seconds] -> query params JSON (seconds -> timeout_s)
 params() {
   p='{}'
