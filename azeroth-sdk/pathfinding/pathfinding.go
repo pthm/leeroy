@@ -955,3 +955,12 @@ func (pf *PathFinder) getHeightLocked(x, y, z float32) (float32, bool) {
 	}
 	return 0, false
 }
+
+// InLineOfSight: is the segment between two points clear of world models (see VMapManager.InLineOfSight)?
+// ok=false without vmap data.
+func (s *PathFindingService) InLineOfSight(mapID uint32, x1, y1, z1, x2, y2, z2 float32) (bool, bool) {
+	if s.vmapMgr == nil {
+		return true, false
+	}
+	return s.vmapMgr.InLineOfSight(mapID, Vector3{x1, y1, z1}, Vector3{x2, y2, z2})
+}

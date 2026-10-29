@@ -39,7 +39,8 @@ how you fight, what you kill, when you rest, what to do about death and how to w
   inns and cities make you rest (`is_resting()`, rested XP).
 - Indoors and upstairs (inn trainers, anything in Stormwind), pass the target's z to get the right floor:
   `bot.move_to(x, y, bot.ground_z(x, y, z))`.
-- `last_cast_error().reason == "line_of_sight"`: a wall or a rise is in the way; move closer or around.
+- `last_cast_error().reason == "line_of_sight"`: a wall or a rise is in the way; move closer or around. Check before
+  casting with `bot.in_los(guid)`, and pull mobs around a corner to you instead of chasing them into rooms.
 
 ## Casting
 
@@ -113,7 +114,7 @@ when you're low. You can't earn exploration credit as a ghost.
 |---|---|---|
 | `move_to` returns false / `go_to` "no path" | no walkable route to that point (inside a building, under the map, wrong floor) | pass the target's z (`ground_z(x, y, z)`), a point a few yards away, or `wowdb route` |
 | `go_to` "stuck" / distance not dropping | blocked by terrain or a wall | step sideways, or route around with `wowdb route` |
-| `last_cast_error` `line_of_sight` | a wall, rock or slope is between you | move closer or around |
+| `last_cast_error` `line_of_sight` | a wall, rock or slope is between you | `bot.in_los(guid)` before casting; move closer or around |
 | `out_of_range` | too far for that spell | check `bot.spell_info(id).range` |
 | `bad_targets` | not a valid target (dead, friendly, tapped, wrong object) | pick another, or check what you're targeting |
 | `equipped_item_class*` | your weapon is broken or missing | `bot.broken_gear()`, then repair (`act.vendor` at an armorer) |

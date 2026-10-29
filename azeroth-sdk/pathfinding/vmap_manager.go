@@ -656,6 +656,9 @@ func (g *GroupModel) readFrom(r io.Reader) error {
 	if err != nil {
 		return err
 	}
+	if nVerts == 0 { // models without collision geometry end here (WorldModel.cpp GroupModel::readFromFile)
+		return nil
+	}
 	if err := validateVMapVectorChunk("VERT", vertChunkSize, nVerts, 12, maxVMapVerticesPerGroup); err != nil {
 		return err
 	}
@@ -694,7 +697,19 @@ func (g *GroupModel) readFrom(r io.Reader) error {
 	if err := readFourCC(r, "MBIH"); err != nil {
 		return err
 	}
-	return g.groupTree.readFrom(r)
+	if err := g.groupTree.readFrom(r); err != nil {
+		return err
+	}
+	// LIQU: liquid data (not modelled), skipped by its size so the next group lines up
+	if err := readFourCC(r, "LIQU"); err != nil {
+		return err
+	}
+	liquSize, err := readUint32(r)
+	if err != nil {
+		return err
+	}
+	_, err = io.CopyN(io.Discard, r, int64(liquSize))
+	return err
 }
 
 func validateVMapVectorChunk(name string, chunkSize, count, elemBytes, maxCount uint32) error {
@@ -1096,7 +1111,7 @@ func (s *StaticMapTree) modelForInstance(mi *ModelInstance) (*WorldModel, bool) 
 		s.dataMu.RUnlock()
 		return nil, false
 	}
-	modelFile := s.basePath + mi.spawn.name
+	modelFile := s.basePath + mi.spawn.name + ".vmo" // the server reads <name>.vmo (WorldModelStore)
 	s.dataMu.RUnlock()
 	if modelFile == s.basePath {
 		return nil, false
@@ -1113,7 +1128,7 @@ func (s *StaticMapTree) modelForInstance(mi *ModelInstance) (*WorldModel, bool) 
 		s.dataMu.RUnlock()
 		return nil, false
 	}
-	modelFile = s.basePath + mi.spawn.name
+	modelFile = s.basePath + mi.spawn.name + ".vmo"
 	s.dataMu.RUnlock()
 
 	if entry := s.modelCache[modelFile]; entry != nil {
@@ -1124,7 +1139,7 @@ func (s *StaticMapTree) modelForInstance(mi *ModelInstance) (*WorldModel, bool) 
 	model := &WorldModel{}
 	if err := model.readFile(modelFile); err != nil {
 		s.dataMu.Lock()
-		if mi.spawn.name != "" && s.basePath+mi.spawn.name == modelFile {
+		if mi.spawn.name != "" && s.basePath+mi.spawn.name+".vmo" == modelFile {
 			mi.spawn.name = ""
 		}
 		s.dataMu.Unlock()
@@ -1210,9 +1225,10 @@ func (s *StaticMapTree) intersectModelHeight(mi *ModelInstance, model *WorldMode
 	scale := mi.spawn.iScale
 	s.dataMu.RUnlock()
 
+	// the server works in vmap-internal coordinates (x' = mid - x, y' = mid - y): the offset's x and y flip sign
 	p := Vector3{
-		pos.X - iPos.X,
-		pos.Y - iPos.Y,
+		iPos.X - pos.X,
+		iPos.Y - pos.Y,
 		pos.Z - iPos.Z,
 	}
 	p = mat3MulVec(iInvRot, p)
@@ -1258,4 +1274,64 @@ func (tm *TerrainManager) getCombinedHeightWithVMap(mapID uint32, x, y, z float3
 		return terrainH, true
 	}
 	return 0, false
+}
+
+// InLineOfSight reports whether the segment a-b is clear of world models (buildings, caves, mines, bridges: WMOs),
+// like the server's spell line-of-sight check, which ignores M2 doodads (trees, fences) and terrain.
+// ok=false when no vmap data could be loaded for the map.
+func (vm *VMapManager) InLineOfSight(mapID uint32, a, b Vector3) (clear bool, ok bool) {
+	tree, err := vm.getTree(mapID)
+	if err != nil || tree == nil {
+		return true, false
+	}
+	for _, p := range []Vector3{a, b} {
+		gx, gy := gameToGridCoords(p.X, p.Y)
+		for dx := -1; dx <= 1; dx++ {
+			for dy := -1; dy <= 1; dy++ {
+				if x, y := gx+dx, gy+dy; x >= 0 && y >= 0 && x <= 63 && y <= 63 {
+					_ = tree.LoadMapTile(uint32(x), uint32(y))
+				}
+			}
+		}
+	}
+	d := b.Sub(a)
+	dist := float32(math.Sqrt(float64(d.Dot(d))))
+	if dist < 0.1 {
+		return true, true
+	}
+	dir := d.Mul(1 / dist)
+	lo := Vector3{min32(a.X, b.X), min32(a.Y, b.Y), min32(a.Z, b.Z)}
+	hi := Vector3{max32(a.X, b.X), max32(a.Y, b.Y), max32(a.Z, b.Z)}
+	tree.dataMu.RLock()
+	cands := make([]*ModelInstance, 0, 8)
+	for _, mi := range tree.treeValues {
+		if mi == nil || mi.spawn.name == "" || mi.spawn.Flags&0x1 != 0 { // MOD_M2: doodads don't block spells
+			continue
+		}
+		if tree.isTiled && mi.spawn.Flags&0x4 != 0 {
+			bl, bh := mi.spawn.iBound[0], mi.spawn.iBound[1]
+			if bh.X < lo.X-1 || bl.X > hi.X+1 || bh.Y < lo.Y-1 || bl.Y > hi.Y+1 || bh.Z < lo.Z-1 || bl.Z > hi.Z+1 {
+				continue
+			}
+		}
+		cands = append(cands, mi)
+	}
+	tree.dataMu.RUnlock()
+	for _, mi := range cands {
+		model, okm := tree.modelForInstance(mi)
+		if !okm || model == nil {
+			continue
+		}
+		tree.dataMu.RLock()
+		// internal coordinates (x' = mid - x, y' = mid - y), as the server's ModelInstance::intersectRay
+		off := a.Sub(mi.iPos)
+		p := mat3MulVec(mi.iInvRot, Vector3{-off.X, -off.Y, off.Z}).Mul(mi.iInvScale)
+		md := mat3MulVec(mi.iInvRot, Vector3{-dir.X, -dir.Y, dir.Z})
+		maxT := dist * mi.iInvScale
+		tree.dataMu.RUnlock()
+		if t := model.getHeight(NewRay(p, md), maxT); t < maxT {
+			return false, true
+		}
+	}
+	return true, true
 }

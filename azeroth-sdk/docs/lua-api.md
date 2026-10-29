@@ -100,6 +100,8 @@ across zones.
 your bags (`bag_upgrades`), quest progress, target, attackers, hostile mobs within 30 yd (`mobs_nearby`: count,
 highest level, elites), your last minute of fighting (`last_minute`: dps, damage, healing, taken, kills), group,
 nearby players with class, corpse, the last cast error, unread chat and what `act` is doing.
+`in_los(guid)` or `in_los(x, y, z)` → true if nothing solid (walls, rock, buildings) is between your eyes and the
+target, the way the server checks spells (trees and terrain bumps don't count); nil without collision data ·
 `location()` → `{zone, area, zone_id, area_id}` · `reaction(guid)` → "hostile" (attacks on sight), "neutral" or
 "friendly" toward you.
 

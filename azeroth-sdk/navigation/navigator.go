@@ -121,6 +121,11 @@ func (n *embeddedNavigator) GetHeight(mapID uint32, x, y, z float32) (float32, b
 	return n.svc.GetHeight(mapID, x, y, z)
 }
 
+// InLineOfSight: line of sight between two points against world models (buildings, caves), as the server checks spells.
+func (n *embeddedNavigator) InLineOfSight(mapID uint32, a, b Point3D) (bool, bool) {
+	return n.svc.InLineOfSight(mapID, a.X, a.Y, a.Z, b.X, b.Y, b.Z)
+}
+
 func (n *embeddedNavigator) GetTerrainHeight(mapID uint32, x, y float32) (float32, bool) {
 	return n.svc.GetTerrainHeight(mapID, x, y)
 }
