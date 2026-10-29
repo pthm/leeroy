@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -37,6 +38,7 @@ var roots = []any{
 	types.Item{}, types.Comparison{}, types.VendorItem{}, types.Spell{}, types.Quest{}, types.Objective{}, types.Talents{},
 	types.TalentTree{}, types.Talent{}, types.Group{}, types.GroupMember{}, types.GroupReport{}, types.GroupMemberReport{}, types.Trade{}, types.TradeSide{}, types.Inspect{},
 	types.CombatEntry{}, types.Meter{}, types.SpellMeter{}, types.Status{}, types.TaskInfo{}, types.MobSummary{},
+	types.Threat{}, types.Gossip{}, types.Gear{}, types.Spellbook{}, types.QuestInfo{}, types.Trainer{},
 	types.Result{}, types.Error{}, types.Event{},
 }
 
@@ -48,6 +50,7 @@ func main() {
 	fns := fetchDocs(*rpc)
 	typeDocs := parseTypeDocs(*root + "/types")
 	ts := collect()
+	missing(fns, ts, typeDocs)
 
 	write(*root+"/docs/api-reference.md", markdown(fns, ts, typeDocs))
 }
@@ -256,3 +259,24 @@ func markdown(fns []fnDoc, ts []reflect.Type, typeDocs map[string]string) string
 }
 
 func mdEscape(s string) string { return strings.ReplaceAll(s, "|", "\\|") }
+
+// missing stops the build of the reference when a signature names a types type that isn't documented (add it to
+// roots): agents otherwise guess a result's field names.
+func missing(fns []fnDoc, ts []reflect.Type, typeDocs map[string]string) {
+	have := map[string]bool{}
+	for _, t := range ts {
+		have[t.Name()] = true
+	}
+	var out []string
+	for _, f := range fns {
+		for _, n := range regexp.MustCompile(`\b[A-Z][A-Za-z]+\b`).FindAllString(f.Sig, -1) {
+			if _, isType := typeDocs[n]; isType && !have[n] && n != "GUID" { // GUID is a string, documented in sdk.md
+				out = append(out, n+" ("+f.Name+")")
+				have[n] = true
+			}
+		}
+	}
+	if len(out) > 0 {
+		log.Fatalf("types named in signatures but not in the reference (add them to roots): %s", strings.Join(out, ", "))
+	}
+}

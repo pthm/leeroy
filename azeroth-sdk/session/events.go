@@ -217,6 +217,7 @@ func (b *Bot) watchEvents() {
 		b.emit("party_changed", types.PartyChanged{InGroup: st.InGroup, Members: members})
 	})
 	var zone, area uint32
+	failedAt := map[uint32]time.Time{} // spell -> its last SMSG_CAST_FAILED (packet hooks run on one goroutine)
 	w.AddPacketHook(func(op uint16, data []byte) {
 		r := bytes.NewReader(data)
 		u32 := func() (v uint32) { binary.Read(r, binary.LittleEndian, &v); return }
@@ -447,11 +448,22 @@ func (b *Bot) watchEvents() {
 			r.ReadByte()
 			spell := u32()
 			code, _ := r.ReadByte()
+			if code == 0 { // the cast bar ended without the spell: the reason, if any, came as SMSG_CAST_FAILED just before
+				if failedAt[spell].After(time.Now().Add(-time.Second)) {
+					return
+				}
+				b.emit("cast_failed", types.Cast{Spell: spell, Name: spellName(spell), Code: "cancelled", Interrupted: true})
+				return
+			}
 			b.emit("cast_failed", types.Cast{Spell: spell, Name: spellName(spell), Code: castResultNames[code], Interrupted: true})
 		case smsgCastFailed: // cast count, spell, reason
 			r.ReadByte()
 			spell := u32()
 			code, _ := r.ReadByte()
+			if code == 27 && !w.KnowsSpell(spell) { // dont_report on a spell you don't have (mount forms tried on death): a client shows nothing
+				return
+			}
+			failedAt[spell] = time.Now()
 			c := types.Cast{Spell: spell, Name: spellName(spell), Code: castResultNames[code]}
 			if code >= 28 && code <= 30 {
 				c.Hint = "needs a working weapon: check items.broken() and repair at an armorer (vendor.repair)"
@@ -526,6 +538,13 @@ func (b *Bot) setupActions() {
 		x, y, z, _ := b.GetPosition()
 		return math.Sqrt(float64((x-m.x)*(x-m.x) + (y-m.y)*(y-m.y) + (z-m.z)*(z-m.z)))
 	}
+	e.OnStop = func(req int) { // task.stop on a task waiting for its walk: stop walking too
+		if m := cur; m != nil && m.id == req && b.lua.Reqs.Result(m.id)["pending"] == true {
+			m.cancel.Store(true)
+			b.lua.Reqs.Resolve(m.id, script.Ok(types.MoveDone{Stopped: true, Distance: math.Round(dist(m)*10) / 10}))
+			b.StopMoving()
+		}
+	}
 	e.Func("move.to", "(x, y, z) → request<MoveDone>", "walk there along the navmesh: ok on arrival, else stuck or timeout. Calling it again near the same point (chasing) keeps the same request; a different point supersedes it. With no navmesh path it walks a straight line (no_path)",
 		func(x, y, z float32) map[string]any {
 			args := map[string]any{"x": x, "y": y, "z": z}
@@ -597,7 +616,7 @@ func (b *Bot) setupActions() {
 		b.StopMoving()
 		return b.done("move.stop", nil, nil)
 	})
-	e.Func("spells.cast", "(id [, guid = you]) → request<CastDone>", "cast a spell on a unit: ok when it goes off, else the server's reason (out_of_range, line_of_sight, not_ready, no_power, bad_targets, moving, interrupted, not_infront, equipped_item_class, ...) or not_known",
+	e.Func("spells.cast", "(id [, guid = you]) → request<CastDone>", "cast a spell on a unit: ok when it goes off, else the server's reason (out_of_range, line_of_sight, not_ready, no_power, bad_targets, moving, interrupted, cancelled, unit_not_infront, caster_aurastate, equipped_item_class, ...) or not_known",
 		func(spell uint32, target uint64) map[string]any {
 			if target == 0 {
 				target = b.world.CharGUID()

@@ -177,7 +177,13 @@ func (b *Bot) setupCoreAPI() {
 	}
 	e.Func("units.nearby", "([dist = 30]) → Creature[]", "creatures within dist yards (alive and dead), nearest first",
 		func(d float32) []types.Creature {
-			cs := b.creatures(b.GetNearbyUnits(dist(d)))
+			var us []UnitInfo
+			for _, u := range b.GetNearbyUnits(dist(d)) {
+				if u.Flags&0x2000000 == 0 { // UNIT_FLAG_NOT_SELECTABLE: invisible triggers (event and script helpers) a player never sees
+					us = append(us, u)
+				}
+			}
+			cs := b.creatures(us)
 			b.annotateNearby(cs)
 			return cs
 		})
@@ -288,7 +294,7 @@ func (b *Bot) setupCoreAPI() {
 
 	// ---------- spells ----------
 	e.Func("spells.known", "(id) → bool", "whether you know the spell (that rank)", w.KnowsSpell)
-	e.Func("spells.usable", "(id [, guid]) → bool", "known, off cooldown and affordable now (on that target)", func(id uint32, g uint64) bool {
+	e.Func("spells.usable", "(id [, guid]) → bool", "known, off cooldown, affordable, and any aura state it needs is there (Victory Rush after a kill, Execute below 20% on that target)", func(id uint32, g uint64) bool {
 		if g == 0 {
 			g = w.CharGUID()
 		}
@@ -437,6 +443,9 @@ func (b *Bot) snapshot() types.Status {
 			if c.Elite {
 				st.Mobs.Elites++
 			}
+		}
+		if c.Lootable && c.Distance <= 30 {
+			st.Mobs.Loot++
 		}
 		if c.Alive && c.Reaction != "hostile" && (len(c.Roles) > 0 || c.QuestStatus != "") {
 			st.NPCs = append(st.NPCs, types.NearbyNPC{GUID: c.GUID, Name: c.Name, Place: c.Place, Roles: c.Roles, QuestStatus: c.QuestStatus})

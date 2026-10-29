@@ -61,6 +61,7 @@ func (b *Bot) creature(u UnitInfo) types.Creature {
 		TappedByOther: u.DynFlags&0x4 != 0 && u.DynFlags&0x8 == 0,                       // tapped, not by you
 		Attackable:    u.Flags&0x2 == 0 && u.Flags&0x2000000 == 0 && u.Flags&0x100 == 0, // non-attackable, not selectable, immune to players
 		Elite:         u.MaxHealth > u.Level*45+40}                                      // ponytail: rank isn't sent; elites have ~3x normal health
+	c.Attackable = c.Attackable && c.Reaction != "friendly" // a friendly NPC can't be attacked even when its flags allow it
 	for _, r := range npcRoles {
 		if u.NPCFlags&r.flag != 0 {
 			c.Roles = append(c.Roles, r.role)

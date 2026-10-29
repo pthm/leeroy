@@ -30,10 +30,17 @@ end)
 - Waiting, only inside a task: `wait(seconds)`, `await(request [, timeout_s])` (an action's result, below),
   `events.wait(type_or_types [, timeout_s])` (the next matching event, or nil on timeout).
 - `task.list()` → your tasks with their state, status and what each waits for (`wow tasks`). `task.status("text")`
-  sets what the current task says it's doing. `task.stop(id or name)`, `task.pause(id)`, `task.resume(id)`.
+  sets what the current task says it's doing.
+- `task.stop(id or name)` stops tasks; `task.stop()` stops every task. By name or with no argument it skips the
+  task that calls it, so a script can stop its own name (task.keep won't restart it) and carry on until it returns.
+  A stopped task that was waiting for a walk (`move.to`, `act.go_to`) stops walking; anything else it started (an
+  auto-attack, a cast) carries on.
+- `task.pause(id)` takes a waiting task off the schedule (false if it isn't waiting) and `task.resume(id)` puts
+  it back on the same wait: a result or an event that came in meanwhile is still delivered.
 - A task that raises an error ends `failed`; the others keep running. Each end is a `task_finished` event.
 - Every evaluation, task step and `on_tick` call has a 3-second execution limit: a loop must `wait`, `await` or
-  `events.wait` to let the rest run. `on_tick()`, if you define it, is called every tick and can't wait.
+  `events.wait` on every pass to let the rest run, including passes where nothing happens (a check that returns at
+  once, a target that's already in range). A task that doesn't fails with "ran 3s without waiting". `on_tick()`, if you define it, is called every tick and can't wait.
 - `wow` evaluations run between ticks on the same state and can't wait: start a task for anything that takes time.
 - `dofile` and `loadfile` read Lua files within your workspace; `LIB` is its absolute path (ending in `/`).
   `os.time`, `os.date`, `os.clock` and `os.difftime` exist; process, environment and other file access don't.
@@ -167,6 +174,7 @@ local choice = ask("Bags full. Destroy greys or go sell?", {"destroy", "sell"}, 
 - **One shape per thing:** a creature, item, quest or spell is the same table wherever it appears.
 - **GUIDs are strings** (64-bit numbers don't fit in a Lua number): pass them back unchanged. An `item` argument is
   an item entry (number) or the GUID of one you carry; `npc` and `guid` are GUIDs, `entry` is a template id.
+  Anywhere a GUID goes you can pass the table itself (a unit, item or object): its `guid` is used.
 - **Options tables:** `act` functions and a few others take one table: `act.go_to{x = 1, y = 2}`.
 - **`act`** covers plumbing, not play: walking with stuck handling, following, NPC errands (accept, turn in, sell,
   repair, train), objects, resting, flying, and recovering from death (`act.recover`). Its source is
@@ -187,6 +195,11 @@ me.level()`). `goto` is reserved, so it can't name a function.
 - `units.nearby` gives each living creature `in_sight`, and for the nearest `path_distance` (the walk) and
   `reachable`; `distance` is a straight line. A mob in a mine below you can be 30 yards away and a 300-yard walk.
 - Indoors and upstairs, pass the point's z to get the right floor: `move.to(x, y, world.ground_z(x, y, z))`.
+  `act.go_to` without a z uses your own height for points within 80 yards, so it stays on your floor in a cave or a
+  building; for anywhere else, pass the z (azworld gives spawn and quest points with theirs).
+- Walking doesn't fight: `move.to`, `act.go_to` and `act.travel` keep walking while something attacks you. Watch
+  for it (`combat_start`, `me.in_combat()`, `me.status().threats`) if you travel through hostile ground.
+- `units.nearby` leaves out units nobody can select: the invisible triggers the server uses for events and scripts.
 - Entering a place triggers it as in the game: exploration objectives complete, inns and cities make you rest.
 - While the server moves you (a flight, a teleport, fear, confusion) the client sends no movement of its own:
   `move.to` is refused with the reason (`in_flight`, `feared`...), `me.movement()` says who moves you, and
@@ -198,8 +211,13 @@ me.level()`). `goto` is reserved, so it can't name a function.
 
 - `me.casting()` is set from the moment you call `spells.cast` (or `items.use`) until the cast ends. Moving
   interrupts a cast.
-- `spells.usable(id, guid)` checks cooldown and power before a cast; the result says whether it went off or why
-  not (`out_of_range`, `not_ready`, `no_power`, `line_of_sight`, `bad_targets`...).
+- `spells.usable(id, guid)` checks cooldown, power and the aura state a spell needs (Victory Rush only after a
+  kill, Execute below 20% health, Revenge after a block or dodge: `me.states()`, a unit's `states`) before a cast;
+  the result says whether it went off or why not (`out_of_range`, `not_ready`, `no_power`, `line_of_sight`,
+  `bad_targets`, `caster_aurastate`...).
+- `cast_failed` events carry the server's reason. A cast bar that ends without the spell and without one is
+  `cancelled`. A failed cast's code is in its request's result too, so check `r.ok` and branch on `r.error.code`:
+  retrying the same call unchanged gets the same answer.
 - `combat.attack(guid)` starts auto-attack. A refused swing is an `attack_failed` event (`not_in_range`,
   `bad_facing`: `move.face`).
 - Each spell rank is its own id: `spells.known`, `act.best({rank ids})` for the highest you know.
@@ -265,11 +283,14 @@ me.level()`). `goto` is reserved, so it can't name a function.
 |---|---|---|
 | `move.to` with `no_path`, or ending `stuck` | no walkable route there (inside a building, wrong floor, under the map) | `world.path`, the point's z, `azworld route` |
 | distance to a target not dropping | blocked by terrain or out of reach | `path_distance`, `reachable`, `in_sight` |
-| cast `line_of_sight` | a wall, rock or rise in between | `units.in_sight(guid)` |
+| cast `line_of_sight` | a wall, rock or rise in between (in caves, often the tunnel's bend) | `units.in_sight(guid)`; `act.approach` closes in until it's in sight |
 | `out_of_range` | too far for that spell | `spells.info(id).range` |
 | `bad_targets` | not a valid target (dead, friendly, tapped by someone else) | the unit's `alive`, `reaction`, `tapped_by_other` |
 | `equipped_item_class*` | your weapon is broken or missing | `items.broken()` |
 | `not_ready` / `no_power` | cooldown, or not enough mana, rage or energy | `spells.cooldown(id)`, `spells.usable(id, guid)` |
+| `caster_aurastate` / `target_aurastate` | the spell's condition isn't met (Victory Rush without a kill, Execute above 20%) | `me.states()`, the target's `states`, `spells.usable` |
+| `unit_not_infront` | the target isn't in front of you | `move.face(guid)` before the cast (`act.cast` faces for you) |
+| casting while dead (`caster_dead`) | a script still running after you died | `me.alive()`, or wait in your loop while dead |
 | `interrupted` | you moved or were hit mid-cast | `me.casting()` |
 | `bags_full`, loot left on corpses | no bag space | `items.free_slots()` |
 | `turn_in` times out | the quest isn't complete, or a different NPC takes it | `quests.log()`, `azworld quest <id>` |

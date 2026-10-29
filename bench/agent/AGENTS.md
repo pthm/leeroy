@@ -44,7 +44,8 @@ standings                                        # the score, and the minutes le
   they see. It can't wait: anything that takes time goes in a task.
 - Every `wow` reply carries `"events"`: what happened since your last call, counted, with the important ones in
   full (sdk.md, "Events"), and `"script_errors"` if a script failed. Chat you subscribe to also goes to stderr.
-- `wow wait` and `wow -w` take whole seconds, at most 600.
+- `wow wait` and `wow -w` take whole seconds, at most 600. If your shell tool returns before a long wait ends (some
+  stop waiting after 30 s), use shorter waits in a loop.
 - Create and edit files with your file-editing tools (some setups block shell redirects, heredocs and `sed -i`).
 
 ## How it fits together

@@ -56,6 +56,10 @@ type threatRef struct {
 	threat float64
 }
 
+func hasAuraState(o *client.WorldObject, state uint32) bool {
+	return o != nil && state <= 32 && o.Value(fieldAuraState)&(1<<(state-1)) != 0
+}
+
 func auraStates(o *client.WorldObject) []string {
 	if o == nil {
 		return nil

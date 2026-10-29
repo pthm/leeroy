@@ -181,6 +181,7 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 	}{}
 	results := map[string]tokens{} // Claude's result line per session: its real totals (none if it was killed)
 	cost, costSeen := 0.0, false
+	var threads []string // Codex threads: their usage is only in the session log (~/.codex/sessions)
 	for _, e := range jsonl(filepath.Join(ar.run, "agent.jsonl")) {
 		t := isoMs(str(e["timestamp"]))
 		typ := str(e["type"])
@@ -214,6 +215,8 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 					delete(pending, id)
 				}
 			}
+		case typ == "thread.started":
+			threads = append(threads, str(e["thread_id"]))
 		case typ == "item.started" && get(item, "type") == "command_execution":
 			pending[str(item["id"])] = pend{t, str(item["command"])}
 		case typ == "item.completed":
@@ -446,8 +449,28 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 		tok.in, tok.out, tok.cr, tok.cw = tok.in+t.in, tok.out+t.out, tok.cr+t.cr, tok.cw+t.cw
 		parts++
 	}
+	// a stopped turn has no result line: the runtime's own session log has every message's final usage
+	logged := map[string]bool{}
 	for _, u := range usage {
-		if _, ok := results[u.session]; !ok {
+		if _, ok := results[u.session]; ok || logged[u.session] {
+			continue
+		}
+		logged[u.session] = true
+		if in, out, cr, cw, ok := claudeLogUsage(u.session); ok {
+			tok.in, tok.out, tok.cr, tok.cw = tok.in+in, tok.out+out, tok.cr+cr, tok.cw+cw
+			parts++
+		} else {
+			logged[u.session] = false
+		}
+	}
+	for _, th := range threads {
+		if in, out, cr, ok := codexLogUsage(th); ok {
+			tok.in, tok.out, tok.cr = tok.in+in, tok.out+out, tok.cr+cr
+			parts++
+		}
+	}
+	for _, u := range usage {
+		if _, ok := results[u.session]; !ok && !logged[u.session] {
 			tok.in, tok.cr, tok.cw = tok.in+u.u.in, tok.cr+u.u.cr, tok.cw+u.u.cw
 			outputKnown = false
 			parts++
@@ -728,4 +751,42 @@ func Report(dir string) {
 			pad(field(c, "coop", "assist_share"), 7), pad(field(c, "coop", "contested_hits"), 9))
 	}
 	fmt.Println("wrote " + filepath.Join(dir, "report.json"))
+}
+
+// claudeLogUsage: a Claude Code session's tokens from its own log (~/.claude/projects/*/<session>.jsonl), each
+// message counted once with its final usage. ok is false when there's no log.
+func claudeLogUsage(session string) (in, out, cr, cw float64, ok bool) {
+	home, _ := os.UserHomeDir()
+	files, _ := filepath.Glob(filepath.Join(home, ".claude/projects/*", session+".jsonl"))
+	if session == "" || len(files) == 0 {
+		return 0, 0, 0, 0, false
+	}
+	last := map[string]map[string]any{}
+	for _, e := range jsonl(files[0]) {
+		msg, _ := e["message"].(map[string]any)
+		if u, _ := msg["usage"].(map[string]any); str(e["type"]) == "assistant" && u != nil {
+			last[str(msg["id"])] = u
+		}
+	}
+	for _, u := range last {
+		in, out, cr, cw = in+fnum(u["input_tokens"]), out+fnum(u["output_tokens"]), cr+fnum(u["cache_read_input_tokens"]), cw+fnum(u["cache_creation_input_tokens"])
+	}
+	return in, out, cr, cw, len(last) > 0
+}
+
+// codexLogUsage: a Codex thread's totals from its rollout log (~/.codex/sessions/<y>/<m>/<d>/rollout-*-<thread>.jsonl):
+// the last token_count event. Codex counts cached input inside input_tokens.
+func codexLogUsage(thread string) (in, out, cr float64, ok bool) {
+	home, _ := os.UserHomeDir()
+	files, _ := filepath.Glob(filepath.Join(home, ".codex/sessions/*/*/*", "*"+thread+".jsonl"))
+	if thread == "" || len(files) == 0 {
+		return 0, 0, 0, false
+	}
+	for _, e := range jsonl(files[0]) {
+		if t := get(get(get(e, "payload"), "info"), "total_token_usage"); get(get(e, "payload"), "type") == "token_count" && t != nil {
+			cr = fnum(get(t, "cached_input_tokens"))
+			in, out, ok = fnum(get(t, "input_tokens"))-cr, fnum(get(t, "output_tokens")), true
+		}
+	}
+	return in, out, cr, ok
 }

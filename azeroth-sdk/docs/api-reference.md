@@ -257,13 +257,13 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | |
 |---|---|
-| `spells.cast(id [, guid = you]) → request<CastDone>` | cast a spell on a unit: ok when it goes off, else the server's reason (out_of_range, line_of_sight, not_ready, no_power, bad_targets, moving, interrupted, not_infront, equipped_item_class, ...) or not_known |
+| `spells.cast(id [, guid = you]) → request<CastDone>` | cast a spell on a unit: ok when it goes off, else the server's reason (out_of_range, line_of_sight, not_ready, no_power, bad_targets, moving, interrupted, cancelled, unit_not_infront, caster_aurastate, equipped_item_class, ...) or not_known |
 | `spells.cast_at(id, x, y, z) → request<CastDone>` | cast a ground-targeted spell (Blizzard, Flare...) |
 | `spells.cooldown(id) → ms` | milliseconds until it's ready (its cooldown, category cooldown and the global cooldown); 0 = ready |
 | `spells.find(name [, rank]) → Spell?` | a spell by name (any case): the highest rank you know, or that rank (a number, or "Rank 2"); nil if you know none |
 | `spells.info(id) → Spell?` | a spell's name, rank, cast time, cooldown, range and cost; nil if unknown |
 | `spells.known(id) → bool` | whether you know the spell (that rank) |
-| `spells.usable(id [, guid]) → bool` | known, off cooldown and affordable now (on that target) |
+| `spells.usable(id [, guid]) → bool` | known, off cooldown, affordable, and any aura state it needs is there (Victory Rush after a kill, Execute below 20% on that target) |
 
 ### talents
 
@@ -279,11 +279,11 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `task.current() → id` | the current task's id (nil outside a task) |
 | `task.keep(name, fn, ...) → id` | run fn as a task and run it again whenever it finishes or fails (backing off while it fails fast, waiting while you're dead); task.stop(name) ends it |
 | `task.list() → TaskInfo[]` | your tasks (finished ones stay listed for 10 minutes) |
-| `task.pause(id)` | pause a waiting task |
-| `task.resume(id)` | resume a paused task |
+| `task.pause(id) → bool` | take a waiting task off the schedule until task.resume; false if it isn't waiting (a task can't pause itself) |
+| `task.resume(id) → bool` | put a paused task back on its wait |
 | `task.spawn([name,] fn, ...) → id` | run fn as a task: it can wait without blocking the game |
 | `task.status(text)` | what the current task says it's doing (shown in task.list) |
-| `task.stop(id or name) → count` | stop tasks |
+| `task.stop([id or name]) → count` | stop tasks: by id, by name, or every task with no argument. By name or with none it skips the task calling it; a task waiting on a walk stops walking |
 
 ### trade
 
@@ -923,6 +923,7 @@ Everything in [Place](#place), plus:
 | `count` | number | hostile creatures within 30 yd, at most 5 levels below you |
 | `max_level` | number |  |
 | `elites` | number |  |
+| `loot?` | number | corpses within 30 yd with loot for you (units.nearby: lootable) |
 
 ### NearbyNPC
 
@@ -974,6 +975,127 @@ Everything in [Place](#place), plus:
 | `waiting_for?` | string | e.g. 1.5s, request 12, event kill |
 | `seconds` | number | since it started |
 | `error?` | string |  |
+
+### Threat
+
+| Field | Type | |
+|---|---|---|
+| `unit` | UnitRef |  |
+| `threat` | number |  |
+| `pct` | number | share of the top threat |
+
+### Gossip
+
+| Field | Type | |
+|---|---|---|
+| `npc` | GUID |  |
+| `menu` | number |  |
+| `text` | string | what the NPC says (or, opening a quest giver with one quest for you, the quest's story) |
+| `text_id?` | number |  |
+| `options` | GossipOption[] |  |
+| `quests` | GossipQuest[] | quests it offers or takes (quests.accept / quests.turn_in) |
+
+### GossipOption
+
+| Field | Type | |
+|---|---|---|
+| `index` | number | pass to gossip.select |
+| `icon` | string | chat, vendor, taxi, trainer, interact, banker, talk, tabard, battle, dot: what choosing it does |
+| `text` | string |  |
+| `coded?` | bool | asks for text: gossip.select(index, code) |
+| `money?` | number | copper it costs |
+| `confirm?` | string | the confirmation a real client would show |
+
+### GossipQuest
+
+| Field | Type | |
+|---|---|---|
+| `quest` | number |  |
+| `title` | string |  |
+| `level` | number |  |
+
+### Gear
+
+Gear grades what you wear against your level, from the game's own numbers: item level, quality, durability.
+
+| Field | Type | |
+|---|---|---|
+| `avg_item_level` | number | over the 17 slots that count (not shirt or tabard); empty = 0 |
+| `score` | number | 0-100: how well your gear suits your level. Each slot: its item level against your level, times its quality (poor 0.6, common 0.85, uncommon 1, rare 1.1, epic 1.2), capped at 1; empty or broken = 0. The main-hand weapon weighs most, then chest, legs, head, shoulders |
+| `grade` | string | poor (under 40), weak (40-64), ok (65-84), good (85+) |
+| `weapon?` | Item | your main hand |
+| `weakest` | GearSlot[] | the slots holding you back most |
+| `empty` | string[] |  |
+| `broken` | string[] |  |
+
+### GearSlot
+
+| Field | Type | |
+|---|---|---|
+| `slot` | string |  |
+| `item?` | string |  |
+| `item_level` | number |  |
+| `score` | number | 0-100 |
+
+### Spellbook
+
+Spellbook: the class spells you could know at your level (Spell.dbc and SkillLineAbility.dbc, as the real client's spellbook knows them) against the ones you do.
+
+| Field | Type | |
+|---|---|---|
+| `known` | number |  |
+| `total` | number |  |
+| `missing` | MissingSpell[] | learn them at your class trainer (some come from class quests, e.g. stances) |
+
+### MissingSpell
+
+| Field | Type | |
+|---|---|---|
+| `id` | number |  |
+| `name` | string |  |
+| `rank?` | string |  |
+| `level` | number |  |
+
+### QuestInfo
+
+QuestInfo: a quest's text and rewards, as the quest giver and the quest log show them.
+
+| Field | Type | |
+|---|---|---|
+| `id` | number |  |
+| `title` | string |  |
+| `level` | number |  |
+| `min_level` | number |  |
+| `summary` | string | what to do (the quest log's objectives text) |
+| `details` | string | the story the quest giver tells: often names where to go and who to see |
+| `completed?` | string | shown once the objectives are done: usually who to return to |
+| `objectives?` | string[] | objective lines that aren't simple kill/collect counts (events, places to reach) |
+| `money?` | number | copper reward |
+| `spell?` | number | a spell it teaches or casts on you |
+| `rewards?` | Item[] | items you get, all of them |
+| `choices?` | Item[] | items to choose one of (quests.turn_in reward = its index, 0 = first) |
+| `next_quest?` | number |  |
+
+### Trainer
+
+| Field | Type | |
+|---|---|---|
+| `npc` | GUID |  |
+| `greeting?` | string |  |
+| `spells` | TrainerSpell[] |  |
+
+### TrainerSpell
+
+| Field | Type | |
+|---|---|---|
+| `spell` | number | pass to trainer.learn |
+| `name` | string |  |
+| `state` | string | available (learn it now), unavailable (level, skill or a prerequisite missing), known |
+| `cost` | number | copper, after reputation discount |
+| `level` | number | required level |
+| `skill_line?` | number | professions: the skill it needs |
+| `skill_rank?` | number |  |
+| `requires?` | number[] | spells you must know first |
 
 ### Result
 

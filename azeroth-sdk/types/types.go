@@ -547,6 +547,7 @@ type MobSummary struct {
 	Count    int    `json:"count" doc:"hostile creatures within 30 yd, at most 5 levels below you"`
 	MaxLevel uint32 `json:"max_level"`
 	Elites   int    `json:"elites"`
+	Loot     int    `json:"loot,omitempty" doc:"corpses within 30 yd with loot for you (units.nearby: lootable)"`
 }
 
 // Status is what a player sees on screen, in one call (me.status, `wow status`): enough to decide what to do next.

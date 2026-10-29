@@ -58,7 +58,7 @@ func TestLuaWorkspaceAndExecutionDeadline(t *testing.T) {
 	}
 	e.CallTick()
 	tasks := e.TasksHeld()
-	if len(tasks) != 1 || tasks[0].State != "failed" || !strings.Contains(tasks[0].Error, "deadline") {
+	if len(tasks) != 1 || tasks[0].State != "failed" || !strings.Contains(tasks[0].Error, "without waiting") {
 		t.Fatalf("task was not stopped: %+v", tasks)
 	}
 	_, err = e.Eval(`task.spawn("nested", function() pcall(function() while true do end end) end)`)
@@ -153,3 +153,47 @@ func TestRuntime(t *testing.T) {
 }
 
 func itoa(n uint64) string { return fmt.Sprint(n) }
+
+// task.stop by name skips the caller; with no argument it stops everything else and reports a stopped walk;
+// pause/resume keep a task's wait (an action's result or an event that came in while paused is still delivered).
+func TestTaskControl(t *testing.T) {
+	e := NewEngine(nolog, nil)
+	e.Func("t.act", "", "", func() map[string]any { return e.Reqs.Start(Spec{Op: "act", Timeout: time.Minute}) })
+	var stopped []int
+	e.OnStop = func(req int) { stopped = append(stopped, req) }
+	e.Eval(`log = {}
+		task.spawn("main", function() task.stop("main") log[#log+1] = "survived" end)
+		task.spawn("w", function() local r = await(t.act()) log[#log+1] = r.ok and "w ok" or "w fail" end)
+		task.spawn("ev", function() local ev = events.wait("ping", 5) log[#log+1] = ev and "ev " .. ev.data.n or "ev nil" end)`)
+	tick(e, 3)
+	v, _ := e.Eval(`return task.pause(2), task.pause(3), task.pause(99)`)
+	if fmt.Sprint(v) != "[true true false]" {
+		t.Fatalf("pause: %v", v)
+	}
+	e.Reqs.Resolve(1, Ok(nil))
+	e.Emit("ping", map[string]any{"n": 5})
+	tick(e, 3)
+	if v, _ := e.Eval(`return table.concat(log, ",")`); v != "survived" {
+		t.Fatalf("paused tasks ran: %v", v)
+	}
+	e.Eval(`task.resume(2) task.resume(3)`)
+	tick(e, 3)
+	if v, _ := e.Eval(`return table.concat(log, ",")`); v != "survived,w ok,ev 5" {
+		t.Fatalf("after resume: %v", v)
+	}
+	e.Eval(`task.spawn("a", function() await(t.act()) end) task.spawn("b", function() wait(60) end)
+		task.spawn("boss", function() n = task.stop() end)`)
+	tick(e, 3)
+	if v, _ := e.Eval(`return n`); v != 2.0 || len(stopped) != 1 || stopped[0] != 2 {
+		t.Fatalf("stop all: n=%v walks stopped=%v", v, stopped)
+	}
+	if _, err := e.Eval(`task.spawn("self", function() task.stop(task.current()) end)`); err != nil {
+		t.Fatal(err)
+	}
+	tick(e, 2)
+	for _, x := range e.TasksHeld() {
+		if x.Name == "self" && x.State != "failed" {
+			t.Fatalf("stopping yourself by id should fail the task: %+v", x)
+		}
+	}
+}

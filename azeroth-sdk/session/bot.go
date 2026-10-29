@@ -1657,6 +1657,15 @@ func (b *Bot) CanCast(spellID uint32, targetGUID uint64) bool {
 			return false
 		}
 	}
+	// aura states the spell needs (UNIT_FIELD_AURASTATE): Victory Rush after a kill, Execute below 20%, Revenge after a block
+	if sp := spellInfo(spellID); sp != nil {
+		if sp.casterState != 0 && !hasAuraState(b.world.GetObject(b.world.CharGUID()), sp.casterState) {
+			return false
+		}
+		if sp.targetState != 0 && targetGUID != 0 && targetGUID != b.world.CharGUID() && !hasAuraState(b.world.GetObject(targetGUID), sp.targetState) {
+			return false
+		}
+	}
 	return true
 }
 

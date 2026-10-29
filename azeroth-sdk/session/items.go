@@ -296,7 +296,7 @@ func (b *Bot) setupItems() {
 			writeTarget(&buf, target)
 			b.agent.castSent(it.UseSpell)
 			w.SendPacketRaw(cmsgUseItem, buf.Bytes())
-			return b.request("items.use", args, 5*time.Second, nil, castMatch(it.UseSpell))
+			return b.request("items.use", args, castTimeout(it.UseSpell), nil, castMatch(it.UseSpell)) // a Hearthstone takes 10 s
 		})
 	e.Func("items.equip", "(item [, slot]) → request<Equipped>", "wear an item you carry (entry or guid) in its slot, or in the slot you name: main_hand, off_hand (a second one-hander, with Dual Wield), finger1, finger2, trinket1, trinket2",
 		func(item uint64, slot string) map[string]any {

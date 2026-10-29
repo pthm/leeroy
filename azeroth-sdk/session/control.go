@@ -401,6 +401,8 @@ func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
 		if len(data) > 0 && data[0] != 0 {
 			if msg, ok := equipErrors[data[0]]; ok {
 				fail("items", slug(msg), msg)
+			} else if n, ok := inventoryResultNames[data[0]]; ok {
+				fail("items", n, strings.ReplaceAll(n, "_", " "))
 			} else {
 				fail("items", fmt.Sprintf("inventory_%d", data[0]), fmt.Sprintf("inventory error %d", data[0]))
 			}

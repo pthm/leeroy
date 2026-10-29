@@ -51,6 +51,10 @@ type Engine struct {
 	cur           *Task // the task being resumed (nil on the main state)
 	workspace     *os.Root
 	workspacePath string
+
+	// OnStop is called when task.stop ends a task that was waiting on a request (its id), so the session can
+	// cancel what the task started (a walk). Called with mu held.
+	OnStop func(req int)
 }
 
 const executionLimit = 3 * time.Second
@@ -485,9 +489,12 @@ func fromLua(L *lua.LState, lv lua.LValue, t reflect.Type) reflect.Value {
 	return v
 }
 
-// guidOf accepts a GUID as a string (exact) or a number.
+// guidOf accepts a GUID as a string (exact) or a number, or anything with a guid field (a unit, an item, an
+// object), so passing the whole table where a GUID is wanted does what it says.
 func guidOf(lv lua.LValue) uint64 {
 	switch x := lv.(type) {
+	case *lua.LTable:
+		return guidOf(x.RawGetString("guid"))
 	case lua.LString:
 		g, _ := strconv.ParseUint(strings.TrimSpace(string(x)), 10, 64)
 		return g
@@ -649,6 +656,7 @@ type Task struct {
 	Started time.Time
 	Ended   time.Time
 	Handler bool
+	paused  string // the state task.pause took it from (new or waiting)
 }
 
 type waitCond struct {
@@ -729,7 +737,11 @@ func (e *Engine) resume(t *Task, args []lua.LValue) {
 	e.cur = nil
 	switch {
 	case err != nil:
-		t.State, t.Err, t.Ended = "failed", err.Error(), time.Now()
+		msg := err.Error()
+		if strings.Contains(msg, "context deadline exceeded") {
+			msg = strings.Replace(msg, "context deadline exceeded", fmt.Sprintf("ran %v without waiting: a loop in a task must wait(), await() or events.wait() on every pass", executionLimit), 1)
+		}
+		t.State, t.Err, t.Ended = "failed", msg, time.Now()
 		e.finish(t)
 		e.noteError("task "+t.Name, err)
 	case st == lua.ResumeOK:
@@ -857,7 +869,8 @@ func (e *Engine) dispatchEvents() {
 	e.inboxMu.Unlock()
 	for _, ev := range evs {
 		for _, t := range e.tasks {
-			if t.State == "waiting" && t.wait.kind == "event" && t.wait.got == nil && ev.Seq > t.wait.since && Matches(ev, t.wait.types) {
+			waiting := t.State == "waiting" || t.State == "paused" && t.paused == "waiting"
+			if waiting && t.wait.kind == "event" && t.wait.got == nil && ev.Seq > t.wait.since && Matches(ev, t.wait.types) {
 				evc := ev
 				t.wait.got = &evc
 			}
@@ -1006,21 +1019,38 @@ func (e *Engine) registerRuntime() {
 			return 0
 		},
 		"stop": func(L *lua.LState) int {
+			// by name or with no argument (every task) the caller is skipped: a script that stops its own name to
+			// restart cleanly carries on; by id, stopping yourself is an error (return from the task instead)
+			self := e.taskOf(L)
 			ids := []int{}
-			if s, ok := L.Get(1).(lua.LString); ok { // by name
+			switch x := L.Get(1).(type) {
+			case lua.LString:
 				for id, t := range e.tasks {
-					if t.Name == string(s) {
+					if t.Name == string(x) && t != self {
 						ids = append(ids, id)
 					}
 				}
-			} else {
-				ids = append(ids, int(L.CheckNumber(1)))
+			case *lua.LNilType:
+				for id, t := range e.tasks {
+					if t != self {
+						ids = append(ids, id)
+					}
+				}
+			default:
+				id := int(L.CheckNumber(1))
+				if t := e.tasks[id]; t != nil && t == self {
+					L.RaiseError("a task can't stop itself by id; return from it instead")
+				}
+				ids = append(ids, id)
 			}
 			n := 0
 			for _, id := range ids {
 				if t := e.tasks[id]; t != nil && t.State != "done" && t.State != "failed" && t.State != "stopped" {
-					if t == e.taskOf(L) {
-						L.RaiseError("a task can't stop itself; return from it instead")
+					w := t.wait
+					if t.State == "paused" && t.paused == "waiting" || t.State == "waiting" {
+						if w.kind == "await" && e.OnStop != nil {
+							e.OnStop(w.req)
+						}
 					}
 					t.State, t.Ended = "stopped", time.Now()
 					e.finish(t)
@@ -1030,18 +1060,25 @@ func (e *Engine) registerRuntime() {
 			L.Push(lua.LNumber(n))
 			return 1
 		},
+		// pause takes a task off the schedule where it waits; resume puts it back on the same wait (an action's
+		// result or an event that came in meanwhile is still delivered; a sleep that ran out ends at once)
 		"pause": func(L *lua.LState) int {
-			if t := e.tasks[int(L.CheckNumber(1))]; t != nil && (t.State == "waiting" || t.State == "new") {
-				t.Status = "paused (" + t.State + ")"
-				t.State = "paused"
+			t := e.tasks[int(L.CheckNumber(1))]
+			ok := t != nil && (t.State == "waiting" || t.State == "new")
+			if ok {
+				t.paused, t.State = t.State, "paused"
 			}
-			return 0
+			L.Push(lua.LBool(ok))
+			return 1
 		},
 		"resume": func(L *lua.LState) int {
-			if t := e.tasks[int(L.CheckNumber(1))]; t != nil && t.State == "paused" {
-				t.State, t.wait = "waiting", waitCond{kind: "sleep"}
+			t := e.tasks[int(L.CheckNumber(1))]
+			ok := t != nil && t.State == "paused"
+			if ok {
+				t.State = t.paused
 			}
-			return 0
+			L.Push(lua.LBool(ok))
+			return 1
 		},
 	})
 	tbl("events", map[string]lua.LGFunction{
@@ -1152,9 +1189,9 @@ var runtimeDocs = [][3]string{
 	{"task.list", "() → TaskInfo[]", "your tasks (finished ones stay listed for 10 minutes)"},
 	{"task.status", "(text)", "what the current task says it's doing (shown in task.list)"},
 	{"task.current", "() → id", "the current task's id (nil outside a task)"},
-	{"task.stop", "(id or name) → count", "stop tasks"},
-	{"task.pause", "(id)", "pause a waiting task"},
-	{"task.resume", "(id)", "resume a paused task"},
+	{"task.stop", "([id or name]) → count", "stop tasks: by id, by name, or every task with no argument. By name or with none it skips the task calling it; a task waiting on a walk stops walking"},
+	{"task.pause", "(id) → bool", "take a waiting task off the schedule until task.resume; false if it isn't waiting (a task can't pause itself)"},
+	{"task.resume", "(id) → bool", "put a paused task back on its wait"},
 	{"events.on", "(type or {types}, fn [, name]) → id", "run fn(event) as a task for each matching event; the same name replaces a handler"},
 	{"events.off", "(id)", "remove a handler"},
 	{"events.handlers", "() → {{id, types, name}}", "your event handlers"},

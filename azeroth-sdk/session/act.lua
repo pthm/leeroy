@@ -63,18 +63,28 @@ function A.consume(kind)
   end
   return false
 end
+local destroyed = {} -- guid -> when: the bags still list an item for a moment after it's destroyed
 function A.make_room()
   local cheapest
   for _, it in ipairs(items.list()) do
-    if not it.equipped and it.quality == "poor" and (not cheapest or it.sell_price < cheapest.sell_price) then cheapest = it end
+    local gone = destroyed[tostring(it.guid)]
+    if not it.equipped and it.quality == "poor" and not (gone and now() - gone < 5000) and (not cheapest or it.sell_price < cheapest.sell_price) then cheapest = it end
   end
-  if cheapest then items.destroy(cheapest.guid) log("act: destroyed " .. cheapest.name .. " for bag space") return true end
+  if cheapest then
+    items.destroy(cheapest.guid)
+    destroyed[tostring(cheapest.guid)] = now()
+    log("act: destroyed " .. cheapest.name .. " for bag space")
+    return true
+  end
   return false
 end
 -- cast(id [, guid]): face the target and cast if ready; in a task it waits for the result
 function A.cast(id, guid)
   guid = guid or me.guid()
-  if not A.ready(id, guid) then return result("act.cast", false, nil, "not_ready", "on cooldown, casting, or not enough power") end
+  if not A.ready(id, guid) then
+    if task.current() then wait(0.2) end -- a loop that retries can't spin past the execution limit
+    return result("act.cast", false, nil, "not_ready", "on cooldown, casting, not enough power, or its condition isn't met (spells.usable)")
+  end
   if guid ~= me.guid() then move.face(guid) end
   return await(spells.cast(id, guid))
 end
@@ -100,7 +110,9 @@ end
 
 function A.go_to(o)
   local tol = o.tolerance or 4
-  local z = (o.z and world.ground_z(o.x, o.y, o.z)) or world.ground_z(o.x, o.y) or o.z or me.position().z
+  -- no z given: the floor nearest your own height when it's close by (in a cave or a building, not the ground above)
+  local hint = o.z or (A.dist(o.x, o.y) < 80 and me.position().z or nil)
+  local z = (hint and world.ground_z(o.x, o.y, hint)) or world.ground_z(o.x, o.y) or o.z or me.position().z
   local r
   for n = 1, o.tries or 3 do
     if A.dist(o.x, o.y) <= tol then move.stop() return result("act.go_to", true, { distance = A.dist(o.x, o.y) }) end
@@ -132,7 +144,8 @@ function A.approach(o)
   while now() < deadline do
     local u = units.get(o.unit)
     if not u then return result("act.approach", false, nil, "unit_gone", "the unit is gone (dead and despawned, or out of sight)") end
-    if u.distance <= range then move.stop() move.face(o.unit) return result("act.approach", true, u) end
+    -- in range and in sight: a mob behind a wall or round a tunnel bend is in range but can't be hit from here
+    if u.distance <= range and (u.in_sight ~= false or u.distance <= 3) then move.stop() move.face(o.unit) return result("act.approach", true, u) end
     move.to(u.x, u.y, u.z)
     wait(0.5)
   end
@@ -279,7 +292,13 @@ function A.rest(o)
   end
   return result("act.rest", true, { hp = A.hp(), mana = A.mana() })
 end
-function A.release() local r = await(death.release()) r.op = "act.release" return r end
+local graveyard -- where releasing put you: the spirit healer is there
+function A.release()
+  local r = await(death.release())
+  r.op = "act.release"
+  if r.ok then graveyard = me.position() end
+  return r
+end
 function A.corpse_run()
   while not me.alive() do
     local c = death.corpse()
@@ -298,8 +317,14 @@ function A.spirit_res()
     for _, u in ipairs(units.nearby(60)) do
       for _, role in ipairs(u.roles or {}) do if role == "spirit_healer" then healer = healer or u end end
     end
-    if not healer then return result("act.spirit_res", false, nil, "not_found", "no spirit healer in sight") end
-    if healer.distance > 5 then A.approach{ unit = healer.guid, range = 5 } else await(death.spirit_res(healer.guid)) end
+    if not healer and graveyard and A.dist(graveyard.x, graveyard.y) > 20 then -- walked off: back to where you released
+      local r = A.go_to{ x = graveyard.x, y = graveyard.y, z = graveyard.z, tolerance = 10 }
+      if not r.ok then r.op = "act.spirit_res" return r end
+    elseif not healer then
+      return result("act.spirit_res", false, nil, "not_found", "no spirit healer in sight (they stand at graveyards: azworld can find one)")
+    end
+    if healer and healer.distance > 5 then A.approach{ unit = healer.guid, range = 5 }
+    elseif healer then await(death.spirit_res(healer.guid)) end
   end
   return result("act.spirit_res", true)
 end
