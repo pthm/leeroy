@@ -232,30 +232,119 @@ type Answer struct {
 // FightSummary: one fight, from you or a party member in sight entering combat until all of you are out of it (or
 // you die). Your numbers are yours; group has everyone's.
 type FightSummary struct {
-	Outcome       string         `json:"outcome" doc:"won (you or your party killed something), died, or ended (combat ended without a kill: it fled, evaded or you got away)"`
-	Seconds       float64        `json:"seconds"`
-	Enemies       []UnitRef      `json:"enemies" doc:"everything that hit you or that you hit"`
-	Kills         []UnitRef      `json:"kills" doc:"yours and your party's"`
-	DamageDealt   uint32         `json:"damage_dealt"`
-	DamageTaken   uint32         `json:"damage_taken"`
-	HealingDone   uint32         `json:"healing_done"`
-	HealingTaken  uint32         `json:"healing_taken"`
-	Overhealing   uint32         `json:"overhealing,omitempty" doc:"your heals' part past full health (wasted mana)"`
-	DPS           float64        `json:"dps" doc:"damage dealt per second of the fight"`
-	HealthStart   float64        `json:"health_start" doc:"fraction 0-1"`
-	HealthEnd     float64        `json:"health_end"`
-	PowerStart    float64        `json:"power_start" doc:"fraction 0-1 (mana, rage, energy)"`
-	PowerEnd      float64        `json:"power_end"`
-	XP            uint32         `json:"xp"`
-	Abilities     map[string]int `json:"abilities" doc:"casts that went off, by spell"`
-	FailedCasts   map[string]int `json:"failed_casts,omitempty" doc:"by reason (out_of_range, no_power, not_ready...)"`
-	AurasApplied  map[string]int `json:"auras_applied,omitempty" doc:"buffs and debuffs you put on others, by name"`
-	AurasSuffered map[string]int `json:"auras_suffered,omitempty" doc:"debuffs that landed on you, by name"`
-	SwingsRefused int            `json:"swings_refused,omitempty" doc:"melee swings the server refused (not_in_range, bad_facing)"`
-	Outcomes      map[string]int `json:"outcomes,omitempty" doc:"how your attacks landed: hit, crit, miss, dodge, parry, block, resist, evade, immune..."`
-	Group         []Meter        `json:"group,omitempty" doc:"in a party: you and each member in sight over this fight (zeros for whoever did nothing), from the combat log: damage dealt, healing done, damage taken (taken), healing received (healed), dps, hps, kills"`
-	DamageShare   *float64       `json:"damage_share,omitempty" doc:"in a party: your fraction (0-1) of the group's damage this fight"`
-	HealingShare  *float64       `json:"healing_share,omitempty" doc:"in a party: your fraction (0-1) of the group's healing this fight"`
+	Outcome       string            `json:"outcome" doc:"won (you or your party killed something), died, or ended (combat ended without a kill: it fled, evaded or you got away)"`
+	Seconds       float64           `json:"seconds"`
+	Enemies       []UnitRef         `json:"enemies" doc:"everything that hit you or that you hit"`
+	Kills         []UnitRef         `json:"kills" doc:"yours and your party's"`
+	DamageDealt   uint32            `json:"damage_dealt"`
+	DamageTaken   uint32            `json:"damage_taken"`
+	HealingDone   uint32            `json:"healing_done"`
+	HealingTaken  uint32            `json:"healing_taken"`
+	Overhealing   uint32            `json:"overhealing,omitempty" doc:"your heals' part past full health (wasted mana)"`
+	DPS           float64           `json:"dps" doc:"damage dealt per second of the fight"`
+	HealthStart   float64           `json:"health_start" doc:"fraction 0-1"`
+	HealthEnd     float64           `json:"health_end"`
+	PowerStart    float64           `json:"power_start" doc:"fraction 0-1 (mana, rage, energy)"`
+	PowerEnd      float64           `json:"power_end"`
+	XP            uint32            `json:"xp"`
+	Abilities     map[string]int    `json:"abilities" doc:"casts that went off, by spell"`
+	FailedCasts   map[string]int    `json:"failed_casts,omitempty" doc:"by reason (out_of_range, no_power, not_ready...)"`
+	AurasApplied  map[string]int    `json:"auras_applied,omitempty" doc:"buffs and debuffs you put on others, by name"`
+	AurasSuffered map[string]int    `json:"auras_suffered,omitempty" doc:"debuffs that landed on you, by name"`
+	SwingsRefused int               `json:"swings_refused,omitempty" doc:"melee swings the server refused (not_in_range, bad_facing)"`
+	Outcomes      map[string]int    `json:"outcomes,omitempty" doc:"how your attacks landed: hit, crit, miss, dodge, parry, block, resist, evade, immune..."`
+	Group         []Meter           `json:"group,omitempty" doc:"in a party: you and each member in sight over this fight (zeros for whoever did nothing), from the combat log: damage dealt, healing done, damage taken (taken), healing received (healed), dps, hps, kills"`
+	DamageShare   *float64          `json:"damage_share,omitempty" doc:"in a party: your fraction (0-1) of the group's damage this fight"`
+	HealingShare  *float64          `json:"healing_share,omitempty" doc:"in a party: your fraction (0-1) of the group's healing this fight"`
+	ID            int               `json:"id,omitempty" doc:"its number in the fight log: wow fight <id>, combat.fight(id)"`
+	Positioning   *FightPositioning `json:"positioning,omitempty" doc:"how everyone moved: who joined from where, who drifted out of range, where you died"`
+}
+
+// FightPositioning: what movement did in a fight, from the fight log's positions.
+type FightPositioning struct {
+	MovedYd float64      `json:"moved_yd" doc:"how far you walked during the fight"`
+	Joins   []FightJoin  `json:"joins" doc:"each enemy, in the order it joined: the first is the one you pulled, the rest are adds"`
+	Apart   []FightApart `json:"apart,omitempty" doc:"party members who spent time more than 40 yd from you (out of heal range of each other)"`
+	Died    *FightDeath  `json:"died,omitempty"`
+}
+
+type FightJoin struct {
+	Label    string  `json:"label" doc:"its letter on the fight's map"`
+	Name     string  `json:"name"`
+	Level    uint32  `json:"level,omitempty"`
+	S        float64 `json:"s" doc:"seconds into the fight"`
+	Distance float64 `json:"distance" doc:"yards from you when it joined"`
+	From     string  `json:"from" doc:"compass direction from you: N, NE, E..."`
+	Near     string  `json:"near,omitempty" doc:"an enemy already in the fight within 15 yd of it when it joined (its pack)"`
+}
+
+type FightApart struct {
+	Label   string  `json:"label"`
+	Name    string  `json:"name"`
+	Seconds float64 `json:"seconds" doc:"seconds more than 40 yd from you"`
+	MaxYd   float64 `json:"max_yd"`
+}
+
+type FightDeath struct {
+	EnemiesWithin10 int      `json:"enemies_within_10" doc:"living enemies within 10 yd of you when you died"`
+	NearestPartyYd  *float64 `json:"nearest_party_yd,omitempty"`
+}
+
+// FightHeader: one line of the fight log (combat.fights, wow fights).
+type FightHeader struct {
+	ID          int      `json:"id"`
+	Start       int64    `json:"start" doc:"unix ms"`
+	Seconds     float64  `json:"seconds"`
+	Outcome     string   `json:"outcome"`
+	Enemies     []string `json:"enemies"`
+	DamageDealt uint32   `json:"damage_dealt"`
+	DamageTaken uint32   `json:"damage_taken"`
+	Adds        int      `json:"adds" doc:"enemies that joined after the first"`
+}
+
+// Fight: one fight as the fight log keeps it (combat.fight, wow fight): its summary, where everyone was each second,
+// and every hit, heal, cast and death in order. The map letters: @ you, A-N enemies, P-Z party members and other
+// players.
+type Fight struct {
+	ID       int          `json:"id"`
+	Start    int64        `json:"start" doc:"unix ms"`
+	Summary  FightSummary `json:"summary"`
+	Actors   []FightActor `json:"actors"`
+	Frames   []FightFrame `json:"frames" doc:"once a second, from 3 s before the fight: where each actor was"`
+	Timeline []FightEntry `json:"timeline"`
+}
+
+type FightActor struct {
+	Label string `json:"label"`
+	GUID  GUID   `json:"guid"`
+	Name  string `json:"name"`
+	Level uint32 `json:"level,omitempty"`
+	Kind  string `json:"kind" doc:"you, enemy, party or player"`
+}
+
+type FightFrame struct {
+	S  float64     `json:"s" doc:"seconds into the fight (negative: before it)"`
+	At []FightSpot `json:"at"`
+}
+
+type FightSpot struct {
+	Label  string  `json:"label"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Z      float64 `json:"z"`
+	HP     float64 `json:"hp" doc:"health fraction 0-1"`
+	Alive  bool    `json:"alive"`
+	Target string  `json:"target,omitempty" doc:"the label of who it was targeting"`
+}
+
+type FightEntry struct {
+	S       float64 `json:"s"`
+	Kind    string  `json:"kind" doc:"damage, heal, cast, kill, death or join"`
+	Src     string  `json:"src,omitempty" doc:"label, or a name for someone not on the map"`
+	Dst     string  `json:"dst,omitempty"`
+	Spell   string  `json:"spell,omitempty"`
+	Amount  uint32  `json:"amount,omitempty"`
+	Outcome string  `json:"outcome,omitempty"`
 }
 
 // AuraChange: an aura on you, or one you cast on another unit, began or ended.

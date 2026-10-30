@@ -64,6 +64,9 @@ type Place struct {
 	InSight      *bool    `json:"in_sight,omitempty" doc:"nothing solid (rock, walls) between you and it: a mob in a cave under you can be close but not in sight"`
 	PathDistance *float64 `json:"path_distance,omitempty" doc:"how far you'd walk to reach it (often much more than distance, across cliffs, floors and caves); worked out nearest first within a time budget, so the farthest may lack it"`
 	Reachable    *bool    `json:"reachable,omitempty" doc:"with path_distance: whether a walking route gets you there"`
+	Bearing      float64  `json:"bearing" doc:"degrees from where you face: 0 ahead, 90 to your right, -90 to your left, ±180 behind"`
+	Clock        int      `json:"clock" doc:"the same as a clock face: 12 ahead, 3 right, 6 behind, 9 left"`
+	DZ           float64  `json:"dz" doc:"yards above you (negative: below; a mob in a cave under you, or on a ledge above)"`
 }
 
 // Unit is what creatures and players share.
@@ -94,6 +97,8 @@ type Creature struct {
 	Evading       bool     `json:"evading,omitempty" doc:"it's evading (resetting, unreachable): your attacks do nothing; leave it"`
 	Roles         []string `json:"roles,omitempty" doc:"what it offers: vendor, repair, trainer, quest_giver, flight_master, innkeeper, banker, spirit_healer, gossip"`
 	Attackable    bool     `json:"attackable" doc:"can be attacked at all (false for triggers, dummies, protected NPCs)"`
+	AggroRadius   float64  `json:"aggro_radius,omitempty" doc:"hostile and alive: how close you can come before it attacks you on sight (the server's rule: 20 yd at your level, a yard more per level above you and a yard less per level below, at least 5)"`
+	InAggro       bool     `json:"in_aggro,omitempty" doc:"you're within its aggro_radius and in its sight: it attacks you now, or the moment it's free"`
 	Lootable      bool     `json:"lootable" doc:"a corpse with loot for you"`
 	TappedByOther bool     `json:"tapped_by_other" doc:"someone else damaged it first: killing it gives you nothing"`
 	QuestStatus   string   `json:"quest_status,omitempty" doc:"the marker over a quest giver: available (yellow !: a quest for you), available_repeatable (blue !), available_low_level (only quests far below your level), unavailable (none for you yet: level or prerequisites), incomplete (grey ?: you're on its quest), reward (yellow ?: turn a quest in here)"`
@@ -175,9 +180,7 @@ type Stats struct {
 }
 
 type Corpse struct {
-	X         float64 `json:"x"`
-	Y         float64 `json:"y"`
-	Z         float64 `json:"z"`
+	Place
 	Map       uint32  `json:"map"`
 	ReclaimIn float64 `json:"reclaim_in" doc:"seconds until you can reclaim it"`
 }
@@ -548,10 +551,25 @@ type MissingSpell struct {
 }
 
 type MobSummary struct {
-	Count    int    `json:"count" doc:"hostile creatures within 30 yd, at most 5 levels below you"`
-	MaxLevel uint32 `json:"max_level"`
-	Elites   int    `json:"elites"`
-	Loot     int    `json:"loot,omitempty" doc:"corpses within 30 yd with loot for you (units.nearby: lootable)"`
+	Count       int      `json:"count" doc:"hostile creatures within 30 yd, at most 5 levels below you"`
+	MaxLevel    uint32   `json:"max_level"`
+	Elites      int      `json:"elites"`
+	Loot        int      `json:"loot,omitempty" doc:"corpses within 30 yd with loot for you (units.nearby: lootable)"`
+	InAggro     int      `json:"in_aggro" doc:"hostile creatures that have you in their aggro range now"`
+	AggroMargin *float64 `json:"aggro_margin,omitempty" doc:"yards to the nearest hostile creature's aggro range (negative: you're inside it)"`
+}
+
+// Danger: a hostile creature whose aggro range you're in or near: what attacks you if you stay, or step closer.
+type Danger struct {
+	GUID  GUID   `json:"guid"`
+	Name  string `json:"name"`
+	Level uint32 `json:"level"`
+	Elite bool   `json:"elite,omitempty"`
+	Place
+	AggroRadius float64 `json:"aggro_radius"`
+	InAggro     bool    `json:"in_aggro" doc:"you're inside its aggro range and in its sight"`
+	Margin      float64 `json:"margin" doc:"yards to the edge of its aggro range (negative: you're inside)"`
+	Pack        int     `json:"pack" doc:"other hostile creatures within 10 yd of it: what comes along if you pull it"`
 }
 
 // Status is what a player sees on screen, in one call (me.status, `wow status`): enough to decide what to do next.
@@ -583,6 +601,7 @@ type Status struct {
 	TargetAuras    []Aura        `json:"target_auras,omitempty" doc:"your target's buffs and debuffs"`
 	Threats        []Hostile     `json:"threats" doc:"hostile creatures fighting you, your pet or your group (combat.threat for a full threat table)"`
 	Mobs           MobSummary    `json:"mobs_nearby" doc:"units.nearby for each one"`
+	Danger         []Danger      `json:"danger,omitempty" doc:"hostile creatures whose aggro range you're in or within 15 yd of, nearest edge first, at most 5; wow look for the map"`
 	NPCs           []NearbyNPC   `json:"npcs" doc:"friendly NPCs within 40 yd that offer something: quest givers with a marker first, then nearest; at most 8"`
 	Objects        []Object      `json:"objects" doc:"within 40 yd, nearest first, at most 5: chests, gathering nodes (see gather / can_use), fishing pools and objects lit up for your quests"`
 	Players        []Player      `json:"players" doc:"within 60 yd, nearest first, at most 10 (units.players for all)"`

@@ -151,7 +151,9 @@ agent's to work out.
 | File | |
 |---|---|
 | [`game.md`](docs/game.md) | the rules of the game: stats, gear, classes and roles, XP, combat, death, quests, travel, groups, chat |
-| [`sdk.md`](docs/sdk.md) | the SDK: tasks, actions, events and subscriptions, the Lua API and its conventions, how the API behaves, `azworld` |
+| [`sdk.md`](docs/sdk.md) | the SDK: tasks, actions, events and subscriptions, the Lua API and its conventions, seeing what scripts do |
+| [`moving.md`](docs/moving.md), [`fighting.md`](docs/fighting.md), [`npcs-and-items.md`](docs/npcs-and-items.md), [`death-and-travel.md`](docs/death-and-travel.md), [`players.md`](docs/players.md), [`troubleshooting.md`](docs/troubleshooting.md) | how the API behaves in the game, a file per topic |
+| [`azworld.md`](docs/azworld.md) | the world data tool |
 | [`api-reference.md`](docs/api-reference.md) | every function, type and event (generated) |
 
 Derived from [AzerothGhost](https://github.com/azerothcore/AzerothGhost) (MIT, see `LICENSE.AzerothGhost`),

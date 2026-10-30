@@ -193,6 +193,9 @@ func (b *Bot) fightTransitions(enteredCombat, leftCombat, died bool) {
 		}
 		s.DamageShare, s.HealingShare = share(s.DamageDealt, dmg), share(s.HealingDone, heal)
 	}
+	if b.fightLog != nil {
+		b.fightLog.finish(&s, f.start, time.Now(), b.log)
+	}
 	f.active = false
 	f.reset()
 	go b.emit("fight_end", s) // not under f.mu: the bus calls f.count

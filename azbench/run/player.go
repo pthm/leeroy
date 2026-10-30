@@ -56,11 +56,18 @@ func (p *player) account() string {
 // workspaceFiles: what each run refreshes in the workspace, from the repo. AGENTS.md is where the agent starts (Codex
 // loads it by itself; CLAUDE.md imports it for Claude Code, so both start from the same text) and points to the rest.
 var workspaceFiles = map[string]string{
-	"AGENTS.md":        "bench/agent/AGENTS.md",
-	"game.md":          "azeroth-sdk/docs/game.md",
-	"sdk.md":           "azeroth-sdk/docs/sdk.md",
-	"api-reference.md": "azeroth-sdk/docs/api-reference.md",
-	"example.lua":      "azeroth-sdk/examples/lua/skeleton.lua",
+	"AGENTS.md":           "bench/agent/AGENTS.md",
+	"game.md":             "azeroth-sdk/docs/game.md",
+	"sdk.md":              "azeroth-sdk/docs/sdk.md",
+	"moving.md":           "azeroth-sdk/docs/moving.md",
+	"fighting.md":         "azeroth-sdk/docs/fighting.md",
+	"npcs-and-items.md":   "azeroth-sdk/docs/npcs-and-items.md",
+	"death-and-travel.md": "azeroth-sdk/docs/death-and-travel.md",
+	"players.md":          "azeroth-sdk/docs/players.md",
+	"troubleshooting.md":  "azeroth-sdk/docs/troubleshooting.md",
+	"azworld.md":          "azeroth-sdk/docs/azworld.md",
+	"api-reference.md":    "azeroth-sdk/docs/api-reference.md",
+	"example.lua":         "azeroth-sdk/examples/lua/skeleton.lua",
 }
 
 // workspace: refreshed each run: the docs, the example script, CLAUDE.md, and NOTES.md if it has none yet.

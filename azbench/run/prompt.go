@@ -49,7 +49,8 @@ func goalText(goal string, mins int) string {
 		if r, err := world.Rows(world.World(), "SELECT LogTitle FROM quest_template WHERE ID = ?", n); err == nil && len(r) > 0 {
 			title = r[0][0]
 		}
-		return fmt.Sprintf("complete the quest %q (quest %s): accept it, do its objectives, and turn it in", title, n)
+		title = strings.Join(strings.Fields(title), " ") // the database has 'Wanted:  "Hogger"'
+		return fmt.Sprintf("complete the quest %s (quest %s): accept it, do its objectives, and turn it in", title, n)
 	}
 	return goal
 }

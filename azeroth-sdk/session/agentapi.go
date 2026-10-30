@@ -282,8 +282,12 @@ func (b *Bot) setupAgentAPI() {
 			if s.corpse == nil {
 				return nil
 			}
-			return types.Corpse{X: round1(s.corpse[0]), Y: round1(s.corpse[1]), Z: round1(s.corpse[2]), Map: uint32(s.corpse[3]),
+			c := types.Corpse{Place: types.Place{X: round1(s.corpse[0]), Y: round1(s.corpse[1]), Z: round1(s.corpse[2])}, Map: uint32(s.corpse[3]),
 				ReclaimIn: math.Max(0, math.Ceil(time.Until(s.reclaimAt).Seconds()))} // up: 0 means reclaim now works
+			m := b.me3() // from where your ghost stands: "40 yd behind you, 12 below"
+			c.Distance = round1(float32(math.Sqrt((c.X-m.x)*(c.X-m.x) + (c.Y-m.y)*(c.Y-m.y) + (c.Z-m.z)*(c.Z-m.z))))
+			relate(m.x, m.y, m.z, m.o, &c.Place)
+			return c
 		})
 	alive := func() *script.Outcome {
 		if b.IsAlive() && !b.IsGhost() {
@@ -1092,6 +1096,9 @@ func (b *Bot) annotateNearby(cs []types.Creature) {
 	for i := range cs {
 		if c := &cs[i]; c.Alive {
 			r.place(uint64(c.GUID), &c.Place, 1.5)
+			if c.InSight != nil && !*c.InSight {
+				c.InAggro = false // it can't see you (rock between you: the mob in the mine below)
+			}
 		}
 	}
 }

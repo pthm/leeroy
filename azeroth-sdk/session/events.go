@@ -625,6 +625,7 @@ func (b *Bot) watchEvents() {
 
 // stateEvents emits transitions only visible in client state (each AI tick, before scripts run).
 func (b *Bot) stateEvents() {
+	b.sampleFightLog()
 	combat, alive := b.InCombat(), b.IsAlive() && !b.IsGhost()
 	groupCombat := combat || b.partyInCombat()
 	if b.wasAlive != nil {

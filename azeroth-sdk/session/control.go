@@ -210,6 +210,7 @@ func (b *Bot) setupControl() {
 	b.setupTrade()
 	b.setupTravel()
 	b.setupFights()
+	b.setupFightLog()
 	b.setupAuras()
 	b.setupCombatInfo()
 	b.watchAreaTriggers()

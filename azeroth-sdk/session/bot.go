@@ -70,6 +70,7 @@ type Bot struct {
 	clog           *combatLog               // combat.log / combat.meter
 	travel         *travelState             // flights, teleports, who moves you
 	fight          *fightState              // the running fight, for fight_end
+	fightLog       *fightLog                // positions and events of recent fights (wow fight)
 	wasGroupCombat bool                     // you or a party member in sight was in combat last tick
 	pathCache      map[uint64]pathEntry     // units.nearby routes, see annotateNearby
 	cinfo          *combatInfo              // casts, combo points, evades (combatinfo.go)

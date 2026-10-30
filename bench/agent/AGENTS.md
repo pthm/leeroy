@@ -12,23 +12,40 @@ Your working directory is your workspace. It's the only place you can write, and
 |---|---|
 | `AGENTS.md` | this file: how your session and tools work |
 | `game.md` | the rules of the game: stats, gear, classes, XP, combat, death, quests, groups, chat |
-| `sdk.md` | the SDK: tasks, actions, events, the Lua API and how it behaves, the world data tool |
+| `sdk.md` | the SDK: tasks, actions, events, the Lua API, seeing what your scripts do |
+| `moving.md`, `fighting.md`, `npcs-and-items.md`, `death-and-travel.md`, `players.md`, `troubleshooting.md` | how the API behaves in the game, a file per topic (below) |
+| `azworld.md` | the world data tool |
 | `api-reference.md` | every function, type and event |
 | `example.lua` | the shape of a script |
 | `NOTES.md` | your notebook (below) |
-| `session.log` | your session's log, timestamped: `log()` lines, script errors, slow ticks, kills, deaths, level-ups |
+| `session.log` | your session's log, timestamped: `log()` lines, script errors, slow ticks, kills, deaths, level-ups, fights |
+| `fights/` | every fight you've had, one file each (`wow fights`, `wow fight <n>`) |
 
 The SDK's source is readable, not writable, at the paths in your task prompt.
+
+Which topic file to open:
+
+| When you're | Read |
+|---|---|
+| walking anywhere, judging what's around you, getting stuck | moving.md |
+| pulling, casting, choosing targets, or working out why a fight went wrong | fighting.md |
+| doing quests, buying, selling, repairing, training, using objects, sorting bags and gear | npcs-and-items.md |
+| dying, coming back to life, flying, hearthing | death-and-travel.md |
+| grouping, chatting, trading, playing with others | players.md |
+| stuck on something that doesn't work as you expect | troubleshooting.md |
+| looking up NPCs, quests, spawns, drops, routes, maps | azworld.md |
 
 ## Your tools
 
 - **`wow`**: the game. It runs Lua in your session and prints the result as JSON (`{"error": ...}` on failure).
-- **`azworld`**: the world's static data: where things are, what drops what, who gives which quest (sdk.md).
+- **`azworld`**: the world's static data: where things are, what drops what, who gives which quest (azworld.md).
 - **`standings`**: the score: every player's score, rates and level in this run, and the minutes left.
 
 ```sh
 wow 'return me.level(), me.health()'             # query -> {"result":[3,{"current":72,"max":72}], "events": {...}}
 wow status                                       # what you'd see on screen: you, your fight, what's around you
+wow look                                         # a top-down map around you: ground, hostiles and their aggro range
+wow fights                                       # your last fights; wow fight <n>: who moved where, what joined, the timeline
 wow -f main.lua                                  # load a script file (it starts its tasks)
 wow tasks                                        # your tasks: state, status, what each waits for
 wow 'task.stop("main")'                          # stop one

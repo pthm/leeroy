@@ -1,0 +1,16 @@
+name: hogger-trio
+description: >
+  Three brand-new level-5 Humans in Goldshire, a tank, a healer and a damage dealer (Protection Paladin, Holy Priest,
+  Frost Mage), on Claude Code, with one goal: complete "Wanted: Hogger" (quest 176). Hogger is an elite level-11
+  gnoll whose claw only drops when he dies, so the three have to work it out together. Scored on time to the goal.
+goal: quest:176
+minutes: 60
+start: goldshire
+level: 5
+require_fresh: true
+runtime: claude
+models: {claude: claude-opus-5-5}
+agents:
+  - {name: a41, char: Wulfric, class: paladin, spec: protpaladin}
+  - {name: a42, char: Rowena, class: priest, spec: holy}
+  - {name: a43, char: Tamsin, class: mage, spec: frost}

@@ -22,6 +22,9 @@ const wowUsage = `wow 'return me.level()'              evaluate Lua in the live 
 wow < snippet.lua                   same, from stdin
 wow -f grind.lua                    (re)load a script file
 wow status                          what you'd see on screen: you, your fight, NPCs and mobs around you, quests, what to improve
+wow fights [n]                      your last fights: when, how long, outcome, enemies, damage, adds
+wow fight [id|last] [--map] [--at s] one fight: positioning, a map of everyone's movement, key moments, the timeline
+wow look [radius]                   a top-down text map of what's around you (world.look; radius in yards, default 40)
 wow tasks [--all]                   your running script tasks (state, status, what each waits for) and each name's latest failure; --all: finished ones too
 wow events [--types chat,quest_*] [--last 50] [--since seq] [--match text]
                                     the event log (chat, combat, loot, quests, action results, errors, script logs)
@@ -75,6 +78,22 @@ func out(v any, ok bool) {
 }
 
 // evalLua runs code and echoes what needs the agent's eye to stderr (piping the reply through jq can't hide it).
+// printText runs code that returns text (a map, a fight) and prints it as is, not as a JSON string.
+func printText(code string) int {
+	p := jqjson.NewObj()
+	p.Set("code", code)
+	r, ok := rpc("script.eval", p)
+	if !ok {
+		return 1
+	}
+	if txt, ok := jqjson.Field(r, "result").(string); ok {
+		fmt.Print(txt)
+		return 0
+	}
+	fmt.Println(jqjson.Compact(r))
+	return 1
+}
+
 func evalLua(code string) int {
 	p := jqjson.NewObj()
 	p.Set("code", code)
@@ -195,6 +214,25 @@ func run(args []string) int {
 		return 0
 	case "status":
 		return evalLua("return me.status()")
+	case "look":
+		return printText("return world.look(" + strings.TrimSpace(arg(1)) + ")")
+	case "fights":
+		return printText("return combat.fights_text(" + strings.TrimSpace(arg(1)) + ")")
+	case "fight":
+		id, opts := "0", []string{}
+		for i := 1; arg(i) != ""; i++ {
+			switch a := arg(i); a {
+			case "last":
+			case "--map":
+				opts = append(opts, "map = true")
+			case "--at":
+				i++
+				opts = append(opts, "at = "+arg(i))
+			default:
+				id = a
+			}
+		}
+		return printText("return combat.fight_text(" + id + ", {" + strings.Join(opts, ", ") + "})")
 	case "tasks":
 		if arg(1) == "--all" {
 			return evalLua("return task.list()")

@@ -133,13 +133,14 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 	for _, p := range r.players {
 		os.MkdirAll(p.dir, 0o755)
 	}
-	if !resume { // the scenario as run (the notice inlined), for resume and the record
-		saved := *r.s
-		if saved.Notice, _ = r.s.NoticeText(); true {
-			y, _ := yaml.Marshal(saved)
-			os.WriteFile(filepath.Join(r.dir, "scenario.yaml"), y, 0o644)
-		}
-	} else {
+	// the scenario as run (the notice inlined), for resume and the record; again on a resume, which may have
+	// changed its length (resume --minutes)
+	saved := *r.s
+	if saved.Notice, _ = r.s.NoticeText(); true {
+		y, _ := yaml.Marshal(saved)
+		os.WriteFile(filepath.Join(r.dir, "scenario.yaml"), y, 0o644)
+	}
+	if resume {
 		r.elapsed = r.played()
 		r.logf("resuming %s: %.0f of %d minutes played", r.dir, r.elapsed.Minutes(), r.s.Minutes)
 		if r.elapsed >= time.Duration(r.s.Minutes)*time.Minute {

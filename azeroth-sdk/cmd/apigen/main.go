@@ -7,6 +7,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -37,7 +38,7 @@ var roots = []any{
 	types.Path{}, types.Resource{}, types.XP{}, types.Casting{}, types.Stats{}, types.Corpse{}, types.Achievements{},
 	types.Item{}, types.Comparison{}, types.VendorItem{}, types.Spell{}, types.Quest{}, types.Objective{}, types.Talents{},
 	types.TalentTree{}, types.Talent{}, types.Group{}, types.GroupMember{}, types.GroupReport{}, types.GroupMemberReport{}, types.Trade{}, types.TradeSide{}, types.Inspect{},
-	types.CombatEntry{}, types.Meter{}, types.SpellMeter{}, types.Status{}, types.TaskInfo{}, types.MobSummary{},
+	types.CombatEntry{}, types.Meter{}, types.SpellMeter{}, types.Status{}, types.TaskInfo{}, types.MobSummary{}, types.Fight{}, types.FightHeader{},
 	types.Threat{}, types.Gossip{}, types.Gear{}, types.Spellbook{}, types.QuestInfo{}, types.Trainer{}, types.Reputation{},
 	types.Result{}, types.Error{}, types.Event{},
 }
@@ -208,17 +209,26 @@ func markdown(fns []fnDoc, ts []reflect.Type, typeDocs map[string]string) string
 		"Conventions are in sdk.md. `request<T>`: an action's request, whose result's `data` is a `T` when it's ok. " +
 		"`T?`: nil when unknown (out of sight, not loaded yet, none).\n\n")
 	b.WriteString("## Functions\n")
-	ns := ""
+	// one section per namespace, the global functions (await, wait, log, ...) first as "runtime": sorted by name
+	// alone they'd fall between the namespaces in several pieces
+	space := func(name string) string {
+		if n, _, ok := strings.Cut(name, "."); ok {
+			return n
+		}
+		return ""
+	}
+	sort.SliceStable(fns, func(i, j int) bool { return space(fns[i].Name) < space(fns[j].Name) })
+	known := map[string]bool{}
+	for _, t := range ts {
+		known[t.Name()] = true
+	}
+	ns := "-"
 	for _, f := range fns {
-		n, _, ok := strings.Cut(f.Name, ".")
-		if !ok {
-			n = "runtime"
-		}
-		if n != ns {
+		if n := space(f.Name); n != ns {
 			ns = n
-			fmt.Fprintf(&b, "\n### %s\n\n| Function | |\n|---|---|\n", ns)
+			fmt.Fprintf(&b, "\n### %s\n\n| Function | | Returns |\n|---|---|---|\n", cmp.Or(ns, "runtime"))
 		}
-		fmt.Fprintf(&b, "| `%s%s` | %s |\n", f.Name, mdEscape(f.Sig), mdEscape(f.Desc))
+		fmt.Fprintf(&b, "| `%s%s` | %s | %s |\n", f.Name, mdEscape(f.Sig), mdEscape(f.Desc), returnLinks(f.Sig, known))
 	}
 	b.WriteString("\n## Types\n\nIn Lua these are tables with these fields; optional fields (`?`) are nil when unset. GUIDs are strings.\n")
 	for _, t := range ts {
@@ -256,6 +266,23 @@ func markdown(fns []fnDoc, ts []reflect.Type, typeDocs map[string]string) string
 		fmt.Fprintf(&b, "| `%s` | %s |\n", op, reflect.TypeOf(types.OpResults[op]).Name())
 	}
 	return b.String()
+}
+
+// returnLinks links the types a signature returns ("→ Creature[]") to their sections.
+func returnLinks(sig string, known map[string]bool) string {
+	_, ret, ok := strings.Cut(sig, "→")
+	if !ok {
+		return ""
+	}
+	var links []string
+	seen := map[string]bool{}
+	for _, w := range regexp.MustCompile(`[A-Z][A-Za-z]+`).FindAllString(ret, -1) {
+		if known[w] && !seen[w] {
+			seen[w] = true
+			links = append(links, fmt.Sprintf("[%s](#%s)", w, strings.ToLower(w)))
+		}
+	}
+	return strings.Join(links, ", ")
 }
 
 func mdEscape(s string) string { return strings.ReplaceAll(s, "|", "\\|") }

@@ -1,0 +1,35 @@
+# NPCs and items
+
+Quest givers, vendors, trainers, objects, your bags and gear. The rest of the SDK is in sdk.md.
+
+## NPCs
+
+- NPCs have `roles` (`quest_giver`, `vendor`, `trainer`, `repair`, `flight_master`, `innkeeper`, `spirit_healer`...);
+  quest givers have `quest_status` (the marker a client draws). `azworld near x y --kind <role>` finds the nearest.
+- NPC calls need you within ~5 yards. `gossip.open(npc)` returns what an NPC says, its options and its quests;
+  `gossip.select(index)` picks an option.
+- Vendors: `vendor.items(npc)` (call it twice: the first call asks the vendor), `vendor.buy(npc, entry, count)`,
+  `vendor.sell(npc, item)`, `vendor.sell_junk(npc)` (every grey), `vendor.repair(npc)`. `act.vendor{...}` walks
+  there and does all of it.
+- Trainers: `trainer.list(npc)` (what it teaches you, cost, level, available now), `trainer.learn(npc, spell)`. The
+  level-70 "<Class> Trainer" NPCs in Northshire are placeholders that teach nothing.
+- Quests: `quests.accept(npc, quest)`, `quests.turn_in(npc, quest [, reward index])` (0 = the first choice;
+  `quests.info(id)` lists the choices), `quests.log()`, `quests.info(id)` (the quest giver's text), `quests.abandon`.
+  `act.accept` and `act.turn_in` walk there first. A kill objective also counts the creatures whose
+  `kill_credit` lists its entry (`units.nearby`, `units.get`). A turn-in fails at once with `incomplete` when the objectives
+  aren't done; a `quest_failed` event means an escort died or a timer ran out: abandon it and take it again.
+
+## Items
+
+- `items.list()` has each item's name, quality and vendor price once its info has loaded (a second after it first
+  appears). `items.free_slots()`, `items.destroy(item)`, `items.use(entry)`, `items.equip(item)`.
+- `items.compare(item)` shows the change against what you wear in that slot (item level, stats, armor, dps) and
+  `usable = false` with the reason when you can't use it. `items.info(entry)` has the details; `me.gear()` every
+  slot; `items.broken()` what's at 0 durability.
+- Group loot: a `loot_roll_start` event per item up for rolls; `items.roll(roll, "need"|"greed"|"disenchant"|"pass")`
+  before the countdown ends (`items.rolls()` lists the open ones), then `loot_roll` and `loot_roll_won` events
+  (`loot_roll_all_passed` when nobody wants it).
+- Full bags: loot stays on the corpse and turn-ins with an item reward fail with `bags_full` (and an "Inventory is
+  full" notice).
+- `objects.use(guid)` within ~5 yards uses a chest, node or quest object. `objects.nearby` says what each takes
+  (`gather`, `skill`, `can_use`, `key`), `lit` when one of your quests needs it, and how far the walk is.

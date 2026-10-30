@@ -111,12 +111,15 @@ func benchCommand(cmd string, args []string) bool {
 		}
 		check(run.Matrix(b, pos[0], repo, *dry))
 	case "resume":
-		pos := parse(1, "<run dir> --message <file> [--no-build]")
+		pos := parse(1, "<run dir> --message <file> [--minutes n] [--no-build]")
 		repo := repoRoot()
 		b, err := config.LoadBench(filepath.Join(repo, "bench"))
 		check(err)
 		s, err := b.LoadScenario(filepath.Join(pos[0], "scenario.yaml"))
 		check(err)
+		if *minutes > 0 { // a new total length: more time for a run that's still going, or a run that ended
+			s.Minutes = *minutes
+		}
 		dir, _ := filepath.Abs(pos[0])
 		r, err := run.New(b, s, run.Options{Repo: repo, Dir: dir})
 		check(err)

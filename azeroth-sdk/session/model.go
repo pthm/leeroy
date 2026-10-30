@@ -53,6 +53,8 @@ func (b *Bot) baseUnit(u UnitInfo) types.Unit {
 	if me := b.world.GetObject(b.world.CharGUID()); me != nil {
 		t.Reaction = factionReaction(u.Faction, me.Value(fieldUnitFaction))
 	}
+	m := b.me3()
+	relate(m.x, m.y, m.z, m.o, &t.Place)
 	return t
 }
 
@@ -69,6 +71,7 @@ func (b *Bot) creature(u UnitInfo) types.Creature {
 	}
 	b.unitExtras(&c.Unit, u.GUID)
 	b.creatureExtras(&c, u)
+	aggro(&c, b.me3(), uint32(b.GetLevel()))
 	return c
 }
 

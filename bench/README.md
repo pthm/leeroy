@@ -11,6 +11,7 @@ commands below run from the repo root; server and client setup is in the [repo R
 | `matrices/*.yaml` | grids of solo runs: task × race × class × minutes × reps ([matrices/README.md](matrices/README.md)) |
 | `specs.yaml` | class specs a scenario's agents can take: class and spec, role, what to optimise, key stats |
 | `places.yaml` | named starting positions (`start: goldshire`) |
+| `tooling-reliability-spec.md` | durable diagnostics, routing, movement, casting, recovery, and runtime shell contracts |
 | `agent/` | what the agent is given: `AGENTS.md` and its three tools in `bin/` (links to `bin/wow`, `bin/azworld`, `bin/azbench`) |
 | `workspaces/<agent>/` | each agent's persistent script library and notes (gitignored) |
 | `runs/` | results (gitignored) |
@@ -168,7 +169,7 @@ The agent's context comes in layers, each its own file:
 | task | `prompt.md` (`azbench/run/prompt.tmpl`) | who it plays, the goal, how it's scored, the run's length, the other players, the rules |
 | how it works | `AGENTS.md` (`agent/AGENTS.md`) | the workspace, the three tools, how scripts, events and subscriptions fit together; points to the rest |
 | the game | `game.md` (`../azeroth-sdk/docs/`) | the rules of the game, described, not coached |
-| reference | `sdk.md`, `api-reference.md` (`../azeroth-sdk/docs/`) | the runtime, the Lua API and how it behaves, `azworld`; every function, type and event |
+| reference | `sdk.md`, the topic files, `azworld.md`, `api-reference.md` (`../azeroth-sdk/docs/`) | the runtime and the Lua API; how it behaves, a file per topic; `azworld`; every function, type and event |
 
 Each run refreshes those files in the workspace, copies `../azeroth-sdk/examples/lua/skeleton.lua` (the shape of a
 script, no play in it) to `example.lua`, writes `CLAUDE.md` as `@AGENTS.md` (Codex loads `AGENTS.md` by itself, so

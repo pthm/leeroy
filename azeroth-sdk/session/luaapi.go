@@ -94,6 +94,8 @@ func (b *Bot) object(o *client.WorldObject) types.Object {
 	creatures.Unlock()
 	ob := types.Object{GUID: types.GUID(o.GUID), Entry: entry, Name: goName, Type: name(goTypes, (o.Value(fieldGOBytes1)>>8)&0xFF),
 		Place: types.Place{X: round1(x), Y: round1(y), Z: round1(z), Distance: round1(float32(math.Sqrt(float64((x-mx)*(x-mx) + (y-my)*(y-my) + (z-mz)*(z-mz)))))}}
+	m := b.me3()
+	relate(m.x, m.y, m.z, m.o, &ob.Place)
 	objectNeeds(b.world, o, &ob, tmpl)
 	return ob
 }
@@ -187,6 +189,13 @@ func (b *Bot) setupCoreAPI() {
 			cs := b.creatures(us)
 			b.annotateNearby(cs)
 			return cs
+		})
+	e.Func("world.look", "([radius = 40]) → string", "a top-down text map of what's around you, north up: the ground (higher, lower, no floor), hostile creatures by letter with their aggro range shaded, other creatures, players and lootable corpses, then a line for each: level, distance, direction, o'clock, height above or below you, aggro radius and whether you're inside it, line of sight. wow look prints it",
+		func(r float64) string {
+			if r <= 0 {
+				r = 40
+			}
+			return b.look(math.Min(r, 100))
 		})
 	e.Func("units.players", "([dist = 30]) → Player[]", "players within dist yards, nearest first", func(d float32) []types.Player {
 		ps := b.players(b.GetNearbyPlayers(dist(d)))
@@ -467,8 +476,12 @@ func (b *Bot) snapshot() types.Status {
 		st.Threats = append(st.Threats, h)
 	}
 
-	// the world around you
-	for _, c := range b.creatures(b.GetNearbyUnits(40)) {
+	// the world around you (60 yd: the widest aggro range, 45 yd, and the 15 yd before it)
+	var hostile []types.Creature
+	for _, c := range b.creatures(b.GetNearbyUnits(60)) {
+		if c.Alive && c.AggroRadius > 0 {
+			hostile = append(hostile, c)
+		}
 		if c.Alive && c.Reaction == "hostile" && c.Attackable && c.Distance <= 30 && c.Level+5 >= st.Level {
 			st.Mobs.Count++
 			st.Mobs.MaxLevel = max(st.Mobs.MaxLevel, c.Level)
@@ -479,7 +492,7 @@ func (b *Bot) snapshot() types.Status {
 		if c.Lootable && c.Distance <= 30 {
 			st.Mobs.Loot++
 		}
-		if c.Alive && c.Reaction != "hostile" && (len(c.Roles) > 0 || c.QuestStatus != "") {
+		if c.Alive && c.Reaction != "hostile" && c.Distance <= 40 && (len(c.Roles) > 0 || c.QuestStatus != "") {
 			st.NPCs = append(st.NPCs, types.NearbyNPC{GUID: c.GUID, Name: c.Name, Place: c.Place, Roles: c.Roles, QuestStatus: c.QuestStatus})
 		}
 	}
@@ -515,6 +528,7 @@ func (b *Bot) snapshot() types.Status {
 	// sight and walking routes for everything around you, from one time budget: your fight first, then your target,
 	// the NPCs, objects, players and your group
 	r := b.newReach()
+	st.Danger, st.Mobs.InAggro, st.Mobs.AggroMargin = danger(hostile, func(d *types.Danger) { r.place(uint64(d.GUID), &d.Place, 1.5) })
 	for i := range st.Threats {
 		r.place(uint64(st.Threats[i].GUID), &st.Threats[i].Place, 1.5)
 	}

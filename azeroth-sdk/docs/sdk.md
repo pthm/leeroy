@@ -7,8 +7,9 @@ sees on its next step. Everything that happens to the character goes to one **ev
 There is no built-in AI. With no script running the character does nothing at all, not even fight back, and
 nothing moves or turns it for you.
 
-This page covers the runtime, the Lua API, how the API behaves in the game, and the world data tool, `azworld`.
-api-reference.md has every function, type and event.
+This page is the runtime and the Lua API: how scripts run, act, and react, and how to see what they do. How the
+API behaves in the game is in a file per topic (the table at the end), and api-reference.md has every function,
+type and event.
 
 ## Tasks: scripts that wait
 
@@ -215,218 +216,14 @@ doubles; there's no `//`, `&` or `|` (use `bit32.band` and friends). A function'
 first when it isn't last in a list (`return ask(...), me.level()` loses ask's second value: `return {ask(...)},
 me.level()`). `goto` is reserved, so it can't name a function.
 
-## How the API behaves
+## How the API behaves: the topic files
 
-### Moving
-
-- `move.to` with no walkable path walks a straight line (the request has `no_path = true`) and usually ends `stuck`.
-  `world.path(x, y, z)` returns the walking distance and the gap between where the path ends and the point: a gap
-  over a few yards means the point can't be reached.
-- `units.nearby` gives each living creature `in_sight`, and for the nearest `path_distance` (the walk) and
-  `reachable`; `distance` is a straight line. A mob in a mine below you can be 30 yards away and a 300-yard walk.
-- Indoors and upstairs, pass the point's z to get the right floor: `move.to(x, y, world.ground_z(x, y, z))`.
-  `act.go_to` without a z uses your own height for points within 80 yards, so it stays on your floor in a cave or a
-  building; for anywhere else, pass the z (azworld gives spawn and quest points with theirs).
-- Walking doesn't fight: `move.to`, `act.go_to` and `act.travel` keep walking while something attacks you, and drag
-  it into your next fight. Give `act.go_to` and `act.travel` an `on_attacked = function(attackers) ... end` (your
-  fighting) and they stop for whoever attacks you on the way, then carry on.
-- Two tasks moving you at once cancel each other's walks: the older `move.to` resolves `superseded`, naming the
-  task that took over. Let one task own movement (stop the other, or pause it, while a death handler runs).
-- `units.nearby` leaves out units nobody can select: the invisible triggers the server uses for events and scripts.
-- Entering a place triggers it as in the game: exploration objectives complete, inns and cities make you rest.
-- While the server moves you (a flight, a teleport, fear, confusion) the client sends no movement of its own:
-  `move.to` is refused with the reason (`in_flight`, `feared`...), `me.movement()` says who moves you, and
-  `movement_changed`, `flight_start` and `flight_end` events mark the changes.
-- Teleports are `teleported` events (`far = true`: a different map, and the world around you reloads). Portals are
-  objects (`type = "portal"`): `objects.use(portal)`. Boats and zeppelins aren't supported.
-
-### Casting and fighting
-
-- `me.casting()` is set from the moment you call `spells.cast` (or `items.use`) until the cast ends. Moving
-  interrupts a cast.
-- `spells.usable(id, guid)` checks cooldown, power and the aura state a spell needs (Victory Rush only after a
-  kill, Execute below 20% health, Revenge after a block or dodge: `me.states()`, a unit's `states`) before a cast;
-  the result says whether it went off or why not (`out_of_range`, `not_ready`, `no_power`, `line_of_sight`,
-  `bad_targets`, `caster_aurastate`...).
-- `spells.cooldown(id)` and `items.cooldown(item)` say how long until a spell or item is ready, including
-  cooldowns still running from before you logged in (the Hearthstone) and shared ones (all potions). A potion used
-  in combat reads `-1`: its cooldown only starts when you leave combat.
-- `cast_failed` events carry the server's reason. A cast bar that ends without the spell and without one is
-  `cancelled`. A failed cast's code is in its request's result too, so check `r.ok` and branch on `r.error.code`:
-  retrying the same call unchanged gets the same answer.
-- `combat.attack(guid)` starts auto-attack. A refused swing is an `attack_failed` event (`not_in_range`,
-  `bad_facing`: `move.face`).
-- Each spell rank is its own id: `spells.known`, `act.best({rank ids})` for the highest you know.
-- Every fight ends with a `fight_end` event: duration, damage dealt and taken, abilities used, outcomes. A unit's
-  `casting`, a `unit_cast_start` event, `units.auras`, `threat_pct` and `combat.threat(guid)` show what the game
-  shows a player.
-- The combat log: `damage` and `heal` events (`periodic` for DoT and HoT ticks), `energize` (mana, rage, energy
-  given), `dispel` (auras dispelled or stolen). A `cast_done` event says how many targets it `hits` and which it
-  `misses`, and why.
-
-### NPCs
-
-- NPCs have `roles` (`quest_giver`, `vendor`, `trainer`, `repair`, `flight_master`, `innkeeper`, `spirit_healer`...);
-  quest givers have `quest_status` (the marker a client draws). `azworld near x y --kind <role>` finds the nearest.
-- NPC calls need you within ~5 yards. `gossip.open(npc)` returns what an NPC says, its options and its quests;
-  `gossip.select(index)` picks an option.
-- Vendors: `vendor.items(npc)` (call it twice: the first call asks the vendor), `vendor.buy(npc, entry, count)`,
-  `vendor.sell(npc, item)`, `vendor.sell_junk(npc)` (every grey), `vendor.repair(npc)`. `act.vendor{...}` walks
-  there and does all of it.
-- Trainers: `trainer.list(npc)` (what it teaches you, cost, level, available now), `trainer.learn(npc, spell)`. The
-  level-70 "<Class> Trainer" NPCs in Northshire are placeholders that teach nothing.
-- Quests: `quests.accept(npc, quest)`, `quests.turn_in(npc, quest [, reward index])` (0 = the first choice;
-  `quests.info(id)` lists the choices), `quests.log()`, `quests.info(id)` (the quest giver's text), `quests.abandon`.
-  `act.accept` and `act.turn_in` walk there first. A kill objective also counts the creatures whose
-  `kill_credit` lists its entry (`units.nearby`, `units.get`). A turn-in fails at once with `incomplete` when the objectives
-  aren't done; a `quest_failed` event means an escort died or a timer ran out: abandon it and take it again.
-
-### Items
-
-- `items.list()` has each item's name, quality and vendor price once its info has loaded (a second after it first
-  appears). `items.free_slots()`, `items.destroy(item)`, `items.use(entry)`, `items.equip(item)`.
-- `items.compare(item)` shows the change against what you wear in that slot (item level, stats, armor, dps) and
-  `usable = false` with the reason when you can't use it. `items.info(entry)` has the details; `me.gear()` every
-  slot; `items.broken()` what's at 0 durability.
-- Group loot: a `loot_roll_start` event per item up for rolls; `items.roll(roll, "need"|"greed"|"disenchant"|"pass")`
-  before the countdown ends (`items.rolls()` lists the open ones), then `loot_roll` and `loot_roll_won` events
-  (`loot_roll_all_passed` when nobody wants it).
-- Full bags: loot stays on the corpse and turn-ins with an item reward fail with `bags_full` (and an "Inventory is
-  full" notice).
-- `objects.use(guid)` within ~5 yards uses a chest, node or quest object. `objects.nearby` says what each takes
-  (`gather`, `skill`, `can_use`, `key`), `lit` when one of your quests needs it, and how far the walk is.
-
-### Travel and death
-
-- `flights.map(npc)` at a flight master discovers its point (`learned`) and lists where you can fly;
-  `flights.take(npc, node)` resolves when you land. `act.fly{to = "Sentinel Hill"}` from near a flight master.
-- `innkeeper.bind(npc)` sets your home; the hearthstone is item 6948 (`items.use(6948)`); `me.home()`.
-- `death.release()`, `death.corpse()` (where it is and when you can reclaim), `death.reclaim()` within ~30 yards,
-  `death.spirit_res(npc)`. `act.recover()` does release, corpse run (spirit healer if that fails) and rest. A
-  `gear_broken` event follows a revive with broken gear.
-- Coming back to life where you died puts you next to what killed you. `act.corpse_run` and `act.recover` reclaim
-  from the far side of the reclaim circle (32 yards out) when hostiles stand by the corpse, and `act.recover{spirit =
-  true}` runs to the corpse instead when hostiles camp the graveyard (the spirit healer revives you where you stand).
-  `act.danger(x, y [, r])` lists the hostile creatures near any point. The wait before you can reclaim grows with
-  deaths in quick succession.
-- A `travel_refused` event: a portal or instance turned you away (`reason`, `message`: level, group, full, lockout).
-- `me.reputation()`: your standing with each faction (`rank`: hated ... exalted).
-
-### Other players
-
-- Sending: `chat.say(msg)`, `chat.yell(msg)`, `chat.whisper(name, msg)`, `chat.party(msg)`,
-  `chat.channel(name, msg)`. Every message is at most 255 bytes (`message_too_long`). Whispers and channel
-  messages resolve once the server has delivered them, or fail (`player_not_found`, `not_member`, `muted`,
-  `throttled`); your own messages aren't echoed back as chat events.
-- Channels: you start in your zone's General channel, and leave it when you change zone until you
-  `chat.join("General - <Zone>", 1)` (zone channel ids: General 1, Trade 2, LocalDefense 22). `chat.join("name", 0)`
-  joins a custom channel, in every zone (`wrong_password`, `banned`).
-- Receiving: every message is a `chat` event with `kind`, `from` and `text` (`ago_s` in `wow events` says how old).
-  `events.on("chat", fn)` reacts in a script. Messages sent while your session restarts are lost.
-- Groups: `group.invite(name)` (fails with `bad_player_name`, `already_in_group`, `group_full`...), the invitee gets
-  a `party_invite` event and calls `group.accept()`; `group.info()`, `group.leave()`. A `ready_check` event:
-  answer with `group.ready(true)`. A `summon_request` event: `summon.accept()` resolves when you arrive, or `summon.decline()`.
-  `group.report([minutes])`: how each member spent the last minutes (fighting, travelling, idle, dead, with the
-  group), from what you've seen of them.
-- The server's message of the day comes as a `motd` event; battleground and arena queue changes as `battleground`.
-- `units.players(dist)`, `units.inspect(guid)`: who's around, their level, class and gear.
-- Trading: `trade.start(name)`, both sides `trade.offer{items = {...}, money = copper}`, both `trade.accept()`.
-  A refused trade fails the call with the reason (`too_far`, `busy`, `not_enough_money`...), also in `Trade.error`.
-
-### When something doesn't work
-
-| You see | It usually means | Check |
-|---|---|---|
-| `move.to` with `no_path`, or ending `stuck` | no walkable route there (inside a building, wrong floor, under the map) | `world.path`, the point's z, `azworld route` |
-| distance to a target not dropping | blocked by terrain or out of reach | `path_distance`, `reachable`, `in_sight` |
-| cast `line_of_sight` | a wall, rock or rise in between (in caves, often the tunnel's bend) | `units.in_sight(guid)`; `act.approach` closes in until it's in sight |
-| `out_of_range` | too far for that spell | `spells.info(id).range` |
-| `bad_targets` | not a valid target (dead, friendly, tapped by someone else) | the unit's `alive`, `reaction`, `tapped_by_other` |
-| `equipped_item_class*` | your weapon is broken or missing | `items.broken()` |
-| `not_ready` / `no_power` | cooldown, or not enough mana, rage or energy | `spells.cooldown(id)`, `items.cooldown(item)`, `spells.usable(id, guid)` |
-| `caster_aurastate` / `target_aurastate` | the spell's condition isn't met (Victory Rush without a kill, Execute above 20%) | `me.states()`, the target's `states`, `spells.usable` |
-| `unit_not_infront` | the target isn't in front of you | `move.face(guid)` before the cast (`act.cast` faces for you) |
-| casting while dead (`caster_dead`) | a script still running after you died | `me.alive()`, or wait in your loop while dead |
-| `interrupted` | you moved or were hit mid-cast | `me.casting()` |
-| `miss`, `resist`, `immune`, `evade`, `reflect`, `dodge`, `parry`... | the spell went off but didn't land: power and cooldown are spent, so a retry may hit `not_ready` | `spells.cooldown(id)`; `immune`/`evade`: try another spell or target |
-| `bags_full`, loot left on corpses | no bag space | `items.free_slots()` |
-| `turn_in` times out | the quest isn't complete, or a different NPC takes it | `quests.log()`, `azworld quest <id>` |
-| accepting does nothing | level too low, a prerequisite missing, or already done | `azworld quest <id>` (min level, chain) |
-| a mob takes no damage | evading, or tagged by someone else | `evading`, `tapped_by_other` |
-
-## World data: `azworld`
-
-`azworld` reads the game's static world database: what drops where, who gives which quest and where its targets
-are, which NPCs are hostile to you. It prints JSON, with relations resolved:
-
-```sh
-azworld search "Hogger"                          # items, quests, npcs, objects, spells, zones, achievements by name
-azworld item 1931                                # stats and sources: drops, chests and nodes, vendors, quest rewards, crafting
-azworld quest 176                                # giver and turn-in with coordinates, objectives with spawns, rewards, chain
-azworld npc 448                                  # level, elite, reaction to you, spawns, loot, vendor stock, trainer spells
-azworld spell 6673                               # cost, cast time, range, cooldowns, which trainers teach it
-azworld zone "Elwynn Forest"                     # sub-areas, mobs by level, graveyards, inns, flight masters, vendors, trainers
-azworld near -9460 70 --kind trainer             # nearest trainer|vendor|questgiver|flightmaster|innkeeper|repair|banker|graveyard|object
-azworld near -9460 70 --kind mob --hostile --level 9-11   # nearest hostile mobs, levels 9-11
-azworld quests --level 10 --race 1 --class 1 --near -9460,70   # quests you can pick up, nearest givers first
-azworld area -9460 70                            # which area and zone a point is in
-azworld route -9460 70 -9660 690 --level 7       # walking waypoints that prefer roads and avoid hostile mobs near or above level 7
-azworld map -9460 70 --level 7 [--to -9660,690]  # writes map.png (roads, buildings, water, hostile mobs, the route): view it with Read
-azworld roads -9460 70                           # guard patrol paths near a point
-azworld upgrades --class priest --level 7 --near -9460,70 [--slot chest]   # gear you can use, by improvement, and where it comes from
-```
-
-`reaction` is relative to a new character of each side (`hostile` attacks on sight; `neutral` only fights back).
-Races: 1 Human, 3 Dwarf, 4 Night Elf, 7 Gnome; classes: 1 Warrior, 2 Paladin, 4 Rogue, 5 Priest, 8 Mage. Lists are
-capped at 15; counts like `drops_total` give the full size. Coordinates match `me.position()`.
-
-**Raw SQL:** `azworld sql "SELECT ..."` runs read-only SQL against the world database (MySQL; TSV output, at most
-300 rows):
-
-| Table | Useful columns |
+| File | Read it when you're |
 |---|---|
-| `creature` (spawns) | `guid, id` (= template entry), `map, position_x, position_y, position_z, spawntimesecs` |
-| `creature_template` | `entry, name, subname, minlevel, maxlevel, faction, npcflag, rank` |
-| `creature_loot_template` | `Entry` (= creature entry), `Item, Chance` |
-| `item_template` | `entry, name, Quality` (0 grey ... 4 epic), `ItemLevel, RequiredLevel, InventoryType, SellPrice` |
-| `quest_template` | `ID, LogTitle, QuestLevel, MinLevel, AllowableRaces, ObjectiveText1, RequiredNpcOrGo1, RequiredNpcOrGoCount1, RequiredItemId1, RequiredItemCount1, RewardItem1` |
-| `creature_queststarter` / `creature_questender` | `id` (creature entry), `quest` |
-| `npc_vendor` | `entry` (vendor creature), `item` |
-| `gameobject`, `gameobject_template`, `gameobject_loot_template` | spawns, names and loot of chests, herbs, ore |
-
-The `wowbench` schema has derived data (qualify the table names): `creature_spawn` and `gameobject_spawn` (spawns
-with `area` and `zone`), `reaction` (`creature_template.faction` to hostility), `spell` (names, costs,
-cooldowns), and the achievements:
-
-| Table | Useful columns |
-|---|---|
-| `wowbench.achievement` | `id, name, description, points, category, faction` (-1 any, 1 Alliance), `flags` (0x1 = a statistic, not earnable), `count`/`ref_achievement` (meta achievements) |
-| `wowbench.achievement_criteria` | `id, achievement, type, asset, quantity, description`: all of an achievement's criteria count unless `achievement.count` says how many |
-| `wowbench.criteria_type` | `id, name` (`explore_area`, `complete_quest_count`, `kill_creature`, `learn_skill_level`...); `asset` is a creature, quest, spell, item or map overlay id depending on the type |
-| `wowbench.achievement_category` | `id, parent, name` |
-| `wowbench.area` | `id, map, zone` (parent zone, 0 = a zone itself), `level, name` |
-| `wowbench.map_overlay` | `id` (= `asset` of `explore_area` criteria), `area1..area4` (the areas that reveal it) |
-| `wowbench.area_location` | `area, map, x, y` (a point inside the area), `min_x, max_x, min_y, max_y` |
-
-```sh
-# level 3-5 mobs near Northshire (map 0 = Eastern Kingdoms), by spawn count
-azworld sql "SELECT t.entry, t.name, t.minlevel, t.maxlevel, COUNT(*) n, ROUND(AVG(c.position_x)) x, ROUND(AVG(c.position_y)) y
-  FROM creature c JOIN creature_template t ON t.entry = c.id
-  WHERE c.map = 0 AND t.maxlevel BETWEEN 3 AND 5 AND t.npcflag = 0
-    AND c.position_x BETWEEN -9500 AND -8500 AND c.position_y BETWEEN -800 AND 200
-  GROUP BY t.entry ORDER BY n DESC LIMIT 10"
-```
-
-`rank` is a MySQL reserved word: write it as `` t.`rank` ``.
-
-## The raw protocol
-
-The client doesn't implement mail or the auction house. `client.watch(opcode)` captures a server opcode,
-`client.packets()` drains what was captured as `{opcode, hex, time_ms}`, `client.send(opcode, "hex body")` sends a
-client packet (header and encryption handled), and `client.call("Method", ...)` calls any exported method of the
-underlying `WorldClient` (`client/world.go`). Opcode numbers are in the client's `opcodes.go` and the server's
-`Server/Protocol/Opcodes.h`; packet layouts in the server's `Handlers/*.cpp`; enums in `shared/SharedDefines.h`.
-For example the mailbox: `CMSG_GET_MAIL_LIST` (0x23A, body = mailbox guid as u64 LE), reply
-`SMSG_MAIL_LIST_RESULT` (0x23B). All numbers are little-endian.
-
-`chat.command(".cmd")` sends a server command; GM commands only work on GM accounts, and scored runs don't use one.
+| moving.md | walking anywhere, judging what's around you (`wow look`, aggro ranges, `danger` in `wow status`), finding a path, getting stuck |
+| fighting.md | casting, attacking, pulling, choosing targets, or looking back at a fight (`wow fights`, `wow fight`) |
+| npcs-and-items.md | taking or turning in quests, buying, selling, repairing, training, using objects, managing bags and gear |
+| death-and-travel.md | dying, getting back to life, flying, using your hearthstone |
+| players.md | grouping, chatting, trading, or working with other players |
+| troubleshooting.md | stuck on something that doesn't work as you expect |
+| azworld.md | looking up the world: NPCs, quests, spawns, drops, routes, maps |
