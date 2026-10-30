@@ -9,6 +9,42 @@ import (
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
+func TestGossipRequiresObservedWindow(t *testing.T) {
+	b := testBot()
+	defer b.lua.Close()
+	b.npc = &npcState{texts: map[uint32]string{}}
+	asked := time.Now().Add(-2 * time.Second)
+	check := b.gossipAfter(42, asked, false)
+	if check() != nil {
+		t.Fatal("elapsed time became success")
+	}
+	b.npc.setWindow(43, "vendor")
+	if check() != nil {
+		t.Fatal("another NPC satisfied interaction")
+	}
+	for _, kind := range []string{"vendor", "trainer", "flight"} {
+		b.npc.setWindow(42, kind)
+		o := check()
+		if o == nil || !o.OK || o.Data.(types.GossipWindow).Kind != kind {
+			t.Fatalf("window %s: %+v", kind, o)
+		}
+	}
+	b.npc.setMenuKind(types.Gossip{NPC: 42, Text: "A quest"}, "quest")
+	if o := check(); o.Data.(types.GossipWindow).Kind != "quest" || o.Data.(types.GossipWindow).Value.Text != "A quest" {
+		t.Fatalf("quest: %+v", o)
+	}
+	b.npc.onPacket(smsgGossipComplete, nil)
+	if o := check(); o.OK || o.Code != "not_available" {
+		t.Fatalf("closed open: %+v", o)
+	}
+	if o := b.gossipAfter(42, asked, true)(); !o.OK || o.Data.(types.GossipWindow).Kind != "closed" {
+		t.Fatalf("closed selection: %+v", o)
+	}
+	if b.gossipAfter(42, time.Now(), true)() != nil {
+		t.Fatal("stale close satisfied new interaction")
+	}
+}
+
 // Packets laid out as AzerothCore writes them (PlayerMenu::SendGossipMenu, WorldPackets::NPC::TrainerList).
 func TestNPCPackets(t *testing.T) {
 	le := binary.LittleEndian

@@ -251,6 +251,15 @@ type Threat struct {
 
 // ---------- NPC dialogue ----------
 
+// GossipWindow identifies the window the server actually opened. Value is present for gossip and quest
+// windows; use vendor.items, trainer.list or flights.map for the other window contents. A closed result from
+// gossip.select confirms only that the dialogue closed, not that a bind, teleport or other effect succeeded.
+type GossipWindow struct {
+	Kind  string  `json:"kind" doc:"gossip, quest, vendor, trainer, flight, or closed (select only)"`
+	NPC   GUID    `json:"npc_guid"`
+	Value *Gossip `json:"value,omitempty"`
+}
+
 type Gossip struct {
 	NPC     GUID           `json:"npc"`
 	Menu    uint32         `json:"menu"`

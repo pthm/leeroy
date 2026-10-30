@@ -42,15 +42,19 @@ var gossipIcons = map[uint8]string{0: "chat", 1: "vendor", 2: "taxi", 3: "traine
 var trainerStates = map[uint8]string{0: "available", 1: "unavailable", 2: "known"}
 
 type npcState struct {
-	mu       sync.Mutex
-	menu     *types.Gossip // the open gossip menu (the server keeps one per player)
-	menuAt   time.Time
-	closedAt time.Time
-	trainers map[uint64]types.Trainer
-	trainAt  map[uint64]time.Time
-	texts    map[uint32]string // npc_text id -> what the NPC says
-	status   map[uint64]uint8  // quest giver guid -> QuestGiverStatus
-	send     func(op uint16, body []byte)
+	mu         sync.Mutex
+	menu       *types.Gossip // the open gossip menu (the server keeps one per player)
+	menuAt     time.Time
+	menuKind   string
+	closedAt   time.Time
+	windowAt   time.Time
+	windowKind string
+	windowNPC  uint64
+	trainers   map[uint64]types.Trainer
+	trainAt    map[uint64]time.Time
+	texts      map[uint32]string // npc_text id -> what the NPC says
+	status     map[uint64]uint8  // quest giver guid -> QuestGiverStatus
+	send       func(op uint16, body []byte)
 }
 
 // questStatus: the marker over a quest giver; "" for none (or not a quest giver, or not known yet)
@@ -62,12 +66,52 @@ func (s *npcState) questStatus(guid uint64) string {
 
 // setMenu records a dialogue the server opened, asking for its text if we haven't seen it.
 func (s *npcState) setMenu(g types.Gossip) {
+	s.setMenuKind(g, "gossip")
+}
+
+func (s *npcState) setMenuKind(g types.Gossip, kind string) {
 	s.mu.Lock()
 	_, known := s.texts[g.TextID]
 	s.menu, s.menuAt = &g, time.Now()
+	s.menuKind = kind
 	s.mu.Unlock()
 	if !known && g.TextID != 0 && s.send != nil {
 		s.send(cmsgNPCTextQuery, binary.LittleEndian.AppendUint64(binary.LittleEndian.AppendUint32(nil, g.TextID), uint64(g.NPC)))
+	}
+}
+
+func (s *npcState) setWindow(npc uint64, kind string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.windowAt, s.windowNPC, s.windowKind = time.Now(), npc, kind
+	s.menu = nil
+}
+
+func (b *Bot) gossipAfter(npc uint64, asked time.Time, allowClosed bool) func() *script.Outcome {
+	return func() *script.Outcome {
+		s := b.npc
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.windowNPC == npc && s.windowAt.After(asked) && s.windowAt.After(s.closedAt) && s.windowAt.After(s.menuAt) {
+			return script.Ok(types.GossipWindow{Kind: s.windowKind, NPC: types.GUID(npc)})
+		}
+		if s.menu != nil && uint64(s.menu.NPC) == npc && s.menuAt.After(asked) {
+			g := *s.menu
+			if t, ok := s.texts[g.TextID]; ok {
+				g.Text = t
+			} else if g.TextID != 0 && time.Since(s.menuAt) < time.Second {
+				return nil
+			}
+			g.Text = b.gameText(g.Text)
+			return script.Ok(types.GossipWindow{Kind: s.menuKind, NPC: g.NPC, Value: &g})
+		}
+		if s.closedAt.After(asked) {
+			if allowClosed {
+				return script.Ok(types.GossipWindow{Kind: "closed", NPC: types.GUID(npc)})
+			}
+			return script.Fail("not_available", "the NPC closed the interaction without opening a window", nil)
+		}
+		return nil
 	}
 }
 
@@ -77,6 +121,15 @@ func (s *npcState) onPacket(op uint16, data []byte) {
 	u32 := func() (v uint32) { binary.Read(r, binary.LittleEndian, &v); return }
 	u64 := func() (v uint64) { binary.Read(r, binary.LittleEndian, &v); return }
 	switch op {
+	case smsgListInventory:
+		if len(data) >= 9 {
+			s.setWindow(u64(), "vendor")
+		}
+	case smsgShowTaxiNodes:
+		if len(data) >= 16 {
+			u32()
+			s.setWindow(u64(), "flight")
+		}
 	case smsgGossipMessage: // PlayerMenu::SendGossipMenu
 		g := types.Gossip{NPC: types.GUID(u64()), Menu: u32(), TextID: u32(), Options: []types.GossipOption{}, Quests: []types.GossipQuest{}}
 		for n := u32(); n > 0 && r.Len() > 0; n-- {
@@ -110,14 +163,14 @@ func (s *npcState) onPacket(op uint16, data []byte) {
 			q.Title = readCString(r)
 			g.Quests = append(g.Quests, q)
 		}
-		s.setMenu(g)
+		s.setMenuKind(g, "quest")
 	case smsgQuestDetails: // PlayerMenu::SendQuestGiverQuestDetails: a quest giver with a single quest for you
 		g := types.Gossip{NPC: types.GUID(u64()), Options: []types.GossipOption{}}
 		u64() // who shared it
 		q := types.GossipQuest{Quest: u32(), Title: readCString(r)}
 		g.Text = readCString(r)
 		g.Quests = []types.GossipQuest{q}
-		s.setMenu(g)
+		s.setMenuKind(g, "quest")
 	case smsgNPCTextUpdate: // text id, then 8 options: probability, text (male), text (female), language, 3 emotes
 		id := u32()
 		best, text := float32(-1), ""
@@ -150,7 +203,11 @@ func (s *npcState) onPacket(op uint16, data []byte) {
 		s.menu, s.closedAt = nil, time.Now()
 		s.mu.Unlock()
 	case smsgTrainerList: // WorldPackets::NPC::TrainerList
+		if len(data) < 16 {
+			return
+		}
 		guid := u64()
+		s.setWindow(guid, "trainer")
 		t := types.Trainer{NPC: types.GUID(guid), Spells: []types.TrainerSpell{}}
 		u32() // type: class, mounts, tradeskills, pets
 		for n := u32(); n > 0 && r.Len() >= 38; n-- {
@@ -193,40 +250,19 @@ func (b *Bot) setupNPC() {
 		}
 	}()
 
-	// menuAfter resolves with the menu the server sends after asked (with what the NPC says, once that arrives); nil
-	// when it closes the dialogue or opens something else instead (a vendor list, a trainer list, a flight map: those
-	// have their own calls).
-	menuAfter := func(asked time.Time) func() *script.Outcome {
-		return func() *script.Outcome {
-			s.mu.Lock()
-			defer s.mu.Unlock()
-			switch {
-			case s.menu != nil && s.menuAt.After(asked):
-				g := *s.menu
-				if t, ok := s.texts[g.TextID]; ok {
-					g.Text = t
-				} else if g.TextID != 0 && time.Since(s.menuAt) < time.Second {
-					return nil // its text is on the way
-				}
-				g.Text = b.gameText(g.Text)
-				return script.Ok(g)
-			case s.closedAt.After(asked), time.Since(asked) > 1500*time.Millisecond:
-				return script.Ok(nil)
-			}
-			return nil
-		}
-	}
-	e.Func("gossip.open", "(npc_guid) → Request<Gossip?>", "talk to an NPC within ~5 yd: what it says, its dialogue options, and the quests it offers or takes (quests.info for their text). nil when it opened something else instead (a vendor, a trainer, a flight map: use their calls)",
+	e.Func("gossip.open", "(npc_guid) → Request<GossipWindow>", "talk to a nearby NPC: the observed window kind and dialogue value, when present. Fails not_available on refusal or send failure, timeout after 5 seconds without a response",
 		func(npc uint64) map[string]any {
 			args := map[string]any{"npc_guid": gs(npc)}
 			if r := b.noNPC("gossip.open", args, &npc); r != nil {
 				return r
 			}
 			asked := time.Now()
-			w.SendPacketRaw(cmsgGossipHello, binary.LittleEndian.AppendUint64(nil, npc))
-			return b.request("gossip.open", args, 5*time.Second, menuAfter(asked), nil)
+			if err := w.SendPacketRaw(cmsgGossipHello, binary.LittleEndian.AppendUint64(nil, npc)); err != nil {
+				return b.refuse("gossip.open", args, "not_available", "the server connection could not send the interaction")
+			}
+			return b.request("gossip.open", args, 5*time.Second, b.gossipAfter(npc, asked, false), nil)
 		})
-	e.Func("gossip.select", "(index [, code]) → Request<Gossip?>", "choose an option (its index) from the open gossip menu: the next menu, or nil when the NPC closed the dialogue or acted on it (a vendor list, a bind, a teleport...). code: for options that ask for text",
+	e.Func("gossip.select", "(index [, code = nil]) → Request<GossipWindow>", "choose a dialogue option: returns the observed window kind, including closed. A closed window does not confirm a bind or teleport. code supplies text for coded options. Fails on no_menu, bad_option, not_available, or timeout after 5 seconds",
 		func(index uint32, code string) map[string]any {
 			args := map[string]any{"index": index}
 			s.mu.Lock()
@@ -246,8 +282,10 @@ func (b *Bot) setupNPC() {
 					body = append(append(body, code...), 0)
 				}
 				asked := time.Now()
-				w.SendPacketRaw(cmsgGossipSelectOption, body)
-				return b.request("gossip.select", args, 5*time.Second, menuAfter(asked), nil)
+				if err := w.SendPacketRaw(cmsgGossipSelectOption, body); err != nil {
+					return b.refuse("gossip.select", args, "not_available", "the server connection could not send the selection")
+				}
+				return b.request("gossip.select", args, 5*time.Second, b.gossipAfter(uint64(menu.NPC), asked, true), nil)
 			}
 			return b.refuse("gossip.select", args, "no_such_option", "the open menu has no option with that index")
 		})
