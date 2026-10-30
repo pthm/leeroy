@@ -98,6 +98,8 @@ const actBase = `
   moves = {}
   move = {to = function(x, y, z) moves[#moves + 1] = {x = x, y = y} pos = {x = x, y = y, z = 0} return {ok = true} end,
     stop = function() return {ok = true} end, face = function() faced = (faced or 0) + 1 return {ok = true} end}
+  move._acquire = function() return {ok=true, data={lease_id=1}} end
+  move._release = function() return {ok=true} end
   mobs = {}
   units = {nearby = function() return mobs end, attackers = function() return {} end, get = function() return nil end}
   spells = {usable = function() return true end, known = function() return true end, info = function() return {range = 30} end}

@@ -24,7 +24,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | Function | | Returns |
 |---|---|---|
 | `act.accept{npc_entry\|npc_guid, quest [, x, y, z]} → ActResult` | walk to a quest giver and accept the quest | [ActResult](#actresult) |
-| `act.approach{unit [, range = 4, timeout = 60]} → ActResult<Creature>` | move within range of a unit and face it | [ActResult](#actresult), [Creature](#creature) |
+| `act.approach{unit [, range = 4, timeout = 60]} → ActResult<Creature>` | move within range and verify facing; reuse a pending walk until the target moves; bounded by timeout | [ActResult](#actresult), [Creature](#creature) |
 | `act.buff(id [, guid]) → ActResult` | cast it unless the aura is already active (ok with data.status = already_active then) | [ActResult](#actresult) |
 | `act.cast(id [, guid]) → ActResult` | face the target and cast if ready (waits for the result in a task) | [ActResult](#actresult) |
 | `act.consume("Food" \| "Drink") → ActResult<Consumed>` | wait up to 30 seconds for the first matching item to be used; no_consumable if absent (sit still after) | [ActResult](#actresult), [Consumed](#consumed) |
@@ -33,7 +33,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `act.dist(x, y [, z]) → yards` | distance from you (2D without z) |  |
 | `act.fail(op, code, message) → ActResult` | a failed result | [ActResult](#actresult) |
 | `act.fly{to = node id or name [, npc_entry or npc_guid]} → ActResult<Flight>` | walk to a flight master nearby, fly to a known destination and wait until you land | [ActResult](#actresult), [Flight](#flight) |
-| `act.follow{name [, distance = 5, until = fn]} → ActResult` | stay near a player until until() is true | [ActResult](#actresult) |
+| `act.follow{name [, distance = 5, until = fn, timeout_s = 600]} → ActResult` | requires until or timeout_s; check until each pass, fail timeout at the deadline (at most 600 seconds), or player_not_visible after 5 seconds of absence | [ActResult](#actresult) |
 | `act.go_to{x, y [, z, tolerance = 4, tries = 3, unstuck = false, on_attacked = nil]} → ActResult` | walk there; tries must be 1..32; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs. Without on_attacked it walks on while mobs hit you and drags them along; with it, it stops whenever something targets you, calls on_attacked(attackers) (your fighting) and then carries on | [ActResult](#actresult) |
 | `act.hp() → 0..1` | your health fraction |  |
 | `act.in_range(id, guid) → bool` | within the spell's range of the unit |  |
@@ -214,13 +214,14 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | Function | | Returns |
 |---|---|---|
 | `move.cancel(request_id) → Request` | explicitly cancel active or queued movement by request ID, including another task's; the walk fails cancelled; not_pending if absent | [Request](#request) |
-| `move.face(guid) → Request` | turn to face a unit (melee and most spells need it) | [Request](#request) |
-| `move.jump() → Request` | jump (over a low obstacle; part of getting unstuck) | [Request](#request) |
+| `move.face(guid) → Request` | turn to face a unit; movement_busy if another task owns movement | [Request](#request) |
+| `move.jump() → Request` | jump; movement_busy if another task owns movement | [Request](#request) |
 | `move.owner() → MovementOwner?` | active local movement owner, or nil when idle; queued requests are in me.movement and task.list | [MovementOwner](#movementowner) |
 | `move.stop() → Request<MoveDone>` | stop this task's active movement; its walk fails cancelled. Refuses another caller's movement with movement_busy | [Request](#request), [MoveDone](#movedone) |
 | `move.to(x, y, z) → Request<MoveDone>` | walk along the navmesh; same-task replacement returns replaced_by_owner; other callers queue FIFO for at most 5 seconds then movement_busy. Planning waits at most 15 seconds; walking at most 600 seconds. Task pause/termination cancels its moves | [Request](#request), [MoveDone](#movedone) |
-| `move.turn(o) → Request` | face an angle (radians, as me.position().o) | [Request](#request) |
+| `move.turn(o) → Request` | face an angle (radians, as me.position().o); movement_busy if another task owns movement | [Request](#request) |
 | `move.unstuck() → Request<Teleport>` | the failsafe when you're truly stuck: what the real client's "Character stuck" does: a 10 s cast that hearths you home (me.home()). Not in combat or on a flight; shares the hearthstone's cooldown | [Request](#request), [Teleport](#teleport) |
+| `move.with_control{fn [, priority = normal, queue_timeout_s = 5, max_s = 600]} → ActResult` | run fn() under a movement lease; fn must return a completed action result. Priorities recovery > urgent > normal; queue_timeout_s is 0..60, max_s is >0..600. Nested scopes share the outer deadline; higher nested priority promotes the lease. Preemption/expiry cancels movement and makes the scope fail even if fn later returns success; it does not interrupt arbitrary callback code | [ActResult](#actresult) |
 
 ### objects
 
@@ -875,17 +876,18 @@ Status is what a player sees on screen, in one call (me.status, `wow status`): e
 
 ### MovementOwner
 
-Movement says who's moving your character. MovementOwner identifies one active or queued raw movement request.
+MovementOwner identifies an active or queued movement request or control lease.
 
 | Field | Type | |
 |---|---|---|
+| `lease_id?` | number | bounded control lease, held across raw requests |
 | `task_id` | number | zero for an immediate evaluation |
 | `task?` | string |  |
 | `call?` | string | enclosing helper call, when present |
-| `request_id` | number |  |
+| `request_id?` | number |  |
 | `priority` | string |  |
-| `phase` | string | queued, planning, walking |
-| `destination` | Position |  |
+| `phase` | string | queued, held, planning, walking |
+| `destination?` | Position | present only when a raw walk has a destination |
 
 ### Flight
 

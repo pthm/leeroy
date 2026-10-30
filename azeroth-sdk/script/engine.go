@@ -62,6 +62,7 @@ type Engine struct {
 	OnTaskInactive func(taskID int, reason string)
 	OnClose        func()
 	TaskMovement   func(taskID int) []types.MovementOwner
+	OnPoll         func() // session work polled before requests, without the engine lock
 }
 
 const executionLimit = 3 * time.Second
@@ -312,6 +313,9 @@ func (e *Engine) Native(name string, args ...any) any {
 // CallTick is one step of the runtime: deliver events (wake waiting tasks, start handlers), poll requests, resume
 // tasks that can run, then call on_tick.
 func (e *Engine) CallTick() bool {
+	if e.OnPoll != nil {
+		e.OnPoll()
+	}
 	e.Reqs.Poll()
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -404,7 +408,17 @@ func (e *Engine) doc(name, sig, desc string) { e.docs[name] = Doc{name, sig, des
 
 // Func exposes a Go func to Lua as name ("ns.fn" or a global) with reflected argument and result conversion.
 // Tables convert to map[string]any / []any parameters. sig and desc document it for help().
-func (e *Engine) Func(name, sig, desc string, fn any) {
+func (e *Engine) Func(name, sig, desc string, fn any) { e.registerFunc(name, sig, desc, fn, false) }
+
+// InternalFunc binds runtime support with the same argument checks as public functions.
+// Internal names must contain ._ and are omitted from the agent API reference.
+func (e *Engine) InternalFunc(name, sig string, fn any) {
+	if !strings.Contains(name, "._") {
+		panic("internal function requires ._ name")
+	}
+	e.registerFunc(name, sig, "", fn, true)
+}
+func (e *Engine) registerFunc(name, sig, desc string, fn any, internal bool) {
 	v := reflect.ValueOf(fn)
 	contract, err := ParseSignature(sig)
 	if err != nil {
@@ -419,10 +433,12 @@ func (e *Engine) Func(name, sig, desc string, fn any) {
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if _, exists := e.docs[name]; exists {
+	if _, exists := e.docs[name]; exists || e.natives[name].IsValid() {
 		panic("duplicate API registration: " + name)
 	}
-	e.doc(name, sig, desc)
+	if !internal {
+		e.doc(name, sig, desc)
+	}
 	e.natives[name] = v
 	need := contract.Required()
 	e.set(name, func(L *lua.LState) int {

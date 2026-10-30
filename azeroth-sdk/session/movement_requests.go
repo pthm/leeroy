@@ -21,6 +21,8 @@ type movementBackend struct {
 	lock     func() string
 }
 type movementRequest struct {
+	lease                     *movementLease
+	queueTimeout              time.Duration
 	owner                     types.MovementOwner
 	cancelled                 atomic.Bool
 	queued, started, deadline time.Time
@@ -37,6 +39,8 @@ type movementRequests struct {
 	backend     movementBackend
 	now         func() time.Time
 	active      *movementRequest
+	lease       *movementLease
+	leases      map[int]*movementLease
 	queue       []*movementRequest
 	completions []movementCompletion
 	wake        chan struct{}
@@ -45,7 +49,7 @@ type movementRequests struct {
 }
 
 func newMovementRequests(reqs *script.Requests, backend movementBackend) *movementRequests {
-	m := &movementRequests{reqs: reqs, backend: backend, now: time.Now, wake: make(chan struct{}, 1), done: make(chan struct{})}
+	m := &movementRequests{reqs: reqs, backend: backend, now: time.Now, leases: map[int]*movementLease{}, wake: make(chan struct{}, 1), done: make(chan struct{})}
 	go m.worker()
 	return m
 }
@@ -68,6 +72,10 @@ func (m *movementRequests) finishLocked(r *movementRequest, result *script.Outco
 	}
 }
 func (m *movementRequests) activateLocked(r *movementRequest) {
+	if r.lease != nil {
+		m.grantLeaseLocked(r)
+		return
+	}
 	if lock := m.backend.lock(); lock != "" {
 		m.finishLocked(r, script.Fail(lock, "server controls or blocks movement", r.owner))
 		return
@@ -75,24 +83,27 @@ func (m *movementRequests) activateLocked(r *movementRequest) {
 	m.active = r
 	r.owner.Phase = "planning"
 	r.deadline = m.now().Add(15 * time.Second)
+	if m.lease != nil && m.lease.deadline.Before(r.deadline) {
+		r.deadline = m.lease.deadline
+	}
 	select {
 	case m.wake <- struct{}{}:
 	default:
 	}
 }
 func (m *movementRequests) advanceLocked() {
-	if m.active != nil || m.closed {
+	if m.active != nil || m.lease != nil || m.closed {
 		return
 	}
 	for len(m.queue) > 0 {
 		r := m.queue[0]
 		m.queue = m.queue[1:]
-		if !m.now().Before(r.queued.Add(5 * time.Second)) {
+		if !m.now().Before(r.queued.Add(r.queueTimeout)) {
 			m.finishLocked(r, script.Fail("movement_busy", "movement queue deadline expired", nil))
 			continue
 		}
 		m.activateLocked(r)
-		if m.active != nil {
+		if m.active != nil || m.lease != nil {
 			return
 		}
 	}
@@ -100,9 +111,10 @@ func (m *movementRequests) advanceLocked() {
 func (m *movementRequests) start(taskID int, task, call string, dest types.Position) map[string]any {
 	m.mu.Lock()
 	defer m.unlock()
+	m.expireLeaseLocked()
 	args := map[string]any{"x": dest.X, "y": dest.Y, "z": dest.Z}
 	handle := m.reqs.Start(script.Spec{Op: "move.to", Args: args, Timeout: time.Hour, Check: func() *script.Outcome { m.poll(); return nil }})
-	r := &movementRequest{owner: types.MovementOwner{TaskID: taskID, Task: task, Call: call, RequestID: handle["id"].(int), Priority: "normal", Phase: "queued", Destination: dest}, queued: m.now()}
+	r := &movementRequest{owner: types.MovementOwner{TaskID: taskID, Task: task, Call: call, RequestID: handle["id"].(int), Priority: "normal", Phase: "queued", Destination: &dest}, queued: m.now(), queueTimeout: 5 * time.Second}
 	if m.closed {
 		m.finishLocked(r, script.Fail("session_closed", "session closed", nil))
 		return handle
@@ -111,15 +123,23 @@ func (m *movementRequests) start(taskID int, task, call string, dest types.Posit
 		m.finishLocked(r, script.Fail(lock, "server controls or blocks movement", nil))
 		return handle
 	}
-	// Re-evaluations outside a task are distinct callers. Use move.cancel(id) for
-	// those requests; task zero must never make unrelated RPCs the same owner.
-	if m.active != nil && taskID != 0 && m.active.owner.TaskID == taskID {
-		m.finishLocked(m.active, script.Fail("replaced_by_owner", "the owning task replaced its destination", r.owner))
+	if l := m.leases[taskID]; l != nil {
+		if l.failure != nil {
+			m.finishLocked(r, l.failure)
+			return handle
+		}
+		r.owner.Priority = l.owner.Priority
+		r.owner.LeaseID = l.owner.LeaseID
+	}
+	if owner := m.ownerLocked(); owner != nil && taskID != 0 && owner.TaskID == taskID {
+		if m.active != nil {
+			m.finishLocked(m.active, script.Fail("replaced_by_owner", "the owning task replaced its destination", r.owner))
+		}
 		m.activateLocked(r)
-	} else if m.active == nil && len(m.queue) == 0 {
+	} else if m.active == nil && m.lease == nil && len(m.queue) == 0 {
 		m.activateLocked(r)
 	} else {
-		m.queue = append(m.queue, r)
+		m.enqueueLocked(r)
 	}
 	return handle
 }
@@ -139,8 +159,9 @@ func (m *movementRequests) worker() {
 		r.planning = true
 		deadline := r.deadline
 		m.mu.Unlock()
-		noPath := m.backend.plan(r.owner.Destination, func() bool { return !r.cancelled.Load() && m.now().Before(deadline) })
+		noPath := m.backend.plan(*r.owner.Destination, func() bool { return !r.cancelled.Load() && m.now().Before(deadline) })
 		m.mu.Lock()
+		m.expireLeaseLocked()
 		if m.active == r && !r.cancelled.Load() && !m.now().Before(deadline) {
 			m.finishLocked(r, script.Fail("route_timeout", "planning deadline expired", r.owner))
 			m.advanceLocked()
@@ -162,14 +183,13 @@ func (m *movementRequests) poll() {
 	m.mu.Lock()
 	defer m.unlock()
 	now := m.now()
+	if m.lease != nil && !now.Before(m.lease.deadline) {
+		m.invalidateLeaseLocked(script.Fail("lease_timeout", "movement control lease expired", m.ownerLocked()))
+	}
 	for i := 0; i < len(m.queue); {
 		r := m.queue[i]
-		if !now.Before(r.queued.Add(5 * time.Second)) {
-			var owner *types.MovementOwner
-			if m.active != nil {
-				c := m.active.owner
-				owner = &c
-			}
+		if !now.Before(r.queued.Add(r.queueTimeout)) {
+			owner := m.ownerLocked()
 			m.finishLocked(r, script.Fail("movement_busy", "another task owns movement; queue deadline expired", owner))
 			m.queue = append(m.queue[:i], m.queue[i+1:]...)
 		} else {
@@ -201,6 +221,14 @@ func (m *movementRequests) cancelTask(taskID int, reason string) {
 	m.mu.Lock()
 	defer m.unlock()
 	// Remove queued work before releasing the active request, so none can start.
+	if l := m.leases[taskID]; l != nil {
+		if m.lease == l {
+			m.invalidateLeaseLocked(script.Fail(reason, "owning task became inactive", m.ownerLocked()))
+		}
+		if reason != "task_paused" {
+			delete(m.leases, taskID)
+		}
+	}
 	for i := 0; i < len(m.queue); {
 		r := m.queue[i]
 		if r.owner.TaskID == taskID {
@@ -223,6 +251,10 @@ func (m *movementRequests) close() {
 	}
 	m.closed = true
 	close(m.done)
+	if m.lease != nil {
+		m.invalidateLeaseLocked(script.Fail("session_closed", "session closed", nil))
+	}
+	m.leases = map[int]*movementLease{}
 	if m.active != nil {
 		m.finishLocked(m.active, script.Fail("session_closed", "session closed", nil))
 	}
@@ -234,11 +266,7 @@ func (m *movementRequests) close() {
 func (m *movementRequests) snapshot() (*types.MovementOwner, []types.MovementOwner) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var owner *types.MovementOwner
-	if m.active != nil {
-		o := m.active.owner
-		owner = &o
-	}
+	owner := m.ownerLocked()
 	queue := make([]types.MovementOwner, 0, len(m.queue))
 	for _, r := range m.queue {
 		queue = append(queue, r.owner)
@@ -265,11 +293,15 @@ func (m *movementRequests) cancel(id int) *script.Outcome {
 func (m *movementRequests) stop(taskID int) *script.Outcome {
 	m.mu.Lock()
 	defer m.unlock()
-	if r := m.active; r != nil {
-		if taskID == 0 || taskID != r.owner.TaskID {
-			return script.Fail("movement_busy", "another caller owns movement; use move.cancel(request_id) for explicit cancellation", r.owner)
-		}
-		m.finishLocked(r, script.Fail("cancelled", "stopped by owning task", r.owner))
+	m.expireLeaseLocked()
+	if l := m.leases[taskID]; l != nil && l.failure != nil {
+		return l.failure
+	}
+	if owner := m.ownerLocked(); owner != nil && (taskID == 0 || owner.TaskID != taskID) {
+		return script.Fail("movement_busy", "another caller owns movement; use move.cancel(request_id) for explicit cancellation", owner)
+	}
+	if m.active != nil {
+		m.finishLocked(m.active, script.Fail("cancelled", "stopped by owning task", m.active.owner))
 		m.advanceLocked()
 	} else {
 		m.backend.stop()
@@ -292,6 +324,8 @@ func (b *Bot) setupMovementRequests() {
 	b.moves = m
 	e.OnTaskInactive = m.cancelTask
 	e.OnClose = m.close
+	e.OnPoll = m.poll
+	m.registerLeases(e)
 	e.TaskMovement = func(id int) []types.MovementOwner {
 		owner, queue := m.snapshot()
 		var result []types.MovementOwner

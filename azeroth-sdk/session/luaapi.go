@@ -257,15 +257,22 @@ func (b *Bot) setupCoreAPI() {
 	})
 
 	// ---------- move ----------
-	e.Func("move.face", "(guid) → Request", "turn to face a unit (melee and most spells need it)", func(g uint64) map[string]any {
+	e.Func("move.face", "(guid) → Request", "turn to face a unit; movement_busy if another task owns movement", func(g uint64) map[string]any {
 		args := map[string]any{"unit": gs(g)}
-		if !b.FaceTarget(g) {
-			return b.refuse("move.face", args, "unit_not_found", "no such unit in sight")
-		}
-		return b.done("move.face", args, nil)
+		return b.steeringRequest("move.face", args, func() *script.Outcome {
+			if !b.FaceTarget(g) {
+				return script.Fail("unit_not_found", "no such unit in sight", nil)
+			}
+			return script.Ok(nil)
+		})
 	})
-	e.Func("move.turn", "(o) → Request", "face an angle (radians, as me.position().o)", func(o float32) map[string]any {
-		return b.sent("move.turn", map[string]any{"o": o}, b.SetFacing(o))
+	e.Func("move.turn", "(o) → Request", "face an angle (radians, as me.position().o); movement_busy if another task owns movement", func(o float32) map[string]any {
+		return b.steeringRequest("move.turn", map[string]any{"o": o}, func() *script.Outcome {
+			if err := b.SetFacing(o); err != nil {
+				return script.Fail("failed", err.Error(), nil)
+			}
+			return script.Ok(nil)
+		})
 	})
 
 	// ---------- combat ----------

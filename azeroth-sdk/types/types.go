@@ -743,16 +743,16 @@ type Flight struct {
 	Seconds int      `json:"seconds,omitempty" doc:"flight_start: how long it will take; flight_end and results: how long it took"`
 }
 
-// Movement says who's moving your character.
-// MovementOwner identifies one active or queued raw movement request.
+// MovementOwner identifies an active or queued movement request or control lease.
 type MovementOwner struct {
-	TaskID      int      `json:"task_id" doc:"zero for an immediate evaluation"`
-	Task        string   `json:"task,omitempty"`
-	Call        string   `json:"call,omitempty" doc:"enclosing helper call, when present"`
-	RequestID   int      `json:"request_id"`
-	Priority    string   `json:"priority"`
-	Phase       string   `json:"phase" doc:"queued, planning, walking"`
-	Destination Position `json:"destination"`
+	LeaseID     int       `json:"lease_id,omitempty" doc:"bounded control lease, held across raw requests"`
+	TaskID      int       `json:"task_id" doc:"zero for an immediate evaluation"`
+	Task        string    `json:"task,omitempty"`
+	Call        string    `json:"call,omitempty" doc:"enclosing helper call, when present"`
+	RequestID   int       `json:"request_id,omitempty"`
+	Priority    string    `json:"priority"`
+	Phase       string    `json:"phase" doc:"queued, held, planning, walking"`
+	Destination *Position `json:"destination,omitempty" doc:"present only when a raw walk has a destination"`
 }
 
 type Movement struct {

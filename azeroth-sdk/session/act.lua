@@ -35,6 +35,42 @@ function A.must(r)
   return r
 end
 
+-- A scope retains its lease across waits and nested helpers. Go owns cancellation
+-- and expiry, since a stopped coroutine cannot run a Lua finally block.
+local function movement_scope(priority, queue_s, max_s, fn, ...)
+  local acquired = await(move._acquire(priority, queue_s, max_s), queue_s + 2)
+  if not acquired.ok then return acquired end
+  local ok, r = pcall(fn, ...)
+  local released = move._release(acquired.data.lease_id)
+  if not ok then error(r, 0) end
+  if not released.ok then return released end
+  return r
+end
+move = move or {}
+function move.with_control(o)
+  if not task.current() then error("move.with_control requires a task", 2) end
+  if type(o) ~= "table" then error("move.with_control requires an options table", 2) end
+  for k in pairs(o) do
+    if k ~= "priority" and k ~= "queue_timeout_s" and k ~= "max_s" and k ~= "fn" then error("move.with_control: unknown option " .. tostring(k), 2) end
+  end
+  if type(o.fn) ~= "function" then error("move.with_control: fn must return a completed action result", 2) end
+  local priority, queue_s, max_s = o.priority or "normal", o.queue_timeout_s or 5, o.max_s or 600
+  if priority ~= "normal" and priority ~= "urgent" and priority ~= "recovery" then error("move.with_control: invalid priority", 2) end
+  if type(queue_s) ~= "number" or not (queue_s >= 0 and queue_s <= 60) then error("move.with_control: queue_timeout_s must be 0..60", 2) end
+  if type(max_s) ~= "number" or not (max_s > 0 and max_s <= 600) then error("move.with_control: max_s must be >0 and <=600", 2) end
+  local call = task._action_begin("move.with_control", o)
+  local ok, r = pcall(movement_scope, priority, queue_s, max_s, function() return wrapped("move.with_control", o.fn()) end)
+  if not ok then
+    task._action_end(call, A.fail("move.with_control", "script_error", "callback raised a Lua error"))
+    error(r, 0)
+  end
+  r = wrapped("move.with_control", r)
+  task._action_end(call, r)
+  return r
+end
+doc("move.with_control", "{fn [, priority = normal, queue_timeout_s = 5, max_s = 600]} → ActResult",
+  "run fn() under a movement lease; fn must return a completed action result. Priorities recovery > urgent > normal; queue_timeout_s is 0..60, max_s is >0..600. Nested scopes share the outer deadline; higher nested priority promotes the lease. Preemption/expiry cancels movement and makes the scope fail even if fn later returns success; it does not interrupt arbitrary callback code")
+
 -- ---------- helpers (don't wait) ----------
 function A.dist(x, y, z)
   local p = me.position()
@@ -96,7 +132,8 @@ end
 -- face: turn to a unit, waiting for the turn in a task (a cast sent mid-turn fails with unit_not_infront)
 local function face(guid)
   local f = move.face(guid)
-  if task.current() then await(f, 2) end
+  if task.current() then return await(f, 2) end
+  return f
 end
 -- cast(id [, guid]): face the target and cast if ready; in a task it waits for the result
 function A.cast(id, guid)
@@ -106,10 +143,12 @@ function A.cast(id, guid)
     return result("act.cast", false, nil, "not_ready", "on cooldown, casting, not enough power, or its condition isn't met (spells.usable)")
   end
   if guid == me.guid() then return await(spells.cast(id, guid)) end
-  face(guid)
+  local faced = face(guid)
+  if not faced.ok then return faced end
   local r = await(spells.cast(id, guid))
   if task.current() and r.ok == false and r.error and r.error.code == "unit_not_infront" then -- it moved: once more
-    face(guid)
+    faced = face(guid)
+    if not faced.ok then return faced end
     r = await(spells.cast(id, guid))
   end
   return r
@@ -163,6 +202,7 @@ function A.go_to(o)
   for n = 1, o.tries or 3 do
     if A.dist(o.x, o.y) <= tol then move.stop() return result("act.go_to", true, { distance = A.dist(o.x, o.y) }) end
     r = walk(o, o.x, o.y, z)
+    if not r.ok and (r.error.code == "preempted" or r.error.code == "lease_timeout" or r.error.code == "cancelled" or r.error.code == "task_paused" or r.error.code == "movement_busy" or r.error.code == "replaced_by_owner") then return r end
     if A.dist(o.x, o.y) <= tol then return result("act.go_to", true, { distance = A.dist(o.x, o.y) }) end
     if r.ok and r.data and r.data.stopped then return result("act.go_to", false, nil, "stopped", "move.stop() was called on the way") end
     if not r.ok and r.error.code == "superseded" then return result("act.go_to", false, nil, "superseded", r.error.message) end
@@ -188,23 +228,58 @@ function A.travel(o)
 end
 function A.approach(o)
   local range, deadline = o.range or 4, now() + (o.timeout or 60) * 1000
+  local req, dest
   while now() < deadline do
     local u = units.get(o.unit)
-    if not u then return result("act.approach", false, nil, "unit_gone", "the unit is gone (dead and despawned, or out of sight)") end
-    -- in range and in sight: a mob behind a wall or round a tunnel bend is in range but can't be hit from here
-    if u.distance <= range and (u.in_sight ~= false or u.distance <= 3) then move.stop() move.face(o.unit) return result("act.approach", true, u) end
-    move.to(u.x, u.y, u.z)
-    wait(0.5)
+    if not u then return A.fail("act.approach", "unit_gone", "the unit is no longer visible") end
+    if u.distance <= range and (u.in_sight ~= false or u.distance <= 3) then
+      local stopped = await(move.stop(), 2)
+      if not stopped.ok then return stopped end
+      local faced = await(move.face(o.unit), 2)
+      if not faced.ok then return faced end
+      return A.ok("act.approach", u)
+    end
+    if not req or ((u.x-dest.x)^2 + (u.y-dest.y)^2 + (u.z-dest.z)^2 > 9) then
+      req, dest = move.to(u.x, u.y, u.z), u
+    end
+    local r = await(req, math.min(0.5, (deadline-now())/1000))
+    if not r.ok and r.error.code ~= "wait_timeout" then return r end
+    if r.ok then
+      local current = units.get(o.unit)
+      if current and current.distance > range and current.x == dest.x and current.y == dest.y and current.z == dest.z then
+        return A.fail("act.approach", "unreachable", "walk ended outside the requested range")
+      end
+      req = nil
+      wait(0.1)
+    end
   end
-  return result("act.approach", false, nil, "timeout", "couldn't get within " .. range .. " yd")
+  return A.fail("act.approach", "timeout", "couldn't get within " .. range .. " yd")
 end
 function A.follow(o)
-  while not (o["until"] and o["until"]()) do
+  local deadline = now() + (o.timeout_s or 600) * 1000
+  local missing, req, dest
+  while now() < deadline do
+    if o["until"] and o["until"]() then return A.ok("act.follow") end
     local p = A.player(o.name)
-    if p and p.distance > (o.distance or 5) + 2 then move.to(p.x, p.y, p.z) end
-    wait(1)
+    if not p then
+      missing = missing or now()
+      if now() - missing >= 5000 then return A.fail("act.follow", "player_not_visible", "player has not been visible for 5 seconds") end
+    else
+      missing = nil
+      if p.distance <= (o.distance or 5) + 2 then
+        local r = await(move.stop(), 2); if not r.ok then return r end
+        req = nil
+      elseif not req or ((p.x-dest.x)^2 + (p.y-dest.y)^2 + (p.z-dest.z)^2 > 9) then
+        req, dest = move.to(p.x, p.y, p.z), p
+      end
+    end
+    if req then
+      local r = await(req, math.min(0.5, (deadline-now())/1000))
+      if not r.ok and r.error.code ~= "wait_timeout" then return r end
+      if r.ok then req = nil; wait(0.1) end
+    else wait(0.2) end
   end
-  return result("act.follow", true)
+  return A.fail("act.follow", "timeout", "follow deadline expired")
 end
 
 -- ---------- NPCs and objects ----------
@@ -671,7 +746,7 @@ local helper_options = {
   go_to = "x y z tolerance tries unstuck on_attacked",
   travel = "points tolerance unstuck on_attacked",
   approach = "unit range timeout",
-  follow = "name distance until",
+  follow = "name distance until timeout_s",
   corpse_run = "safe",
   recover = "spirit rest safe",
 }
@@ -689,6 +764,8 @@ local function validate_helper_options(n, o)
   for k in pairs(o) do if not allowed[k] then bad("unknown option " .. tostring(k)) end end
   if n == "go_to" and (o.x == nil or o.y == nil) then bad("x and y are required") end
   if n == "approach" and (type(o.unit) ~= "string" or not o.unit:match("^%d+$")) then bad("unit must be a GUID string") end
+  if n == "follow" and not o["until"] and not o.timeout_s then bad("until or timeout_s is required") end
+  if n == "follow" and o.timeout_s and (type(o.timeout_s) ~= "number" or not (o.timeout_s > 0 and o.timeout_s <= 600)) then bad("timeout_s must be >0 and <=600") end
   if n == "follow" and (type(o.name) ~= "string" or o.name == "") then bad("name must be a nonempty player name") end
   for _, k in ipairs({"unstuck", "safe", "spirit", "rest"}) do
     if o[k] ~= nil and type(o[k]) ~= "boolean" then bad(k .. " must be boolean") end
@@ -736,6 +813,8 @@ local function validate_helper_options(n, o)
     if count ~= #o.points then bad("points must be a dense array") end
   end
 end
+local movement_helpers = {}
+for _, n in ipairs({"go_to", "travel", "approach", "follow", "reach_npc", "accept", "turn_in", "vendor", "train", "talk", "use_object", "rest", "corpse_run", "spirit_res", "recover", "loot_nearby", "fly"}) do movement_helpers[n] = true end
 for _, n in ipairs({ "go_to", "travel", "approach", "follow", "reach_npc", "accept", "turn_in", "vendor", "train", "talk",
   "use_object", "rest", "release", "corpse_run", "spirit_res", "recover", "loot_nearby", "fly", "cast", "buff", "consume", "make_room" }) do
   local f = A[n]
@@ -751,6 +830,10 @@ for _, n in ipairs({ "go_to", "travel", "approach", "follow", "reach_npc", "acce
       end
       validate_npc_options(n, o)
       validate_helper_options(n, o)
+      if movement_helpers[n] then
+        local priority = (n == "recover" or n == "corpse_run" or n == "spirit_res") and "recovery" or "normal"
+        return wrapped("act." .. n, movement_scope(priority, 5, 600, f, o, ...))
+      end
       return wrapped("act." .. n, f(o, ...))
     end, ...)
     if not ok then
@@ -781,8 +864,8 @@ for name, d in pairs({
   go_to = { "{x, y [, z, tolerance = 4, tries = 3, unstuck = false, on_attacked = nil]} → ActResult", "walk there; tries must be 1..32; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs. Without on_attacked it walks on while mobs hit you and drags them along; with it, it stops whenever something targets you, calls on_attacked(attackers) (your fighting) and then carries on" },
   travel = { "{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false, on_attacked = nil]} → ActResult", "go_to each of 1..4096 waypoints (e.g. from azworld route); all waypoint fields are checked before movement starts" },
   danger = { "(x, y [, r = 25]) → Creature[]", "living hostile creatures within r yards of a point: check a spot before you go there or come back to life there" },
-  approach = { "{unit [, range = 4, timeout = 60]} → ActResult<Creature>", "move within range of a unit and face it" },
-  follow = { "{name [, distance = 5, until = fn]} → ActResult", "stay near a player until until() is true" },
+  approach = { "{unit [, range = 4, timeout = 60]} → ActResult<Creature>", "move within range and verify facing; reuse a pending walk until the target moves; bounded by timeout" },
+  follow = { "{name [, distance = 5, until = fn, timeout_s = 600]} → ActResult", "requires until or timeout_s; check until each pass, fail timeout at the deadline (at most 600 seconds), or player_not_visible after 5 seconds of absence" },
   reach_npc = { "{npc_entry|npc_guid [, x, y, z]} → ActResult<Creature>", "find an NPC by exactly one of npc_entry or npc_guid (walking to x, y, z first) and stand next to it" },
   accept = { "{npc_entry|npc_guid, quest [, x, y, z]} → ActResult", "walk to a quest giver and accept the quest" },
   turn_in = { "{npc_entry|npc_guid, quest [, reward = 0, x, y, z]} → ActResult", "walk to the quest ender and turn the quest in" },
