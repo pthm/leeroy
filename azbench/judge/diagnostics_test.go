@@ -105,3 +105,27 @@ func TestShortPauseExcludedFromSampledTime(t *testing.T) {
 		}
 	}
 }
+
+func TestMovedRunAndMissingRecorderStillReportAgent(t *testing.T) {
+	dir := t.TempDir()
+	run := filepath.Join(dir, "a1")
+	os.MkdirAll(run, 0755)
+	os.WriteFile(filepath.Join(dir, "go"), nil, 0600)
+	os.WriteFile(filepath.Join(dir, "go.a1.ready"), []byte("/unavailable/original/run/a1"), 0600)
+	os.WriteFile(filepath.Join(run, "meta.json"), []byte(`{"agent":"a1","char":"Tester"}`), 0600)
+	os.WriteFile(filepath.Join(run, "judge.json"), []byte(`{"met":true,"score":10}`), 0600)
+	Report(dir)
+	r := readJSON(filepath.Join(dir, "report.json"))
+	agents := r["agents"].([]any)
+	if len(agents) != 1 {
+		t.Fatalf("missing agent: %+v", r)
+	}
+	a := agents[0].(map[string]any)
+	if a["char"] != "Tester" || a["judge_state"] != "completed" {
+		t.Fatalf("ignored saved agent: %+v", a)
+	}
+	cov := get(a["diagnostics"], "coverage").(map[string]any)
+	if len(cov["missing_files"].([]any)) != 2 || cov["status"] != "unavailable" {
+		t.Fatalf("missing coverage: %+v", cov)
+	}
+}

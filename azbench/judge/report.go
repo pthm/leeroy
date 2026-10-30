@@ -120,13 +120,24 @@ func reportAgents(dir string) []agentRun {
 		runs, t0 := filepath.Join(dir, ".."), stampMs(filepath.Base(dir))
 		var out []agentRun
 		recs, _ := filepath.Glob(filepath.Join(dir, "*.record.jsonl"))
-		sort.Strings(recs)
+		names := map[string]bool{}
 		for _, f := range recs {
-			a := strings.Split(filepath.Base(f), ".")[0]
+			names[strings.TrimSuffix(filepath.Base(f), ".record.jsonl")] = true
+		}
+		metas, _ := filepath.Glob(filepath.Join(dir, "*", "meta.json"))
+		for _, f := range metas {
+			names[filepath.Base(filepath.Dir(f))] = true
+		}
+		agents := make([]string, 0, len(names))
+		for name := range names {
+			agents = append(agents, name)
+		}
+		sort.Strings(agents)
+		for _, a := range agents {
 			b, _ := os.ReadFile(filepath.Join(dir, "go."+a+".ready")) // azbench writes the agent's dir there
 			run := strings.TrimSpace(string(b))
-			if st, err := os.Stat(filepath.Join(dir, a)); run == "" && err == nil && st.IsDir() {
-				run = filepath.Join(dir, a) // azbench: the agent's files in the run dir
+			if st, err := os.Stat(filepath.Join(dir, a)); err == nil && st.IsDir() {
+				run = filepath.Join(dir, a) // prefer saved artifacts over an old absolute ready-file path
 			}
 			if run == "" { // older runs: by time
 				ds, _ := os.ReadDir(runs)
@@ -137,7 +148,10 @@ func reportAgents(dir string) []agentRun {
 					}
 				}
 			}
-			out = append(out, agentRun{a, run, f, dir})
+			if run == "" {
+				run = filepath.Join(dir, a)
+			}
+			out = append(out, agentRun{a, run, filepath.Join(dir, a+".record.jsonl"), dir})
 		}
 		return out
 	}
@@ -746,11 +760,10 @@ func Report(dir string) {
 	}
 	report := obj{{"agents", cards}}
 	if _, err := os.Stat(filepath.Join(dir, "go")); err == nil {
-		recs, _ := filepath.Glob(filepath.Join(dir, "*.record.jsonl"))
 		var cardMaps []map[string]any // the cards as JSON reads them, as compare does
 		cj, _ := json.Marshal(cards)
 		json.Unmarshal(cj, &cardMaps)
-		team := teamResults(dir, len(recs), cardMaps)
+		team := teamResults(dir, len(cards), cardMaps)
 		report = append(report, kv{"team", team})
 		j, _ := json.MarshalIndent(team, "", "  ")
 		os.WriteFile(filepath.Join(dir, "team.json"), append(j, '\n'), 0o644)
