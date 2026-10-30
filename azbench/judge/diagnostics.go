@@ -4,9 +4,47 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/pthm/leeroy/azbench/diagnostics"
 )
+
+// intervalPlayed excludes whole sample intervals crossing a pause/stop: attributing their progress to
+// either side would require inventing when it occurred. With no lifecycle evidence the existing sample-gap
+// check remains the fallback, and diagnostic coverage states that the harness artifact is missing.
+func intervalPlayed(dir string) func(int64, int64) bool {
+	type change struct {
+		t       int64
+		playing bool
+	}
+	var changes []change
+	for _, ev := range jsonl(filepath.Join(dir, "harness.jsonl")) {
+		if ev["kind"] != "runtime_state" || get(ev["details"], "component") != "judge" {
+			continue
+		}
+		state := get(ev["details"], "state")
+		if state == "playing" || state == "paused" || state == "done" || state == "failed" {
+			changes = append(changes, change{int64(fnum(ev["t"])), state == "playing"})
+		}
+	}
+	sort.SliceStable(changes, func(i, j int) bool { return changes[i].t < changes[j].t })
+	return func(a, b int64) bool {
+		playing := true
+		for _, c := range changes {
+			if c.t <= a {
+				playing = c.playing
+				continue
+			}
+			if c.t >= b {
+				break
+			}
+			if !playing || !c.playing {
+				return false
+			}
+		}
+		return playing
+	}
+}
 
 // savedJudgeState never turns a provisional board value into a final goal result.
 func savedJudgeState(dir string) string {

@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/pthm/leeroy/azbench/config"
+	"github.com/pthm/leeroy/azbench/judge"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
 // player is one agent and its character in a run: workspace, session (an azsdk daemon), judge and agent process.
@@ -30,18 +32,26 @@ type player struct {
 	port        int
 	ws, dir     string // workspace (bench/workspaces/<name>), its files in the run (<run>/<name>)
 
-	mu       sync.Mutex
-	state    string // starting, ready, playing, done, paused, failed
-	session  *exec.Cmd
-	agent    *exec.Cmd
-	agentEnd time.Time // when its agent must stop: the run's clock
-	result   []byte    // the judge's final line
+	mu        sync.Mutex
+	state     string // starting, ready, playing, done, paused, failed
+	session   *exec.Cmd
+	agent     *exec.Cmd
+	agentEnd  time.Time     // when its agent must stop: the run's clock
+	result    []byte        // the judge's final line
+	agentDone chan struct{} // closed after transcript drain, usage snapshot and exit diagnostics
+	diagMu    sync.Mutex
+	diagSeq   uint64
+	diagInit  bool
 }
 
 func (p *player) setState(s string) {
 	p.mu.Lock()
+	changed := p.state != s
 	p.state = s
 	p.mu.Unlock()
+	if changed {
+		p.runtimeState("judge", s)
+	}
 }
 
 func (p *player) logf(f string, a ...any) {
@@ -307,30 +317,50 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 	cmd := p.agentCmd(text, resume)
 	cmd.Stdin = nil
 	var stamp *io.PipeWriter
+	var drained chan struct{}
 	if p.a.Runtime != "claude" {
 		pr, pw := io.Pipe()
 		stamp = pw
 		cmd.Stdout, cmd.Stderr = pw, pw
-		go stampLines(pr, out)
+		drained = make(chan struct{})
+		go func() { defer close(drained); stampLines(pr, out) }()
 	} else {
 		cmd.Stdout, cmd.Stderr = out, out
 	}
 	if err := cmd.Start(); err != nil {
+		if stamp != nil {
+			stamp.Close()
+		}
 		out.Close()
+		p.runtimeState("agent", "failed")
 		return err
 	}
+	done := make(chan struct{})
 	p.mu.Lock()
 	p.agent = cmd
+	p.agentDone = done
 	p.mu.Unlock()
+	state := "start"
+	if resume != "" {
+		state = "resume"
+	}
+	p.runtimeState("agent", state)
 	stop := time.AfterFunc(time.Until(end), func() { syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) })
 	go func() {
+		defer close(done)
 		cmd.Wait()
 		stop.Stop()
 		if stamp != nil {
 			stamp.Close()
+			<-drained
 		} else {
 			out.Close()
 		}
+		if err := judge.SaveUsage(p.dir); err != nil {
+			p.logf("saving usage: %v", err)
+		}
+		code := cmd.ProcessState.ExitCode()
+		p.harness(types.DiagnosticDetails{Component: "agent", State: "stop", Runtime: p.a.Runtime, ExitCode: &code})
 		p.exited(cmd)
 	}()
 	return nil
@@ -497,6 +527,7 @@ func (p *player) conversation() string {
 func (p *player) stopAgent() {
 	p.mu.Lock()
 	cmd := p.agent
+	done := p.agentDone
 	p.agent = nil
 	p.mu.Unlock()
 	if alive(cmd) {
@@ -506,6 +537,13 @@ func (p *player) stopAgent() {
 		}
 		if alive(cmd) {
 			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+	}
+	if done != nil {
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			p.logf("agent transcript/usage snapshot did not finish within 10s")
 		}
 	}
 }

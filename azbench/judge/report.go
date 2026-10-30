@@ -314,10 +314,11 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 	}
 	var gaps []float64
 	gapStart := int64(-1)
+	played := intervalPlayed(ar.run)
 	for i := 1; i < len(score); i++ {
 		a, b := score[i-1], score[i]
 		at0, bt := int64(fnum(a["t"])), int64(fnum(b["t"]))
-		if bt-at0 > 60e3 {
+		if bt-at0 > 60e3 || !played(at0, bt) {
 			gapStart = -1
 			continue
 		}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/pthm/leeroy/azbench/diagnostics"
 	"net"
 	"net/http"
 	"os"
@@ -50,6 +51,8 @@ func (r *Runner) status() map[string]any {
 		st := map[string]any{"agent": p.a.Name, "char": p.a.Char, "runtime": p.a.Runtime, "port": p.port, "state": p.state,
 			"agent_running": alive(p.agent), "session_running": alive(p.session)}
 		p.mu.Unlock()
+		diag := diagnostics.Read(p.a.Name, diagnostics.Paths(r.dir, p.a.Name)...)
+		st["active_failures"] = diag.TopActive(time.Now().UnixMilli(), 3)
 		if b, err := os.ReadFile(filepath.Join(r.dir, "board", p.a.Char+".json")); err == nil {
 			var board map[string]any
 			if json.Unmarshal(b, &board) == nil {
@@ -82,6 +85,7 @@ func (r *Runner) restart(name, message string) error {
 	}
 	go func() {
 		p.logf("restarting")
+		p.runtimeState("supervisor", "restart")
 		p.stopAgent()
 		p.stopSession()
 		if !waitOffline(p.a.Char, 2*time.Minute) {

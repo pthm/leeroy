@@ -83,3 +83,25 @@ func TestMissingUsageNeverBecomesFreeCost(t *testing.T) {
 		t.Fatal("missing estimate became zero")
 	}
 }
+
+func TestShortPauseExcludedFromSampledTime(t *testing.T) {
+	dir := t.TempDir()
+	var lines []byte
+	for _, v := range []struct {
+		t     int
+		state string
+	}{{1000, "playing"}, {11000, "paused"}, {21000, "playing"}, {51000, "done"}} {
+		b, _ := json.Marshal(map[string]any{"kind": "runtime_state", "t": v.t, "details": map[string]any{"component": "judge", "state": v.state}})
+		lines = append(append(lines, b...), '\n')
+	}
+	os.WriteFile(filepath.Join(dir, "harness.jsonl"), lines, 0600)
+	played := intervalPlayed(dir)
+	for _, v := range []struct {
+		a, b int64
+		want bool
+	}{{1000, 10000, true}, {1000, 16000, false}, {16000, 31000, false}, {31000, 46000, true}, {51000, 66000, false}} {
+		if got := played(v.a, v.b); got != v.want {
+			t.Fatalf("interval %d..%d=%v, want %v", v.a, v.b, got, v.want)
+		}
+	}
+}

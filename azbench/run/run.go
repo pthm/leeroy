@@ -146,6 +146,14 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 		if r.elapsed >= time.Duration(r.s.Minutes)*time.Minute {
 			return fmt.Errorf("nothing left to play")
 		}
+		os.Remove(filepath.Join(r.dir, "paused"))
+	}
+	for _, p := range r.players {
+		state := "start"
+		if resume {
+			state = "resume"
+		}
+		p.runtimeState("supervisor", state)
 	}
 	r.ctx, r.cancel = context.WithCancel(context.Background())
 	defer r.cancel()
@@ -251,6 +259,7 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 		err  error
 	}
 	done := make(chan res, 1)
+	p.setState("playing")
 	go func() {
 		line, _, err := judge.Run(r.ctx, o)
 		done <- res{line, err}
@@ -275,12 +284,17 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 	if err != nil {
 		r.alert(p, "agent not started: "+err.Error())
 	}
-	p.setState("playing")
 	j := <-done
+	if j.err != nil {
+		if r.ctx.Err() != nil {
+			p.setState("paused")
+		} else {
+			p.setState("failed")
+		}
+	}
 	p.stopAgent()
 	p.stopSession()
-	if j.err != nil { // paused: the judge was stopped
-		p.setState("paused")
+	if j.err != nil {
 		return
 	}
 	p.mu.Lock()
@@ -330,6 +344,9 @@ func (r *Runner) pause() {
 	r.mu.Lock()
 	r.paused = true
 	r.mu.Unlock()
+	for _, p := range r.players {
+		p.runtimeState("supervisor", "pause")
+	}
 	r.cancel()
 }
 
