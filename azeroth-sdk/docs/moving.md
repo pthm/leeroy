@@ -61,7 +61,8 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   the new owner releases. Callback errors also release ownership.
 - Expiry releases movement even while a callback sleeps. It does not interrupt arbitrary Lua callback code:
   the scope returns its failure when that callback unwinds. Callback code still needs its own stopping
-  condition. Recovery supervision and duplicate-attempt joining remain pending.
+  condition. `act.recover` additionally coordinates duplicate callers and bounds its waits and attempts;
+  see [Death and travel](death-and-travel.md) for its policies and route-query limitation.
 - `act.approach` retains its pending walk until the target moves and checks stopping/facing before success.
   `act.follow` requires `until` or `timeout_s`, has a maximum 600-second duration, and returns
   `player_not_visible` after 5 seconds of absence. Its stopping callback is checked each pass.
