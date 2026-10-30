@@ -457,12 +457,20 @@ func (b *Bot) setupItems() {
 		return out
 	})
 	e.Func("items.free_slots", "() → number", "empty bag slots; at 0, loot and item rewards are refused", func() int { return freeSlots(w) })
-	e.Func("items.compare", "(item) → Comparison?", "an item (entry, or the guid of one you carry) against what you wear in its slot (the weaker one for rings, trinkets and one-handers); nil until the items' info has loaded",
-		func(item uint64) any {
-			if c := b.compareItem(item); c != nil {
-				return *c
-			}
-			return nil
+	e.Func("items.compare", "(item) → Request<Comparison>", "compare an item entry or carried GUID with equipped gear; cached results still return a request. not_found for an absent GUID, not_available while character state is absent, timeout after 5s if template data never arrives",
+		func(item uint64) map[string]any {
+			return b.lookup("items.compare", map[string]any{"item": gs(item)}, func() *script.Outcome {
+				if w.GetObject(w.CharGUID()) == nil {
+					return script.Fail("not_available", "character fields are not available", nil)
+				}
+				if item >= 1<<32 && w.GetObject(item) == nil {
+					return script.Fail("not_found", "item instance is not observed", nil)
+				}
+				if c := b.compareItem(item); c != nil {
+					return script.Ok(*c)
+				}
+				return nil
+			}, func() error { return nil })
 		})
 	e.Func("items.use", "(item [, guid]) → Request<CastDone>", "use an item you carry (entry or guid): food, drink, potions, quest items; optionally on a unit. Food and drink work out of combat, and you must sit still while they tick",
 		func(item, target uint64) map[string]any {
@@ -485,7 +493,9 @@ func (b *Bot) setupItems() {
 			buf.WriteByte(0)                                   // cast flags
 			writeTarget(&buf, target)
 			b.agent.castSent(it.UseSpell)
-			w.SendPacketRaw(cmsgUseItem, buf.Bytes())
+			if err := w.SendPacketRaw(cmsgUseItem, buf.Bytes()); err != nil {
+				return b.refuse("items.use", args, "failed", err.Error())
+			}
 			return b.request("items.use", args, castTimeout(it.UseSpell), nil, castMatch(it.UseSpell)) // a Hearthstone takes 10 s
 		})
 	e.Func("items.equip", "(item [, slot]) → Request<Equipped>", "wear an item you carry (entry or guid) in its slot, or in the slot you name: main_hand, off_hand (a second one-hander, with Dual Wield), finger1, finger2, trinket1, trinket2",
@@ -563,7 +573,9 @@ func (b *Bot) setupItems() {
 		}
 		count = min(count, 255)
 		g, left := it.GUID, it.Count-count
-		w.SendPacketRaw(cmsgDestroyItem, []byte{it.Bag, it.BagSlot, byte(count), 0, 0, 0})
+		if err := w.SendPacketRaw(cmsgDestroyItem, []byte{it.Bag, it.BagSlot, byte(count), 0, 0, 0}); err != nil {
+			return b.refuse("items.destroy", args, "failed", err.Error())
+		}
 		return b.request("items.destroy", args, 3*time.Second, func() *script.Outcome {
 			for _, x := range bagItems(w) {
 				if x.GUID == g && (count == 0 || x.Count > left) {
@@ -686,7 +698,7 @@ func (b *Bot) setupItems() {
 		})
 
 	// ---------- objects ----------
-	e.Func("objects.use", "(guid [, spell]) → Request<CastDone>", "use a game object within ~5 yd: doors, quest objects, chests and crates (opened with the Opening spell like the real client; the loot is taken). Plain objects resolve at once: watch for item_received / quest_progress",
+	e.Func("objects.use", "(guid [, spell]) → Request<CastDone>", "use a game object within ~5 yd: doors, quest objects, chests and crates (opened with the Opening spell like the real client; the loot is taken). Plain objects require an observed object-state change; timeout cannot establish use or quest progress",
 		func(guid uint64, spell uint32) map[string]any {
 			args := map[string]any{"object": gs(guid)}
 			o := w.GetObject(guid)
@@ -697,7 +709,17 @@ func (b *Bot) setupItems() {
 				spell = spellOpening
 			}
 			if spell == 0 {
-				return b.sent("objects.use", args, w.GameObjectUse(guid))
+				before := o.Value(fieldGOBytes1)
+				if err := w.GameObjectUse(guid); err != nil {
+					return b.refuse("objects.use", args, "failed", err.Error())
+				}
+				return b.request("objects.use", args, 5*time.Second, func() *script.Outcome {
+					current := w.GetObject(guid)
+					if current != nil && current.Value(fieldGOBytes1) != before {
+						return script.Ok(types.CastDone{})
+					}
+					return nil
+				}, nil)
 			}
 			var buf bytes.Buffer
 			buf.WriteByte(0)
@@ -706,7 +728,9 @@ func (b *Bot) setupItems() {
 			binary.Write(&buf, binary.LittleEndian, uint32(0x800)) // TARGET_FLAG_GAMEOBJECT
 			buf.Write(packGUID(guid))
 			b.agent.castSent(spell)
-			w.SendPacketRaw(cmsgCastSpellOp, buf.Bytes())
+			if err := w.SendPacketRaw(cmsgCastSpellOp, buf.Bytes()); err != nil {
+				return b.refuse("objects.use", args, "failed", err.Error())
+			}
 			return b.request("objects.use", args, 10*time.Second, nil, castMatch(spell))
 		})
 

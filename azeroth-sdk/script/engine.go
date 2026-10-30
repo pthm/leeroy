@@ -471,6 +471,12 @@ func (e *Engine) registerFunc(name, sig, desc string, fn any, internal bool) {
 			}
 		}
 		n := callReflect(L, v, 1)
+		if strings.HasPrefix(contract.Returns, "Request") {
+			h, ok := L.Get(-n).(*lua.LTable)
+			if n != 1 || !ok || h.RawGetString("pending") != lua.LTrue || h.RawGetString("ok") != lua.LNil || lua.LVAsNumber(h.RawGetString("id")) <= 0 || h.RawGetString("op") != lua.LString(name) {
+				L.RaiseError("%s: invalid Request return contract", name)
+			}
+		}
 		if diagnostic != nil && n > 0 {
 			if h, ok := L.Get(-n).(*lua.LTable); ok {
 				id := int(lua.LVAsNumber(h.RawGetString("id")))

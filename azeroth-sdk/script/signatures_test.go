@@ -101,3 +101,18 @@ func TestRuntimeOptionsRejectTypos(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRequestReturnAndPostconditionContracts(t *testing.T) {
+	e := NewEngine(nolog, nil)
+	defer e.Close()
+	e.Func("bad.request", "() → Request", "test", func() map[string]any { return map[string]any{"ok": true} })
+	if _, err := e.Eval(`return bad.request()`); err == nil {
+		t.Fatal("raw action returned completed result")
+	}
+	if err := e.DocumentActionPostconditions(map[string]string{}); err == nil {
+		t.Fatal("missing postcondition accepted")
+	}
+	if err := e.DocumentActionPostconditions(map[string]string{"bad.request": "test completion"}); err != nil {
+		t.Fatal(err)
+	}
+}

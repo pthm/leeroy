@@ -248,9 +248,18 @@ func (b *Bot) setupCombatInfo() {
 			want := ""
 			switch v := rank.(type) {
 			case float64:
+				if v < 1 || v > 255 || v != math.Floor(v) {
+					panic("spells.find: rank must be an integer 1..255 or a nonempty rank label")
+				}
 				want = "Rank " + strconv.FormatFloat(v, 'f', -1, 64)
 			case string:
+				if strings.TrimSpace(v) == "" {
+					panic("spells.find: rank label cannot be empty")
+				}
 				want = v
+			case nil:
+			default:
+				panic("spells.find: rank must be a number or string")
 			}
 			var best *types.Spell
 			for _, id := range spellsNamed(n) {

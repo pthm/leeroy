@@ -234,6 +234,13 @@ func (b *Bot) setupTravel() {
 
 	e.Func("flights.nodes", "([map]) → TaxiNode[]", "every flight point for your faction (on one map: 0 Eastern Kingdoms, 1 Kalimdor, 530 Outland, 571 Northrend). known is only accurate after you've opened a flight map",
 		func(m any) []types.TaxiNode {
+			if m != nil {
+				v, ok := m.(float64)
+				if !ok || v < 0 || v > 4294967295 || v != math.Trunc(v) {
+					panic("flights.nodes: map must be an unsigned integer")
+				}
+			}
+
 			loadTaxi()
 			t.mu.Lock()
 			defer t.mu.Unlock()
@@ -348,7 +355,7 @@ func (b *Bot) setupTravel() {
 				return nil
 			}, func(ev script.Event) *script.Outcome { return failOn(ev, "flights.take") })
 		})
-	e.Func("me.home", "() → Home?", "where your hearthstone takes you (use the Hearthstone item: items.use(6948), a 10 s cast with a 1 hour cooldown)", func() any {
+	e.Func("me.home", "() → Home?", "nil until the server bind-point packet is observed; otherwise where your hearthstone takes you (use the Hearthstone item: items.use(6948), a 10 s cast with a 1 hour cooldown)", func() any {
 		t.mu.Lock()
 		defer t.mu.Unlock()
 		if t.home == nil {

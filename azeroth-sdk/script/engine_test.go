@@ -77,7 +77,7 @@ func TestRuntime(t *testing.T) {
 	e := NewEngine(nolog, nil)
 	var got map[string]any
 	e.Func("t.sum", "(values) → number", "", func(m map[string]any) float64 { got = m; return m["a"].(float64) + m["b"].(float64) })
-	e.Func("t.act", "() → Request", "", func() map[string]any { return e.Reqs.Start(Spec{Op: "act", Timeout: time.Second}) })
+	e.Func("t.act", "() → Request", "", func() map[string]any { return e.Reqs.Start(Spec{Op: "t.act", Timeout: time.Second}) })
 	v, err := e.Eval(`return t.sum{a = 1, b = 2}`)
 	if err != nil || v != 3.0 || got == nil {
 		t.Fatalf("table arg: %v %v", v, err)
@@ -159,7 +159,7 @@ func itoa(n uint64) string { return fmt.Sprint(n) }
 // pause/resume keep a task's wait (an action's result or an event that came in while paused is still delivered).
 func TestTaskControl(t *testing.T) {
 	e := NewEngine(nolog, nil)
-	e.Func("t.act", "() → Request", "", func() map[string]any { return e.Reqs.Start(Spec{Op: "act", Timeout: time.Minute}) })
+	e.Func("t.act", "() → Request", "", func() map[string]any { return e.Reqs.Start(Spec{Op: "t.act", Timeout: time.Minute}) })
 	var stopped []int
 	e.OnTaskInactive = func(id int, reason string) {
 		if reason == "task_stopped" {
@@ -271,7 +271,7 @@ func TestFuncRequiredArgs(t *testing.T) {
 
 func TestNPCGUIDArgument(t *testing.T) {
 	e := NewEngine(nolog, nil)
-	e.Func("vendor.buy", "(npc_guid, item_entry) → Request", "", func(g uint64, item uint32) uint64 { return g })
+	e.Func("vendor.buy", "(npc_guid, item_entry) → GUID", "", func(g uint64, item uint32) uint64 { return g })
 	for _, arg := range []string{`123`, `nil`, `{guid = "123"}`, `""`} {
 		if _, err := e.Eval(`return vendor.buy(` + arg + `, 9)`); err == nil || !strings.Contains(err.Error(), "argument npc_guid") {
 			t.Fatalf("argument %s: %v", arg, err)
@@ -320,7 +320,7 @@ func TestPcallAwait(t *testing.T) {
 func TestNestedProtectedWaitResults(t *testing.T) {
 	e := NewEngine(nolog, nil)
 	defer e.Close()
-	e.Func("probe.request", "() → Request", "test", func() map[string]any { return e.Reqs.Start(Spec{Op: "probe", Timeout: time.Minute}) })
+	e.Func("probe.request", "() → Request", "test", func() map[string]any { return e.Reqs.Start(Spec{Op: "probe.request", Timeout: time.Minute}) })
 	if _, err := e.Eval(`
   task.spawn("nested",function()
    local ok, value = pcall(function()

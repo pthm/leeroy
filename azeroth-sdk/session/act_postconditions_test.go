@@ -49,7 +49,7 @@ func TestActMakeRoomProtectsGearAndUnknownItems(t *testing.T) {
         {guid = "upgrade", name = "Sword", slot = "main_hand", usable = true, quality = "poor", sell_price = 1},
         {guid = "uncompared", name = "Boots", slot = "feet", usable = true, quality = "poor", sell_price = 1},
         {guid = "junk", name = "Tooth", quality = "poor", sell_price = 2}} end
-      items.compare = function(g) if g == "upgrade" then return {replaces = {}, item_level = 1, armor = 0, dps = 0} end end
+      items.compare = function(g) if g == "upgrade" then return {ok=true,data={replaces = {}, item_level = 1, armor = 0, dps = 0}} end return {ok=false,error={code="not_available",message="missing"}} end
       items.destroy = function(g) destroyed = g return {ok = true} end`, `
       r = act.make_room()
       assert(r.ok and destroyed == "junk" and r.data.item.guid == "junk")

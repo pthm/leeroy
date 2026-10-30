@@ -217,11 +217,11 @@ func TestMovementTaskCancelClearsAllQueuedWork(t *testing.T) {
 // Cancellation follows task ownership, even when the task isn't awaiting its walk.
 func TestMovementSchedulerLifecycle(t *testing.T) {
 	for _, tc := range []struct{ name, body, control, code string }{
-		{"pause", `walk(100); wait(60)`, `task.pause(1)`, "task_paused"},
-		{"stop", `walk(100); wait(60)`, `task.stop(1)`, "task_stopped"},
-		{"failure", `walk(100); error("failed")`, "", "script_error"},
-		{"return", `walk(100)`, "", "task_finished"},
-		{"close", `walk(100); wait(60)`, "", "session_closed"},
+		{"pause", `move.to(100); wait(60)`, `task.pause(1)`, "task_paused"},
+		{"stop", `move.to(100); wait(60)`, `task.stop(1)`, "task_stopped"},
+		{"failure", `move.to(100); error("failed")`, "", "script_error"},
+		{"return", `move.to(100)`, "", "task_finished"},
+		{"close", `move.to(100); wait(60)`, "", "session_closed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newMovementFixture(t, true)
@@ -230,7 +230,7 @@ func TestMovementSchedulerLifecycle(t *testing.T) {
 			e.OnTaskInactive = f.control.cancelTask
 			e.OnClose = f.control.close
 			var request int
-			e.Func("walk", "(x) → Request<MoveDone>", "", func(x float64) map[string]any {
+			e.Func("move.to", "(x) → Request<MoveDone>", "", func(x float64) map[string]any {
 				id, name, call := e.CurrentTaskIdentity()
 				if id != 1 || name != "owner" || call == "" {
 					t.Errorf("missing identity: %d %s %s", id, name, call)

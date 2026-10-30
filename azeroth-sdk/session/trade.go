@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -22,6 +23,7 @@ type tradeState struct {
 	mine, theirs types.TradeSide
 	theyAccepted bool
 	err          [2]string // code, message: why the trade ended or the last step was refused
+	mineRevision uint64
 	updated      int64
 	stepAt       time.Time // when trade.offer or trade.accept last sent
 }
@@ -98,6 +100,7 @@ func (b *Bot) setupTrade() {
 			t.theirs = offer
 		} else {
 			t.mine = offer
+			t.mineRevision++
 		}
 		t.mu.Unlock()
 	})
@@ -147,14 +150,50 @@ func (b *Bot) setupTrade() {
 		}
 		return until("trade.open", nil, 5*time.Second, "open")
 	})
-	e.Func("trade.offer", "{[items = {}, money = 0]} → Request", "set your side of the open trade (up to 6 items; replaces what you offered). Soulbound items can't be traded",
+	e.Func("trade.offer", "{[items = {}, money = 0]} → Request<Trade>", "set your side of the open trade (up to 6 items; replaces what you offered). Soulbound items can't be traded",
 		func(o map[string]any) map[string]any {
-			items, _ := o["items"].([]any)
-			money, _ := o["money"].(float64)
+			items, ok := o["items"].([]any)
+			if o["items"] != nil && !ok {
+				if empty, yes := o["items"].(map[string]any); !yes || len(empty) != 0 {
+					panic("trade.offer: items must be an array")
+				}
+			}
+			if len(items) > 6 {
+				panic("trade.offer: at most 6 items")
+			}
+			money, ok := o["money"].(float64)
+			if o["money"] != nil && (!ok || money < 0 || money > 4294967295 || money != math.Trunc(money)) {
+				panic("trade.offer: money must be an unsigned integer")
+			}
+			for _, item := range items {
+				if guidArg(item) == 0 {
+					panic("trade.offer: each item must be a valid item selector")
+				}
+			}
+			expected := []types.Item{}
+			for _, key := range items {
+				it := findItem(w, guidArg(key))
+				if it == nil {
+					return b.refuse("trade.offer", nil, "item_not_found", "item is not in your bags")
+				}
+				if it.Soulbound {
+					return b.refuse("trade.offer", nil, "soulbound", "item cannot be traded")
+				}
+				expected = append(expected, *it)
+			}
+			t.mu.Lock()
+			revision := t.mineRevision
+			state := t.state
+			t.mu.Unlock()
+			if state != "open" {
+				return b.refuse("trade.offer", nil, "not_open", "trade window is not open")
+			}
 			clearErr()
 			for slot := uint8(0); slot < 6; slot++ {
 				if int(slot) >= len(items) {
-					w.ClearTradeItem(slot)
+					if err := w.ClearTradeItem(slot); err != nil {
+						return b.refuse("trade.offer", nil, "failed", err.Error())
+					}
 					continue
 				}
 				key := guidArg(items[slot])
@@ -169,7 +208,25 @@ func (b *Bot) setupTrade() {
 					return b.refuse("trade.offer", nil, "failed", err.Error())
 				}
 			}
-			return b.sent("trade.offer", nil, w.SetTradeGold(uint32(money)))
+			if err := w.SetTradeGold(uint32(money)); err != nil {
+				return b.refuse("trade.offer", nil, "failed", err.Error())
+			}
+			return b.request("trade.offer", nil, 5*time.Second, func() *script.Outcome {
+				t.mu.Lock()
+				defer t.mu.Unlock()
+				if t.err[0] != "" {
+					return script.Fail(t.err[0], t.err[1], nil)
+				}
+				if t.mineRevision <= revision || t.mine.Money != uint32(money) || len(t.mine.Items) != len(expected) {
+					return nil
+				}
+				for i, it := range expected {
+					if t.mine.Items[i].Entry != it.Entry || t.mine.Items[i].Count != it.Count {
+						return nil
+					}
+				}
+				return script.Ok(b.tradeSnapshot(t))
+			}, nil)
 		})
 	e.Func("trade.accept", "() → Request<Trade>", "accept the trade: ok when it completes (both sides accepted; any change un-accepts both), else why not (not_enough_money, inventory_full, too_far, cancelled, ...)", func() map[string]any {
 		clearErr()
@@ -178,7 +235,23 @@ func (b *Bot) setupTrade() {
 		}
 		return until("trade.accept", nil, 60*time.Second, "complete")
 	})
-	e.Func("trade.cancel", "() → Request", "close the trade, or refuse a request", func() map[string]any { return b.sent("trade.cancel", nil, w.CancelTrade()) })
+	e.Func("trade.cancel", "() → Request<Trade>", "close the trade, or refuse a request", func() map[string]any {
+		t.mu.Lock()
+		t.err = [2]string{}
+		t.stepAt = time.Time{}
+		t.mu.Unlock()
+		if err := w.CancelTrade(); err != nil {
+			return b.refuse("trade.cancel", nil, "failed", err.Error())
+		}
+		return b.request("trade.cancel", nil, 5*time.Second, func() *script.Outcome {
+			t.mu.Lock()
+			defer t.mu.Unlock()
+			if t.state == "cancelled" || t.state == "closed" {
+				return script.Ok(b.tradeSnapshot(t))
+			}
+			return nil
+		}, nil)
+	})
 	e.Func("trade.status", "() → Trade", "the trade window: state, who with, both sides' offers", func() types.Trade {
 		t.mu.Lock()
 		defer t.mu.Unlock()

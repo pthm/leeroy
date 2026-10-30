@@ -150,12 +150,13 @@ func (b *Bot) done(op string, args map[string]any, data any) map[string]any {
 	return b.lua.Reqs.Now(script.Spec{Op: op, Args: args}, script.Ok(data))
 }
 
-// sent: an action the server doesn't answer resolves at once: ok, or the client's error.
+// sent never equates transport success with a game postcondition. Callers with
+// observable state use request/check or a server event instead.
 func (b *Bot) sent(op string, args map[string]any, err error) map[string]any {
 	if err != nil {
 		return b.refuse(op, args, "failed", err.Error())
 	}
-	return b.done(op, args, nil)
+	return b.refuse(op, args, "unconfirmed", "packet was sent, but this operation has no observed completion; inspect state before retrying")
 }
 
 // timeoutHints: the usual reason the server stayed silent

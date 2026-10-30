@@ -61,7 +61,7 @@ func TestTravelValidationAndFailureEvidence(t *testing.T) {
 			`r=act.travel{points={{10,0,0},{x=20,y=0,z=0,map=1}}};assert(not r.ok and r.error.code=="wrong_map" and #moves==0)`},
 		{"validation moves character", `world.route=function() pos={x=100,y=0,z=0};return {ok=true,data={status="verified",from={x=0,y=0,z=0},completed_legs=1}} end`,
 			`r=act.travel{points={{10,0,0}}};assert(not r.ok and r.error.code=="route_stale" and #moves==0)`},
-		{"timeout cannot authorize prefix", `world.route=function() return {ok=false,error={code="route_timeout"},data={status="partial",completed_legs=1,blocked_leg=2,waypoints={{x=10,y=0,z=0}}}} end`,
+		{"timeout cannot authorize prefix", `world.route=function() return {ok=false,error={code="route_timeout",message="route deadline"},data={status="partial",completed_legs=1,blocked_leg=2,waypoints={{x=10,y=0,z=0}}}} end`,
 			`r=act.travel{points={{10,0,0},{20,0,0}},allow_partial=true};assert(not r.ok and r.error.code=="route_timeout" and #moves==0)`},
 	} {
 		t.Run(tc.name, func(t *testing.T) { actWorld(t, actBase+tc.stubs, tc.body) })

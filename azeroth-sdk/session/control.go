@@ -383,10 +383,10 @@ func (b *Bot) setupControl() {
 	})
 
 	// ---------- client: the raw protocol ----------
-	e.Func("client.watch", "(opcode [, on = true]) → nil", "capture a server opcode for client.packets()", func(op uint16, on any) {
+	e.Func("client.watch", "(opcode [, on = true]) → nil", "capture a server opcode for client.packets()", func(op uint16, on bool) {
 		c.mu.Lock()
 		defer c.mu.Unlock()
-		c.watched[op] = on != false
+		c.watched[op] = on
 	})
 	e.Func("client.packets", "() → {{opcode, hex, time_ms}}", "drain the captured packets", func() []RawPacket {
 		c.mu.Lock()
@@ -395,13 +395,16 @@ func (b *Bot) setupControl() {
 		c.packets = nil
 		return out
 	})
-	e.Func("client.send", "(opcode, hex) → string?", "send a client packet (the header and encryption are added)", func(op uint16, hexBody string) error {
+	e.Func("client.send", "(opcode, hex) → Request", "send an arbitrary client packet; without a typed confirmation this returns unconfirmed after sending, or invalid_arguments/failed before sending", func(op uint16, hexBody string) map[string]any {
 		body, err := hex.DecodeString(strings.ReplaceAll(hexBody, " ", ""))
 		if err != nil {
-			return err
+			return b.refuse("client.send", nil, "invalid_arguments", err.Error())
 		}
-		return w.SendPacketRaw(op, body)
+		return b.sent("client.send", nil, w.SendPacketRaw(op, body))
 	})
+	if err := e.DocumentActionPostconditions(types.ActionPostconditions); err != nil {
+		panic(err)
+	}
 	if err := e.DoChunk("act.lua", actLua); err != nil {
 		b.log("act.lua: %v", err)
 	}
@@ -521,6 +524,8 @@ func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
 		switch { // the server's echo: what chat.whisper and chat.channel wait for
 		case ok && m.Type == 9:
 			c.acks["whisper\x00"+m.Text] = true
+		case ok && guid == w.CharGUID() && (m.Type == 1 || m.Type == 2 || m.Type == 6):
+			c.acks[fmt.Sprintf("chat:%d\x00%s", m.Type, m.Text)] = true
 		case ok && m.Type == 0x11 && guid == w.CharGUID():
 			c.acks["channel\x00"+strings.ToLower(m.Channel)+"\x00"+m.Text] = true
 		}
@@ -572,7 +577,7 @@ func (b *Bot) chatLang() uint32 {
 }
 
 // sendChat sends CMSG_MESSAGECHAT; `to` is the whisper target (type 7) or channel name (type 0x11).
-func (b *Bot) sendChat(typ uint32, to, msg string) {
+func (b *Bot) sendChat(typ uint32, to, msg string) error {
 	var buf bytes.Buffer
 	binary.Write(&buf, binary.LittleEndian, typ)
 	binary.Write(&buf, binary.LittleEndian, b.chatLang())
@@ -580,7 +585,7 @@ func (b *Bot) sendChat(typ uint32, to, msg string) {
 		buf.WriteString(to + "\x00")
 	}
 	buf.WriteString(msg + "\x00")
-	b.world.SendPacketRaw(cmsgMessageChat, buf.Bytes())
+	return b.world.SendPacketRaw(cmsgMessageChat, buf.Bytes())
 }
 
 // parseChat decodes SMSG_MESSAGECHAT (layout per AzerothCore ChatHandler::BuildChatPacket).

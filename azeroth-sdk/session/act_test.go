@@ -43,6 +43,7 @@ func TestTaskKeep(t *testing.T) {
 func TestWatchStall(t *testing.T) {
 	b := &Bot{lua: script.NewEngine(func(string, ...any) {}, nil)}
 	b.setupWatch()
+	defer b.lua.Close()
 	if _, err := b.lua.Eval(`return events.watch{stall_s = 1, every_s = 1}`); err != nil {
 		t.Fatal(err)
 	}
@@ -54,8 +55,24 @@ func TestWatchStall(t *testing.T) {
 	}
 	b.emit("xp", types.XPGain{Amount: 100})
 	since := b.lua.Bus.Seq()
-	if evs := wait("progress", since); len(evs) == 0 || evs[0].Data.(types.Progress).XP != 100 {
-		t.Fatalf("progress: %v", evs)
+	// The initial stall and digest are a batch. XP can arrive after that digest
+	// was computed but before it is published; wait for the next nonempty one.
+	seen := since
+	for deadline := time.Now().Add(7 * time.Second); ; {
+		evs := b.lua.Bus.Wait(script.Query{Since: seen, Types: []string{"progress"}}, time.Until(deadline))
+		if len(evs) == 0 {
+			t.Fatal("no progress digest containing XP")
+		}
+		found := false
+		for _, ev := range evs {
+			seen = ev.Seq
+			if ev.Data.(types.Progress).XP == 100 {
+				found = true
+			}
+		}
+		if found {
+			break
+		}
 	}
 	if evs := wait("stall", since); len(evs) == 0 {
 		t.Fatal("no second stall after progress resumed and stopped again")

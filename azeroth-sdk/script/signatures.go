@@ -201,6 +201,21 @@ func checkNativeArgument(L *lua.LState, name, sig string, p Parameter, t reflect
 		}
 		L.Replace(i, v)
 	}
+	if p.Name == "item" && t.Kind() == reflect.Uint64 {
+		switch value := v.(type) {
+		case lua.LNumber:
+			if value <= 0 || value >= 1<<32 || float64(value) != math.Trunc(float64(value)) {
+				bad("must be a positive numeric item entry or a decimal instance GUID string")
+			}
+		case lua.LString:
+			id, err := strconv.ParseUint(string(value), 10, 64)
+			if err != nil || id < 1<<32 {
+				bad("instance GUID strings must identify an item instance; use a number for an entry")
+			}
+		default:
+			bad("must be a numeric item entry or a decimal instance GUID string")
+		}
+	}
 	if p.Name == "guid" || strings.HasSuffix(p.Name, "_guid") {
 		s, ok := v.(lua.LString)
 		if !ok || len(s) == 0 {
@@ -305,4 +320,27 @@ func checkOptions(L *lua.LState, name, sig string, v lua.LValue, fields []Parame
 			L.RaiseError("%s%s: unknown option %s; accepted fields are shown in the signature", name, sig, k.String())
 		}
 	})
+}
+
+// DocumentActionPostconditions prevents new raw actions from silently bypassing
+// the contract review. Called after the session has registered all namespaces.
+func (e *Engine) DocumentActionPostconditions(postconditions map[string]string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for name, d := range e.docs {
+		sig, err := ParseSignature(d.Sig)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(sig.Returns, "Request") {
+			continue
+		}
+		condition, ok := postconditions[name]
+		if !ok || condition == "" {
+			return fmt.Errorf("%s: missing action postcondition", name)
+		}
+		d.Desc += ". Completion: " + condition + "."
+		e.docs[name] = d
+	}
+	return nil
 }

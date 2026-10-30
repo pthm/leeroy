@@ -21,6 +21,7 @@ package session
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -277,7 +278,16 @@ func (b *Bot) setupCoreAPI() {
 
 	// ---------- combat ----------
 	e.Func("combat.target", "(guid) → Request", "select a unit (some spells and abilities use your target)", func(g uint64) map[string]any {
-		return b.sent("combat.target", map[string]any{"unit": gs(g)}, b.SetTarget(g))
+		args := map[string]any{"unit": gs(g)}
+		if err := b.SetTarget(g); err != nil {
+			return b.refuse("combat.target", args, "failed", err.Error())
+		}
+		return b.request("combat.target", args, 2*time.Second, func() *script.Outcome {
+			if w.TargetGUID() == g {
+				return script.Ok(nil)
+			}
+			return nil
+		}, nil)
 	})
 	e.Func("combat.attack", "(guid) → Request<Attacking>", "start auto-attacking (selects it too): ok when the swing starts, else not_in_range, bad_facing, dead_target, cant_attack",
 		func(g uint64) map[string]any {
@@ -300,13 +310,52 @@ func (b *Bot) setupCoreAPI() {
 				return nil
 			})
 		})
-	e.Func("combat.stop", "() → Request", "stop auto-attacking", func() map[string]any { return b.sent("combat.stop", nil, b.StopAttack()) })
+	e.Func("combat.stop", "() → Request", "stop auto-attacking", func() map[string]any {
+		if err := b.StopAttack(); err != nil {
+			return b.refuse("combat.stop", nil, "failed", err.Error())
+		}
+		return b.request("combat.stop", nil, 2*time.Second, func() *script.Outcome {
+			if w.AttackingGUID() == 0 {
+				return script.Ok(nil)
+			}
+			return nil
+		}, nil)
+	})
 	e.Func("combat.pet_attack", "(guid) → Request", "send your pet at a unit", func(g uint64) map[string]any {
-		b.PetAttack(g)
-		return b.done("combat.pet_attack", map[string]any{"unit": gs(g)}, nil)
+		args := map[string]any{"unit": gs(g)}
+		pet := b.GetPetGUID()
+		if pet == 0 {
+			return b.refuse("combat.pet_attack", args, "no_pet", "no controlled pet is observed")
+		}
+		if b.GetUnitInfo(g) == nil {
+			return b.refuse("combat.pet_attack", args, "unit_gone", "target is not observed")
+		}
+		if err := w.PetAction(pet, 7<<24|2, g); err != nil {
+			return b.refuse("combat.pet_attack", args, "failed", err.Error())
+		}
+		return b.request("combat.pet_attack", args, 5*time.Second, func() *script.Outcome {
+			u := b.GetUnitInfo(pet)
+			if u != nil && u.Target == g {
+				return script.Ok(nil)
+			}
+			return nil
+		}, nil)
 	})
 	e.Func("combat.sheath", "(state) → Request", "0 = weapons out, 1 = melee sheathed, 2 = ranged", func(st uint32) map[string]any {
-		return b.sent("combat.sheath", map[string]any{"state": st}, b.SetSheathed(st))
+		args := map[string]any{"state": st}
+		if st > 2 {
+			return b.refuse("combat.sheath", args, "invalid_arguments", "state must be 0, 1 or 2")
+		}
+		if err := b.SetSheathed(st); err != nil {
+			return b.refuse("combat.sheath", args, "failed", err.Error())
+		}
+		return b.request("combat.sheath", args, 3*time.Second, func() *script.Outcome {
+			obj := w.GetObject(w.CharGUID())
+			if obj != nil && obj.Value(client.UnitFieldBytes2)&0xFF == st {
+				return script.Ok(nil)
+			}
+			return nil
+		}, nil)
 	})
 
 	// ---------- spells ----------
@@ -332,23 +381,6 @@ func (b *Bot) setupCoreAPI() {
 		}
 		return b.refuse(op, nil, "message_too_long", strconv.Itoa(len(msg))+" bytes: the server drops chat over 255 without telling you. Split it")
 	}
-	say := func(op string, typ uint32, to string) func(string) map[string]any {
-		return func(msg string) map[string]any {
-			if r := tooLong(op, msg); r != nil {
-				return r
-			}
-			b.sendChat(typ, to, msg)
-			return b.done(op, nil, nil)
-		}
-	}
-	e.Func("chat.say", "(msg) → Request", "players within 40 yards hear it", func(msg string) map[string]any {
-		if r := tooLong("chat.say", msg); r != nil {
-			return r
-		}
-		return b.sent("chat.say", nil, b.SendChat(msg))
-	})
-	e.Func("chat.yell", "(msg) → Request", "players within 300 yards hear it", say("chat.yell", 6, ""))
-	e.Func("chat.party", "(msg) → Request", "your party, at any distance", say("chat.party", 2, ""))
 	// whispers and channel messages resolve on the server's echo (or its refusal)
 	echoed := func(op string, typ uint32, to, msg, key string) map[string]any {
 		if r := tooLong(op, msg); r != nil {
@@ -359,7 +391,9 @@ func (b *Bot) setupCoreAPI() {
 		}
 		key += msg
 		b.acked(key) // drop a stale one
-		b.sendChat(typ, to, msg)
+		if err := b.sendChat(typ, to, msg); err != nil {
+			return b.refuse(op, nil, "failed", err.Error())
+		}
 		return b.request(op, map[string]any{"to": to}, 3*time.Second, func() *script.Outcome {
 			if b.acked(key) {
 				return script.Ok(nil)
@@ -371,6 +405,13 @@ func (b *Bot) setupCoreAPI() {
 			}
 			return failOn(ev, op)
 		})
+	}
+	for _, c := range []struct {
+		name string
+		kind uint32
+	}{{"say", 1}, {"yell", 6}, {"party", 2}} {
+		op, kind := "chat."+c.name, c.kind
+		e.Func(op, "(msg) → Request", "send chat; success requires the server echo, timeout is unconfirmed delivery", func(msg string) map[string]any { return echoed(op, kind, "", msg, fmt.Sprintf("chat:%d\x00", kind)) })
 	}
 	e.Func("chat.whisper", "(name, msg) → Request", "one player anywhere, by exact character name: player_not_found when no one by that name is online", func(to, msg string) map[string]any {
 		return echoed("chat.whisper", 7, to, msg, "whisper\x00")

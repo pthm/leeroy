@@ -25,7 +25,7 @@ function A.ok(op, data) return result(op, true, data) end
 function A.fail(op, code, message) return result(op, false, nil, code, message) end
 -- Copy the envelope: a helper must not rename or leak a raw request's result.
 local function wrapped(op, r)
-  if type(r) ~= "table" or type(r.ok) ~= "boolean" or (not r.ok and not r.error) then
+  if type(r) ~= "table" or type(r.ok) ~= "boolean" or (not r.ok and (type(r.error)~="table" or type(r.error.code)~="string" or r.error.code=="" or type(r.error.message)~="string" or r.error.message=="")) then
     error(op .. ": expected a completed action result", 2)
   end
   return {op = op, ok = r.ok, data = r.data, error = r.error, steps = r.steps}
@@ -111,7 +111,8 @@ local function disposable(it)
   -- Missing template information is not evidence that an item is junk.
   if it.equipped or it.quality ~= "poor" or not it.name or it.name == "" or it.sell_price == nil then return false end
   if it.slot and it.slot ~= "" and it.usable ~= false then
-    local c = items.compare(it.guid)
+    local checked = await(items.compare(it.guid),5)
+    local c = checked.ok and checked.data
     if not c or not c.replaces then return false end
     if c.item_level > 0 or c.armor > 0 or c.dps > 0 then return false end
     for _, v in pairs(c.stats or {}) do if v > 0 then return false end end
@@ -227,7 +228,11 @@ local function walk(o, x, y, z)
     local foes = units.attackers(30)
     if o.on_attacked and #foes > 0 then
       move.stop()
-      o.on_attacked(foes)
+      local handled=o.on_attacked(foes)
+      if handled~=nil then
+        handled=wrapped("act.go_to",handled)
+        if not handled.ok then return handled end
+      end
       req = move.to(x, y, z)
     end
   end
@@ -375,7 +380,11 @@ function A.follow(o)
   local deadline = now() + (o.timeout_s or 600) * 1000
   local missing, req, dest
   while now() < deadline do
-    if o["until"] and o["until"]() then return A.ok("act.follow") end
+    if o["until"] then
+      local done=o["until"]()
+      if type(done)~="boolean" then error("act.follow: until must return boolean",2) end
+      if done then return A.ok("act.follow") end
+    end
     local p = A.player(o.name)
     if not p then
       missing = missing or now()
@@ -1157,5 +1166,5 @@ for name, d in pairs({
   release = { "() → ActResult", "release your spirit" },
   corpse_run = { "{[safe = true, timeout_s = 180, max_attempts = 2]} → ActResult<Recovery>", "bounded ghost travel and reclaim; confirm path endpoint, floor, reclaim distance, line of sight and timer. Default safe=true rejects nearby hostiles or unverified floor evidence. timeout_s >0..600, max_attempts 1..2; preserve failed movement and resurrection steps; no healer fallback; check gear after resurrection; needs_repair for broken main hand" },
   spirit_res = { "{[timeout_s = 180, max_attempts = 2]} → ActResult<Recovery>", "explicitly authorize spirit-healer resurrection and its durability penalty. Reject hostile or unverified healer sites, propagate movement failures, require observed resurrection, and check gear. At most 2 attempts within timeout_s >0..600; no rest or automatic farming restart" },
-  recover = { "{[spirit = false, allow_spirit_fallback = false, rest = true, safe = true, timeout_s = 180, max_attempts = 2]} → ActResult<Recovery>", "one session recovery attempt: duplicate callers join the first caller's policy and result. Release, reclaim and optionally rest; healer use requires spirit=true or allow_spirit_fallback=true. timeout_s >0..600 and at most 2 total resurrection attempts across methods; fallback reserves the second attempt when possible. Return attention on failure or needs_repair for a broken main hand; never restart another task. Synchronous path query cancellation remains unsupported; exact healer cost is unavailable" },
+  recover = { "{[spirit = false, allow_spirit_fallback = false, rest = true, safe = true, timeout_s = 180, max_attempts = 2]} → ActResult<Recovery>", "one session recovery attempt: duplicate callers join the first caller's policy and result. Release, reclaim and optionally rest; healer use requires spirit=true or allow_spirit_fallback=true. timeout_s >0..600 and at most 2 total resurrection attempts across methods; fallback reserves the second attempt when possible. Return attention on failure or needs_repair for a broken main hand; never restart another task. Route work is cancelled with recovery; exact healer cost is unavailable because the server config is not sent to clients" },
 }) do doc("act." .. name, d[1], d[2]) end

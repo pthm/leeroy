@@ -121,6 +121,9 @@ func evalLua(code string) int {
 		last, _, _ = strings.Cut(last, "\n") // the traceback is in wow tasks and the script_error event
 		fmt.Fprintf(os.Stderr, "wow: script_errors %s, last: %s\n", jqjson.Interp(jqjson.Field(se, "count")), last)
 	}
+	if !ok || jqjson.Truthy(jqjson.Field(r, "error")) {
+		return 1
+	}
 	return 0
 }
 
@@ -271,7 +274,7 @@ func run(args []string) int {
 		}
 		r, ok := rpc("events.wait", p)
 		if !ok {
-			return 0
+			return 1
 		}
 		h := jqjson.NewObj()
 		h.Set("timed_out", jqjson.Field(r, "timed_out"))

@@ -179,7 +179,7 @@ func (b *Bot) setupWorldMessages() {
 	e.Func("me.reputation", "() → Reputation[]", "your standing with each faction in your reputation list, by name", func() []types.Reputation {
 		return m.reputation(b.GetRace(), b.GetClass())
 	})
-	e.Func("group.ready", "([ready = true]) → Request", "answer a ready check (ready_check event)", func(ready any) map[string]any {
+	e.Func("group.ready", "([ready = true]) → Request", "answer a ready check (ready_check event)", func(ready bool) map[string]any {
 		if !w.InGroup() {
 			return b.refuse("group.ready", nil, "not_in_group", "you aren't in a group")
 		}
