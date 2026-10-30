@@ -711,12 +711,21 @@ for _, n in ipairs({ "go_to", "travel", "approach", "follow", "reach_npc", "acce
     if not task.current() then
       error("act." .. n .. " waits for the game, so it runs inside a task: task.spawn(\"" .. n .. "\", function() act." .. n .. "{...} end)", 2)
     end
-    if takes_options[n] and o ~= nil and type(o) ~= "table" then
-      error("act." .. n .. " takes an options table, act." .. n .. "{...}, not a " .. type(o) .. ": help(\"act." .. n .. "\") lists its fields", 2)
+    local call = task._action_begin("act." .. n, o, ...)
+    local ok, r = pcall(function(...)
+      if takes_options[n] and o ~= nil and type(o) ~= "table" then
+        error("act." .. n .. " takes an options table, act." .. n .. "{...}, not a " .. type(o) .. ": help(\"act." .. n .. "\") lists its fields", 2)
+      end
+      validate_npc_options(n, o)
+      validate_helper_options(n, o)
+      return wrapped("act." .. n, f(o, ...))
+    end, ...)
+    if not ok then
+      task._action_end(call, A.fail("act." .. n, "script_error", "helper raised a Lua error"))
+      error(r, 0)
     end
-    validate_npc_options(n, o)
-    validate_helper_options(n, o)
-    return wrapped("act." .. n, f(o, ...))
+    task._action_end(call, r)
+    return r
   end
 end
 

@@ -574,6 +574,11 @@ func (b *Bot) Run() BotResult {
 		bus = script.NewBus(b.config.EventsFile)
 	}
 	eng := script.NewEngine(b.log, bus)
+	agent := b.config.AgentID
+	if agent == "" {
+		agent = b.config.CharacterName
+	}
+	eng.SetDiagnosticSink(agent, b.rec.writeDiagnostic)
 	if b.config.LuaWorkspace != "" {
 		if err := eng.SetWorkspace(b.config.LuaWorkspace); err != nil {
 			return b.fail("Lua workspace: %v", err)

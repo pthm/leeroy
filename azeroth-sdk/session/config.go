@@ -9,6 +9,7 @@ type Config struct {
 	Password      string `json:"password"`
 	AuthServer    string `json:"auth_server"`
 	CharacterName string `json:"character_name"`
+	AgentID       string `json:"agent_id"` // benchmark identity for diagnostics; character name when unset
 	RealmIndex    int    `json:"realm_index"`
 
 	Race   uint8 `json:"race"`

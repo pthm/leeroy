@@ -101,6 +101,7 @@ func (p *player) daemon(extra ...string) (*exec.Cmd, error) {
 		return nil, err
 	}
 	args := []string{"-char", p.a.Char, "-account", p.account(), "-listen", fmt.Sprintf("127.0.0.1:%d", p.port),
+		"-agent", p.a.Name,
 		"-data", filepath.Join(p.r.repo, "data"), "-workspace", p.ws, "-race", fmt.Sprint(p.race), "-class", fmt.Sprint(p.class)}
 	if len(extra) == 0 {
 		args = append(args, "-record", filepath.Join(p.r.dir, p.a.Name+".record.jsonl"), "-events", p.r.dir)

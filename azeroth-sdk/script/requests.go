@@ -33,9 +33,10 @@ type Spec struct {
 }
 
 type pending struct {
-	id      int
-	spec    Spec
-	created time.Time
+	id        int
+	spec      Spec
+	created   time.Time
+	observers []func(map[string]any)
 }
 
 type Requests struct {
@@ -116,10 +117,41 @@ func (r *Requests) resolve(id int, o *Outcome, emit bool) map[string]any {
 		r.order = r.order[1:]
 	}
 	r.mu.Unlock()
+	for _, observe := range p.observers {
+		observe(res)
+	}
 	if emit {
 		r.bus.Emit("result", res)
 	}
 	return res
+}
+
+// Observe attaches a completion observer after an API call returns its handle. It also sees immediate
+// completions, bypassing result-event throttling. Registration racing with resolution invokes it exactly once.
+func (r *Requests) Observe(id int, fn func(map[string]any)) {
+	r.mu.Lock()
+	if p := r.pending[id]; p != nil {
+		p.observers = append(p.observers, fn)
+		r.mu.Unlock()
+		return
+	}
+	res := r.done[id]
+	r.mu.Unlock()
+	if res != nil {
+		fn(res)
+	}
+}
+
+func (r *Requests) close() {
+	r.mu.Lock()
+	ids := make([]int, 0, len(r.pending))
+	for id := range r.pending {
+		ids = append(ids, id)
+	}
+	r.mu.Unlock()
+	for _, id := range ids {
+		r.Resolve(id, Fail("session_closed", "session ended before completion was observed", nil))
+	}
 }
 
 // Result returns the request's result, {id, op, pending = true} while it's pending, or nil if unknown.

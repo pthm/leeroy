@@ -14,12 +14,28 @@ import (
 	"time"
 
 	"github.com/pthm/leeroy/azeroth-sdk/client"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
 // Recorder is shared by all sessions in a daemon (one file).
 type Recorder struct {
 	mu sync.Mutex
 	f  *os.File
+}
+
+// writeDiagnostic preserves the diagnostic schema and its session sequence. Regular viewer records keep
+// their existing ev field; diagnostics have kind and are ignored by gameplay scoring.
+func (r *Recorder) writeDiagnostic(ev types.Diagnostic) {
+	if r == nil {
+		return
+	}
+	line, err := json.Marshal(ev)
+	if err != nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.f.Write(append(line, '\n'))
 }
 
 func OpenRecorder(path string) (*Recorder, error) {

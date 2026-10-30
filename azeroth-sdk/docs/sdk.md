@@ -161,7 +161,8 @@ local choice = ask("Bags full. Destroy greys or go sell?", {"destroy", "sell"}, 
 - **`log(msg)`** writes a `log` event tagged with the task that wrote it (`wow events --types log --last 20`: each
   with its time and task) and a line in `session.log` (`12:04:31 [Bot Name] [Lua main] msg`).
 - **`task.status(text)`** is what the task says it's doing, in `wow tasks`; keep it current and you can see where
-  each task is without reading logs.
+  each task is without reading logs. Changes are also recorded as diagnostic `task_status` events, limited to
+  512 bytes and marked as agent claims, with a source file and line when available.
 - **Globals** are readable from the shell: keep what a script knows in a table (`state`) and `wow 'return state'`.
 - **`events.emit(name, data)`** records structured data of your own as a `script.<name>` event: one per pull with
   its target, time and outcome, say. `wow events --types script.pull --last 30` or `events.query` reads them back.
@@ -177,6 +178,17 @@ local choice = ask("Bags full. Destroy greys or go sell?", {"destroy", "sell"}, 
 - **`session.log`**, in your workspace, has each line stamped with the time of day (the clock of events' `t`):
   `log()` lines, script errors, slow ticks, kills, deaths and level-ups. It's the session's own output, so it
   also has its start-up and the odd warning from the client.
+
+When a session recorder is configured, its JSONL file also contains versioned diagnostic records (`kind`,
+`schema = 1`). Every raw request and waiting helper has an `action_finished` record with a session-unique
+`call`; nested actions reference `parent_call`, and raw actions also identify `request`. These records include
+immediate successes and repeated refusals that the ordinary `result` event stream suppresses. Helper IDs stay
+out of `ActResult`. A new session gets a new identity; task stop, script failure and session shutdown terminate
+open helper traces explicitly. An `await` timeout does not finish its underlying request's trace.
+
+Diagnostic action fields include only selected identifiers, coordinates, outcome, code and timing. They do
+not copy command text, chat, arbitrary arguments, result payloads or error messages. Task status remains an
+agent-authored observation, not proof that an action succeeded.
 
 ## The Lua API
 

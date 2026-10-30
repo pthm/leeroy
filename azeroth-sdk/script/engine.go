@@ -37,6 +37,7 @@ type Engine struct {
 	natives map[string]reflect.Value // Func registrations, for Native
 	Bus     *Bus
 	Reqs    *Requests
+	diag    *diagnosticStream
 
 	tasks    map[int]*Task
 	byThread map[*lua.LState]*Task
@@ -83,6 +84,7 @@ func NewEngine(logf func(format string, args ...any), bus *Bus) *Engine {
 	}
 	e := &Engine{logf: logf, docs: map[string]Doc{}, natives: map[string]reflect.Value{}, Bus: bus, tasks: map[int]*Task{}, byThread: map[*lua.LState]*Task{}, handlers: map[int]*handler{}}
 	e.Reqs = NewRequests(bus)
+	e.diag = newDiagnosticStream()
 	bus.Listen(func(ev Event) {
 		e.inboxMu.Lock()
 		e.inbox = append(e.inbox, ev)
@@ -131,6 +133,7 @@ func NewEngine(logf func(format string, args ...any), bus *Bus) *Engine {
 	}))
 	co.RawSetString("wrap", lua.LNil)
 	e.registerRuntime()
+	e.registerDiagnostics()
 	e.registerCompat()
 	for _, d := range runtimeDocs {
 		e.doc(d[0], d[1], d[2])
@@ -362,6 +365,11 @@ func (e *Engine) TakeScriptErrors() map[string]any {
 func (e *Engine) Close() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	for _, t := range e.tasks {
+		e.endTaskDiagnostics(t, "session_closed")
+	}
+	e.Reqs.close()
+	e.diag.emit(types.Diagnostic{Kind: "runtime_state", Details: types.DiagnosticDetails{Component: "session", State: "stop"}})
 	e.L.Close()
 	if e.workspace != nil {
 		e.workspace.Close()
@@ -398,6 +406,16 @@ func (e *Engine) Func(name, sig, desc string, fn any) {
 	e.natives[name] = v
 	need := requiredArgs(sig)
 	e.set(name, func(L *lua.LState) int {
+		var diagnostic *diagnosticCall
+		if strings.Contains(sig, "→ Request") {
+			diagnostic = e.beginDiagnostic(L, name, nativeDiagnosticArgs(name, sig, L))
+			defer func() {
+				if p := recover(); p != nil {
+					e.endDiagnostic(diagnostic, false, "script_error", 0, 0)
+					panic(p)
+				}
+			}()
+		}
 		// an argument left out would arrive as its zero value: spells.known() asking about spell 0 answers false
 		if L.GetTop() < need {
 			L.RaiseError("%s%s: called with %d argument(s), needs %d", name, sig, L.GetTop(), need)
@@ -408,7 +426,21 @@ func (e *Engine) Func(name, sig, desc string, fn any) {
 				L.RaiseError("%s%s: npc_guid must be a GUID string; use act with npc_entry for a template ID", name, sig)
 			}
 		}
-		return callReflect(L, v, 1)
+		n := callReflect(L, v, 1)
+		if diagnostic != nil && n > 0 {
+			if h, ok := L.Get(-n).(*lua.LTable); ok {
+				id := int(lua.LVAsNumber(h.RawGetString("id")))
+				e.Reqs.Observe(id, func(r map[string]any) {
+					ok, _ := r["ok"].(bool)
+					code := ""
+					if err, yes := r["error"].(map[string]any); yes {
+						code, _ = err["code"].(string)
+					}
+					e.endDiagnostic(diagnostic, ok, code, id, 0)
+				})
+			}
+		}
+		return n
 	})
 }
 
@@ -738,6 +770,7 @@ type Task struct {
 	started bool          // resumed at least once (past the trampoline)
 	trace   string        // where it was when it failed (panicWithTrace)
 	busy    time.Duration // Lua time so far: the game waits while a task runs
+	calls   []*diagnosticCall
 }
 
 type waitCond struct {
@@ -980,6 +1013,11 @@ func (e *Engine) installFileLoaders() {
 }
 
 func (e *Engine) finish(t *Task) {
+	code := "task_stopped"
+	if t.State == "failed" {
+		code = "script_error"
+	}
+	e.endTaskDiagnostics(t, code)
 	delete(e.byThread, t.co)
 	if !t.Handler {
 		go e.Emit("task_finished", types.TaskEvent{Task: t.ID, Name: t.Name, State: t.State,
@@ -1127,7 +1165,13 @@ func (e *Engine) registerRuntime() {
 		// task.status(text): what the current task is doing (shown in task.list and wow tasks)
 		"status": func(L *lua.LState) int {
 			if t := e.taskOf(L); t != nil {
-				t.Status = L.OptString(1, "")
+				status := bounded(L.OptString(1, ""), 512)
+				if status != t.Status {
+					t.Status = status
+					d := types.DiagnosticDetails{Status: status, AgentClaim: true}
+					d.Source, d.Line = source(L)
+					e.diag.emit(types.Diagnostic{Kind: "task_status", Task: bounded(t.Name, 128), TaskID: t.ID, Details: d})
+				}
 			}
 			return 0
 		},
@@ -1335,7 +1379,7 @@ var runtimeDocs = [][3]string{
 	{"doc", "(name, sig, desc)", "document a function of your own so help() lists it"},
 	{"task.spawn", "([name,] fn, ...) → id", "run fn as a task: it can wait without blocking the game"},
 	{"task.list", "() → TaskInfo[]", "your tasks (finished ones stay listed for 10 minutes)"},
-	{"task.status", "(text)", "what the current task says it's doing (shown in task.list)"},
+	{"task.status", "(text)", "what the current task claims it is doing; limited to 512 bytes, shown in task.list and recorded when changed as a task_status diagnostic"},
 	{"task.current", "() → id", "the current task's id (nil outside a task)"},
 	{"task.stop", "([id or name]) → count", "stop tasks: by id, by name, or every task with no argument. By name or with none it skips the task calling it; a task waiting on a walk stops walking"},
 	{"task.pause", "(id) → bool", "take a waiting task off the schedule until task.resume; false if it isn't waiting (a task can't pause itself)"},

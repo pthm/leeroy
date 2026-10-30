@@ -43,6 +43,7 @@ var roots = []any{
 	types.Request{}, types.ActionResult{}, types.ActResult{}, types.Error{}, types.Event{},
 	types.VendorErrand{}, types.TrainErrand{},
 	types.Consumed{}, types.ObjectUse{}, types.Rested{},
+	types.Diagnostic{},
 }
 
 func main() {

@@ -45,6 +45,7 @@ type config struct {
 
 func main() {
 	path := flag.String("config", "azsdk.json", "config file (ignored with -char)")
+	agent := flag.String("agent", "", "benchmark agent identity for diagnostics (defaults to character name)")
 	var one character
 	flag.StringVar(&one.Name, "char", "", "run this one character instead of a config file")
 	flag.StringVar(&one.Account, "account", "", "account for -char")
@@ -110,6 +111,7 @@ func main() {
 			Username: c.Account, Password: c.Password, AuthServer: cfg.AuthServer, CharacterName: c.Name,
 			Race: c.Race, Class: c.Class, DataDir: cfg.DataDir, LuaScript: c.Script,
 			LuaWorkspace: c.Workspace,
+			AgentID:      *agent,
 		})
 		if *events != "" {
 			os.MkdirAll(*events, 0o755)

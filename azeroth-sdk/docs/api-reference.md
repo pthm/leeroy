@@ -275,7 +275,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `task.pause(id) → bool` | take a waiting task off the schedule until task.resume; false if it isn't waiting (a task can't pause itself) |  |
 | `task.resume(id) → bool` | put a paused task back on its wait |  |
 | `task.spawn([name,] fn, ...) → id` | run fn as a task: it can wait without blocking the game |  |
-| `task.status(text)` | what the current task says it's doing (shown in task.list) |  |
+| `task.status(text)` | what the current task claims it is doing; limited to 512 bytes, shown in task.list and recorded when changed as a task_status diagnostic |  |
 | `task.stop([id or name]) → count` | stop tasks: by id, by name, or every task with no argument. By name or with none it skips the task calling it; a task waiting on a walk stops walking |  |
 
 ### trade
@@ -1424,6 +1424,62 @@ Rested reports the observed fractions even when the requested thresholds were no
 |---|---|---|
 | `hp` | number |  |
 | `mana` | number |  |
+
+### Diagnostic
+
+Diagnostic is a versioned, bounded observation. A session event is identified by (session, seq). A harness event instead uses (artifact path, seq). Agent claims never establish game outcomes.
+
+| Field | Type | |
+|---|---|---|
+| `schema` | number |  |
+| `seq` | number |  |
+| `t` | number |  |
+| `agent` | string |  |
+| `session?` | string |  |
+| `task?` | string |  |
+| `task_id?` | number |  |
+| `call?` | string |  |
+| `parent_call?` | string |  |
+| `request?` | number |  |
+| `kind` | string |  |
+| `op?` | string |  |
+| `outcome?` | string |  |
+| `code?` | string |  |
+| `duration_ms` | number |  |
+| `details` | DiagnosticDetails |  |
+
+### DiagnosticDetails
+
+DiagnosticDetails is an allowlist: arbitrary request arguments, results, error messages, commands, prompts and chat are never copied here. Status is explicitly agent-authored and limited to 512 bytes.
+
+| Field | Type | |
+|---|---|---|
+| `target?` | string |  |
+| `destination?` | DiagnosticDestination |  |
+| `spell_id?` | number |  |
+| `quest_id?` | number |  |
+| `npc_entry?` | number |  |
+| `item_entry?` | number |  |
+| `attempts?` | number |  |
+| `status?` | string |  |
+| `agent_claim?` | bool |  |
+| `source?` | string |  |
+| `line?` | number |  |
+| `state?` | string |  |
+| `component?` | string |  |
+| `runtime?` | string |  |
+| `exit_code?` | number |  |
+
+### DiagnosticDestination
+
+DiagnosticDestination preserves omitted altitude/map rather than inventing a zero floor or map.
+
+| Field | Type | |
+|---|---|---|
+| `x` | number |  |
+| `y` | number |  |
+| `z?` | number |  |
+| `map?` | number |  |
 
 ### Attacking
 
