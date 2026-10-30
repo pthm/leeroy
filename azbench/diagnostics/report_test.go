@@ -190,3 +190,27 @@ func TestObservedStateAndAgentClaimStaySeparate(t *testing.T) {
 		t.Fatalf("observation or claim treated as action outcome: %+v", s)
 	}
 }
+
+func TestRecoveryAndGearEvidencePreservesTaskAndSource(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "record.jsonl")
+	writeEvents(t, path, []types.Diagnostic{
+		{Schema: 1, Seq: 1, T: 1000, Session: "s1", Agent: "a1", TaskID: 7, Task: "recover", Call: "c1", Kind: "recovery_transition", Details: types.DiagnosticDetails{Component: "recovery", State: "reclaiming", Attempts: 1}},
+		{Schema: 1, Seq: 2, T: 2000, Session: "s1", Agent: "a1", TaskID: 7, Task: "recover", Call: "c1", Kind: "gear_state", Details: types.DiagnosticDetails{State: "needs_repair", Gear: &types.DiagnosticGear{Money: 100, MainHandBroken: true, BrokenSlots: []string{"main_hand"}}}},
+		{Schema: 1, Seq: 3, T: 3000, Session: "s1", Agent: "a1", TaskID: 7, Kind: "recovery_transition", Code: "task_stopped", Details: types.DiagnosticDetails{Component: "recovery", State: "attention", Attempts: 1}},
+	})
+	s := Read("a1", path)
+	if len(s.Evidence) != 3 {
+		t.Fatalf("evidence=%+v", s.Evidence)
+	}
+	for i, ev := range s.Evidence {
+		if ev.TaskID != 7 || ev.Ref.File != path || ev.Ref.Line != i+1 {
+			t.Fatalf("missing attribution/source: %+v", ev)
+		}
+	}
+	if !s.Evidence[1].Details.Gear.MainHandBroken || s.Evidence[1].Details.Gear.Money != 100 || s.Evidence[2].Code != "task_stopped" {
+		t.Fatalf("lost observed state: %+v", s.Evidence)
+	}
+	if len(s.Episodes) != 0 {
+		t.Fatalf("observations invented failure episodes: %+v", s.Episodes)
+	}
+}

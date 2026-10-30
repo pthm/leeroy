@@ -791,6 +791,8 @@ function A.recover(o)
       if o.spirit then recovered=spirit_recovery(c)
       else recovered=corpse_recovery(c,o,o.allow_spirit_fallback and math.max(1,c.limit-1) or c.limit) end
       if not recovered.ok and not o.spirit and o.allow_spirit_fallback and c.data.attempts<c.limit then
+        c.data.last_error = recovered.error
+        c.data.failed_step = c.data.failed_step or "act.corpse_run"
         local ended=c:guard();if ended then return ended end
         recovered=spirit_recovery(c)
       end
