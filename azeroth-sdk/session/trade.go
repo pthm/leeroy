@@ -119,7 +119,7 @@ func (b *Bot) setupTrade() {
 		}, nil)
 	}
 	clearErr := func() { t.mu.Lock(); t.err, t.stepAt = [2]string{}, time.Now(); t.mu.Unlock() }
-	e.Func("trade.start", "(player) → request<Trade>", "ask a player within ~10 yd (name or guid) to trade: ok once they open the window (trade.open on their side)", func(who string) map[string]any {
+	e.Func("trade.start", "(player) → Request<Trade>", "ask a player within ~10 yd (name or guid) to trade: ok once they open the window (trade.open on their side)", func(who string) map[string]any {
 		args := map[string]any{"player": who}
 		var g uint64
 		if _, err := fmt.Sscan(who, &g); err != nil || g == 0 {
@@ -140,14 +140,14 @@ func (b *Bot) setupTrade() {
 		}
 		return until("trade.start", args, 30*time.Second, "open")
 	})
-	e.Func("trade.open", "() → request<Trade>", "open the window for someone's trade request (a trade event with state requested)", func() map[string]any {
+	e.Func("trade.open", "() → Request<Trade>", "open the window for someone's trade request (a trade event with state requested)", func() map[string]any {
 		clearErr()
 		if err := w.BeginTrade(); err != nil {
 			return b.refuse("trade.open", nil, "failed", err.Error())
 		}
 		return until("trade.open", nil, 5*time.Second, "open")
 	})
-	e.Func("trade.offer", "{items = {entry or guid, ...}, money = copper} → request", "set your side of the open trade (up to 6 items; replaces what you offered). Soulbound items can't be traded",
+	e.Func("trade.offer", "{items = {entry or guid, ...}, money = copper} → Request", "set your side of the open trade (up to 6 items; replaces what you offered). Soulbound items can't be traded",
 		func(o map[string]any) map[string]any {
 			items, _ := o["items"].([]any)
 			money, _ := o["money"].(float64)
@@ -171,14 +171,14 @@ func (b *Bot) setupTrade() {
 			}
 			return b.sent("trade.offer", nil, w.SetTradeGold(uint32(money)))
 		})
-	e.Func("trade.accept", "() → request<Trade>", "accept the trade: ok when it completes (both sides accepted; any change un-accepts both), else why not (not_enough_money, inventory_full, too_far, cancelled, ...)", func() map[string]any {
+	e.Func("trade.accept", "() → Request<Trade>", "accept the trade: ok when it completes (both sides accepted; any change un-accepts both), else why not (not_enough_money, inventory_full, too_far, cancelled, ...)", func() map[string]any {
 		clearErr()
 		if err := w.AcceptTrade(); err != nil {
 			return b.refuse("trade.accept", nil, "failed", err.Error())
 		}
 		return until("trade.accept", nil, 60*time.Second, "complete")
 	})
-	e.Func("trade.cancel", "() → request", "close the trade, or refuse a request", func() map[string]any { return b.sent("trade.cancel", nil, w.CancelTrade()) })
+	e.Func("trade.cancel", "() → Request", "close the trade, or refuse a request", func() map[string]any { return b.sent("trade.cancel", nil, w.CancelTrade()) })
 	e.Func("trade.status", "() → Trade", "the trade window: state, who with, both sides' offers", func() types.Trade {
 		t.mu.Lock()
 		defer t.mu.Unlock()

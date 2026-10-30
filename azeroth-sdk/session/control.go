@@ -319,7 +319,7 @@ func (b *Bot) setupControl() {
 			}
 			return g
 		})
-	e.Func("group.invite", "(name) → request", "invite a player (by exact character name) to your group: ok once the invite is sent; they answer with group.accept", func(name string) map[string]any {
+	e.Func("group.invite", "(name) → Request", "invite a player (by exact character name) to your group: ok once the invite is sent; they answer with group.accept", func(name string) map[string]any {
 		args := map[string]any{"name": name}
 		key := "invite\x00" + strings.ToLower(name)
 		b.acked(key)
@@ -333,7 +333,7 @@ func (b *Bot) setupControl() {
 			return nil
 		}, func(ev script.Event) *script.Outcome { return failOn(ev, "group") })
 	})
-	e.Func("group.accept", "() → request", "accept a pending invite (party_invite event)", func() map[string]any {
+	e.Func("group.accept", "() → Request", "accept a pending invite (party_invite event)", func() map[string]any {
 		if err := w.GroupAccept(); err != nil {
 			return b.refuse("group.accept", nil, "failed", err.Error())
 		}
@@ -344,13 +344,13 @@ func (b *Bot) setupControl() {
 			return nil
 		}, func(ev script.Event) *script.Outcome { return failOn(ev, "group") })
 	})
-	e.Func("group.decline", "() → request", "decline a pending invite", func() map[string]any {
+	e.Func("group.decline", "() → Request", "decline a pending invite", func() map[string]any {
 		c.mu.Lock()
 		c.invitedBy = ""
 		c.mu.Unlock()
 		return b.sent("group.decline", nil, w.GroupDecline())
 	})
-	e.Func("group.leave", "() → request", "leave your group", func() map[string]any {
+	e.Func("group.leave", "() → Request", "leave your group", func() map[string]any {
 		if !w.InGroup() {
 			return b.refuse("group.leave", nil, "not_in_group", "you aren't in a group")
 		}

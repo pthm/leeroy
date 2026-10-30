@@ -483,18 +483,43 @@ type Meter struct {
 type Error struct {
 	Code    string `json:"code" doc:"stable, e.g. out_of_range, not_known, bags_full, stuck, timeout"`
 	Message string `json:"message"`
+	Next    string `json:"next,omitempty" doc:"one concrete corrective action, when known"`
 }
 
-// Result is an action's request (Pending) or its outcome.
-type Result struct {
-	ID      int            `json:"id"`
-	Op      string         `json:"op" doc:"the function, e.g. spells.cast"`
-	Pending bool           `json:"pending,omitempty" doc:"not resolved yet: await it, or result(id) later"`
-	OK      bool           `json:"ok"`
-	Data    any            `json:"data,omitempty" doc:"the op's result type (Action results)"`
-	Error   *Error         `json:"error,omitempty"`
-	Args    map[string]any `json:"args,omitempty"`
-	MS      int64          `json:"ms,omitempty" doc:"how long it took"`
+// Request is a raw action handle, including actions that resolve immediately. Await it to inspect the outcome.
+type Request struct {
+	ID      int    `json:"id"`
+	Op      string `json:"op"`
+	Pending bool   `json:"pending" doc:"always true on a handle; does not imply the action is still running"`
+}
+
+// ActionResult is a resolved raw request or an await wait_timeout. A wait_timeout does not cancel the request.
+type ActionResult struct {
+	ID    int            `json:"id"`
+	Op    string         `json:"op" doc:"the function, e.g. spells.cast"`
+	OK    bool           `json:"ok"`
+	Data  any            `json:"data,omitempty" doc:"the op's result type (Action results)"`
+	Error *Error         `json:"error,omitempty"`
+	Args  map[string]any `json:"args,omitempty"`
+	MS    int64          `json:"ms,omitempty" doc:"how long it took"`
+}
+
+// ActResult is a waiting helper's outcome. It has no raw request ID or pending flag; steps identify nested requests.
+type ActResult struct {
+	Op    string       `json:"op"`
+	OK    bool         `json:"ok"`
+	Data  any          `json:"data,omitempty" doc:"helper-specific data, including partial work on failure"`
+	Error *Error       `json:"error,omitempty"`
+	Steps []ActionStep `json:"steps,omitempty" doc:"bounded record of composite operations in execution order"`
+}
+
+// ActionStep records a required or optional operation within a helper.
+type ActionStep struct {
+	Op        string `json:"op"`
+	OK        bool   `json:"ok"`
+	RequestID int    `json:"request_id,omitempty"`
+	Code      string `json:"code,omitempty"`
+	Count     int    `json:"count,omitempty" doc:"number of identical attempts when summarized"`
 }
 
 type Event struct {

@@ -40,7 +40,7 @@ var roots = []any{
 	types.TalentTree{}, types.Talent{}, types.Group{}, types.GroupMember{}, types.GroupReport{}, types.GroupMemberReport{}, types.Trade{}, types.TradeSide{}, types.Inspect{},
 	types.CombatEntry{}, types.Meter{}, types.SpellMeter{}, types.Status{}, types.TaskInfo{}, types.MobSummary{}, types.Fight{}, types.FightHeader{},
 	types.Threat{}, types.Gossip{}, types.Gear{}, types.Spellbook{}, types.QuestInfo{}, types.Trainer{}, types.Reputation{},
-	types.Result{}, types.Error{}, types.Event{},
+	types.Request{}, types.ActionResult{}, types.ActResult{}, types.Error{}, types.Event{},
 }
 
 func main() {

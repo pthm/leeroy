@@ -435,7 +435,7 @@ func (b *Bot) setupItems() {
 			}
 			return nil
 		})
-	e.Func("items.use", "(item [, guid]) → request<CastDone>", "use an item you carry (entry or guid): food, drink, potions, quest items; optionally on a unit. Food and drink work out of combat, and you must sit still while they tick",
+	e.Func("items.use", "(item [, guid]) → Request<CastDone>", "use an item you carry (entry or guid): food, drink, potions, quest items; optionally on a unit. Food and drink work out of combat, and you must sit still while they tick",
 		func(item, target uint64) map[string]any {
 			args := map[string]any{"item": gs(item)}
 			it := findItem(w, item)
@@ -459,7 +459,7 @@ func (b *Bot) setupItems() {
 			w.SendPacketRaw(cmsgUseItem, buf.Bytes())
 			return b.request("items.use", args, castTimeout(it.UseSpell), nil, castMatch(it.UseSpell)) // a Hearthstone takes 10 s
 		})
-	e.Func("items.equip", "(item [, slot]) → request<Equipped>", "wear an item you carry (entry or guid) in its slot, or in the slot you name: main_hand, off_hand (a second one-hander, with Dual Wield), finger1, finger2, trinket1, trinket2",
+	e.Func("items.equip", "(item [, slot]) → Request<Equipped>", "wear an item you carry (entry or guid) in its slot, or in the slot you name: main_hand, off_hand (a second one-hander, with Dual Wield), finger1, finger2, trinket1, trinket2",
 		func(item uint64, slot string) map[string]any {
 			args := map[string]any{"item": gs(item)}
 			it := findItem(w, item)
@@ -494,7 +494,7 @@ func (b *Bot) setupItems() {
 				return nil
 			}, func(ev script.Event) *script.Outcome { return failOn(ev, "items") })
 		})
-	e.Func("items.unequip", "(slot) → request", "take off what you wear in a slot (head, chest, main_hand, off_hand, finger1, trinket2, ...) into your bags",
+	e.Func("items.unequip", "(slot) → Request", "take off what you wear in a slot (head, chest, main_hand, off_hand, finger1, trinket2, ...) into your bags",
 		func(slot string) map[string]any {
 			args := map[string]any{"slot": slot}
 			idx, ok := equipSlots[slot]
@@ -523,7 +523,7 @@ func (b *Bot) setupItems() {
 				return nil
 			}, func(ev script.Event) *script.Outcome { return failOn(ev, "items") })
 		})
-	e.Func("items.destroy", "(item [, count = all]) → request", "destroy an item you carry (entry or guid): gone for good", func(item uint64, count uint32) map[string]any {
+	e.Func("items.destroy", "(item [, count = all]) → Request", "destroy an item you carry (entry or guid): gone for good", func(item uint64, count uint32) map[string]any {
 		args := map[string]any{"item": gs(item)}
 		it := findItem(w, item)
 		if it == nil {
@@ -544,7 +544,7 @@ func (b *Bot) setupItems() {
 			return script.Ok(nil)
 		}, func(ev script.Event) *script.Outcome { return failOn(ev, "items") })
 	})
-	e.Func("items.loot", "(guid) → request<Looted>", "loot a corpse within 5 yd: takes every item and the money (waits a moment for a fresh corpse to become lootable)",
+	e.Func("items.loot", "(guid) → Request<Looted>", "loot a corpse within 5 yd: takes every item and the money (waits a moment for a fresh corpse to become lootable)",
 		func(guid uint64) map[string]any {
 			args := map[string]any{"unit": gs(guid)}
 			full := freeSlots(w) == 0
@@ -631,7 +631,7 @@ func (b *Bot) setupItems() {
 		sortBy(out, func(r types.LootRoll) float64 { return r.SecondsLeft })
 		return out
 	})
-	e.Func("items.roll", "(roll, choice) → request<LootRollResult>", "roll on group loot (loot_roll_start event, items.rolls): need, greed, disenchant or pass. No choice before the countdown ends is a pass",
+	e.Func("items.roll", "(roll, choice) → Request<LootRollResult>", "roll on group loot (loot_roll_start event, items.rolls): need, greed, disenchant or pass. No choice before the countdown ends is a pass",
 		func(roll uint64, choice string) map[string]any {
 			args := map[string]any{"roll": gs(roll), "choice": choice}
 			n := slices.Index(rollChoices, choice)
@@ -657,7 +657,7 @@ func (b *Bot) setupItems() {
 		})
 
 	// ---------- objects ----------
-	e.Func("objects.use", "(guid [, spell]) → request<CastDone>", "use a game object within ~5 yd: doors, quest objects, chests and crates (opened with the Opening spell like the real client; the loot is taken). Plain objects resolve at once: watch for item_received / quest_progress",
+	e.Func("objects.use", "(guid [, spell]) → Request<CastDone>", "use a game object within ~5 yd: doors, quest objects, chests and crates (opened with the Opening spell like the real client; the loot is taken). Plain objects resolve at once: watch for item_received / quest_progress",
 		func(guid uint64, spell uint32) map[string]any {
 			args := map[string]any{"object": gs(guid)}
 			o := w.GetObject(guid)
@@ -698,7 +698,7 @@ func (b *Bot) setupItems() {
 		}
 		return out
 	})
-	e.Func("vendor.buy", "(npc, entry [, count = 1]) → request<ItemReceived>", "buy from a vendor within ~5 yd (count in purchases of buy_count each). Call vendor.items first",
+	e.Func("vendor.buy", "(npc, entry [, count = 1]) → Request<ItemReceived>", "buy from a vendor within ~5 yd (count in purchases of buy_count each). Call vendor.items first",
 		func(vendor uint64, entry, count uint32) map[string]any {
 			args := map[string]any{"npc": gs(vendor), "item": entry, "count": max(count, 1)}
 			if r := b.noNPC("vendor.buy", args, &vendor); r != nil {
@@ -751,7 +751,7 @@ func (b *Bot) setupItems() {
 			return nil
 		}
 	}
-	e.Func("vendor.sell", "(npc, item [, count = all]) → request<Sold>", "sell an item you carry (entry or guid) to a vendor within ~5 yd", func(vendor, item uint64, count uint32) map[string]any {
+	e.Func("vendor.sell", "(npc, item [, count = all]) → Request<Sold>", "sell an item you carry (entry or guid) to a vendor within ~5 yd", func(vendor, item uint64, count uint32) map[string]any {
 		args := map[string]any{"npc": gs(vendor), "item": gs(item)}
 		if r := b.noNPC("vendor.sell", args, &vendor); r != nil {
 			return r
@@ -773,7 +773,7 @@ func (b *Bot) setupItems() {
 		sell(vendor, *it, count)
 		return b.request("vendor.sell", args, 3*time.Second, moneyUp(before), func(ev script.Event) *script.Outcome { return failOn(ev, "vendor.sell") })
 	})
-	e.Func("vendor.sell_junk", "(npc) → request<Sold>", "sell every grey (poor) item you carry. Items whose info hasn't loaded are skipped", func(vendor uint64) map[string]any {
+	e.Func("vendor.sell_junk", "(npc) → Request<Sold>", "sell every grey (poor) item you carry. Items whose info hasn't loaded are skipped", func(vendor uint64) map[string]any {
 		args := map[string]any{"npc": gs(vendor)}
 		if r := b.noNPC("vendor.sell_junk", args, &vendor); r != nil {
 			return r
@@ -821,7 +821,7 @@ func (b *Bot) setupItems() {
 			return nil
 		})
 	})
-	e.Func("vendor.repair", "(npc) → request<Repaired>", "repair everything you wear and carry at an NPC that repairs (role repair: armorers, weaponsmiths) within ~5 yd",
+	e.Func("vendor.repair", "(npc) → Request<Repaired>", "repair everything you wear and carry at an NPC that repairs (role repair: armorers, weaponsmiths) within ~5 yd",
 		func(npc uint64) map[string]any {
 			args := map[string]any{"npc": gs(npc)}
 			if r := b.noNPC("vendor.repair", args, &npc); r != nil {
@@ -861,7 +861,7 @@ func (b *Bot) setupItems() {
 		})
 
 	// ---------- trainer ----------
-	e.Func("trainer.learn", "(npc, spell) → request<Learned>", "learn a spell from a trainer within ~5 yd (costs money; trainer.list shows what it teaches you and what you can learn now)",
+	e.Func("trainer.learn", "(npc, spell) → Request<Learned>", "learn a spell from a trainer within ~5 yd (costs money; trainer.list shows what it teaches you and what you can learn now)",
 		func(trainer uint64, spell uint32) map[string]any {
 			if r := b.noNPC("trainer.learn", map[string]any{"npc": gs(trainer), "spell": spell}, &trainer); r != nil {
 				return r

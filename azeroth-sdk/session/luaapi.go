@@ -257,22 +257,22 @@ func (b *Bot) setupCoreAPI() {
 	})
 
 	// ---------- move ----------
-	e.Func("move.face", "(guid) → request", "turn to face a unit (melee and most spells need it)", func(g uint64) map[string]any {
+	e.Func("move.face", "(guid) → Request", "turn to face a unit (melee and most spells need it)", func(g uint64) map[string]any {
 		args := map[string]any{"unit": gs(g)}
 		if !b.FaceTarget(g) {
 			return b.refuse("move.face", args, "unit_not_found", "no such unit in sight")
 		}
 		return b.done("move.face", args, nil)
 	})
-	e.Func("move.turn", "(o) → request", "face an angle (radians, as me.position().o)", func(o float32) map[string]any {
+	e.Func("move.turn", "(o) → Request", "face an angle (radians, as me.position().o)", func(o float32) map[string]any {
 		return b.sent("move.turn", map[string]any{"o": o}, b.SetFacing(o))
 	})
 
 	// ---------- combat ----------
-	e.Func("combat.target", "(guid) → request", "select a unit (some spells and abilities use your target)", func(g uint64) map[string]any {
+	e.Func("combat.target", "(guid) → Request", "select a unit (some spells and abilities use your target)", func(g uint64) map[string]any {
 		return b.sent("combat.target", map[string]any{"unit": gs(g)}, b.SetTarget(g))
 	})
-	e.Func("combat.attack", "(guid) → request<Attacking>", "start auto-attacking (selects it too): ok when the swing starts, else not_in_range, bad_facing, dead_target, cant_attack",
+	e.Func("combat.attack", "(guid) → Request<Attacking>", "start auto-attacking (selects it too): ok when the swing starts, else not_in_range, bad_facing, dead_target, cant_attack",
 		func(g uint64) map[string]any {
 			args := map[string]any{"unit": gs(g)}
 			if w.AttackingGUID() == g {
@@ -293,12 +293,12 @@ func (b *Bot) setupCoreAPI() {
 				return nil
 			})
 		})
-	e.Func("combat.stop", "() → request", "stop auto-attacking", func() map[string]any { return b.sent("combat.stop", nil, b.StopAttack()) })
-	e.Func("combat.pet_attack", "(guid) → request", "send your pet at a unit", func(g uint64) map[string]any {
+	e.Func("combat.stop", "() → Request", "stop auto-attacking", func() map[string]any { return b.sent("combat.stop", nil, b.StopAttack()) })
+	e.Func("combat.pet_attack", "(guid) → Request", "send your pet at a unit", func(g uint64) map[string]any {
 		b.PetAttack(g)
 		return b.done("combat.pet_attack", map[string]any{"unit": gs(g)}, nil)
 	})
-	e.Func("combat.sheath", "(state) → request", "0 = weapons out, 1 = melee sheathed, 2 = ranged", func(st uint32) map[string]any {
+	e.Func("combat.sheath", "(state) → Request", "0 = weapons out, 1 = melee sheathed, 2 = ranged", func(st uint32) map[string]any {
 		return b.sent("combat.sheath", map[string]any{"state": st}, b.SetSheathed(st))
 	})
 
@@ -310,7 +310,7 @@ func (b *Bot) setupCoreAPI() {
 		}
 		return b.CanCast(id, g)
 	})
-	e.Func("spells.cast_at", "(id, x, y, z) → request<CastDone>", "cast a ground-targeted spell (Blizzard, Flare...)", func(id uint32, x, y, z float32) map[string]any {
+	e.Func("spells.cast_at", "(id, x, y, z) → Request<CastDone>", "cast a ground-targeted spell (Blizzard, Flare...)", func(id uint32, x, y, z float32) map[string]any {
 		args := map[string]any{"spell": id, "x": x, "y": y, "z": z}
 		if !w.KnowsSpell(id) {
 			return b.refuse("spells.cast_at", args, "not_known", "you don't know this spell (train it, or check the rank id)")
@@ -338,14 +338,14 @@ func (b *Bot) setupCoreAPI() {
 			return b.done(op, nil, nil)
 		}
 	}
-	e.Func("chat.say", "(msg) → request", "players within 40 yards hear it", func(msg string) map[string]any {
+	e.Func("chat.say", "(msg) → Request", "players within 40 yards hear it", func(msg string) map[string]any {
 		if r := tooLong("chat.say", msg); r != nil {
 			return r
 		}
 		return b.sent("chat.say", nil, b.SendChat(msg))
 	})
-	e.Func("chat.yell", "(msg) → request", "players within 300 yards hear it", say("chat.yell", 6, ""))
-	e.Func("chat.party", "(msg) → request", "your party, at any distance", say("chat.party", 2, ""))
+	e.Func("chat.yell", "(msg) → Request", "players within 300 yards hear it", say("chat.yell", 6, ""))
+	e.Func("chat.party", "(msg) → Request", "your party, at any distance", say("chat.party", 2, ""))
 	// whispers and channel messages resolve on the server's echo (or its refusal)
 	echoed := func(op string, typ uint32, to, msg, key string) map[string]any {
 		if r := tooLong(op, msg); r != nil {
@@ -369,13 +369,13 @@ func (b *Bot) setupCoreAPI() {
 			return failOn(ev, op)
 		})
 	}
-	e.Func("chat.whisper", "(name, msg) → request", "one player anywhere, by exact character name: player_not_found when no one by that name is online", func(to, msg string) map[string]any {
+	e.Func("chat.whisper", "(name, msg) → Request", "one player anywhere, by exact character name: player_not_found when no one by that name is online", func(to, msg string) map[string]any {
 		return echoed("chat.whisper", 7, to, msg, "whisper\x00")
 	})
-	e.Func("chat.channel", "(name, msg) → request", "everyone in a channel you've joined (not_member, muted, throttled, not_in_area). Every chat call takes at most 255 bytes (message_too_long)", func(ch, msg string) map[string]any {
+	e.Func("chat.channel", "(name, msg) → Request", "everyone in a channel you've joined (not_member, muted, throttled, not_in_area). Every chat call takes at most 255 bytes (message_too_long)", func(ch, msg string) map[string]any {
 		return echoed("chat.channel", 0x11, ch, msg, "channel\x00"+strings.ToLower(ch)+"\x00")
 	})
-	e.Func("chat.join", "(name [, id = 0]) → request", "join a channel. Zone channels need their id: 1 General, 2 Trade, 22 LocalDefense (\"General - Elwynn Forest\"); custom channels use 0 and any name (wrong_password, banned)",
+	e.Func("chat.join", "(name [, id = 0]) → Request", "join a channel. Zone channels need their id: 1 General, 2 Trade, 22 LocalDefense (\"General - Elwynn Forest\"); custom channels use 0 and any name (wrong_password, banned)",
 		func(name string, id uint32) map[string]any {
 			key := "join\x00" + strings.ToLower(name)
 			b.acked(key)
@@ -391,7 +391,7 @@ func (b *Bot) setupCoreAPI() {
 				return nil
 			}, func(ev script.Event) *script.Outcome { return failOn(ev, "chat.join") })
 		})
-	e.Func("chat.command", "(text) → request", "a server command (\".help\"); GM commands only work on GM accounts", func(cmd string) map[string]any {
+	e.Func("chat.command", "(text) → Request", "a server command (\".help\"); GM commands only work on GM accounts", func(cmd string) map[string]any {
 		return b.sent("chat.command", nil, b.SendCommand(cmd))
 	})
 

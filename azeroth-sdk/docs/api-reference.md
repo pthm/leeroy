@@ -11,64 +11,64 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 |---|---|---|
 | `answer(id, choice)` | answer an ask(): id is the attention event's seq |  |
 | `ask(question, {options} [, {default, timeout}]) → choice, "answered"\|"timeout"` | ask the agent and wait for answer() (tasks only) |  |
-| `await(request [, timeout_s = 30]) → result` | wait for an action's result (tasks only; elsewhere returns the result or the pending request) |  |
+| `await(request [, timeout_s = 30]) → ActionResult` | wait for an action's result (tasks only); wait_timeout does not cancel the request | [ActionResult](#actionresult) |
 | `doc(name, sig, desc)` | document a function of your own so help() lists it |  |
 | `help([prefix]) → {lines}` | this reference: every function whose name starts with prefix ("items", "act.go") |  |
 | `log(msg)` | a log event (tagged with the task) and a line in session.log |  |
 | `now() → ms` | wall-clock time in milliseconds |  |
-| `result(id) → result` | an action's result, or {id, op, pending = true} while it's pending |  |
+| `result(id) → (ActionResult \| Request)?` | an action's result, its Request while pending, or nil for an unknown or expired ID | [ActionResult](#actionresult), [Request](#request) |
 | `wait(seconds)` | pause the current task (tasks only) |  |
 
 ### act
 
 | Function | | Returns |
 |---|---|---|
-| `act.accept{npc, quest [, x, y, z]} → result` | walk to a quest giver and accept the quest |  |
-| `act.approach{unit [, range = 4, timeout = 60]} → result<Creature>` | move within range of a unit and face it | [Creature](#creature) |
+| `act.accept{npc, quest [, x, y, z]} → ActResult` | walk to a quest giver and accept the quest | [ActResult](#actresult) |
+| `act.approach{unit [, range = 4, timeout = 60]} → ActResult<Creature>` | move within range of a unit and face it | [ActResult](#actresult), [Creature](#creature) |
 | `act.best({rank ids}) → id` | the highest rank you know of a spell |  |
-| `act.buff(id [, guid]) → result` | cast it unless the target already has the aura (nil then) |  |
-| `act.cast(id [, guid]) → result` | face the target and cast if ready (waits for the result in a task) |  |
+| `act.buff(id [, guid]) → ActResult` | cast it unless the aura is already active (ok with data.status = already_active then) | [ActResult](#actresult) |
+| `act.cast(id [, guid]) → ActResult` | face the target and cast if ready (waits for the result in a task) | [ActResult](#actresult) |
 | `act.consume("Food" \| "Drink") → bool` | eat or drink the first such item you carry (sit still after) |  |
-| `act.corpse_run{[safe = true]} → result` | as a ghost, walk to your corpse and reclaim it; with hostiles at the corpse it reclaims from the far side of the reclaim circle, 32 yd out (safe = false: on the spot) |  |
+| `act.corpse_run{[safe = true]} → ActResult` | as a ghost, walk to your corpse and reclaim it; with hostiles at the corpse it reclaims from the far side of the reclaim circle, 32 yd out (safe = false: on the spot) | [ActResult](#actresult) |
 | `act.danger(x, y [, r = 25]) → Creature[]` | living hostile creatures within r yards of a point: check a spot before you go there or come back to life there | [Creature](#creature) |
 | `act.dist(x, y [, z]) → yards` | distance from you (2D without z) |  |
-| `act.fail(code, message) → result` | a failed result |  |
-| `act.fly{to = node id or name [, npc = entry]} → result<Flight>` | walk to a flight master nearby, fly to a known destination and wait until you land | [Flight](#flight) |
-| `act.follow{name [, distance = 5, until = fn]} → result` | stay near a player until until() is true |  |
-| `act.go_to{x, y [, z, tolerance = 4, tries = 3, unstuck = false, on_attacked = fn]} → result` | walk there; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs. Without on_attacked it walks on while mobs hit you and drags them along; with it, it stops whenever something targets you, calls on_attacked(attackers) (your fighting) and then carries on |  |
+| `act.fail(op, code, message) → ActResult` | a failed result | [ActResult](#actresult) |
+| `act.fly{to = node id or name [, npc = entry]} → ActResult<Flight>` | walk to a flight master nearby, fly to a known destination and wait until you land | [ActResult](#actresult), [Flight](#flight) |
+| `act.follow{name [, distance = 5, until = fn]} → ActResult` | stay near a player until until() is true | [ActResult](#actresult) |
+| `act.go_to{x, y [, z, tolerance = 4, tries = 3, unstuck = false, on_attacked = fn]} → ActResult` | walk there; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs. Without on_attacked it walks on while mobs hit you and drags them along; with it, it stops whenever something targets you, calls on_attacked(attackers) (your fighting) and then carries on | [ActResult](#actresult) |
 | `act.hp() → 0..1` | your health fraction |  |
 | `act.in_range(id, guid) → bool` | within the spell's range of the unit |  |
-| `act.loot_nearby{[dist = 8]} → result<Item[]>` | walk to and loot every lootable corpse within dist; with full bags it destroys your cheapest grey for room (error bags_full when there's none) | [Item](#item) |
+| `act.loot_nearby{[dist = 8]} → ActResult<Item[]>` | walk to and loot every lootable corpse within dist; with full bags it destroys your cheapest grey for room (error bags_full when there's none) | [ActResult](#actresult), [Item](#item) |
 | `act.make_room() → bool` | destroy your cheapest grey item to free a bag slot |  |
 | `act.mana() → 0..1` | your mana fraction (1 for rage/energy users) |  |
-| `act.must(result) → result` | the result if ok, else raise its error (ends the task) |  |
+| `act.must(result) → ActResult` | the result if ok, else raise its error (ends the task) | [ActResult](#actresult) |
 | `act.npc(entry [, dist = 60]) → Creature` | the nearest living creature with that entry | [Creature](#creature) |
-| `act.ok(data) → result` | an ok result for your own act-style functions |  |
+| `act.ok(op, data) → ActResult` | an ok result for your own act-style functions | [ActResult](#actresult) |
 | `act.player(name) → Player` | a player by name (nearby or in your group) | [Player](#player) |
-| `act.reach_npc{npc [, x, y, z]} → result<Creature>` | find an NPC by entry (walking to x, y, z first) and stand next to it | [Creature](#creature) |
+| `act.reach_npc{npc [, x, y, z]} → ActResult<Creature>` | find an NPC by entry (walking to x, y, z first) and stand next to it | [ActResult](#actresult), [Creature](#creature) |
 | `act.ready(id [, guid]) → bool` | known, off cooldown, affordable, and you're not casting |  |
-| `act.recover{[spirit = false, rest = true, safe = true]} → result` | back to life: release, corpse run (reclaiming away from hostiles at the corpse), the spirit healer if that fails or with spirit = true (unless hostiles camp the graveyard: then the corpse run), then rest |  |
-| `act.release() → result` | release your spirit |  |
-| `act.rest{[hp = 0.95, mana = 0.9, max_s = 40]} → result` | eat/drink if you carry food/water and wait until topped up; fails if attacked |  |
-| `act.spirit_res() → result` | as a ghost, resurrect at the nearest spirit healer in sight (costs durability) |  |
-| `act.talk{npc, fn [, x, y, z]} → result` | walk to an NPC and run fn(npc) |  |
-| `act.train{npc, spells [, x, y, z]} → result` | learn spells at a trainer; data = {learned, failed} |  |
-| `act.travel{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false, on_attacked = fn]} → result` | go_to each waypoint (e.g. from azworld route) |  |
-| `act.turn_in{npc, quest [, reward = 0, x, y, z]} → result` | walk to the quest ender and turn the quest in |  |
-| `act.use_object{entry [, count = 1, quest, x, y, z, radius = 80]} → result` | use objects (crates, chests, quest objects) count times or until the quest is complete |  |
-| `act.vendor{npc [, x, y, z, buy = {{entry, count}, ...}]} → result` | sell greys, repair if it can, buy; data = {sold, repaired, bought} |  |
+| `act.recover{[spirit = false, rest = true, safe = true]} → ActResult` | back to life: release, corpse run (reclaiming away from hostiles at the corpse), the spirit healer if that fails or with spirit = true (unless hostiles camp the graveyard: then the corpse run), then rest | [ActResult](#actresult) |
+| `act.release() → ActResult` | release your spirit | [ActResult](#actresult) |
+| `act.rest{[hp = 0.95, mana = 0.9, max_s = 40]} → ActResult` | eat/drink if you carry food/water and wait until topped up; fails if attacked | [ActResult](#actresult) |
+| `act.spirit_res() → ActResult` | as a ghost, resurrect at the nearest spirit healer in sight (costs durability) | [ActResult](#actresult) |
+| `act.talk{npc, fn [, x, y, z]} → ActResult` | walk to an NPC and run fn(npc) | [ActResult](#actresult) |
+| `act.train{npc, spells [, x, y, z]} → ActResult` | learn spells at a trainer; data = {learned, failed} | [ActResult](#actresult) |
+| `act.travel{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false, on_attacked = fn]} → ActResult` | go_to each waypoint (e.g. from azworld route) | [ActResult](#actresult) |
+| `act.turn_in{npc, quest [, reward = 0, x, y, z]} → ActResult` | walk to the quest ender and turn the quest in | [ActResult](#actresult) |
+| `act.use_object{entry [, count = 1, quest, x, y, z, radius = 80]} → ActResult` | use objects (crates, chests, quest objects) count times or until the quest is complete | [ActResult](#actresult) |
+| `act.vendor{npc [, x, y, z, buy = {{entry, count}, ...}]} → ActResult` | sell greys, repair if it can, buy; data = {sold, repaired, bought} | [ActResult](#actresult) |
 
 ### chat
 
 | Function | | Returns |
 |---|---|---|
-| `chat.channel(name, msg) → request` | everyone in a channel you've joined (not_member, muted, throttled, not_in_area). Every chat call takes at most 255 bytes (message_too_long) |  |
-| `chat.command(text) → request` | a server command (".help"); GM commands only work on GM accounts |  |
-| `chat.join(name [, id = 0]) → request` | join a channel. Zone channels need their id: 1 General, 2 Trade, 22 LocalDefense ("General - Elwynn Forest"); custom channels use 0 and any name (wrong_password, banned) |  |
-| `chat.party(msg) → request` | your party, at any distance |  |
-| `chat.say(msg) → request` | players within 40 yards hear it |  |
-| `chat.whisper(name, msg) → request` | one player anywhere, by exact character name: player_not_found when no one by that name is online |  |
-| `chat.yell(msg) → request` | players within 300 yards hear it |  |
+| `chat.channel(name, msg) → Request` | everyone in a channel you've joined (not_member, muted, throttled, not_in_area). Every chat call takes at most 255 bytes (message_too_long) | [Request](#request) |
+| `chat.command(text) → Request` | a server command (".help"); GM commands only work on GM accounts | [Request](#request) |
+| `chat.join(name [, id = 0]) → Request` | join a channel. Zone channels need their id: 1 General, 2 Trade, 22 LocalDefense ("General - Elwynn Forest"); custom channels use 0 and any name (wrong_password, banned) | [Request](#request) |
+| `chat.party(msg) → Request` | your party, at any distance | [Request](#request) |
+| `chat.say(msg) → Request` | players within 40 yards hear it | [Request](#request) |
+| `chat.whisper(name, msg) → Request` | one player anywhere, by exact character name: player_not_found when no one by that name is online | [Request](#request) |
+| `chat.yell(msg) → Request` | players within 300 yards hear it | [Request](#request) |
 
 ### client
 
@@ -83,28 +83,28 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | | Returns |
 |---|---|---|
-| `combat.attack(guid) → request<Attacking>` | start auto-attacking (selects it too): ok when the swing starts, else not_in_range, bad_facing, dead_target, cant_attack | [Attacking](#attacking) |
+| `combat.attack(guid) → Request<Attacking>` | start auto-attacking (selects it too): ok when the swing starts, else not_in_range, bad_facing, dead_target, cant_attack | [Request](#request), [Attacking](#attacking) |
 | `combat.fight([id = last]) → Fight?` | one fight from the log: its summary and positioning, every actor's position each second, and the timeline of hits, heals, casts, kills and deaths | [Fight](#fight) |
 | `combat.fight_text([id = last [, {map, at}]]) → string` | one fight as text (what wow fight prints): summary and positioning, a map of everyone's movement, the key moments, the timeline. map = true: the map and moments only; at = s: the map at that second |  |
 | `combat.fights([n = 20]) → FightHeader[]` | your last fights, newest first: id, when, how long, outcome, enemies, damage and adds (the fight log; wow fights) | [FightHeader](#fightheader) |
 | `combat.fights_text([n = 20]) → string` | the fight log's list as text (what wow fights prints) |  |
 | `combat.log([since_ms]) → CombatEntry[]` | what a real client's combat log shows: every hit, heal and kill within ~100 yd (any source and target, party included) since then; default the last 30 s | [CombatEntry](#combatentry) |
 | `combat.meter([window_s = 60]) → Meter[]` | per unit over the window: damage, healing, taken, healed, dps and hps (per second of its active time), kills; most damage first. Yours has by_spell: compare rotations, see what hurts you, judge a party | [Meter](#meter) |
-| `combat.pet_attack(guid) → request` | send your pet at a unit |  |
-| `combat.sheath(state) → request` | 0 = weapons out, 1 = melee sheathed, 2 = ranged |  |
-| `combat.stop() → request` | stop auto-attacking |  |
-| `combat.target(guid) → request` | select a unit (some spells and abilities use your target) |  |
+| `combat.pet_attack(guid) → Request` | send your pet at a unit | [Request](#request) |
+| `combat.sheath(state) → Request` | 0 = weapons out, 1 = melee sheathed, 2 = ranged | [Request](#request) |
+| `combat.stop() → Request` | stop auto-attacking | [Request](#request) |
+| `combat.target(guid) → Request` | select a unit (some spells and abilities use your target) | [Request](#request) |
 | `combat.threat(guid) → Threat[]` | a creature's threat table as the server sends it to everyone near: who it would attack, highest first, with each one's threat as a % of the one it attacks (pct = 100; to pull it off them another needs over 110% in melee range, 130% beyond). Empty when it isn't fighting or out of sight | [Threat](#threat) |
 
 ### death
 
 | Function | | Returns |
 |---|---|---|
-| `death.accept_res() → request` | accept a player's resurrection (after a resurrect_offered event): you come back where your body lies |  |
+| `death.accept_res() → Request` | accept a player's resurrection (after a resurrect_offered event): you come back where your body lies | [Request](#request) |
 | `death.corpse() → Corpse?` | your corpse and when you can reclaim it; nil while alive. Right after dying it asks the server: call again a moment later | [Corpse](#corpse) |
-| `death.reclaim() → request` | as a ghost within ~30 yd of your corpse, come back to life there |  |
-| `death.release() → request` | release your spirit: ok once you're a ghost at the graveyard |  |
-| `death.spirit_res(npc) → request` | as a ghost next to a spirit healer: resurrect there (resurrection sickness from level 11, and your gear loses durability) |  |
+| `death.reclaim() → Request` | as a ghost within ~30 yd of your corpse, come back to life there | [Request](#request) |
+| `death.release() → Request` | release your spirit: ok once you're a ghost at the graveyard | [Request](#request) |
+| `death.spirit_res(npc) → Request` | as a ghost next to a spirit healer: resurrect there (resurrection sickness from level 11, and your gear loses durability) | [Request](#request) |
 
 ### events
 
@@ -123,35 +123,35 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | | Returns |
 |---|---|---|
-| `flights.map(npc) → request<FlightMap>` | talk to a flight master within ~5 yd (role flight_master): discovers its flight point the first time, and lists the known points you can fly to from there, with costs | [FlightMap](#flightmap) |
+| `flights.map(npc) → Request<FlightMap>` | talk to a flight master within ~5 yd (role flight_master): discovers its flight point the first time, and lists the known points you can fly to from there, with costs | [Request](#request), [FlightMap](#flightmap) |
 | `flights.nodes([map]) → TaxiNode[]` | every flight point for your faction (on one map: 0 Eastern Kingdoms, 1 Kalimdor, 530 Outland, 571 Northrend). known is only accurate after you've opened a flight map | [TaxiNode](#taxinode) |
-| `flights.take(npc, node) → request<Flight>` | fly from this flight master to a known node (by id; via other known nodes if there's no direct path). Resolves when you land; await it with a long timeout (flights take minutes). You can't move while flying | [Flight](#flight) |
+| `flights.take(npc, node) → Request<Flight>` | fly from this flight master to a known node (by id; via other known nodes if there's no direct path). Resolves when you land; await it with a long timeout (flights take minutes). You can't move while flying | [Request](#request), [Flight](#flight) |
 
 ### gossip
 
 | Function | | Returns |
 |---|---|---|
-| `gossip.open(npc) → request<Gossip?>` | talk to an NPC within ~5 yd: what it says, its dialogue options, and the quests it offers or takes (quests.info for their text). nil when it opened something else instead (a vendor, a trainer, a flight map: use their calls) | [Gossip](#gossip) |
-| `gossip.select(index [, code]) → request<Gossip?>` | choose an option (its index) from the open gossip menu: the next menu, or nil when the NPC closed the dialogue or acted on it (a vendor list, a bind, a teleport...). code: for options that ask for text | [Gossip](#gossip) |
+| `gossip.open(npc) → Request<Gossip?>` | talk to an NPC within ~5 yd: what it says, its dialogue options, and the quests it offers or takes (quests.info for their text). nil when it opened something else instead (a vendor, a trainer, a flight map: use their calls) | [Request](#request), [Gossip](#gossip) |
+| `gossip.select(index [, code]) → Request<Gossip?>` | choose an option (its index) from the open gossip menu: the next menu, or nil when the NPC closed the dialogue or acted on it (a vendor list, a bind, a teleport...). code: for options that ask for text | [Request](#request), [Gossip](#gossip) |
 
 ### group
 
 | Function | | Returns |
 |---|---|---|
-| `group.accept() → request` | accept a pending invite (party_invite event) |  |
-| `group.decline() → request` | decline a pending invite |  |
+| `group.accept() → Request` | accept a pending invite (party_invite event) | [Request](#request) |
+| `group.decline() → Request` | decline a pending invite | [Request](#request) |
 | `group.info() → Group?` | your party: who leads it, and each member's class, level, health, power, state and where they are (the others, not you); nil when you're solo | [Group](#group) |
-| `group.invite(name) → request` | invite a player (by exact character name) to your group: ok once the invite is sent; they answer with group.accept |  |
+| `group.invite(name) → Request` | invite a player (by exact character name) to your group: ok once the invite is sent; they answer with group.accept | [Request](#request) |
 | `group.invited_by() → string?` | who invited you, nil if no invite is pending |  |
-| `group.leave() → request` | leave your group |  |
-| `group.ready([ready = true]) → request` | answer a ready check (ready_check event) |  |
+| `group.leave() → Request` | leave your group | [Request](#request) |
+| `group.ready([ready = true]) → Request` | answer a ready check (ready_check event) | [Request](#request) |
 | `group.report([minutes = 10]) → GroupReport?` | how your party has spent the last minutes, from what you've seen of them: each member's time fighting, travelling, idle, dead and with the group, and their kills and deaths (XP and scores: the standings); nil when you're solo | [GroupReport](#groupreport) |
 
 ### innkeeper
 
 | Function | | Returns |
 |---|---|---|
-| `innkeeper.bind(npc) → request<Home>` | make this inn your home: your hearthstone brings you back here (talk to an innkeeper within ~5 yd) | [Home](#home) |
+| `innkeeper.bind(npc) → Request<Home>` | make this inn your home: your hearthstone brings you back here (talk to an innkeeper within ~5 yd) | [Request](#request), [Home](#home) |
 
 ### items
 
@@ -161,17 +161,17 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `items.compare(item) → Comparison?` | an item (entry, or the guid of one you carry) against what you wear in its slot (the weaker one for rings, trinkets and one-handers); nil until the items' info has loaded | [Comparison](#comparison) |
 | `items.cooldown(item) → ms` | milliseconds until an item you carry or wear (entry or guid) can be used again: potions, healthstones, trinkets, the Hearthstone; 0 = ready, -1 = until you leave combat (a potion used in combat) |  |
 | `items.count(entry) → number` | how many of an item you carry |  |
-| `items.destroy(item [, count = all]) → request` | destroy an item you carry (entry or guid): gone for good |  |
-| `items.equip(item [, slot]) → request<Equipped>` | wear an item you carry (entry or guid) in its slot, or in the slot you name: main_hand, off_hand (a second one-hander, with Dual Wield), finger1, finger2, trinket1, trinket2 | [Equipped](#equipped) |
+| `items.destroy(item [, count = all]) → Request` | destroy an item you carry (entry or guid): gone for good | [Request](#request) |
+| `items.equip(item [, slot]) → Request<Equipped>` | wear an item you carry (entry or guid) in its slot, or in the slot you name: main_hand, off_hand (a second one-hander, with Dual Wield), finger1, finger2, trinket1, trinket2 | [Request](#request), [Equipped](#equipped) |
 | `items.find(name) → Item?` | an item you carry, by name (any case); count is how many you have in all | [Item](#item) |
 | `items.free_slots() → number` | empty bag slots; at 0, loot and item rewards are refused |  |
 | `items.info(entry) → Item?` | an item's template: stats, slot, prices, whether you can use it; nil the first time (it asks the server: call again a moment later) | [Item](#item) |
 | `items.list() → Item[]` | everything you wear and carry (equipped, bags, backpack) | [Item](#item) |
-| `items.loot(guid) → request<Looted>` | loot a corpse within 5 yd: takes every item and the money (waits a moment for a fresh corpse to become lootable) | [Looted](#looted) |
-| `items.roll(roll, choice) → request<LootRollResult>` | roll on group loot (loot_roll_start event, items.rolls): need, greed, disenchant or pass. No choice before the countdown ends is a pass | [LootRollResult](#lootrollresult) |
+| `items.loot(guid) → Request<Looted>` | loot a corpse within 5 yd: takes every item and the money (waits a moment for a fresh corpse to become lootable) | [Request](#request), [Looted](#looted) |
+| `items.roll(roll, choice) → Request<LootRollResult>` | roll on group loot (loot_roll_start event, items.rolls): need, greed, disenchant or pass. No choice before the countdown ends is a pass | [Request](#request), [LootRollResult](#lootrollresult) |
 | `items.rolls() → LootRoll[]` | group loot waiting for your roll (also in me.status().loot_rolls) | [LootRoll](#lootroll) |
-| `items.unequip(slot) → request` | take off what you wear in a slot (head, chest, main_hand, off_hand, finger1, trinket2, ...) into your bags |  |
-| `items.use(item [, guid]) → request<CastDone>` | use an item you carry (entry or guid): food, drink, potions, quest items; optionally on a unit. Food and drink work out of combat, and you must sit still while they tick | [CastDone](#castdone) |
+| `items.unequip(slot) → Request` | take off what you wear in a slot (head, chest, main_hand, off_hand, finger1, trinket2, ...) into your bags | [Request](#request) |
+| `items.use(item [, guid]) → Request<CastDone>` | use an item you carry (entry or guid): food, drink, potions, quest items; optionally on a unit. Food and drink work out of combat, and you must sit still while they tick | [Request](#request), [CastDone](#castdone) |
 
 ### me
 
@@ -214,12 +214,12 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | | Returns |
 |---|---|---|
-| `move.face(guid) → request` | turn to face a unit (melee and most spells need it) |  |
-| `move.jump() → request` | jump (over a low obstacle; part of getting unstuck) |  |
-| `move.stop() → request<MoveDone>` | stop walking (a pending move.to resolves ok with stopped = true) | [MoveDone](#movedone) |
-| `move.to(x, y, z) → request<MoveDone>` | walk there along the navmesh: ok on arrival, else stuck or timeout. Calling it again near the same point (chasing) keeps the same request; a different point supersedes it. With no navmesh path it walks a straight line (no_path) | [MoveDone](#movedone) |
-| `move.turn(o) → request` | face an angle (radians, as me.position().o) |  |
-| `move.unstuck() → request<Teleport>` | the failsafe when you're truly stuck: what the real client's "Character stuck" does: a 10 s cast that hearths you home (me.home()). Not in combat or on a flight; shares the hearthstone's cooldown | [Teleport](#teleport) |
+| `move.face(guid) → Request` | turn to face a unit (melee and most spells need it) | [Request](#request) |
+| `move.jump() → Request` | jump (over a low obstacle; part of getting unstuck) | [Request](#request) |
+| `move.stop() → Request<MoveDone>` | stop walking (a pending move.to resolves ok with stopped = true) | [Request](#request), [MoveDone](#movedone) |
+| `move.to(x, y, z) → Request<MoveDone>` | walk there along the navmesh: ok on arrival, else stuck or timeout. Calling it again near the same point (chasing) keeps the same request; a different point supersedes it. With no navmesh path it walks a straight line (no_path) | [Request](#request), [MoveDone](#movedone) |
+| `move.turn(o) → Request` | face an angle (radians, as me.position().o) | [Request](#request) |
+| `move.unstuck() → Request<Teleport>` | the failsafe when you're truly stuck: what the real client's "Character stuck" does: a 10 s cast that hearths you home (me.home()). Not in combat or on a flight; shares the hearthstone's cooldown | [Request](#request), [Teleport](#teleport) |
 
 ### objects
 
@@ -227,24 +227,24 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 |---|---|---|
 | `objects.find(entry [, dist = 80]) → Object?` | the nearest game object with that entry; nil if none | [Object](#object) |
 | `objects.nearby([dist = 30]) → Object[]` | game objects within dist yards (chests, doors, quest objects, herbs...), nearest first | [Object](#object) |
-| `objects.use(guid [, spell]) → request<CastDone>` | use a game object within ~5 yd: doors, quest objects, chests and crates (opened with the Opening spell like the real client; the loot is taken). Plain objects resolve at once: watch for item_received / quest_progress | [CastDone](#castdone) |
+| `objects.use(guid [, spell]) → Request<CastDone>` | use a game object within ~5 yd: doors, quest objects, chests and crates (opened with the Opening spell like the real client; the loot is taken). Plain objects resolve at once: watch for item_received / quest_progress | [Request](#request), [CastDone](#castdone) |
 
 ### quests
 
 | Function | | Returns |
 |---|---|---|
-| `quests.abandon(quest) → request` | drop a quest from your log (to make room: the log holds 25) |  |
-| `quests.accept(npc, quest) → request<QuestDone>` | talk to a quest giver and accept a quest it offers | [QuestDone](#questdone) |
+| `quests.abandon(quest) → Request` | drop a quest from your log (to make room: the log holds 25) | [Request](#request) |
+| `quests.accept(npc, quest) → Request<QuestDone>` | talk to a quest giver and accept a quest it offers | [Request](#request), [QuestDone](#questdone) |
 | `quests.info(quest) → QuestInfo?` | any quest's text (the story, what to do, who to return to) and rewards, as the quest giver shows them; nil the first time (it asks the server: call again a moment later) | [QuestInfo](#questinfo) |
 | `quests.log() → Quest[]` | your quests with their objectives and progress (titles fill in once the server answers) | [Quest](#quest) |
-| `quests.turn_in(npc, quest [, reward = 0]) → request<QuestDone>` | hand a complete quest in (reward: the index of the item to choose, 0 = first; quests.info lists the choices) | [QuestDone](#questdone) |
+| `quests.turn_in(npc, quest [, reward = 0]) → Request<QuestDone>` | hand a complete quest in (reward: the index of the item to choose, 0 = first; quests.info lists the choices) | [Request](#request), [QuestDone](#questdone) |
 
 ### spells
 
 | Function | | Returns |
 |---|---|---|
-| `spells.cast(id [, guid = you]) → request<CastDone>` | cast a spell on a unit: ok when it goes off, else the server's reason (out_of_range, line_of_sight, not_ready, no_power, bad_targets, moving, interrupted, cancelled, unit_not_infront, caster_aurastate, equipped_item_class, ...) or not_known; when it goes off but every target avoids it, how (miss, resist, immune, evade, reflect, dodge, parry...): power and cooldown are spent | [CastDone](#castdone) |
-| `spells.cast_at(id, x, y, z) → request<CastDone>` | cast a ground-targeted spell (Blizzard, Flare...) | [CastDone](#castdone) |
+| `spells.cast(id [, guid = you]) → Request<CastDone>` | cast a spell on a unit: ok when it goes off, else the server's reason (out_of_range, line_of_sight, not_ready, no_power, bad_targets, moving, interrupted, cancelled, unit_not_infront, caster_aurastate, equipped_item_class, ...) or not_known; when it goes off but every target avoids it, how (miss, resist, immune, evade, reflect, dodge, parry...): power and cooldown are spent | [Request](#request), [CastDone](#castdone) |
+| `spells.cast_at(id, x, y, z) → Request<CastDone>` | cast a ground-targeted spell (Blizzard, Flare...) | [Request](#request), [CastDone](#castdone) |
 | `spells.cooldown(id) → ms` | milliseconds until it's ready (its cooldown, category cooldown and the global cooldown); 0 = ready, -1 = not until an event (a potion used in combat: until you leave combat) |  |
 | `spells.find(name [, rank]) → Spell?` | a spell by name (any case): the highest rank you know, or that rank (a number, or "Rank 2"); nil if you know none | [Spell](#spell) |
 | `spells.info(id) → Spell?` | a spell's name, rank, cast time, cooldown, range and cost; nil if unknown | [Spell](#spell) |
@@ -255,14 +255,14 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | | Returns |
 |---|---|---|
-| `summon.accept() → request<Teleport>` | accept a pending summon (summon_request event): resolves when you arrive | [Teleport](#teleport) |
-| `summon.decline() → request` | decline a pending summon |  |
+| `summon.accept() → Request<Teleport>` | accept a pending summon (summon_request event): resolves when you arrive | [Request](#request), [Teleport](#teleport) |
+| `summon.decline() → Request` | decline a pending summon | [Request](#request) |
 
 ### talents
 
 | Function | | Returns |
 |---|---|---|
-| `talents.learn(id) → request<TalentLearned>` | spend a point on the next rank of a talent (ids from talents.list) | [TalentLearned](#talentlearned) |
+| `talents.learn(id) → Request<TalentLearned>` | spend a point on the next rank of a talent (ids from talents.list) | [Request](#request), [TalentLearned](#talentlearned) |
 | `talents.list() → Talents` | your unspent points and your class's trees: each talent's rank, whether you can learn its next rank now, and what it requires | [Talents](#talents) |
 
 ### task
@@ -282,19 +282,19 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | | Returns |
 |---|---|---|
-| `trade.accept() → request<Trade>` | accept the trade: ok when it completes (both sides accepted; any change un-accepts both), else why not (not_enough_money, inventory_full, too_far, cancelled, ...) | [Trade](#trade) |
-| `trade.cancel() → request` | close the trade, or refuse a request |  |
-| `trade.offer{items = {entry or guid, ...}, money = copper} → request` | set your side of the open trade (up to 6 items; replaces what you offered). Soulbound items can't be traded |  |
-| `trade.open() → request<Trade>` | open the window for someone's trade request (a trade event with state requested) | [Trade](#trade) |
-| `trade.start(player) → request<Trade>` | ask a player within ~10 yd (name or guid) to trade: ok once they open the window (trade.open on their side) | [Trade](#trade) |
+| `trade.accept() → Request<Trade>` | accept the trade: ok when it completes (both sides accepted; any change un-accepts both), else why not (not_enough_money, inventory_full, too_far, cancelled, ...) | [Request](#request), [Trade](#trade) |
+| `trade.cancel() → Request` | close the trade, or refuse a request | [Request](#request) |
+| `trade.offer{items = {entry or guid, ...}, money = copper} → Request` | set your side of the open trade (up to 6 items; replaces what you offered). Soulbound items can't be traded | [Request](#request) |
+| `trade.open() → Request<Trade>` | open the window for someone's trade request (a trade event with state requested) | [Request](#request), [Trade](#trade) |
+| `trade.start(player) → Request<Trade>` | ask a player within ~10 yd (name or guid) to trade: ok once they open the window (trade.open on their side) | [Request](#request), [Trade](#trade) |
 | `trade.status() → Trade` | the trade window: state, who with, both sides' offers | [Trade](#trade) |
 
 ### trainer
 
 | Function | | Returns |
 |---|---|---|
-| `trainer.learn(npc, spell) → request<Learned>` | learn a spell from a trainer within ~5 yd (costs money; trainer.list shows what it teaches you and what you can learn now) | [Learned](#learned) |
-| `trainer.list(npc) → request<Trainer>` | what a trainer within ~5 yd teaches you: every spell for your class with its cost, level and whether you can learn it now (available), later (unavailable) or already know it | [Trainer](#trainer) |
+| `trainer.learn(npc, spell) → Request<Learned>` | learn a spell from a trainer within ~5 yd (costs money; trainer.list shows what it teaches you and what you can learn now) | [Request](#request), [Learned](#learned) |
+| `trainer.list(npc) → Request<Trainer>` | what a trainer within ~5 yd teaches you: every spell for your class with its cost, level and whether you can learn it now (available), later (unavailable) or already know it | [Request](#request), [Trainer](#trainer) |
 
 ### units
 
@@ -315,11 +315,11 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | | Returns |
 |---|---|---|
-| `vendor.buy(npc, entry [, count = 1]) → request<ItemReceived>` | buy from a vendor within ~5 yd (count in purchases of buy_count each). Call vendor.items first | [ItemReceived](#itemreceived) |
+| `vendor.buy(npc, entry [, count = 1]) → Request<ItemReceived>` | buy from a vendor within ~5 yd (count in purchases of buy_count each). Call vendor.items first | [Request](#request), [ItemReceived](#itemreceived) |
 | `vendor.items(npc) → VendorItem[]?` | what a vendor sells; nil the first time (it asks the vendor: call again a moment later) | [VendorItem](#vendoritem) |
-| `vendor.repair(npc) → request<Repaired>` | repair everything you wear and carry at an NPC that repairs (role repair: armorers, weaponsmiths) within ~5 yd | [Repaired](#repaired) |
-| `vendor.sell(npc, item [, count = all]) → request<Sold>` | sell an item you carry (entry or guid) to a vendor within ~5 yd | [Sold](#sold) |
-| `vendor.sell_junk(npc) → request<Sold>` | sell every grey (poor) item you carry. Items whose info hasn't loaded are skipped | [Sold](#sold) |
+| `vendor.repair(npc) → Request<Repaired>` | repair everything you wear and carry at an NPC that repairs (role repair: armorers, weaponsmiths) within ~5 yd | [Request](#request), [Repaired](#repaired) |
+| `vendor.sell(npc, item [, count = all]) → Request<Sold>` | sell an item you carry (entry or guid) to a vendor within ~5 yd | [Request](#request), [Sold](#sold) |
+| `vendor.sell_junk(npc) → Request<Sold>` | sell every grey (poor) item you carry. Items whose info hasn't loaded are skipped | [Request](#request), [Sold](#sold) |
 
 ### world
 
@@ -1276,15 +1276,24 @@ QuestInfo: a quest's text and rewards, as the quest giver and the quest log show
 | `rank` | string |  |
 | `at_war?` | bool |  |
 
-### Result
+### Request
 
-Result is an action's request (Pending) or its outcome.
+Request is a raw action handle, including actions that resolve immediately. Await it to inspect the outcome.
+
+| Field | Type | |
+|---|---|---|
+| `id` | number |  |
+| `op` | string |  |
+| `pending` | bool | always true on a handle; does not imply the action is still running |
+
+### ActionResult
+
+ActionResult is a resolved raw request or an await wait_timeout. A wait_timeout does not cancel the request.
 
 | Field | Type | |
 |---|---|---|
 | `id` | number |  |
 | `op` | string | the function, e.g. spells.cast |
-| `pending?` | bool | not resolved yet: await it, or result(id) later |
 | `ok` | bool |  |
 | `data?` | any | the op's result type (Action results) |
 | `error?` | Error |  |
@@ -1297,6 +1306,31 @@ Result is an action's request (Pending) or its outcome.
 |---|---|---|
 | `code` | string | stable, e.g. out_of_range, not_known, bags_full, stuck, timeout |
 | `message` | string |  |
+| `next?` | string | one concrete corrective action, when known |
+
+### ActResult
+
+ActResult is a waiting helper's outcome. It has no raw request ID or pending flag; steps identify nested requests.
+
+| Field | Type | |
+|---|---|---|
+| `op` | string |  |
+| `ok` | bool |  |
+| `data?` | any | helper-specific data, including partial work on failure |
+| `error?` | Error |  |
+| `steps?` | ActionStep[] | bounded record of composite operations in execution order |
+
+### ActionStep
+
+ActionStep records a required or optional operation within a helper.
+
+| Field | Type | |
+|---|---|---|
+| `op` | string |  |
+| `ok` | bool |  |
+| `request_id?` | number |  |
+| `code?` | string |  |
+| `count?` | number | number of identical attempts when summarized |
 
 ### Event
 
@@ -1806,7 +1840,7 @@ An event is an [Event](#event) whose `data` is the type below.
 | `quest_progress` | QuestProgress | a quest kill/object counter went up |
 | `quest_turned_in` | QuestDone | you turned a quest in |
 | `ready_check` | ReadyCheck | your group leader started a ready check: group.ready(true\|false) |
-| `result` | Result | an action finished (its result) |
+| `result` | ActionResult | an action finished (its result) |
 | `resurrect_offered` | ResurrectOffer | a player is resurrecting you: death.accept_res() (works dead or as a ghost) |
 | `resurrected` | None | you're alive again |
 | `script_error` | ScriptError | a script raised an error |

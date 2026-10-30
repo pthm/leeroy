@@ -285,10 +285,10 @@ func (b *Bot) setupCombatInfo() {
 		found.Count = total
 		return *found
 	})
-	e.Func("move.jump", "() → request", "jump (over a low obstacle; part of getting unstuck)", func() map[string]any {
+	e.Func("move.jump", "() → Request", "jump (over a low obstacle; part of getting unstuck)", func() map[string]any {
 		return b.sent("move.jump", nil, w.Jump())
 	})
-	e.Func("move.unstuck", "() → request<Teleport>", "the failsafe when you're truly stuck: what the real client's \"Character stuck\" does: a 10 s cast that hearths you home (me.home()). Not in combat or on a flight; shares the hearthstone's cooldown",
+	e.Func("move.unstuck", "() → Request<Teleport>", "the failsafe when you're truly stuck: what the real client's \"Character stuck\" does: a 10 s cast that hearths you home (me.home()). Not in combat or on a flight; shares the hearthstone's cooldown",
 		func() map[string]any {
 			if b.InCombat() {
 				return b.refuse("move.unstuck", nil, "in_combat", "not while in combat")

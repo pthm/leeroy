@@ -67,7 +67,7 @@ func (r *Requests) Start(s Spec) map[string]any {
 	return map[string]any{"id": id, "op": s.Op, "pending": true}
 }
 
-// Now resolves a request immediately and returns its result. The caller has the result in hand, so only a failure
+// Now resolves a request immediately and returns its handle. Only a failure
 // becomes a "result" event (instant oks would flood the log).
 // A failure repeated within 10 s (same op and code: a script retrying every tick) is logged once.
 func (r *Requests) Now(s Spec, o *Outcome) map[string]any {
@@ -83,7 +83,8 @@ func (r *Requests) Now(s Spec, o *Outcome) map[string]any {
 		}
 		r.mu.Unlock()
 	}
-	return r.resolve(h["id"].(int), o, emit)
+	r.resolve(h["id"].(int), o, emit)
+	return h
 }
 
 // Resolve ends a pending request with o and emits the "result" event. Resolving twice is a no-op.

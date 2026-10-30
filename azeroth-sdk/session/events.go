@@ -679,7 +679,7 @@ func (b *Bot) setupActions() {
 			b.StopMoving()
 		}
 	}
-	e.Func("move.to", "(x, y, z) → request<MoveDone>", "walk there along the navmesh: ok on arrival, else stuck or timeout. Calling it again near the same point (chasing) keeps the same request; a different point supersedes it. With no navmesh path it walks a straight line (no_path)",
+	e.Func("move.to", "(x, y, z) → Request<MoveDone>", "walk there along the navmesh: ok on arrival, else stuck or timeout. Calling it again near the same point (chasing) keeps the same request; a different point supersedes it. With no navmesh path it walks a straight line (no_path)",
 		func(x, y, z float32) map[string]any {
 			args := map[string]any{"x": x, "y": y, "z": z}
 			if lock := b.world.MovementLock(); lock != "" {
@@ -747,7 +747,7 @@ func (b *Bot) setupActions() {
 			m.id = req["id"].(int)
 			return req
 		})
-	e.Func("move.stop", "() → request<MoveDone>", "stop walking (a pending move.to resolves ok with stopped = true)", func() map[string]any {
+	e.Func("move.stop", "() → Request<MoveDone>", "stop walking (a pending move.to resolves ok with stopped = true)", func() map[string]any {
 		if cur != nil {
 			cur.cancel.Store(true)
 			b.lua.Reqs.Resolve(cur.id, script.Ok(types.MoveDone{Stopped: true, Distance: math.Round(dist(cur)*10) / 10}))
@@ -755,7 +755,7 @@ func (b *Bot) setupActions() {
 		b.StopMoving()
 		return b.done("move.stop", nil, nil)
 	})
-	e.Func("spells.cast", "(id [, guid = you]) → request<CastDone>", "cast a spell on a unit: ok when it goes off, else the server's reason (out_of_range, line_of_sight, not_ready, no_power, bad_targets, moving, interrupted, cancelled, unit_not_infront, caster_aurastate, equipped_item_class, ...) or not_known; when it goes off but every target avoids it, how (miss, resist, immune, evade, reflect, dodge, parry...): power and cooldown are spent",
+	e.Func("spells.cast", "(id [, guid = you]) → Request<CastDone>", "cast a spell on a unit: ok when it goes off, else the server's reason (out_of_range, line_of_sight, not_ready, no_power, bad_targets, moving, interrupted, cancelled, unit_not_infront, caster_aurastate, equipped_item_class, ...) or not_known; when it goes off but every target avoids it, how (miss, resist, immune, evade, reflect, dodge, parry...): power and cooldown are spent",
 		func(spell uint32, target uint64) map[string]any {
 			if target == 0 {
 				target = b.world.CharGUID()

@@ -295,7 +295,7 @@ func (b *Bot) setupAgentAPI() {
 		}
 		return nil
 	}
-	e.Func("death.release", "() → request", "release your spirit: ok once you're a ghost at the graveyard", func() map[string]any {
+	e.Func("death.release", "() → Request", "release your spirit: ok once you're a ghost at the graveyard", func() map[string]any {
 		if b.IsGhost() {
 			return b.done("death.release", nil, nil)
 		}
@@ -310,7 +310,7 @@ func (b *Bot) setupAgentAPI() {
 			return nil
 		}, nil)
 	})
-	e.Func("death.reclaim", "() → request", "as a ghost within ~30 yd of your corpse, come back to life there", func() map[string]any {
+	e.Func("death.reclaim", "() → Request", "as a ghost within ~30 yd of your corpse, come back to life there", func() map[string]any {
 		if !b.IsGhost() {
 			return b.refuse("death.reclaim", nil, "not_a_ghost", "release first (death.release)")
 		}
@@ -323,7 +323,7 @@ func (b *Bot) setupAgentAPI() {
 		w.ReclaimCorpse()
 		return b.request("death.reclaim", nil, 5*time.Second, alive, nil)
 	})
-	e.Func("death.accept_res", "() → request", "accept a player's resurrection (after a resurrect_offered event): you come back where your body lies",
+	e.Func("death.accept_res", "() → Request", "accept a player's resurrection (after a resurrect_offered event): you come back where your body lies",
 		func() map[string]any {
 			s.mu.Lock()
 			from := s.resFrom
@@ -347,7 +347,7 @@ func (b *Bot) setupAgentAPI() {
 			}
 			return out
 		})
-	e.Func("death.spirit_res", "(npc) → request", "as a ghost next to a spirit healer: resurrect there (resurrection sickness from level 11, and your gear loses durability)",
+	e.Func("death.spirit_res", "(npc) → Request", "as a ghost next to a spirit healer: resurrect there (resurrection sickness from level 11, and your gear loses durability)",
 		func(npc uint64) map[string]any {
 			args := map[string]any{"npc": gs(npc)}
 			if !b.IsGhost() {
@@ -388,7 +388,7 @@ func (b *Bot) setupAgentAPI() {
 			q.Rewards, q.Choices = items(p.rewards[:]), items(p.choices[:])
 			return q
 		})
-	e.Func("quests.accept", "(npc, quest) → request<QuestDone>", "talk to a quest giver and accept a quest it offers", func(npc uint64, quest uint32) map[string]any {
+	e.Func("quests.accept", "(npc, quest) → Request<QuestDone>", "talk to a quest giver and accept a quest it offers", func(npc uint64, quest uint32) map[string]any {
 		args := map[string]any{"npc": gs(npc), "quest": quest}
 		if r := b.noNPC("quests.accept", args, &npc); r != nil {
 			return r
@@ -413,7 +413,7 @@ func (b *Bot) setupAgentAPI() {
 			return nil
 		}, func(ev script.Event) *script.Outcome { return failOn(ev, "quests") })
 	})
-	e.Func("quests.abandon", "(quest) → request", "drop a quest from your log (to make room: the log holds 25)", func(quest uint32) map[string]any {
+	e.Func("quests.abandon", "(quest) → Request", "drop a quest from your log (to make room: the log holds 25)", func(quest uint32) map[string]any {
 		args := map[string]any{"quest": quest}
 		o := w.GetObject(w.CharGUID())
 		slot := -1
@@ -433,7 +433,7 @@ func (b *Bot) setupAgentAPI() {
 			return nil
 		}, nil)
 	})
-	e.Func("quests.turn_in", "(npc, quest [, reward = 0]) → request<QuestDone>", "hand a complete quest in (reward: the index of the item to choose, 0 = first; quests.info lists the choices)",
+	e.Func("quests.turn_in", "(npc, quest [, reward = 0]) → Request<QuestDone>", "hand a complete quest in (reward: the index of the item to choose, 0 = first; quests.info lists the choices)",
 		func(npc uint64, quest, reward uint32) map[string]any {
 			args := map[string]any{"npc": gs(npc), "quest": quest, "reward": reward}
 			if r := b.noNPC("quests.turn_in", args, &npc); r != nil {

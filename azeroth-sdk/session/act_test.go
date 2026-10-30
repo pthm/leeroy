@@ -174,3 +174,31 @@ func TestActOptionsTable(t *testing.T) {
 		t.Fatalf("pcall(act.loot_nearby, 10) = %v", v)
 	}
 }
+
+func TestActResultEnvelopes(t *testing.T) {
+	for _, tc := range []struct{ name, stubs, body string }{
+		{"cast", `raw = {id = 17, op = "spells.cast", ok = true, data = {spell = 133}}
+          spells.cast = function() return raw end`, `r = act.cast(133, "me")
+          assert(raw.op == "spells.cast" and raw.id == 17)
+          assert(r.op == "act.cast" and r.ok and r.data.spell == 133)`},
+		{"buff active", `units.has_aura = function() return true end`, `r = act.buff(133)
+          assert(r.op == "act.buff" and r.ok and r.data.status == "already_active")`},
+		{"buff missing spell", ``, `r = act.buff(nil)
+          assert(r.op == "act.buff" and not r.ok and r.error.code == "not_known")`},
+		{"release failure", `raw = {id = 18, op = "death.release", ok = false,
+            data = {attempt = 1}, error = {code = "timeout", message = "not released", next = "inspect state"}}
+          death = {release = function() return raw end}`, `r = act.release()
+          assert(raw.op == "death.release")
+          assert(r.op == "act.release" and not r.ok and r.data.attempt == 1)
+          assert(r.error.code == "timeout" and r.error.next == "inspect state")`},
+		{"constructors", ``, `r = act.ok("mine", {count = 1})
+          assert(r.op == "mine" and act.must(r).data.count == 1)
+          r = act.fail("mine", "blocked", "cannot proceed")
+          local ok, err = pcall(act.must, r)
+          assert(not ok and tostring(err):find("mine: blocked: cannot proceed"))`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actWorld(t, actBase+tc.stubs, tc.body+` assert(r.id == nil and r.pending == nil)`)
+		})
+	}
+}

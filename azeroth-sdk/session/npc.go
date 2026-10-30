@@ -216,7 +216,7 @@ func (b *Bot) setupNPC() {
 			return nil
 		}
 	}
-	e.Func("gossip.open", "(npc) → request<Gossip?>", "talk to an NPC within ~5 yd: what it says, its dialogue options, and the quests it offers or takes (quests.info for their text). nil when it opened something else instead (a vendor, a trainer, a flight map: use their calls)",
+	e.Func("gossip.open", "(npc) → Request<Gossip?>", "talk to an NPC within ~5 yd: what it says, its dialogue options, and the quests it offers or takes (quests.info for their text). nil when it opened something else instead (a vendor, a trainer, a flight map: use their calls)",
 		func(npc uint64) map[string]any {
 			args := map[string]any{"npc": gs(npc)}
 			if r := b.noNPC("gossip.open", args, &npc); r != nil {
@@ -226,7 +226,7 @@ func (b *Bot) setupNPC() {
 			w.SendPacketRaw(cmsgGossipHello, binary.LittleEndian.AppendUint64(nil, npc))
 			return b.request("gossip.open", args, 5*time.Second, menuAfter(asked), nil)
 		})
-	e.Func("gossip.select", "(index [, code]) → request<Gossip?>", "choose an option (its index) from the open gossip menu: the next menu, or nil when the NPC closed the dialogue or acted on it (a vendor list, a bind, a teleport...). code: for options that ask for text",
+	e.Func("gossip.select", "(index [, code]) → Request<Gossip?>", "choose an option (its index) from the open gossip menu: the next menu, or nil when the NPC closed the dialogue or acted on it (a vendor list, a bind, a teleport...). code: for options that ask for text",
 		func(index uint32, code string) map[string]any {
 			args := map[string]any{"index": index}
 			s.mu.Lock()
@@ -252,7 +252,7 @@ func (b *Bot) setupNPC() {
 			return b.refuse("gossip.select", args, "no_such_option", "the open menu has no option with that index")
 		})
 
-	e.Func("trainer.list", "(npc) → request<Trainer>", "what a trainer within ~5 yd teaches you: every spell for your class with its cost, level and whether you can learn it now (available), later (unavailable) or already know it",
+	e.Func("trainer.list", "(npc) → Request<Trainer>", "what a trainer within ~5 yd teaches you: every spell for your class with its cost, level and whether you can learn it now (available), later (unavailable) or already know it",
 		func(npc uint64) map[string]any {
 			args := map[string]any{"npc": gs(npc)}
 			if r := b.noNPC("trainer.list", args, &npc); r != nil {

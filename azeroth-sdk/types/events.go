@@ -440,7 +440,7 @@ var EventTypes = map[string]EventType{
 	"loot_roll_won":        {LootRollResult{}, "a group roll ended: player won the item"},
 	"loot_roll_all_passed": {LootRollResult{}, "a group roll ended with everyone passing"},
 	"error":                {ErrorEvent{}, "the server refused something"},
-	"result":               {Result{}, "an action finished (its result)"},
+	"result":               {ActionResult{}, "an action finished (its result)"},
 	"log":                  {Log{}, "log(msg) from a script"},
 	"task_started":         {TaskEvent{}, "a task started"},
 	"task_finished":        {TaskEvent{}, "a task ended (done, failed or stopped)"},

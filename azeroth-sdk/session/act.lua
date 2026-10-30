@@ -19,10 +19,17 @@ local A = act
 
 local function result(op, ok, data, code, message)
   if ok then return { ok = true, op = op, data = data } end
-  return { ok = false, op = op, error = { code = code, message = message } }
+  return { ok = false, op = op, data = data, error = { code = code, message = message } }
 end
-function A.ok(data) return { ok = true, data = data } end
-function A.fail(code, message) return { ok = false, error = { code = code, message = message } } end
+function A.ok(op, data) return result(op, true, data) end
+function A.fail(op, code, message) return result(op, false, nil, code, message) end
+-- Copy the envelope: a helper must not rename or leak a raw request's result.
+local function wrapped(op, r)
+  if type(r) ~= "table" or type(r.ok) ~= "boolean" or (not r.ok and not r.error) then
+    error(op .. ": expected a completed action result", 2)
+  end
+  return {op = op, ok = r.ok, data = r.data, error = r.error, steps = r.steps}
+end
 function A.must(r)
   if r and r.ok == false then error((r.op or "act") .. ": " .. r.error.code .. ": " .. tostring(r.error.message), 2) end
   return r
@@ -101,7 +108,8 @@ function A.cast(id, guid)
 end
 function A.buff(id, guid)
   guid = guid or me.guid()
-  if not id or units.has_aura(guid, id) then return nil end
+  if not id then return A.fail("act.buff", "not_known", "a spell ID is required") end
+  if units.has_aura(guid, id) then return A.ok("act.buff", {status = "already_active"}) end
   return A.cast(id, guid)
 end
 
@@ -211,8 +219,7 @@ local function at_npc(op, o, fn)
   local r = A.reach_npc(o)
   if not r.ok then r.op = op return r end
   local out = fn(r.data)
-  out.op = op
-  return out
+  return wrapped(op, out)
 end
 local function in_log(id) for _, q in ipairs(quests.log()) do if q.id == id then return q end end end
 function A.accept(o)
@@ -231,14 +238,14 @@ end
 function A.vendor(o)
   return at_npc("act.vendor", o, function(npc)
     if not has_role(npc, "vendor", "repair") then
-      return A.fail("wrong_npc", tostring(npc.name) .. " doesn't sell or repair (roles: " .. table.concat(npc.roles or {}, ", ") .. ")")
+      return A.fail("act.vendor", "wrong_npc", tostring(npc.name) .. " doesn't sell or repair (roles: " .. table.concat(npc.roles or {}, ", ") .. ")")
     end
     local out = { sold = await(vendor.sell_junk(npc.guid)), bought = {} }
     vendor.items(npc.guid)
     wait(1.5)
     for _, role in ipairs(npc.roles or {}) do if role == "repair" then out.repaired = await(vendor.repair(npc.guid)) end end
     for _, b in ipairs(o.buy or {}) do out.bought[#out.bought + 1] = await(vendor.buy(npc.guid, b[1], b[2] or 1)) end
-    return A.ok(out)
+    return A.ok("act.vendor", out)
   end)
 end
 function A.train(o)
@@ -248,10 +255,10 @@ function A.train(o)
       local r = await(trainer.learn(npc.guid, sp))
       if r.ok then learned[#learned + 1] = sp else failed[#failed + 1] = r end
     end
-    return A.ok({ learned = learned, failed = failed })
+    return A.ok("act.train", { learned = learned, failed = failed })
   end)
 end
-function A.talk(o) return at_npc("act.talk", o, function(npc) return A.ok(o.fn and o.fn(npc)) end) end
+function A.talk(o) return at_npc("act.talk", o, function(npc) return A.ok("act.talk", o.fn and o.fn(npc)) end) end
 function A.use_object(o)
   local used = 0
   while true do
@@ -263,18 +270,18 @@ function A.use_object(o)
     if not ob then
       if o.x and A.dist(o.x, o.y) > 10 then
         local r = A.go_to{ x = o.x, y = o.y, z = o.z }
-        if not r.ok then r.op = "act.use_object" return r end
+        if not r.ok then return wrapped("act.use_object", r) end
       else
         return result("act.use_object", false, { used = used }, "not_found", "no object " .. o.entry .. " in range")
       end
     else
       if ob.distance > 4 then
         local r = A.go_to{ x = ob.x, y = ob.y, z = ob.z, tolerance = 3 }
-        if not r.ok then r.op = "act.use_object" return r end
+        if not r.ok then return wrapped("act.use_object", r) end
       end
       move.stop()
       local r = await(objects.use(ob.guid))
-      if not r.ok then r.op = "act.use_object" return r end
+      if not r.ok then return wrapped("act.use_object", r) end
       used = used + 1
       wait(1)
     end
@@ -310,17 +317,17 @@ function A.fly(o)
   if not master then return result("act.fly", false, nil, "no_flight_master", "no flight master within 80 yd (azworld near x y --kind flightmaster)") end
   if master.distance > 4 then
     local r = A.approach{ unit = master.guid, range = 4 }
-    if not r.ok then r.op = "act.fly" return r end
+    if not r.ok then return wrapped("act.fly", r) end
   end
   local m = await(flights.map(master.guid))
-  if not m.ok then m.op = "act.fly" return m end
+  if not m.ok then return wrapped("act.fly", m) end
   local dest
   for _, n in ipairs(m.data.destinations) do
     if n.id == o.to or (type(o.to) == "string" and n.name:lower():find(o.to:lower(), 1, true)) then dest = dest or n end
   end
   if not dest then return result("act.fly", false, m.data, "unknown_destination", "not a known destination from here: " .. tostring(o.to)) end
   local r = await(flights.take(master.guid, dest.id), 1800)
-  r.op = "act.fly"
+  r = wrapped("act.fly", r)
   return r
 end
 
@@ -341,7 +348,7 @@ end
 local graveyard -- where releasing put you: the spirit healer is there
 function A.release()
   local r = await(death.release())
-  r.op = "act.release"
+  r = wrapped("act.release", r)
   if r.ok then graveyard = me.position() end
   return r
 end
@@ -379,7 +386,7 @@ function A.corpse_run(o)
     if not c then wait(1) -- asked the server
     elseif A.dist(c.x, c.y) > 25 and not moved then
       local r = A.go_to{ x = c.x, y = c.y, z = c.z, tolerance = 15 }
-      if not r.ok then r.op = "act.corpse_run" return r end
+      if not r.ok then return wrapped("act.corpse_run", r) end
     elseif o.safe ~= false and not moved then
       moved = true
       -- the edge of the reclaim circle (the server allows ~39 yd; 32 leaves room): at 24 yd a mob five levels up
@@ -405,7 +412,7 @@ function A.spirit_res()
     end
     if not healer and graveyard and A.dist(graveyard.x, graveyard.y) > 20 then -- walked off: back to where you released
       local r = A.go_to{ x = graveyard.x, y = graveyard.y, z = graveyard.z, tolerance = 10 }
-      if not r.ok then r.op = "act.spirit_res" return r end
+      if not r.ok then return wrapped("act.spirit_res", r) end
     elseif not healer then
       return result("act.spirit_res", false, nil, "not_found", "no spirit healer in sight (they stand at graveyards: azworld can find one)")
     end
@@ -428,7 +435,7 @@ function A.recover(o)
   if me.alive() then return result("act.recover", true) end
   if not me.ghost() then
     local r = A.release()
-    if not r.ok then r.op = "act.recover" return r end
+    if not r.ok then return wrapped("act.recover", r) end
   end
   local spirit = o.spirit
   if spirit and o.safe ~= false then
@@ -441,7 +448,7 @@ function A.recover(o)
   end
   local r = spirit and A.spirit_res() or A.corpse_run(o)
   if not r.ok and not spirit then r = A.spirit_res() end
-  r.op = "act.recover"
+  r = wrapped("act.recover", r)
   if r.ok and o.rest ~= false then A.rest() end
   return r
 end
@@ -474,7 +481,7 @@ local takes_options = { go_to = true, travel = true, approach = true, follow = t
   turn_in = true, vendor = true, train = true, talk = true, use_object = true, rest = true, corpse_run = true,
   recover = true, loot_nearby = true, fly = true }
 for _, n in ipairs({ "go_to", "travel", "approach", "follow", "reach_npc", "accept", "turn_in", "vendor", "train", "talk",
-  "use_object", "rest", "release", "corpse_run", "spirit_res", "recover", "loot_nearby", "fly" }) do
+  "use_object", "rest", "release", "corpse_run", "spirit_res", "recover", "loot_nearby", "fly", "cast", "buff" }) do
   local f = A[n]
   A[n] = function(o, ...)
     if not task.current() then
@@ -483,15 +490,15 @@ for _, n in ipairs({ "go_to", "travel", "approach", "follow", "reach_npc", "acce
     if takes_options[n] and o ~= nil and type(o) ~= "table" then
       error("act." .. n .. " takes an options table, act." .. n .. "{...}, not a " .. type(o) .. ": help(\"act." .. n .. "\") lists its fields", 2)
     end
-    return f(o, ...)
+    return wrapped("act." .. n, f(o, ...))
   end
 end
 
 -- reference (help("act"))
 for name, d in pairs({
-  ok = { "(data) → result", "an ok result for your own act-style functions" },
-  fail = { "(code, message) → result", "a failed result" },
-  must = { "(result) → result", "the result if ok, else raise its error (ends the task)" },
+  ok = { "(op, data) → ActResult", "an ok result for your own act-style functions" },
+  fail = { "(op, code, message) → ActResult", "a failed result" },
+  must = { "(result) → ActResult", "the result if ok, else raise its error (ends the task)" },
   dist = { "(x, y [, z]) → yards", "distance from you (2D without z)" },
   hp = { "() → 0..1", "your health fraction" },
   mana = { "() → 0..1", "your mana fraction (1 for rage/energy users)" },
@@ -502,25 +509,25 @@ for name, d in pairs({
   player = { "(name) → Player", "a player by name (nearby or in your group)" },
   consume = { "(\"Food\" | \"Drink\") → bool", "eat or drink the first such item you carry (sit still after)" },
   make_room = { "() → bool", "destroy your cheapest grey item to free a bag slot" },
-  cast = { "(id [, guid]) → result", "face the target and cast if ready (waits for the result in a task)" },
-  buff = { "(id [, guid]) → result", "cast it unless the target already has the aura (nil then)" },
-  go_to = { "{x, y [, z, tolerance = 4, tries = 3, unstuck = false, on_attacked = fn]} → result", "walk there; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs. Without on_attacked it walks on while mobs hit you and drags them along; with it, it stops whenever something targets you, calls on_attacked(attackers) (your fighting) and then carries on" },
-  travel = { "{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false, on_attacked = fn]} → result", "go_to each waypoint (e.g. from azworld route)" },
+  cast = { "(id [, guid]) → ActResult", "face the target and cast if ready (waits for the result in a task)" },
+  buff = { "(id [, guid]) → ActResult", "cast it unless the aura is already active (ok with data.status = already_active then)" },
+  go_to = { "{x, y [, z, tolerance = 4, tries = 3, unstuck = false, on_attacked = fn]} → ActResult", "walk there; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs. Without on_attacked it walks on while mobs hit you and drags them along; with it, it stops whenever something targets you, calls on_attacked(attackers) (your fighting) and then carries on" },
+  travel = { "{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false, on_attacked = fn]} → ActResult", "go_to each waypoint (e.g. from azworld route)" },
   danger = { "(x, y [, r = 25]) → Creature[]", "living hostile creatures within r yards of a point: check a spot before you go there or come back to life there" },
-  approach = { "{unit [, range = 4, timeout = 60]} → result<Creature>", "move within range of a unit and face it" },
-  follow = { "{name [, distance = 5, until = fn]} → result", "stay near a player until until() is true" },
-  reach_npc = { "{npc [, x, y, z]} → result<Creature>", "find an NPC by entry (walking to x, y, z first) and stand next to it" },
-  accept = { "{npc, quest [, x, y, z]} → result", "walk to a quest giver and accept the quest" },
-  turn_in = { "{npc, quest [, reward = 0, x, y, z]} → result", "walk to the quest ender and turn the quest in" },
-  vendor = { "{npc [, x, y, z, buy = {{entry, count}, ...}]} → result", "sell greys, repair if it can, buy; data = {sold, repaired, bought}" },
-  train = { "{npc, spells [, x, y, z]} → result", "learn spells at a trainer; data = {learned, failed}" },
-  talk = { "{npc, fn [, x, y, z]} → result", "walk to an NPC and run fn(npc)" },
-  use_object = { "{entry [, count = 1, quest, x, y, z, radius = 80]} → result", "use objects (crates, chests, quest objects) count times or until the quest is complete" },
-  loot_nearby = { "{[dist = 8]} → result<Item[]>", "walk to and loot every lootable corpse within dist; with full bags it destroys your cheapest grey for room (error bags_full when there's none)" },
-  rest = { "{[hp = 0.95, mana = 0.9, max_s = 40]} → result", "eat/drink if you carry food/water and wait until topped up; fails if attacked" },
-  fly = { "{to = node id or name [, npc = entry]} → result<Flight>", "walk to a flight master nearby, fly to a known destination and wait until you land" },
-  release = { "() → result", "release your spirit" },
-  corpse_run = { "{[safe = true]} → result", "as a ghost, walk to your corpse and reclaim it; with hostiles at the corpse it reclaims from the far side of the reclaim circle, 32 yd out (safe = false: on the spot)" },
-  spirit_res = { "() → result", "as a ghost, resurrect at the nearest spirit healer in sight (costs durability)" },
-  recover = { "{[spirit = false, rest = true, safe = true]} → result", "back to life: release, corpse run (reclaiming away from hostiles at the corpse), the spirit healer if that fails or with spirit = true (unless hostiles camp the graveyard: then the corpse run), then rest" },
+  approach = { "{unit [, range = 4, timeout = 60]} → ActResult<Creature>", "move within range of a unit and face it" },
+  follow = { "{name [, distance = 5, until = fn]} → ActResult", "stay near a player until until() is true" },
+  reach_npc = { "{npc [, x, y, z]} → ActResult<Creature>", "find an NPC by entry (walking to x, y, z first) and stand next to it" },
+  accept = { "{npc, quest [, x, y, z]} → ActResult", "walk to a quest giver and accept the quest" },
+  turn_in = { "{npc, quest [, reward = 0, x, y, z]} → ActResult", "walk to the quest ender and turn the quest in" },
+  vendor = { "{npc [, x, y, z, buy = {{entry, count}, ...}]} → ActResult", "sell greys, repair if it can, buy; data = {sold, repaired, bought}" },
+  train = { "{npc, spells [, x, y, z]} → ActResult", "learn spells at a trainer; data = {learned, failed}" },
+  talk = { "{npc, fn [, x, y, z]} → ActResult", "walk to an NPC and run fn(npc)" },
+  use_object = { "{entry [, count = 1, quest, x, y, z, radius = 80]} → ActResult", "use objects (crates, chests, quest objects) count times or until the quest is complete" },
+  loot_nearby = { "{[dist = 8]} → ActResult<Item[]>", "walk to and loot every lootable corpse within dist; with full bags it destroys your cheapest grey for room (error bags_full when there's none)" },
+  rest = { "{[hp = 0.95, mana = 0.9, max_s = 40]} → ActResult", "eat/drink if you carry food/water and wait until topped up; fails if attacked" },
+  fly = { "{to = node id or name [, npc = entry]} → ActResult<Flight>", "walk to a flight master nearby, fly to a known destination and wait until you land" },
+  release = { "() → ActResult", "release your spirit" },
+  corpse_run = { "{[safe = true]} → ActResult", "as a ghost, walk to your corpse and reclaim it; with hostiles at the corpse it reclaims from the far side of the reclaim circle, 32 yd out (safe = false: on the spot)" },
+  spirit_res = { "() → ActResult", "as a ghost, resurrect at the nearest spirit healer in sight (costs durability)" },
+  recover = { "{[spirit = false, rest = true, safe = true]} → ActResult", "back to life: release, corpse run (reclaiming away from hostiles at the corpse), the spirit healer if that fails or with spirit = true (unless hostiles camp the graveyard: then the corpse run), then rest" },
 }) do doc("act." .. name, d[1], d[2]) end

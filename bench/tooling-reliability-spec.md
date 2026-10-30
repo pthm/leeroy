@@ -45,7 +45,7 @@ The target API and report schemas are a clean break. Compatibility with old work
 
 ### Raw requests and helper results
 
-Raw actions return `Request<T> = {id, op, pending=true}`. `await(request)` and `result(id)` return `ActionResult<T> = {id, op, ok, data?, error?, args?, ms?}`. `ok=true` means the operation's documented postcondition was observed; a sent packet or an elapsed wait alone is insufficient. `await` timeouts remain distinguishable from the underlying request's later result.
+Raw actions return `Request<T> = {id, op, pending=true}`. `await(request)` (inside a task) and a resolved `result(id)` return `ActionResult<T> = {id, op, ok, data?, error?, args?, ms?}`. `ok=true` means the operation's documented postcondition was observed; a sent packet or an elapsed wait alone is insufficient. `result(id)` returns the request handle while unresolved and `nil` for an unknown or expired ID. `await` timeouts return `ActionResult` with `wait_timeout`, without a `pending` field, and remain distinguishable from the underlying request's later result.
 
 Every `act` helper that performs an action returns this separate shape after it finishes:
 

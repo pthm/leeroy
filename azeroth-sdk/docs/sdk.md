@@ -72,7 +72,8 @@ replaces its own.
 
 ## Actions: requests and results
 
-Every action returns a **request** at once, which later resolves to a **result**:
+Every raw action returns a **Request** at once, including an immediate refusal. It resolves to an
+**ActionResult**; use `await` inside a task, or poll `result(id)` outside one:
 
 ```lua
 local r = await(spells.cast(133, target))      -- in a task: waits for the result
@@ -82,7 +83,15 @@ local req = items.loot(guid)                   -- anywhere: {id = 8, op = "items
 result(req.id)                                 -- later: the result once it's in
 ```
 
-A pending result is a table too (`{id, op, pending = true}`), so test `r.ok` or `r.pending`, never just `r`.
+A request handle is `{id, op, pending = true}` and has no `ok` field. `pending` identifies the handle,
+not whether the action is still running. `result(id)` returns the handle while unresolved, the
+`ActionResult` once resolved, or nil for an unknown or expired ID. Test `r.ok`, never just `r`.
+
+Waiting helpers return an **ActResult** with `{op, ok, data?, error?, steps?}` and no `id` or `pending`.
+Both result types retain partial `data` on failure and use `error = {code, message, next?}`.
+`next`, when present, names one concrete corrective action. Composite helpers use `steps` to identify
+nested requests. `act.ok(op, data)` and `act.fail(op, code, message)` construct helper results;
+`act.must(r)` raises a failed result as a script error.
 
 Refusals the client can detect (an unknown spell, an item you don't have) resolve at once. If the server stays
 silent, the request ends with `timeout` and a hint about the usual cause. `await` gives up after 30 s by default

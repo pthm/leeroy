@@ -784,7 +784,11 @@ func (e *Engine) runTasks() {
 				if res != nil && res["pending"] == nil {
 					args = []lua.LValue{toLua(e.L, res)}
 				} else if now.After(w.until) {
-					args = []lua.LValue{toLua(e.L, map[string]any{"id": w.req, "pending": true, "ok": false,
+					op := "unknown"
+					if res != nil {
+						op, _ = res["op"].(string)
+					}
+					args = []lua.LValue{toLua(e.L, map[string]any{"id": w.req, "op": op, "ok": false,
 						"error": map[string]any{"code": "wait_timeout", "message": "stopped waiting; the request may still finish"}})}
 				} else {
 					continue
@@ -1070,8 +1074,9 @@ func (e *Engine) registerRuntime() {
 		t.wait = waitCond{kind: "sleep", until: time.Now().Add(time.Duration(float64(L.OptNumber(1, 0)) * float64(time.Second)))}
 		return L.Yield()
 	}))
-	// await(request or id [, timeout_s]) -> result; outside a task: the result if it's in, else the pending request
+	// await(request or id [, timeout_s]) -> ActionResult; use result(id) to inspect outside a task.
 	L.SetGlobal("await", L.NewFunction(func(L *lua.LState) int {
+		t := needTask(L, "await()")
 		id := 0
 		switch x := L.Get(1).(type) {
 		case lua.LNumber:
@@ -1082,11 +1087,6 @@ func (e *Engine) registerRuntime() {
 				L.Push(x)
 				return 1
 			}
-		}
-		t := e.taskOf(L)
-		if t == nil {
-			L.Push(toLua(L, e.Reqs.Result(id)))
-			return 1
 		}
 		if res := e.Reqs.Result(id); res != nil && res["pending"] == nil {
 			L.Push(toLua(L, res))
@@ -1321,8 +1321,8 @@ func (e *Engine) registerRuntime() {
 // runtimeDocs documents the runtime's own functions (the Go side of task, events, wait...).
 var runtimeDocs = [][3]string{
 	{"wait", "(seconds)", "pause the current task (tasks only)"},
-	{"await", "(request [, timeout_s = 30]) → result", "wait for an action's result (tasks only; elsewhere returns the result or the pending request)"},
-	{"result", "(id) → result", "an action's result, or {id, op, pending = true} while it's pending"},
+	{"await", "(request [, timeout_s = 30]) → ActionResult", "wait for an action's result (tasks only); wait_timeout does not cancel the request"},
+	{"result", "(id) → (ActionResult | Request)?", "an action's result, its Request while pending, or nil for an unknown or expired ID"},
 	{"log", "(msg)", "a log event (tagged with the task) and a line in session.log"},
 	{"now", "() → ms", "wall-clock time in milliseconds"},
 	{"help", "([prefix]) → {lines}", "this reference: every function whose name starts with prefix (\"items\", \"act.go\")"},

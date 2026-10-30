@@ -151,7 +151,7 @@ func (b *Bot) setupTalents() {
 		}
 		return out
 	})
-	e.Func("talents.learn", "(id) → request<TalentLearned>", "spend a point on the next rank of a talent (ids from talents.list)", func(id uint32) map[string]any {
+	e.Func("talents.learn", "(id) → Request<TalentLearned>", "spend a point on the next rank of a talent (ids from talents.list)", func(id uint32) map[string]any {
 		args := map[string]any{"talent": id}
 		loadTalents()
 		for _, t := range talentList {
