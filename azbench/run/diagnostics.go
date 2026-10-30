@@ -13,6 +13,10 @@ import (
 // harness writes only typed lifecycle fields. It never includes prompts, commands or runtime error prose.
 // The sequence continues across supervisor restarts; a torn final line remains visible as a coverage gap.
 func (p *player) harness(details types.DiagnosticDetails) {
+	p.harnessEvent(types.Diagnostic{Kind: "runtime_state", Details: details})
+}
+
+func (p *player) harnessEvent(ev types.Diagnostic) {
 	p.diagMu.Lock()
 	defer p.diagMu.Unlock()
 	path := filepath.Join(p.dir, "harness.jsonl")
@@ -54,7 +58,7 @@ func (p *player) harness(details types.DiagnosticDetails) {
 		}
 	}
 	p.diagSeq++
-	ev := types.Diagnostic{Schema: 1, Seq: p.diagSeq, T: time.Now().UnixMilli(), Agent: p.a.Name, Kind: "runtime_state", Details: details}
+	ev.Schema, ev.Seq, ev.T, ev.Agent = 1, p.diagSeq, time.Now().UnixMilli(), p.a.Name
 	b, err := json.Marshal(ev)
 	if err == nil {
 		_, err = f.Write(append(b, '\n'))

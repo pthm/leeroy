@@ -24,21 +24,25 @@ type Diagnostic struct {
 // DiagnosticDetails is an allowlist: arbitrary request arguments, results, error messages, commands,
 // prompts and chat are never copied here. Status is explicitly agent-authored and limited to 512 bytes.
 type DiagnosticDetails struct {
-	Target      string                 `json:"target,omitempty"`
-	Destination *DiagnosticDestination `json:"destination,omitempty"`
-	SpellID     uint32                 `json:"spell_id,omitempty"`
-	QuestID     uint32                 `json:"quest_id,omitempty"`
-	NPCEntry    uint32                 `json:"npc_entry,omitempty"`
-	ItemEntry   uint32                 `json:"item_entry,omitempty"`
-	Attempts    int                    `json:"attempts,omitempty"`
-	Status      string                 `json:"status,omitempty"`
-	AgentClaim  bool                   `json:"agent_claim,omitempty"`
-	Source      string                 `json:"source,omitempty"`
-	Line        int                    `json:"line,omitempty"`
-	State       string                 `json:"state,omitempty"`
-	Component   string                 `json:"component,omitempty"`
-	Runtime     string                 `json:"runtime,omitempty"`
-	ExitCode    *int                   `json:"exit_code,omitempty"`
+	Target        string                 `json:"target,omitempty"`
+	Destination   *DiagnosticDestination `json:"destination,omitempty"`
+	SpellID       uint32                 `json:"spell_id,omitempty"`
+	QuestID       uint32                 `json:"quest_id,omitempty"`
+	NPCEntry      uint32                 `json:"npc_entry,omitempty"`
+	ItemEntry     uint32                 `json:"item_entry,omitempty"`
+	Attempts      int                    `json:"attempts,omitempty"`
+	Status        string                 `json:"status,omitempty"`
+	AgentClaim    bool                   `json:"agent_claim,omitempty"`
+	Source        string                 `json:"source,omitempty"`
+	Line          int                    `json:"line,omitempty"`
+	State         string                 `json:"state,omitempty"`
+	Component     string                 `json:"component,omitempty"`
+	Runtime       string                 `json:"runtime,omitempty"`
+	ExitCode      *int                   `json:"exit_code,omitempty"`
+	Tool          string                 `json:"tool,omitempty"`
+	CommandFamily string                 `json:"command_family,omitempty"`
+	ToolCoverage  bool                   `json:"tool_coverage,omitempty"`
+	DurationKnown *bool                  `json:"duration_known,omitempty"`
 }
 
 // DiagnosticDestination preserves omitted altitude/map rather than inventing a zero floor or map.

@@ -316,22 +316,21 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 	}
 	cmd := p.agentCmd(text, resume)
 	cmd.Stdin = nil
-	var stamp *io.PipeWriter
-	var drained chan struct{}
-	if p.a.Runtime != "claude" {
-		pr, pw := io.Pipe()
-		stamp = pw
-		cmd.Stdout, cmd.Stderr = pw, pw
-		drained = make(chan struct{})
-		go func() { defer close(drained); stampLines(pr, out) }()
-	} else {
-		cmd.Stdout, cmd.Stderr = out, out
-	}
-	if err := cmd.Start(); err != nil {
-		if stamp != nil {
-			stamp.Close()
+	pr, stamp := io.Pipe()
+	cmd.Stdout, cmd.Stderr = stamp, stamp
+	drained := make(chan struct{})
+	observer := newToolDiagnostics(p.a.Runtime, p.harnessEvent)
+	go func() {
+		defer close(drained)
+		defer pr.Close()
+		if err := stampLinesObserved(pr, out, observer.observe); err != nil {
+			p.harnessEvent(types.Diagnostic{Kind: "runtime_state", Code: "transcript_io", Details: types.DiagnosticDetails{Component: "agent", State: "coverage_gap", Runtime: p.a.Runtime}})
+			p.logf("recording agent transcript: %v", err)
 		}
-		out.Close()
+	}()
+	if err := cmd.Start(); err != nil {
+		stamp.Close()
+		<-drained
 		p.runtimeState("agent", "failed")
 		return err
 	}
@@ -344,18 +343,15 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 	if resume != "" {
 		state = "resume"
 	}
-	p.runtimeState("agent", state)
+	p.harness(types.DiagnosticDetails{Component: "agent", State: state, Runtime: p.a.Runtime, ToolCoverage: true})
 	stop := time.AfterFunc(time.Until(end), func() { syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) })
 	go func() {
 		defer close(done)
 		cmd.Wait()
 		stop.Stop()
-		if stamp != nil {
-			stamp.Close()
-			<-drained
-		} else {
-			out.Close()
-		}
+		stamp.Close()
+		<-drained
+		observer.finish(time.Now().UnixMilli())
 		if err := judge.SaveUsage(p.dir); err != nil {
 			p.logf("saving usage: %v", err)
 		}
@@ -367,28 +363,39 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 }
 
 func stampLines(r io.Reader, w io.WriteCloser) {
+	stampLinesObserved(r, w, nil)
+}
+
+func stampLinesObserved(r io.Reader, w io.WriteCloser, observe func(map[string]any)) error {
 	defer w.Close()
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 1<<20), 1<<26)
 	for sc.Scan() {
 		line := bytes.TrimSpace(sc.Bytes())
-		ts := `"timestamp":"` + time.Now().UTC().Format("2006-01-02T15:04:05Z") + `"`
+		ts := `"timestamp":"` + time.Now().UTC().Format(time.RFC3339Nano) + `"`
 		var obj map[string]json.RawMessage
 		if len(line) > 1 && line[0] == '{' && json.Unmarshal(line, &obj) == nil {
 			if ms, err := strconv.ParseInt(string(obj["timestamp"]), 10, 64); err == nil {
 				obj["timestamp"], _ = json.Marshal(time.UnixMilli(ms).UTC().Format("2006-01-02T15:04:05.000Z"))
 				line, _ = json.Marshal(obj)
-			} else if len(obj) > 0 {
-				line = append(append(line[:len(line)-1:len(line)-1], ','), ts+"}"...)
 			} else {
-				line = []byte("{" + ts + "}")
+				var stamp string
+				json.Unmarshal(obj["timestamp"], &stamp)
+				if _, err := time.Parse(time.RFC3339Nano, stamp); err != nil {
+					obj["timestamp"], _ = json.Marshal(time.Now().UTC().Format(time.RFC3339Nano))
+				}
+				line, _ = json.Marshal(obj)
 			}
 		} else {
 			t, _ := json.Marshal(sc.Text())
 			line = []byte(`{"type":"stderr","text":` + string(t) + "," + ts + "}")
 		}
-		w.Write(append(line, '\n'))
+		if _, err := w.Write(append(line, '\n')); err != nil {
+			return err
+		}
+		decodeToolLine(line, observe)
 	}
+	return sc.Err()
 }
 
 // exited: an agent that stops with 2+ minutes left is reported (alerts.log), with the runtime's last error (a

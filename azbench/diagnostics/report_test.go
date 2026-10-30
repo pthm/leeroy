@@ -128,3 +128,42 @@ func TestAgentExitDoesNotCloseGameEpisode(t *testing.T) {
 		t.Fatal("paused judge did not close episode")
 	}
 }
+
+func TestToolSummaryPreservesUnknowns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "harness.jsonl")
+	known := true
+	events := []types.Diagnostic{
+		{Schema: 1, Seq: 1, T: 1000, Agent: "a1", Kind: "runtime_state", Details: types.DiagnosticDetails{Component: "agent", State: "start", ToolCoverage: true}},
+		{Schema: 1, Seq: 2, T: 2000, Agent: "a1", Kind: "tool_call", Op: "bash", Outcome: "failed", Code: "tool_timeout", DurationMS: 500, Details: types.DiagnosticDetails{Runtime: "opencode", CommandFamily: "wow", DurationKnown: &known}},
+		{Schema: 1, Seq: 3, T: 3000, Agent: "a1", Kind: "tool_call", Op: "bash", Outcome: "unknown", Code: "outcome_unavailable"},
+	}
+	writeEvents(t, path, events)
+	s := Read("a1", path)
+	if s.Tools.Status != "partial" || *s.Tools.ObservedTimeouts != 1 || *s.Tools.ObservedDenials != 0 || s.Tools.UnknownOutcomes != 1 || len(s.Tools.ByTool) != 2 || len(s.ByOperation) != 0 {
+		t.Fatalf("tool summary: %+v", s)
+	}
+	for _, a := range s.Tools.ByTool {
+		if a.Outcome == "unknown" && a.UnknownDurations != 1 {
+			t.Fatal("missing duration treated as known")
+		}
+		if a.Outcome == "failed" && (a.DurationMS != 500 || a.First.Line != 2) {
+			t.Fatalf("missing evidence: %+v", a)
+		}
+	}
+	writeEvents(t, path, events[:1])
+	s = Read("a1", path)
+	if s.Tools.Status != "available" || s.Tools.ObservedTimeouts == nil || *s.Tools.ObservedTimeouts != 0 {
+		t.Fatal("enabled collector with zero observed calls")
+	}
+	events[0].Details.ToolCoverage = false
+	writeEvents(t, path, events[:1])
+	s = Read("a1", path)
+	if s.Tools.Status != "unavailable" || s.Tools.ObservedTimeouts != nil {
+		t.Fatal("absent collector reported zero")
+	}
+	events[0].Details.State = "coverage_gap"
+	writeEvents(t, path, events[:1])
+	if s := Read("a1", path); s.Coverage.Status != "partial" || s.Coverage.ReportedGaps != 1 {
+		t.Fatalf("lost coverage gap: %+v", s.Coverage)
+	}
+}

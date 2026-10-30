@@ -115,7 +115,8 @@ func teamDiagnostics(cards []map[string]any) map[string]any {
 			}
 		}
 		agents = append(agents, map[string]any{"agent": c["agent"], "coverage": d.Coverage.Status, "actions": actions,
-			"failures": failures, "episodes": len(d.Episodes), "cost_status": d.Coverage.CostStatus})
+			"failures": failures, "episodes": len(d.Episodes), "cost_status": d.Coverage.CostStatus,
+			"tool_coverage": d.Tools.Status, "tool_timeouts": d.Tools.ObservedTimeouts, "tool_denials": d.Tools.ObservedDenials})
 	}
 	return map[string]any{"schema": 1, "agents": agents}
 }

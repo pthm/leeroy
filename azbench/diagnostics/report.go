@@ -35,6 +35,7 @@ type Coverage struct {
 	LastMS            *int64   `json:"last_ms"`
 	MalformedLines    int      `json:"malformed_lines"`
 	UnsupportedEvents int      `json:"unsupported_events"`
+	ReportedGaps      int      `json:"reported_gaps"`
 	Duplicates        int      `json:"duplicate_events"`
 	ReadErrors        []string `json:"read_errors"`
 	Gaps              []Gap    `json:"sequence_gaps"`
@@ -48,6 +49,21 @@ type Aggregate struct {
 	DurationMS int64  `json:"duration_ms"` // inclusive per operation; never summed across nested operations
 	First      Ref    `json:"first"`
 	Last       Ref    `json:"last"`
+}
+type ToolAggregate struct {
+	Aggregate
+	Runtime          string `json:"runtime"`
+	CommandFamily    string `json:"command_family"`
+	UnknownDurations int    `json:"unknown_durations"`
+}
+
+// ToolSummary counts observed structured outcomes only. A runtime may not expose a cause for every failure.
+type ToolSummary struct {
+	Status           string          `json:"status"`
+	ByTool           []ToolAggregate `json:"by_tool"`
+	ObservedTimeouts *int            `json:"observed_timeouts"`
+	ObservedDenials  *int            `json:"observed_denials"`
+	UnknownOutcomes  int             `json:"unknown_outcomes"`
 }
 type Episode struct {
 	Session    string `json:"session"`
@@ -81,6 +97,7 @@ type Summary struct {
 	Schema          int         `json:"schema"`
 	Coverage        Coverage    `json:"coverage"`
 	ByOperation     []Aggregate `json:"by_operation"`
+	Tools           ToolSummary `json:"tools"`
 	Episodes        []Episode   `json:"episodes"`
 	Evidence        []Evidence  `json:"evidence"`
 	EvidenceOmitted int         `json:"evidence_omitted"`
@@ -95,8 +112,8 @@ type recorded struct {
 // Incomplete last lines are reported as malformed coverage, not silently interpreted as successful work.
 func Read(agent string, paths ...string) Summary {
 	s := Summary{Schema: 1, Coverage: Coverage{Status: "unavailable", CostStatus: "unavailable", Files: []string{}, MissingFiles: []string{}, Sessions: []string{}, ReadErrors: []string{}, Gaps: []Gap{}},
-		ByOperation: []Aggregate{}, Episodes: []Episode{}, Evidence: []Evidence{},
-		Unavailable: []string{"movement_wait_ms", "recovery_attempts", "dead_ms", "broken_weapon_ms", "tool_timeouts", "tool_denials"}}
+		ByOperation: []Aggregate{}, Episodes: []Episode{}, Evidence: []Evidence{}, Tools: ToolSummary{Status: "unavailable", ByTool: []ToolAggregate{}},
+		Unavailable: []string{"movement_preemptions", "movement_wait_ms", "route_timeouts", "recovery_attempts", "dead_ms", "broken_weapon_ms"}}
 	var events []recorded
 	seen := map[string]bool{}
 	for _, path := range paths {
@@ -165,6 +182,8 @@ func Read(agent string, paths ...string) Summary {
 		s.Coverage.FirstMS, s.Coverage.LastMS = &events[0].T, &events[len(events)-1].T
 	}
 	sessions, streams, aggregates := map[string]bool{}, map[string][]recorded{}, map[string]*Aggregate{}
+	toolAggregates := map[string]*ToolAggregate{}
+	toolCoverage, timeouts, denials := false, 0, 0
 	type pending struct {
 		base    string
 		recent  []recorded
@@ -190,7 +209,7 @@ func Read(agent string, paths ...string) Summary {
 			sessions[stream] = true
 		}
 		streams[stream] = append(streams[stream], ev)
-		if ev.Kind == "action_finished" || ev.Kind == "task_status" || ev.Kind == "runtime_state" {
+		if ev.Kind == "action_finished" || ev.Kind == "task_status" || ev.Kind == "runtime_state" || ev.Kind == "tool_call" {
 			s.Evidence = append(s.Evidence, Evidence{Ref: ev.ref, T: ev.T, Kind: ev.Kind, Task: ev.Task, Call: ev.Call, ParentCall: ev.ParentCall, Op: ev.Op, Outcome: ev.Outcome, Code: ev.Code, Details: ev.Details})
 			if len(s.Evidence) > 200 {
 				s.Evidence = s.Evidence[1:]
@@ -198,6 +217,10 @@ func Read(agent string, paths ...string) Summary {
 			}
 		}
 		if ev.Kind == "runtime_state" {
+			toolCoverage = toolCoverage || ev.Details.ToolCoverage
+			if ev.Details.State == "coverage_gap" {
+				s.Coverage.ReportedGaps++
+			}
 			if ev.Details.Component == "session" && ev.Details.State == "stop" && ev.Session != "" {
 				closeEpisodes("", ev.Session)
 			}
@@ -206,6 +229,35 @@ func Read(agent string, paths ...string) Summary {
 			}
 			if ev.Details.Component == "judge" && (ev.Details.State == "paused" || ev.Details.State == "done" || ev.Details.State == "failed") {
 				closeEpisodes("", "")
+			}
+		}
+		if ev.Kind == "tool_call" {
+			if ev.Op == "" || (ev.Outcome != "failed" && ev.Outcome != "succeeded" && ev.Outcome != "unknown") {
+				s.Coverage.MalformedLines++
+				continue
+			}
+			toolCoverage = true
+			key := ev.Details.Runtime + "|" + ev.Op + "|" + ev.Details.CommandFamily + "|" + ev.Outcome + "|" + ev.Code
+			a := toolAggregates[key]
+			if a == nil {
+				a = &ToolAggregate{Aggregate: Aggregate{Op: ev.Op, Code: ev.Code, Outcome: ev.Outcome, First: ev.ref}, Runtime: ev.Details.Runtime, CommandFamily: ev.Details.CommandFamily}
+				toolAggregates[key] = a
+			}
+			a.Count++
+			if ev.Details.DurationKnown != nil && *ev.Details.DurationKnown {
+				a.DurationMS += max(ev.DurationMS, 0)
+			} else {
+				a.UnknownDurations++
+			}
+			a.Last = ev.ref
+			if ev.Outcome == "unknown" {
+				s.Tools.UnknownOutcomes++
+			}
+			if ev.Code == "tool_timeout" {
+				timeouts++
+			}
+			if ev.Code == "tool_denied" {
+				denials++
 			}
 		}
 		if ev.Kind != "action_finished" {
@@ -297,7 +349,7 @@ func Read(agent string, paths ...string) Summary {
 		}
 		return a.After.Seq < b.After.Seq
 	})
-	if s.Coverage.Status == "available" && (s.Coverage.MalformedLines+s.Coverage.UnsupportedEvents+len(s.Coverage.Gaps)+len(s.Coverage.ReadErrors)+len(s.Coverage.MissingFiles) > 0) {
+	if s.Coverage.Status == "available" && (s.Coverage.MalformedLines+s.Coverage.UnsupportedEvents+s.Coverage.ReportedGaps+len(s.Coverage.Gaps)+len(s.Coverage.ReadErrors)+len(s.Coverage.MissingFiles) > 0) {
 		s.Coverage.Status = "partial"
 	}
 	keys := make([]string, 0, len(aggregates))
@@ -307,6 +359,22 @@ func Read(agent string, paths ...string) Summary {
 	sort.Strings(keys)
 	for _, key := range keys {
 		s.ByOperation = append(s.ByOperation, *aggregates[key])
+	}
+	keys = keys[:0]
+	for key := range toolAggregates {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		s.Tools.ByTool = append(s.Tools.ByTool, *toolAggregates[key])
+	}
+	if toolCoverage {
+		s.Tools.Status, s.Tools.ObservedTimeouts, s.Tools.ObservedDenials = "available", &timeouts, &denials
+		if s.Coverage.Status == "partial" || s.Tools.UnknownOutcomes > 0 {
+			s.Tools.Status = "partial"
+		}
+	} else {
+		s.Unavailable = append(s.Unavailable, "tool_timeouts", "tool_denials")
 	}
 	return s
 }
