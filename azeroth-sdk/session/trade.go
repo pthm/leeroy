@@ -147,7 +147,7 @@ func (b *Bot) setupTrade() {
 		}
 		return until("trade.open", nil, 5*time.Second, "open")
 	})
-	e.Func("trade.offer", "{items = {entry or guid, ...}, money = copper} → Request", "set your side of the open trade (up to 6 items; replaces what you offered). Soulbound items can't be traded",
+	e.Func("trade.offer", "{[items = {}, money = 0]} → Request", "set your side of the open trade (up to 6 items; replaces what you offered). Soulbound items can't be traded",
 		func(o map[string]any) map[string]any {
 			items, _ := o["items"].([]any)
 			money, _ := o["money"].(float64)

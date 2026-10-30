@@ -161,12 +161,16 @@ func diagnosticArgs(op string, args map[string]lua.LValue) types.DiagnosticDetai
 }
 
 func nativeDiagnosticArgs(op, sig string, L *lua.LState) types.DiagnosticDetails {
-	params, _, _ := strings.Cut(strings.TrimPrefix(sig, "("), ")")
+	contract, _ := ParseSignature(sig)
 	args := map[string]lua.LValue{}
-	for i, p := range strings.Split(params, ",") {
-		p = strings.TrimSpace(strings.Trim(p, "[] "))
-		p, _, _ = strings.Cut(p, "=")
-		args[strings.TrimSpace(p)] = L.Get(i + 1)
+	for i, p := range contract.Parameters {
+		if contract.Table {
+			if table, ok := L.Get(1).(*lua.LTable); ok {
+				args[p.Name] = table.RawGetString(p.Name)
+			}
+		} else {
+			args[p.Name] = L.Get(i + 1)
+		}
 	}
 	return diagnosticArgs(op, args)
 }

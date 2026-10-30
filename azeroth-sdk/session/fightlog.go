@@ -585,7 +585,7 @@ func (b *Bot) setupFightLog() {
 		})
 	e.Func("combat.fights_text", "([n = 20]) → string", "the fight log's list as text (what wow fights prints)",
 		func(n int) string { return renderFightList(b.fightLog.list(cmpOr(n, 20))) })
-	e.Func("combat.fight_text", "([id = last [, {map, at}]]) → string", "one fight as text (what wow fight prints): summary and positioning, a map of everyone's movement, the key moments, the timeline. map = true: the map and moments only; at = s: the map at that second",
+	e.Func("combat.fight_text", "([id = last [, {[map = false, at = nil]}]]) → string", "one fight as text (what wow fight prints): summary and positioning, a map of everyone's movement, the key moments, the timeline. map = true: the map and moments only; at = s: the map at that second",
 		func(id int, o map[string]any) string {
 			f, ok := b.fightLog.fight(id)
 			if !ok {

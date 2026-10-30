@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/pthm/leeroy/azeroth-sdk/script"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
@@ -52,6 +53,13 @@ func main() {
 	flag.Parse()
 
 	fns := fetchDocs(*rpc)
+	docs := make([]script.Doc, len(fns))
+	for i, d := range fns {
+		docs[i] = script.Doc{Name: d.Name, Sig: d.Sig, Desc: d.Desc}
+	}
+	if err := script.ValidateDocs(docs); err != nil {
+		log.Fatalf("API contract: %v", err)
+	}
 	typeDocs := parseTypeDocs(*root + "/types")
 	ts := collect()
 	missing(fns, ts, typeDocs)

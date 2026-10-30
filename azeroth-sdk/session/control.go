@@ -383,7 +383,7 @@ func (b *Bot) setupControl() {
 	})
 
 	// ---------- client: the raw protocol ----------
-	e.Func("client.watch", "(opcode [, on = true])", "capture a server opcode for client.packets()", func(op uint16, on any) {
+	e.Func("client.watch", "(opcode [, on = true]) → nil", "capture a server opcode for client.packets()", func(op uint16, on any) {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		c.watched[op] = on != false
@@ -395,7 +395,7 @@ func (b *Bot) setupControl() {
 		c.packets = nil
 		return out
 	})
-	e.Func("client.send", "(opcode, hex)", "send a client packet (the header and encryption are added)", func(op uint16, hexBody string) error {
+	e.Func("client.send", "(opcode, hex) → string?", "send a client packet (the header and encryption are added)", func(op uint16, hexBody string) error {
 		body, err := hex.DecodeString(strings.ReplaceAll(hexBody, " ", ""))
 		if err != nil {
 			return err
@@ -407,7 +407,7 @@ func (b *Bot) setupControl() {
 	}
 	// the API's namespaces and runtime functions can't be overwritten by a script's own globals
 	if err := e.DoString(`_protect{"me", "units", "objects", "world", "move", "combat", "spells", "items", "vendor", "trainer",
-		"quests", "death", "chat", "group", "summon", "trade", "talents", "flights", "innkeeper", "client", "task", "events", "act",
+		"quests", "death", "chat", "group", "summon", "trade", "talents", "skills", "flights", "innkeeper", "client", "task", "events", "act",
 		"wait", "await", "result", "log", "now", "help", "doc", "ask", "answer"}`); err != nil {
 		b.log("protect: %v", err)
 	}

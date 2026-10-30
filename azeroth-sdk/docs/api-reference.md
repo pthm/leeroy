@@ -9,15 +9,15 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | | Returns |
 |---|---|---|
-| `answer(id, choice)` | answer an ask(): id is the attention event's seq |  |
+| `answer(id, choice) → bool` | answer an ask(): id is the attention event's seq; returns true after emitting the answer |  |
 | `ask(question, {options} [, {default, timeout}]) → choice, "answered"\|"timeout"` | ask the agent and wait for answer() (tasks only) |  |
 | `await(request [, timeout_s = 30]) → ActionResult` | wait for an action's result (tasks only); wait_timeout does not cancel the request | [ActionResult](#actionresult) |
-| `doc(name, sig, desc)` | document a function of your own so help() lists it |  |
+| `doc(name, sig, desc) → nil` | document a function of your own so help() lists it |  |
 | `help([prefix]) → {lines}` | this reference: every function whose name starts with prefix ("items", "act.go") |  |
-| `log(msg)` | a log event (tagged with the task) and a line in session.log |  |
+| `log(msg) → nil` | a log event (tagged with the task) and a line in session.log |  |
 | `now() → ms` | wall-clock time in milliseconds |  |
 | `result(id) → (ActionResult \| Request)?` | an action's result, its Request while pending, or nil for an unknown or expired ID | [ActionResult](#actionresult), [Request](#request) |
-| `wait(seconds)` | pause the current task (tasks only) |  |
+| `wait(seconds) → nil` | pause the current task (tasks only) |  |
 
 ### act
 
@@ -76,8 +76,8 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 |---|---|---|
 | `client.call(method, ...) → results` | call any exported method of the underlying WorldClient (client/world.go); errors come back as strings. Outside the stable API |  |
 | `client.packets() → {{opcode, hex, time_ms}}` | drain the captured packets |  |
-| `client.send(opcode, hex)` | send a client packet (the header and encryption are added) |  |
-| `client.watch(opcode [, on = true])` | capture a server opcode for client.packets() |  |
+| `client.send(opcode, hex) → string?` | send a client packet (the header and encryption are added) |  |
+| `client.watch(opcode [, on = true]) → nil` | capture a server opcode for client.packets() |  |
 
 ### combat
 
@@ -85,7 +85,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 |---|---|---|
 | `combat.attack(guid) → Request<Attacking>` | start auto-attacking (selects it too): ok when the swing starts, else not_in_range, bad_facing, dead_target, cant_attack | [Request](#request), [Attacking](#attacking) |
 | `combat.fight([id = last]) → Fight?` | one fight from the log: its summary and positioning, every actor's position each second, and the timeline of hits, heals, casts, kills and deaths | [Fight](#fight) |
-| `combat.fight_text([id = last [, {map, at}]]) → string` | one fight as text (what wow fight prints): summary and positioning, a map of everyone's movement, the key moments, the timeline. map = true: the map and moments only; at = s: the map at that second |  |
+| `combat.fight_text([id = last [, {[map = false, at = nil]}]]) → string` | one fight as text (what wow fight prints): summary and positioning, a map of everyone's movement, the key moments, the timeline. map = true: the map and moments only; at = s: the map at that second |  |
 | `combat.fights([n = 20]) → FightHeader[]` | your last fights, newest first: id, when, how long, outcome, enemies, damage and adds (the fight log; wow fights) | [FightHeader](#fightheader) |
 | `combat.fights_text([n = 20]) → string` | the fight log's list as text (what wow fights prints) |  |
 | `combat.log([since_ms]) → CombatEntry[]` | what a real client's combat log shows: every hit, heal and kill within ~100 yd (any source and target, party included) since then; default the last 30 s | [CombatEntry](#combatentry) |
@@ -112,7 +112,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 |---|---|---|
 | `events.emit(name, data) → seq` | an event of your own, type "script.<name>" |  |
 | `events.handlers() → {{id, types, name}}` | your event handlers |  |
-| `events.off(id or name)` | remove a handler: by the id events.on returned, or the name you gave it |  |
+| `events.off(id or name) → nil` | remove a handler: by the id events.on returned, or the name you gave it |  |
 | `events.on(type or {types}, fn [, name]) → id` | run fn(event) as a task for each matching event; the same name replaces a handler |  |
 | `events.query{since, types, match, last = 50, limit} → {events}` | past events; types may end in * ("quest_*"), match searches the data |  |
 | `events.seq() → seq` | the latest event's sequence number |  |
@@ -131,8 +131,8 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | | Returns |
 |---|---|---|
-| `gossip.open(npc_guid) → Request<Gossip?>` | talk to an NPC within ~5 yd: what it says, its dialogue options, and the quests it offers or takes (quests.info for their text). nil when it opened something else instead (a vendor, a trainer, a flight map: use their calls) | [Request](#request), [Gossip](#gossip) |
-| `gossip.select(index [, code]) → Request<Gossip?>` | choose an option (its index) from the open gossip menu: the next menu, or nil when the NPC closed the dialogue or acted on it (a vendor list, a bind, a teleport...). code: for options that ask for text | [Request](#request), [Gossip](#gossip) |
+| `gossip.open(npc_guid) → Request<GossipWindow>` | talk to a nearby NPC: the observed window kind and dialogue value, when present. Fails not_available on refusal or send failure, timeout after 5 seconds without a response | [Request](#request), [GossipWindow](#gossipwindow) |
+| `gossip.select(index [, code = nil]) → Request<GossipWindow>` | choose a dialogue option: returns the observed window kind, including closed. A closed window does not confirm a bind or teleport. code supplies text for coded options. Fails on no_menu, bad_option, not_available, or timeout after 5 seconds | [Request](#request), [GossipWindow](#gossipwindow) |
 
 ### group
 
@@ -165,7 +165,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `items.equip(item [, slot]) → Request<Equipped>` | wear an item you carry (entry or guid) in its slot, or in the slot you name: main_hand, off_hand (a second one-hander, with Dual Wield), finger1, finger2, trinket1, trinket2 | [Request](#request), [Equipped](#equipped) |
 | `items.find(name) → Item?` | an item you carry, by name (any case); count is how many you have in all | [Item](#item) |
 | `items.free_slots() → number` | empty bag slots; at 0, loot and item rewards are refused |  |
-| `items.info(entry) → Item?` | an item's template: stats, slot, prices, whether you can use it; nil the first time (it asks the server: call again a moment later) | [Item](#item) |
+| `items.info(item_entry) → Request<Item>` | an item's template: stats, slot, prices and usability. Cached answers resolve immediately; not_found for an explicit negative answer, not_available if the query cannot be sent, timeout after 5 seconds | [Request](#request), [Item](#item) |
 | `items.list() → Item[]` | everything you wear and carry (equipped, bags, backpack) | [Item](#item) |
 | `items.loot(guid) → Request<Looted>` | loot a corpse within 5 yd: takes every item and the money (waits a moment for a fresh corpse to become lootable) | [Request](#request), [Looted](#looted) |
 | `items.roll(roll, choice) → Request<LootRollResult>` | roll on group loot (loot_roll_start event, items.rolls): need, greed, disenchant or pass. No choice before the countdown ends is a pass | [Request](#request), [LootRollResult](#lootrollresult) |
@@ -177,7 +177,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | | Returns |
 |---|---|---|
-| `me.achievements() → Achievements` | what you've earned and your criteria progress (the world database's wowbench.achievement tables have names). The first call asks the server | [Achievements](#achievements) |
+| `me.achievements() → Request<Achievements>` | earned achievements and criteria progress; cached answers resolve immediately. not_available if the query cannot be sent, timeout after 5 seconds; an empty confirmed list is valid | [Request](#request), [Achievements](#achievements) |
 | `me.alive() → bool` | false while dead or a ghost |  |
 | `me.auras() → Aura[]` | your buffs and debuffs: name, harmful, stacks, time left, who cast them | [Aura](#aura) |
 | `me.casting() → Casting?` | the cast or channel in progress (from the moment you send it); nil when idle. Moving interrupts it | [Casting](#casting) |
@@ -235,9 +235,16 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 |---|---|---|
 | `quests.abandon(quest) → Request` | drop a quest from your log (to make room: the log holds 25) | [Request](#request) |
 | `quests.accept(npc_guid, quest_id) → Request<QuestDone>` | talk to a quest giver and accept a quest it offers | [Request](#request), [QuestDone](#questdone) |
-| `quests.info(quest) → QuestInfo?` | any quest's text (the story, what to do, who to return to) and rewards, as the quest giver shows them; nil the first time (it asks the server: call again a moment later) | [QuestInfo](#questinfo) |
+| `quests.info(quest_id) → Request<QuestInfo>` | quest text, objectives and reward entries; item names may still be loading (await items.info for their templates). Cached answers resolve immediately; not_found for an explicit negative answer, not_available if the query cannot be sent, timeout after 5 seconds | [Request](#request), [QuestInfo](#questinfo) |
 | `quests.log() → Quest[]` | your quests with their objectives and progress (titles fill in once the server answers) | [Quest](#quest) |
 | `quests.turn_in(npc_guid, quest_id [, reward = 0]) → Request<QuestDone>` | hand a complete quest in (reward: the index of the item to choose, 0 = first; quests.info lists the choices) | [Request](#request), [QuestDone](#questdone) |
+
+### skills
+
+| Function | | Returns |
+|---|---|---|
+| `skills.get(skill_id) → Skill?` | one learned skill by ID; nil means it is absent from the observed character skill list. Base values exclude bonuses; missing labels set metadata_known=false | [Skill](#skill) |
+| `skills.list() → Skill[]` | observed learned skills, sorted by ID. Base value and maximum come from character fields, excluding temporary/equipment bonuses, matching character_skills after a server save. Missing DBC labels set metadata_known=false | [Skill](#skill) |
 
 ### spells
 
@@ -269,13 +276,13 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | | Returns |
 |---|---|---|
-| `task.current() → id` | the current task's id (nil outside a task) |  |
+| `task.current() → id?` | the current task's id (nil outside a task) |  |
 | `task.keep(name, fn, ...) → id` | run fn as a task and run it again whenever it finishes or fails (backing off while it fails fast, waiting while you're dead); task.stop(name) ends it |  |
 | `task.list() → TaskInfo[]` | your tasks (finished ones stay listed for 10 minutes) | [TaskInfo](#taskinfo) |
 | `task.pause(id) → bool` | take a waiting task off the schedule until task.resume; false if it isn't waiting (a task can't pause itself) |  |
 | `task.resume(id) → bool` | put a paused task back on its wait |  |
 | `task.spawn([name,] fn, ...) → id` | run fn as a task: it can wait without blocking the game |  |
-| `task.status(text)` | what the current task claims it is doing; limited to 512 bytes, shown in task.list and recorded when changed as a task_status diagnostic |  |
+| `task.status(text) → nil` | what the current task claims it is doing; limited to 512 bytes, shown in task.list and recorded when changed as a task_status diagnostic |  |
 | `task.stop([id or name]) → count` | stop tasks: by id, by name, or every task with no argument. By name or with none it skips the task calling it; a task waiting on a walk stops walking |  |
 
 ### trade
@@ -284,7 +291,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 |---|---|---|
 | `trade.accept() → Request<Trade>` | accept the trade: ok when it completes (both sides accepted; any change un-accepts both), else why not (not_enough_money, inventory_full, too_far, cancelled, ...) | [Request](#request), [Trade](#trade) |
 | `trade.cancel() → Request` | close the trade, or refuse a request | [Request](#request) |
-| `trade.offer{items = {entry or guid, ...}, money = copper} → Request` | set your side of the open trade (up to 6 items; replaces what you offered). Soulbound items can't be traded | [Request](#request) |
+| `trade.offer{[items = {}, money = 0]} → Request` | set your side of the open trade (up to 6 items; replaces what you offered). Soulbound items can't be traded | [Request](#request) |
 | `trade.open() → Request<Trade>` | open the window for someone's trade request (a trade event with state requested) | [Request](#request), [Trade](#trade) |
 | `trade.start(player) → Request<Trade>` | ask a player within ~10 yd (name or guid) to trade: ok once they open the window (trade.open on their side) | [Request](#request), [Trade](#trade) |
 | `trade.status() → Trade` | the trade window: state, who with, both sides' offers | [Trade](#trade) |
@@ -519,6 +526,19 @@ Everything in [Place](#place), plus:
 |---|---|---|
 | `earned` | number[] |  |
 | `criteria` | [number, number][] | {criteria id, counter} |
+
+### Skill
+
+Skill is a learned skill line. Value and Max are the unmodified base ranks in the character's update fields, excluding temporary and permanent bonuses, so Value matches the judge's saved character_skills value.
+
+| Field | Type | |
+|---|---|---|
+| `id` | number |  |
+| `name` | string |  |
+| `value` | number |  |
+| `max` | number |  |
+| `category` | number | SkillLine.dbc category ID; 0 when metadata is unavailable |
+| `metadata_known` | bool | false when the DBC label is unavailable; ranks remain usable |
 
 ### Item
 
@@ -1501,6 +1521,16 @@ FlightMap is a flight master's map: where you are and where you can fly from the
 | `destinations` | TaxiNode[] | known nodes you can reach from here, with the cost |
 | `learned?` | bool | talking to this flight master discovered its node |
 
+### GossipWindow
+
+GossipWindow identifies the window the server actually opened. Value is present for gossip and quest windows; use vendor.items, trainer.list or flights.map for the other window contents. A closed result from gossip.select confirms only that the dialogue closed, not that a bind, teleport or other effect succeeded.
+
+| Field | Type | |
+|---|---|---|
+| `kind` | string | gossip, quest, vendor, trainer, flight, or closed (select only) |
+| `npc_guid` | GUID |  |
+| `value?` | Gossip |  |
+
 ### Home
 
 Home is where your hearthstone takes you (set by binding at an innkeeper).
@@ -1985,16 +2015,21 @@ The `data` of an ok result, per op.
 | `combat.attack` | Attacking |
 | `flights.map` | FlightMap |
 | `flights.take` | Flight |
+| `gossip.open` | GossipWindow |
+| `gossip.select` | GossipWindow |
 | `innkeeper.bind` | Home |
 | `items.equip` | Equipped |
+| `items.info` | Item |
 | `items.loot` | Looted |
 | `items.roll` | LootRollResult |
 | `items.use` | CastDone |
+| `me.achievements` | Achievements |
 | `move.stop` | MoveDone |
 | `move.to` | MoveDone |
 | `move.unstuck` | Teleport |
 | `objects.use` | CastDone |
 | `quests.accept` | QuestDone |
+| `quests.info` | QuestInfo |
 | `quests.turn_in` | QuestDone |
 | `spells.cast` | CastDone |
 | `spells.cast_at` | CastDone |
@@ -2002,6 +2037,7 @@ The `data` of an ok result, per op.
 | `talents.learn` | TalentLearned |
 | `trainer.learn` | Learned |
 | `vendor.buy` | ItemReceived |
+| `vendor.items` |  |
 | `vendor.repair` | Repaired |
 | `vendor.sell` | Sold |
 | `vendor.sell_junk` | Sold |

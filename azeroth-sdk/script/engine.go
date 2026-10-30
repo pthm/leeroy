@@ -400,11 +400,25 @@ func (e *Engine) doc(name, sig, desc string) { e.docs[name] = Doc{name, sig, des
 // Tables convert to map[string]any / []any parameters. sig and desc document it for help().
 func (e *Engine) Func(name, sig, desc string, fn any) {
 	v := reflect.ValueOf(fn)
+	contract, err := ParseSignature(sig)
+	if err != nil {
+		panic(fmt.Sprintf("%s: invalid signature: %v", name, err))
+	}
+	count := len(contract.Parameters)
+	if contract.Table {
+		count = 1
+	}
+	if v.Kind() != reflect.Func || v.Type().IsVariadic() || contract.Variadic || v.Type().NumIn() != count {
+		panic(fmt.Sprintf("%s%s: signature does not match Go function", name, sig))
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if _, exists := e.docs[name]; exists {
+		panic("duplicate API registration: " + name)
+	}
 	e.doc(name, sig, desc)
 	e.natives[name] = v
-	need := requiredArgs(sig)
+	need := contract.Required()
 	e.set(name, func(L *lua.LState) int {
 		var diagnostic *diagnosticCall
 		if strings.Contains(sig, "→ Request") {
@@ -420,10 +434,15 @@ func (e *Engine) Func(name, sig, desc string, fn any) {
 		if L.GetTop() < need {
 			L.RaiseError("%s%s: called with %d argument(s), needs %d", name, sig, L.GetTop(), need)
 		}
-		if strings.HasPrefix(sig, "(npc_guid") {
-			g, ok := L.Get(1).(lua.LString)
-			if !ok || len(g) == 0 {
-				L.RaiseError("%s%s: npc_guid must be a GUID string; use act with npc_entry for a template ID", name, sig)
+		if L.GetTop() > count {
+			L.RaiseError("%s%s: called with %d argument(s), accepts at most %d", name, sig, L.GetTop(), count)
+		}
+		if contract.Table {
+			checkNativeArgument(L, name, sig, Parameter{Name: "options"}, v.Type().In(0), 1)
+			checkOptions(L, name, sig, L.Get(1), contract.Parameters)
+		} else {
+			for i, p := range contract.Parameters {
+				checkNativeArgument(L, name, sig, p, v.Type().In(i), i+1)
 			}
 		}
 		n := callReflect(L, v, 1)
@@ -450,23 +469,6 @@ func explain(err error) error {
 		return fmt.Errorf("%w (the name called isn't a function: misspelled, or not in the API; help(\"units\") lists a namespace, api-reference.md all of them)", err)
 	}
 	return err
-}
-
-// requiredArgs counts the parameters a signature like "(npc, quest [, reward = 0]) → result" lists before its first
-// optional one; 0 for an options table or a signature that isn't a parameter list.
-func requiredArgs(sig string) int {
-	if !strings.HasPrefix(sig, "(") {
-		return 0
-	}
-	params, _, _ := strings.Cut(sig[1:], ")")
-	params, _, _ = strings.Cut(params, "[")
-	n := 0
-	for _, p := range strings.Split(params, ",") {
-		if p = strings.TrimSpace(p); p != "" && p != "..." {
-			n++
-		}
-	}
-	return n
 }
 
 // Methods exposes name("Method", ...) calling any exported method of target.
@@ -1370,29 +1372,29 @@ func (e *Engine) registerRuntime() {
 
 // runtimeDocs documents the runtime's own functions (the Go side of task, events, wait...).
 var runtimeDocs = [][3]string{
-	{"wait", "(seconds)", "pause the current task (tasks only)"},
+	{"wait", "(seconds) → nil", "pause the current task (tasks only)"},
 	{"await", "(request [, timeout_s = 30]) → ActionResult", "wait for an action's result (tasks only); wait_timeout does not cancel the request"},
 	{"result", "(id) → (ActionResult | Request)?", "an action's result, its Request while pending, or nil for an unknown or expired ID"},
-	{"log", "(msg)", "a log event (tagged with the task) and a line in session.log"},
+	{"log", "(msg) → nil", "a log event (tagged with the task) and a line in session.log"},
 	{"now", "() → ms", "wall-clock time in milliseconds"},
 	{"help", "([prefix]) → {lines}", "this reference: every function whose name starts with prefix (\"items\", \"act.go\")"},
-	{"doc", "(name, sig, desc)", "document a function of your own so help() lists it"},
+	{"doc", "(name, sig, desc) → nil", "document a function of your own so help() lists it"},
 	{"task.spawn", "([name,] fn, ...) → id", "run fn as a task: it can wait without blocking the game"},
 	{"task.list", "() → TaskInfo[]", "your tasks (finished ones stay listed for 10 minutes)"},
-	{"task.status", "(text)", "what the current task claims it is doing; limited to 512 bytes, shown in task.list and recorded when changed as a task_status diagnostic"},
-	{"task.current", "() → id", "the current task's id (nil outside a task)"},
+	{"task.status", "(text) → nil", "what the current task claims it is doing; limited to 512 bytes, shown in task.list and recorded when changed as a task_status diagnostic"},
+	{"task.current", "() → id?", "the current task's id (nil outside a task)"},
 	{"task.stop", "([id or name]) → count", "stop tasks: by id, by name, or every task with no argument. By name or with none it skips the task calling it; a task waiting on a walk stops walking"},
 	{"task.pause", "(id) → bool", "take a waiting task off the schedule until task.resume; false if it isn't waiting (a task can't pause itself)"},
 	{"task.resume", "(id) → bool", "put a paused task back on its wait"},
 	{"events.on", "(type or {types}, fn [, name]) → id", "run fn(event) as a task for each matching event; the same name replaces a handler"},
-	{"events.off", "(id or name)", "remove a handler: by the id events.on returned, or the name you gave it"},
+	{"events.off", "(id or name) → nil", "remove a handler: by the id events.on returned, or the name you gave it"},
 	{"events.handlers", "() → {{id, types, name}}", "your event handlers"},
 	{"events.wait", "(type or {types} [, timeout_s]) → event", "the next matching event, nil on timeout (tasks only)"},
 	{"events.query", "{since, types, match, last = 50, limit} → {events}", "past events; types may end in * (\"quest_*\"), match searches the data"},
 	{"events.seq", "() → seq", "the latest event's sequence number"},
 	{"events.emit", "(name, data) → seq", "an event of your own, type \"script.<name>\""},
 	{"ask", "(question, {options} [, {default, timeout}]) → choice, \"answered\"|\"timeout\"", "ask the agent and wait for answer() (tasks only)"},
-	{"answer", "(id, choice)", "answer an ask(): id is the attention event's seq"},
+	{"answer", "(id, choice) → bool", "answer an ask(): id is the attention event's seq; returns true after emitting the answer"},
 }
 
 // registerCompat adds the Lua 5.2 pieces scripts were written against (gopher-lua is 5.1): bit32, table.unpack,
