@@ -124,3 +124,26 @@ func TestTruncatedTemplatesNotCached(t *testing.T) {
 		t.Fatal("truncated packet became a successful template")
 	}
 }
+
+func TestCorpseReplyDistinguishesMissingAndMalformed(t *testing.T) {
+	s := &agentState{}
+	for _, packet := range [][]byte{nil, {1}, {1, 0, 0, 0, 0}} {
+		s.onPacket(42, msgCorpseQuery, packet)
+		if s.corpseKnown {
+			t.Fatal("malformed corpse reply became evidence")
+		}
+	}
+	s.onPacket(42, msgCorpseQuery, []byte{0})
+	if !s.corpseKnown || s.corpse != nil {
+		t.Fatal("explicit absence lost")
+	}
+	packet := append([]byte{1}, make([]byte, 20)...)
+	s.onPacket(42, msgCorpseQuery, packet)
+	if s.corpse == nil || len(s.corpse) != 4 {
+		t.Fatal("corpse at origin lost")
+	}
+	s.onPacket(42, msgCorpseQuery, []byte{0})
+	if s.corpse != nil {
+		t.Fatal("old corpse survived explicit absence")
+	}
+}

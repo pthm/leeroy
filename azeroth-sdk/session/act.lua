@@ -766,12 +766,9 @@ end
 local function corpse_recovery(c, o, attempt_limit)
   if me.alive() and not me.ghost() then return A.ok("act.corpse_run") end
   if not me.ghost() then return c:fail("not_a_ghost", "release before running to the corpse") end
-  local corpse
-  while not corpse do
-    local ended = c:guard(); if ended then return ended end
-    corpse = death.corpse()
-    if not corpse then ended = c:sleep(0.5); if ended then return ended end end
-  end
+  local lookup=c:action("death.corpse",death.corpse,5)
+  if not lookup.ok then return lookup end
+  local corpse=lookup.data
   if A.dist(corpse.x, corpse.y, corpse.z) > 35 then
     local r = recovery_move(c, corpse, 4); if not r.ok then return r end
   end
@@ -798,8 +795,9 @@ local function corpse_recovery(c, o, attempt_limit)
   while c.data.attempts < attempt_limit do
     local ended = c:guard(); if ended then return ended end
     if me.alive() and not me.ghost() then return A.ok("act.corpse_run") end
-    local current = death.corpse()
-    if not current then return c:fail("corpse_unavailable", "corpse state became unavailable") end
+    local lookup=c:action("death.corpse",death.corpse,5)
+    if not lookup.ok then return lookup end
+    local current=lookup.data
     local here = me.position()
     if (current.map and here.map and current.map ~= here.map) or math.abs(here.z-current.z)>3 or A.dist(current.x,current.y,current.z)>35 then
       return c:fail("wrong_floor", "not within reclaim range on the corpse floor")

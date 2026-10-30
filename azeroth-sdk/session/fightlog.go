@@ -576,7 +576,7 @@ func (b *Bot) setupFightLog() {
 	b.lua.Bus.Listen(b.fightLog.record)
 	e.Func("combat.fights", "([n = 20]) → FightHeader[]", "your last fights, newest first: id, when, how long, outcome, enemies, damage and adds (the fight log; wow fights)",
 		func(n int) []types.FightHeader { return b.fightLog.list(cmpOr(n, 20)) })
-	e.Func("combat.fight", "([id = last]) → Fight?", "one fight from the log: its summary and positioning, every actor's position each second, and the timeline of hits, heals, casts, kills and deaths",
+	e.Func("combat.fight", "([id = last]) → Fight?", "nil if the requested fight is absent from the retained log; otherwise its summary and positioning, every actor's position each second, and the timeline of hits, heals, casts, kills and deaths",
 		func(id int) any {
 			if f, ok := b.fightLog.fight(id); ok {
 				return f

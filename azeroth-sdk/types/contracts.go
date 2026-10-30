@@ -37,6 +37,7 @@ var ActionPostconditions = map[string]string{
 	"quests.abandon":    "the quest is absent from the character's log",
 	"quests.turn_in":    "the matching quest reward completion was observed",
 	"me.achievements":   "a complete server achievement snapshot was observed",
+	"death.corpse":      "a current server corpse location was observed; an explicit absence fails not_found",
 	"death.release":     "ghost state is observed, or the character is already a ghost",
 	"death.reclaim":     "the character is observed alive and no longer a ghost",
 	"death.accept_res":  "the character is observed alive and no longer a ghost",

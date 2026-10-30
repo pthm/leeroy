@@ -22,7 +22,7 @@ func installTestRecovery(t *testing.T, e *script.Engine) *recoveryCoordinator {
 const recoveryWorld = actBase + `
  alive=false
  reclaims,spirits=0,0
- death={corpse=function() return {x=0,y=0,z=0,reclaim_in=0} end,
+ death={corpse=function() return {ok=true,data={x=0,y=0,z=0,reclaim_in=0}} end,
  reclaim=function() reclaims=reclaims+1;alive=true;return {ok=true} end,
  spirit_res=function() spirits=spirits+1;alive=true;return {ok=true} end}
  healer={guid="42",x=0,y=0,z=0,distance=0,roles={"spirit_healer"}}
@@ -30,16 +30,16 @@ const recoveryWorld = actBase + `
 
 func TestRecoveryBoundedFailuresAndPostconditions(t *testing.T) {
 	for _, tc := range []struct{ name, stubs, body string }{
-		{"no automatic healer", `death.corpse=function() return {x=100,y=0,z=0,reclaim_in=0} end;world.path=function() return {ok=false,op="world.path",error={code="route_unreachable",message="no path"}} end;mobs={healer}`,
+		{"no automatic healer", `death.corpse=function() return {ok=true,data={x=100,y=0,z=0,reclaim_in=0}} end;world.path=function() return {ok=false,op="world.path",error={code="route_unreachable",message="no path"}} end;mobs={healer}`,
 			`r=act.recover{rest=false};assert(not r.ok and r.error.code=="route_unreachable" and spirits==0 and r.data.spirit_option.requires_permission)`},
-		{"explicit fallback", `death.corpse=function() return {x=100,y=0,z=0,reclaim_in=0} end;world.path=function() return {ok=false,op="world.path",error={code="route_unreachable",message="no path"}} end;mobs={healer}`,
+		{"explicit fallback", `death.corpse=function() return {ok=true,data={x=100,y=0,z=0,reclaim_in=0}} end;world.path=function() return {ok=false,op="world.path",error={code="route_unreachable",message="no path"}} end;mobs={healer}`,
 			`r=act.recover{rest=false,allow_spirit_fallback=true};assert(r.ok and spirits==1 and reclaims==0 and r.data.state=="done" and r.data.last_error.code=="route_unreachable")`},
 		{"two reclaim failures", `death.reclaim=function() reclaims=reclaims+1;return {ok=false,op="death.reclaim",error={code="not_yet",message="timer not ready"}} end`,
 			`r=act.recover{rest=false};assert(not r.ok and r.error.code=="retry_exhausted" and reclaims==2 and spirits==0 and r.data.last_error.code=="not_yet")`},
-		{"timer never ready", `death.corpse=function() return {x=0,y=0,z=0,reclaim_in=99} end`,
+		{"timer never ready", `death.corpse=function() return {ok=true,data={x=0,y=0,z=0,reclaim_in=99}} end`,
 			`r=act.recover{rest=false,timeout_s=2};assert(not r.ok and r.error.code=="recovery_timeout" and reclaims==0 and clock==2000)`},
-		{"missing corpse", `death.corpse=function() return nil end`,
-			`r=act.corpse_run{timeout_s=2};assert(not r.ok and r.error.code=="recovery_timeout" and reclaims==0)`},
+		{"missing corpse", `death.corpse=function() return {ok=false,error={code="timeout",message="no corpse reply"}} end`,
+			`r=act.corpse_run{timeout_s=2};assert(not r.ok and r.error.code=="timeout" and reclaims==0)`},
 		{"safe spot walk failure", `mobs={{alive=true,reaction="hostile",x=10,y=0,z=0}};move.to=function() return {ok=false,op="move.to",error={code="stuck",message="blocked"}} end`,
 			`r=act.corpse_run();assert(not r.ok and r.error.code=="stuck" and reclaims==0 and r.data.failed_step=="move.to")`},
 		{"wrong floor", `pos.z=10;move.to=function() return {ok=true} end`,
@@ -122,7 +122,7 @@ func TestRecoveryCoordinatorJoiningCancellationAndExpiry(t *testing.T) {
 func recoveryEngine(t *testing.T) (*script.Engine, *recoveryCoordinator, *movementFixture) {
 	t.Helper()
 	e, f := leaseEngine(t)
-	evalMovement(t, e, `alive=false;death={corpse=function() return {x=0,y=0,z=0,reclaim_in=0} end};spirits=0;death.spirit_res=function() spirits=spirits+1;return {ok=true} end`)
+	evalMovement(t, e, `alive=false;death={corpse=function() return {ok=true,data={x=0,y=0,z=0,reclaim_in=0}} end};spirits=0;death.spirit_res=function() spirits=spirits+1;return {ok=true} end`)
 	c := installTestRecovery(t, e)
 	c.cancelMovement = f.control.cancelTask
 	return e, c, f

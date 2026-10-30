@@ -54,7 +54,7 @@ func TestPreflightUnavailableDoesNotCertifyFloor(t *testing.T) {
 	src := preflightSource{query: func(context.Context, string, ...any) ([]map[string]string, error) { return nil, fmt.Errorf("offline") }, path: func(context.Context, uint32, navigation.Point3D, navigation.Point3D) (*navigation.PathResult, error) {
 		return nil, context.DeadlineExceeded
 	}}
-	r := checkScenario(context.Background(), &config.Scenario{Goal: "quest:62", Start: &config.Place{}}, src)
+	r := checkScenario(context.Background(), &config.Scenario{Goal: "quest:62", Start: &config.Place{}, Agents: []config.Agent{{Name: "mage", Race: "human", Class: "mage"}}}, src)
 	for _, f := range r.Findings {
 		if f.Status == "verified" {
 			t.Fatal("missing evidence certified", f)

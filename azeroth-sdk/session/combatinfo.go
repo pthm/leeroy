@@ -276,7 +276,7 @@ func (b *Bot) setupCombatInfo() {
 			}
 			return *best
 		})
-	e.Func("items.find", "(name) → Item?", "an item you carry, by name (any case); count is how many you have in all", func(n string) any {
+	e.Func("items.find", "(name) → Item?", "an observed carried item matched by its loaded name (any case); nil means no loaded-name match, not proof of inventory absence. count is the total among matching loaded items", func(n string) any {
 		var found *types.Item
 		total := uint32(0)
 		for _, it := range bagItems(w) {

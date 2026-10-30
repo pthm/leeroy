@@ -90,6 +90,9 @@ func checkScenario(ctx context.Context, s *config.Scenario, src preflightSource)
 			add(check, "unknown", "", "database evidence unavailable", map[string]any{"error": err.Error()})
 			return nil
 		}
+		if r == nil {
+			return []map[string]string{}
+		}
 		return r
 	}
 	number := func(r map[string]string, k string) int { v, _ := strconv.Atoi(r[k]); return v }
@@ -123,9 +126,9 @@ func checkScenario(ctx context.Context, s *config.Scenario, src preflightSource)
 	switch parts[0] {
 	case "quest":
 		rows := query("goal", `SELECT q.ID,q.MinLevel,q.AllowableRaces,COALESCE(a.AllowableClasses,0) AllowableClasses,COALESCE(a.PrevQuestID,0) PrevQuestID,COALESCE(a.MaxLevel,0) MaxLevel,COALESCE(a.RequiredSkillID,0) RequiredSkillID,COALESCE(a.RequiredMinRepFaction,0) RequiredMinRepFaction FROM quest_template q LEFT JOIN quest_template_addon a ON a.ID=q.ID WHERE q.ID=?`, id)
-		if len(rows) == 0 {
-			add("goal", "warning", "", "quest does not exist or could not be loaded", id)
-		} else {
+		if rows != nil && len(rows) == 0 {
+			add("goal", "warning", "", "quest template does not exist", id)
+		} else if len(rows) > 0 {
 			quest = rows[0]
 			add("goal", "verified", "", "quest template exists", quest)
 		}
@@ -155,7 +158,16 @@ func checkScenario(ctx context.Context, s *config.Scenario, src preflightSource)
 			add("combat_target", "verified", "", "template level/rank and estimated base health; server scaling and live stats may differ", r)
 			for _, a := range s.Agents {
 				if s.Level > 0 && number(r, "maxlevel") > s.Level {
-					add("level_difference", "warning", a.Name, "higher-level target increases misses/resists and reduces effective damage; preparation time is not predictable", map[string]any{"target": r["entry"], "level_difference": number(r, "maxlevel") - s.Level, "minutes_available": s.Minutes})
+					diff := number(r, "maxlevel") - s.Level
+					spellMiss := 4 + diff
+					if diff >= 3 {
+						spellMiss = 6 + (diff-2)*11
+					}
+					meleePenalty := float64(diff) * 0.5
+					if diff > 2 {
+						meleePenalty = 1 + float64(diff*5-10)*0.4
+					}
+					add("level_difference", "warning", a.Name, "estimated PvE hit penalties at full weapon skill and default server rates, before hit bonuses; actual weapon skill, spell attributes, defense and configured miss multiplier may differ", map[string]any{"target": r["entry"], "level_difference": diff, "estimated_spell_miss_pct": min(100, spellMiss), "estimated_melee_level_penalty_pct": meleePenalty, "minutes_available": s.Minutes, "source": "WorldObject::MagicSpellHitResult; Unit::MeleeSpellMissChance"})
 				}
 			}
 		}
@@ -200,10 +212,16 @@ func checkScenario(ctx context.Context, s *config.Scenario, src preflightSource)
 		if level == 0 {
 			level = 1
 		}
-		add("starting_resources", "verified", a.Name, "configured level and money, or existing character values; level changes do not train spells or upgrade gear", map[string]any{"level": level, "money": money, "minutes": s.Minutes})
+		resourceStatus := "verified"
+		if rows == nil && (s.Level == 0 || s.Money == 0) {
+			resourceStatus = "unknown"
+		}
+		add("starting_resources", resourceStatus, a.Name, "configured level and money, or existing character values; level changes do not train spells or upgrade gear", map[string]any{"level": level, "money": money, "minutes": s.Minutes})
 		if len(rows) > 0 {
 			gear := query("starting_gear", `SELECT i.slot,t.entry,t.name,t.ItemLevel,ii.durability FROM acore_characters.character_inventory i JOIN acore_characters.item_instance ii ON ii.guid=i.item JOIN item_template t ON t.entry=ii.itemEntry WHERE i.guid=? AND i.bag=0 AND i.slot<19 ORDER BY i.slot`, rows[0]["guid"])
-			add("starting_gear", "verified", a.Name, "observed equipped items before scenario setup", gear)
+			if gear != nil {
+				add("starting_gear", "verified", a.Name, "observed equipped items before scenario setup", gear)
+			}
 		} else {
 			add("starting_gear", "unknown", a.Name, "new character starter outfit is supplied at creation; no equipped snapshot exists yet", nil)
 		}

@@ -167,7 +167,7 @@ func TestActCorpseRunSafeSpot(t *testing.T) {
 	e := actWorld(t, actBase+`
   alive = false
   mobs = {{name = "Kobold Miner", level = 6, alive = true, reaction = "hostile", attackable = true, x = 10, y = 0}}
-  death = {corpse = function() return {x = 0, y = 0, z = 0, reclaim_in = 0} end,
+  death = {corpse = function() return {ok=true,data={x = 0, y = 0, z = 0, reclaim_in = 0}} end,
     reclaim = function() reclaimed_at = {x = pos.x, y = pos.y} alive = true return {ok = true} end}`,
 		`r = act.corpse_run()`)
 	if v, _ := e.Eval(`return r.ok, math.floor(reclaimed_at.x + 0.5), math.floor(reclaimed_at.y + 0.5)`); fmt.Sprint(v) != "[true -32 0]" {
@@ -177,7 +177,7 @@ func TestActCorpseRunSafeSpot(t *testing.T) {
 	e = actWorld(t, actBase+`
   alive = false
   mobs = {{name = "Kobold Miner", level = 6, alive = true, reaction = "hostile", attackable = true, x = 10, y = 0}}
-  death = {corpse = function() return {x = 0, y = 0, z = 0, reclaim_in = 0} end,
+  death = {corpse = function() return {ok=true,data={x = 0, y = 0, z = 0, reclaim_in = 0}} end,
     reclaim = function() reclaimed_at = {x = pos.x, y = pos.y} alive = true return {ok = true} end}`,
 		`r = act.corpse_run{safe = false}`)
 	if v, _ := e.Eval(`return reclaimed_at.x, reclaimed_at.y`); fmt.Sprint(v) != "[0 0]" {
@@ -191,7 +191,7 @@ func TestActRecoverRefusesCampedGraveyard(t *testing.T) {
   alive = false
   mobs = {{name = "Gray Forest Wolf", level = 8, alive = true, reaction = "hostile", attackable = true, x = 5, y = 5}}
   mobs[#mobs+1] = {guid="9",x=0,y=0,z=0,distance=0,roles={"spirit_healer"}}
-  death = {corpse = function() return {x = 0, y = 0, z = 0, reclaim_in = 0} end,
+  death = {corpse = function() return {ok=true,data={x = 0, y = 0, z = 0, reclaim_in = 0}} end,
     reclaim = function() alive = true return {ok = true} end,
     spirit_res = function() spirit = true alive = true return {ok = true} end}`,
 		`mobs_at_corpse = false r = act.recover{spirit = true, rest = false}`)

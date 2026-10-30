@@ -66,18 +66,19 @@ type agentState struct {
 	gcdUntil  time.Time
 	onEvent   map[uint32]cdRule // spell -> the cooldown SMSG_COOLDOWN_EVENT starts (potions used in combat)
 	// itemCD: an item cast's cooldown, by the item's guid, or its entry when that's 0
-	itemCD    func(item uint64, entry, spell uint32) (cdRule, bool)
-	pushed    map[uint32]time.Time // SMSG_SPELL_COOLDOWN: sent before the SPELL_GO, it wins over Spell.dbc
-	corpse    []float32            // x, y, z, map
-	corpseAt  time.Time
-	reclaimAt time.Time
-	earned    map[uint32]bool   // achievement ids
-	criteria  map[uint32]uint64 // achievement criteria id -> counter
-	achLoaded bool
-	zone      uint32 // from SMSG_INIT_WORLD_STATES, sent on login and every zone/area change
-	area      uint32
-	resFrom   uint64                 // who offered to resurrect us (SMSG_RESURRECT_REQUEST)
-	timers    map[uint32]mirrorTimer // breath, fatigue, fire
+	itemCD      func(item uint64, entry, spell uint32) (cdRule, bool)
+	pushed      map[uint32]time.Time // SMSG_SPELL_COOLDOWN: sent before the SPELL_GO, it wins over Spell.dbc
+	corpse      []float32            // x, y, z, map
+	corpseAt    time.Time
+	corpseKnown bool
+	reclaimAt   time.Time
+	earned      map[uint32]bool   // achievement ids
+	criteria    map[uint32]uint64 // achievement criteria id -> counter
+	achLoaded   bool
+	zone        uint32 // from SMSG_INIT_WORLD_STATES, sent on login and every zone/area change
+	area        uint32
+	resFrom     uint64                 // who offered to resurrect us (SMSG_RESURRECT_REQUEST)
+	timers      map[uint32]mirrorTimer // breath, fatigue, fire
 }
 
 // mirrorTimer: SMSG_START_MIRROR_TIMER as received; value and scale in ms (scale < 0 counts down)
@@ -124,7 +125,7 @@ func (b *Bot) setupAgentAPI() {
 	e := b.lua
 
 	// ---------- me ----------
-	e.Func("me.stats", "() → Stats?", "your character sheet: what gear, buffs and talents add up to", func() any {
+	e.Func("me.stats", "() → Stats?", "your character sheet: what gear, buffs and talents add up to; nil until the character object is observed", func() any {
 		o := w.GetObject(w.CharGUID())
 		if o == nil {
 			return nil
@@ -218,10 +219,18 @@ func (b *Bot) setupAgentAPI() {
 	})
 
 	// ---------- world ----------
-	e.Func("world.ground_z", "(x, y [, z]) → number?", "the height to stand at (x, y) on your map, for move.to; nil without map data. With z (an NPC's spawn z from azworld) it finds the floor nearest that height: upstairs rooms, buildings, Stormwind's streets. Without it, the outdoor terrain (under any building)",
-		func(x, y, hint float32) any {
+	e.Func("world.ground_z", "(x, y [, z]) → number?", "the height to stand at (x, y) on your map, for move.to; nil when the floor cannot be confirmed within the 60 ms spatial budget. With z (an NPC's spawn z from azworld) it finds the floor nearest that height: upstairs rooms, buildings, Stormwind's streets. Without it, the outdoor terrain (under any building)",
+		func(x, y float32, z any) any {
+			var hint float32
+			if z != nil {
+				n, ok := z.(float64)
+				if !ok || math.IsNaN(n) || math.IsInf(n, 0) || math.Abs(n) > math.MaxFloat32 {
+					panic("world.ground_z: z must be a finite coordinate")
+				}
+				hint = float32(n)
+			}
 			_, _, _, _, m := w.Position()
-			if hint != 0 {
+			if z != nil {
 				if fn, ok := b.nav.(interface {
 					FloorHeight(mapID uint32, x, y, hint float32) (float32, bool)
 				}); ok {
@@ -229,6 +238,7 @@ func (b *Bot) setupAgentAPI() {
 						return f
 					}
 				}
+				return nil // an explicit floor hint never falls back to outdoor terrain
 			}
 			if tn, ok := b.nav.(terrainHeightNavigator); ok && b.nav != nil {
 				if gh, ok := tn.GetTerrainHeight(m, x, y); ok {
@@ -243,9 +253,9 @@ func (b *Bot) setupAgentAPI() {
 		}
 		return nil
 	}
-	e.Func("world.in_sight", "(x, y, z) → bool?", "nothing solid (walls, rock, buildings) between your eyes and the point, as the server checks spells; nil without collision data",
+	e.Func("world.in_sight", "(x, y, z) → bool?", "nothing solid (walls, rock, buildings) between your eyes and the point, as the server checks spells; nil when collision evidence is unavailable or its 60 ms budget expires",
 		func(x, y, z float32) any { return los(navigation.Point3D{X: x, Y: y, Z: z + 1.5}) })
-	e.Func("units.in_sight", "(guid) → bool?", "line of sight to a unit (see world.in_sight)", func(g uint64) any {
+	e.Func("units.in_sight", "(guid) → bool?", "line of sight to an observed unit; nil if the unit or collision evidence is unavailable (see world.in_sight)", func(g uint64) any {
 		o := w.GetObject(g)
 		if o == nil {
 			return nil
@@ -255,27 +265,31 @@ func (b *Bot) setupAgentAPI() {
 	})
 
 	// ---------- death ----------
-	e.Func("death.corpse", "() → Corpse?", "your corpse and when you can reclaim it; nil while alive. Right after dying it asks the server: call again a moment later",
-		func() any {
-			s.mu.Lock()
-			defer s.mu.Unlock()
-			if b.world.Health() > 0 && !b.IsGhost() {
-				s.corpse = nil
-				return nil
-			}
-			if time.Since(s.corpseAt) > 3*time.Second {
-				s.corpseAt = time.Now()
-				w.SendPacketRaw(msgCorpseQuery, nil)
-			}
-			if s.corpse == nil {
-				return nil
-			}
-			c := types.Corpse{Place: types.Place{X: round1(s.corpse[0]), Y: round1(s.corpse[1]), Z: round1(s.corpse[2])}, Map: uint32(s.corpse[3]),
-				ReclaimIn: math.Max(0, math.Ceil(time.Until(s.reclaimAt).Seconds()))} // up: 0 means reclaim now works
-			m := b.me3() // from where your ghost stands: "40 yd behind you, 12 below"
-			c.Distance = round1(float32(math.Sqrt((c.X-m.x)*(c.X-m.x) + (c.Y-m.y)*(c.Y-m.y) + (c.Z-m.z)*(c.Z-m.z))))
-			relate(m.x, m.y, m.z, m.o, &c.Place)
-			return c
+	e.Func("death.corpse", "() → Request<Corpse>", "observed corpse and reclaim timer; cached for 3 seconds, otherwise asks the server with a 5-second deadline. not_found means alive or an explicit absent-corpse reply; not_available means send failure; silence is timeout",
+		func() map[string]any {
+			return b.lookup("death.corpse", nil, func() *script.Outcome {
+				s.mu.Lock()
+				defer s.mu.Unlock()
+				if w.GetObject(w.CharGUID()) == nil {
+					return script.Fail("not_available", "character state is not observed", nil)
+				}
+				if b.IsAlive() && !b.IsGhost() {
+					s.corpse, s.corpseKnown = nil, false
+					return script.Fail("not_found", "character is alive and has no reclaimable corpse", nil)
+				}
+				if !s.corpseKnown || time.Since(s.corpseAt) > 3*time.Second {
+					return nil
+				}
+				if s.corpse == nil {
+					return script.Fail("not_found", "server reports no reclaimable corpse", nil)
+				}
+				c := types.Corpse{Place: types.Place{X: round1(s.corpse[0]), Y: round1(s.corpse[1]), Z: round1(s.corpse[2])}, Map: uint32(s.corpse[3]),
+					ReclaimIn: math.Max(0, math.Ceil(time.Until(s.reclaimAt).Seconds()))}
+				m := b.me3()
+				c.Distance = round1(float32(math.Sqrt((c.X-m.x)*(c.X-m.x) + (c.Y-m.y)*(c.Y-m.y) + (c.Z-m.z)*(c.Z-m.z))))
+				relate(m.x, m.y, m.z, m.o, &c.Place)
+				return script.Ok(c)
+			}, func() error { return w.SendPacketRaw(msgCorpseQuery, nil) })
 		})
 	alive := func() *script.Outcome {
 		if b.IsAlive() && !b.IsGhost() {
@@ -701,6 +715,10 @@ func (s *agentState) onPacket(me uint64, op uint16, data []byte) {
 			s.castUntil = now.Add(time.Duration(u32()) * time.Millisecond)
 		}
 	case msgCorpseQuery:
+		if len(data) == 0 || (data[0] != 0 && len(data) < 21) {
+			break
+		}
+		s.corpseKnown, s.corpseAt, s.corpse = true, now, nil
 		if found, _ := r.ReadByte(); found != 0 {
 			m := u32()
 			s.corpse = []float32{f32(), f32(), f32(), float32(m)}
@@ -1036,7 +1054,7 @@ func (b *Bot) newReach() *reach {
 	return &reach{b: b, from: navigation.Point3D{X: px, Y: py, Z: pz}, m: m, deadline: time.Now().Add(60 * time.Millisecond)}
 }
 
-// of: line of sight to a point eye yards above (x, y, z) (nil without collision data), and the walking distance
+// of: line of sight to a point eye yards above (x, y, z) (nil when collision evidence is unavailable or its 60 ms budget expires), and the walking distance
 // (nil when unreachable or not worked out this call) with whether a route gets there (nil when not worked out).
 func (r *reach) of(guid uint64, x, y, z float64, eye float32) (inSight *bool, path *float64, reachable *bool) {
 	if r == nil {
