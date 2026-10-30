@@ -6,6 +6,7 @@ package session
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -1051,7 +1052,13 @@ func (r *reach) of(guid uint64, x, y, z float64, eye float32) (inSight *bool, pa
 			return inSight, nil, nil
 		}
 		e = pathEntry{from: r.from, to: to, at: time.Now()}
-		if res, err := b.nav.FindPath(r.m, r.from, to); err == nil && res != nil && len(res.Points) > 0 {
+		ctx, cancel := context.WithDeadline(context.Background(), r.deadline)
+		res, err := b.findPath(ctx, r.m, r.from, to)
+		cancel()
+		if err != nil {
+			return inSight, nil, nil
+		}
+		if res != nil && res.Found && len(res.Points) > 0 {
 			prev := r.from
 			for _, p := range res.Points {
 				e.dist += dist3(prev, p)

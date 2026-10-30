@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -31,7 +32,7 @@ func newMovementFixture(t *testing.T, block bool) *movementFixture {
 	}
 	f.clock.Store(time.Now().UnixNano())
 	f.control = newMovementRequests(script.NewRequests(script.NewBus("")), movementBackend{
-		plan: func(p types.Position, valid func() bool) bool {
+		plan: func(_ context.Context, p types.Position, valid func() bool) bool {
 			f.once.Do(func() {
 				close(f.entered)
 				if f.block != nil {
@@ -259,7 +260,7 @@ type blockedMovementNavigator struct {
 	once             sync.Once
 }
 
-func (n *blockedMovementNavigator) FindPath(_ uint32, a, b navigation.Point3D) (*navigation.PathResult, error) {
+func (n *blockedMovementNavigator) FindPathContext(_ context.Context, _ uint32, a, b navigation.Point3D) (*navigation.PathResult, error) {
 	n.once.Do(func() { close(n.entered) })
 	<-n.release
 	return &navigation.PathResult{Found: true, Points: []navigation.Point3D{a, b}}, nil

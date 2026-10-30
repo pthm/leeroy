@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -14,7 +15,7 @@ import (
 // valid at publication under the same lock used by stop. It must not publish a
 // cancelled path or stop a newer path when its own computation finishes late.
 type movementBackend struct {
-	plan     func(types.Position, func() bool) bool
+	plan     func(context.Context, types.Position, func() bool) bool
 	stop     func()
 	position func() types.Position
 	moving   func() bool
@@ -25,6 +26,8 @@ type movementRequest struct {
 	queueTimeout              time.Duration
 	owner                     types.MovementOwner
 	cancelled                 atomic.Bool
+	ctx                       context.Context
+	cancel                    context.CancelFunc
 	queued, started, deadline time.Time
 	planning                  bool
 	noPath                    bool
@@ -65,6 +68,9 @@ func (m *movementRequests) unlock() {
 }
 func (m *movementRequests) finishLocked(r *movementRequest, result *script.Outcome) {
 	r.cancelled.Store(true)
+	if r.cancel != nil {
+		r.cancel()
+	}
 	m.completions = append(m.completions, movementCompletion{r.owner.RequestID, result})
 	if m.active == r {
 		m.backend.stop()
@@ -86,6 +92,7 @@ func (m *movementRequests) activateLocked(r *movementRequest) {
 	if m.lease != nil && m.lease.deadline.Before(r.deadline) {
 		r.deadline = m.lease.deadline
 	}
+	r.ctx, r.cancel = context.WithDeadline(context.Background(), r.deadline)
 	select {
 	case m.wake <- struct{}{}:
 	default:
@@ -159,10 +166,10 @@ func (m *movementRequests) worker() {
 		r.planning = true
 		deadline := r.deadline
 		m.mu.Unlock()
-		noPath := m.backend.plan(*r.owner.Destination, func() bool { return !r.cancelled.Load() && m.now().Before(deadline) })
+		noPath := m.backend.plan(r.ctx, *r.owner.Destination, func() bool { return !r.cancelled.Load() && r.ctx.Err() == nil && m.now().Before(deadline) })
 		m.mu.Lock()
 		m.expireLeaseLocked()
-		if m.active == r && !r.cancelled.Load() && !m.now().Before(deadline) {
+		if m.active == r && !r.cancelled.Load() && (r.ctx.Err() != nil || !m.now().Before(deadline)) {
 			m.finishLocked(r, script.Fail("route_timeout", "planning deadline expired", r.owner))
 			m.advanceLocked()
 		} else if m.active == r && !r.cancelled.Load() {
@@ -311,8 +318,8 @@ func (m *movementRequests) stop(taskID int) *script.Outcome {
 func (b *Bot) setupMovementRequests() {
 	e := b.lua
 	m := newMovementRequests(e.Reqs, movementBackend{
-		plan: func(p types.Position, valid func() bool) bool {
-			return b.moveToPointGuarded(float32(p.X), float32(p.Y), float32(p.Z), valid)
+		plan: func(ctx context.Context, p types.Position, valid func() bool) bool {
+			return b.moveToPointContext(ctx, float32(p.X), float32(p.Y), float32(p.Z), valid)
 		},
 		stop: func() { b.StopMoving() },
 		position: func() types.Position {

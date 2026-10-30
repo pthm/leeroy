@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -66,11 +67,13 @@ type Bot struct {
 	nav            navigation.Navigator
 	wasCombat      bool // stateEvents: last tick's combat / alive
 	wasAlive       *bool
-	clog           *combatLog               // combat.log / combat.meter
-	travel         *travelState             // flights, teleports, who moves you
-	fight          *fightState              // the running fight, for fight_end
-	fightLog       *fightLog                // positions and events of recent fights (wow fight)
-	wasGroupCombat bool                     // you or a party member in sight was in combat last tick
+	clog           *combatLog   // combat.log / combat.meter
+	travel         *travelState // flights, teleports, who moves you
+	fight          *fightState  // the running fight, for fight_end
+	fightLog       *fightLog    // positions and events of recent fights (wow fight)
+	wasGroupCombat bool         // you or a party member in sight was in combat last tick
+	routeOnce      sync.Once
+	routeGate      chan struct{}
 	pathCache      map[uint64]pathEntry     // units.nearby routes, see annotateNearby
 	cinfo          *combatInfo              // casts, combo points, evades (combatinfo.go)
 	npc            *npcState                // gossip, quest giver markers, trainer lists (npc.go)
@@ -838,6 +841,14 @@ func (b *Bot) moveToPoint(x, y, z float32) { b.moveToPointGuarded(x, y, z, nil) 
 // valid is checked while holding movementMu before publishing a planned path.
 // Cancellation marks the request invalid before taking movementMu to stop it.
 func (b *Bot) moveToPointGuarded(x, y, z float32, valid func() bool) (noPath bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return b.moveToPointContext(ctx, x, y, z, valid)
+}
+func (b *Bot) moveToPointContext(ctx context.Context, x, y, z float32, valid func() bool) (noPath bool) {
+	if ctx.Err() != nil {
+		return true
+	}
 	b.ensureMovementController()
 	if b.world.Falling() { // no steering in the air
 		return
@@ -937,7 +948,7 @@ func (b *Bot) moveToPointGuarded(x, y, z float32, valid func() bool) (noPath boo
 	// If we have nav, compute a proper path (real pathfinding as required for movement).
 	var pts []navigation.Point3D
 	if b.nav != nil {
-		result, err := b.nav.FindPath(mapID, current, navigation.Point3D{X: x, Y: y, Z: z})
+		result, err := b.findPath(ctx, mapID, current, navigation.Point3D{X: x, Y: y, Z: z})
 		noPath = !(err == nil && result != nil && result.Found)
 		if err != nil {
 			b.log("pathfinding error: %v", err) // e.g. mmaps version mismatch; was silent
@@ -952,6 +963,9 @@ func (b *Bot) moveToPointGuarded(x, y, z float32, valid func() bool) (noPath boo
 		}
 	}
 
+	if ctx.Err() != nil {
+		return true
+	}
 	if len(pts) == 0 {
 		// No navmesh path: only short hops (melee positioning) go straight; anything longer would climb
 		// unwalkable slopes, so don't move and let move_to report false.
@@ -968,7 +982,7 @@ func (b *Bot) moveToPointGuarded(x, y, z float32, valid func() bool) (noPath boo
 	}
 
 	if b.nav != nil {
-		snapPathToGround(b.nav, mapID, pts)
+		snapPathToGroundContext(ctx, b.nav, mapID, pts)
 		if len(pts) > 0 {
 			pts[0] = current
 		}
@@ -977,7 +991,7 @@ func (b *Bot) moveToPointGuarded(x, y, z float32, valid func() bool) (noPath boo
 	// Hand off to the (now only) movement implementation.
 	// The controller handles time-based following, 500ms HBs, and explicit turns at direction changes.
 	b.movementMu.Lock()
-	if valid != nil && !valid() {
+	if ctx.Err() != nil || (valid != nil && !valid()) {
 		b.movementMu.Unlock()
 		return
 	}
@@ -1016,10 +1030,16 @@ func movementGroundHeightWithSource(nav navigation.Navigator, mapID uint32, x, y
 }
 
 func snapPathToGround(nav navigation.Navigator, mapID uint32, pts []navigation.Point3D) {
+	snapPathToGroundContext(context.Background(), nav, mapID, pts)
+}
+func snapPathToGroundContext(ctx context.Context, nav navigation.Navigator, mapID uint32, pts []navigation.Point3D) {
 	if nav == nil {
 		return
 	}
 	for i := range pts {
+		if ctx.Err() != nil {
+			return
+		}
 		origZ := pts[i].Z
 		gh, _, ok := movementGroundHeightWithSource(nav, mapID, pts[i].X, pts[i].Y, origZ)
 		if !ok || math.IsNaN(float64(gh)) || math.IsInf(float64(gh), 0) {
