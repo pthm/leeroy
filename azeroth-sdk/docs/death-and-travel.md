@@ -27,10 +27,12 @@ Flying, your hearthstone, and coming back from death. The rest of the SDK is in 
 - Safety evidence is conservative and local. Missing floor or collision information is a refusal, and
   nearby hostiles on uncertain floors are not discarded as harmless. These checks do not yet implement the
   spec's shared arbitrary-point `DangerCheck`. `act.danger(x,y[,r])` remains a simple 2D list.
-- The deadline bounds scheduled waits and retries. **The current synchronous `world.path` computation cannot
-  be interrupted and can exceed that deadline.** Native route cancellation remains outstanding. A request
-  already sent to the server also cannot be recalled; late resurrection is handled as observed state on a
-  subsequent call, without turning the expired call into success.
+- The deadline bounds scheduled waits and retries. Recovery awaits `world.path`; its own expiry also cancels
+  the pending route and underlying navmesh search. Route checks independently time out after 15 seconds.
+  Cancellation is cooperative between tile reads, lock attempts, polygon-search batches and smoothing
+  steps; an in-progress local kernel read or bounded Detour operation must finish first. Floor/LOS helpers
+  remain synchronous. A request already sent to the server cannot be recalled; late resurrection is handled
+  as observed state on a subsequent call, without turning the expired call into success.
 - `act.recover`, `act.corpse_run`, and `act.spirit_res` return `ActResult<Recovery>`. Terminal `data.state` is
   `done`, `attention`, or `needs_repair`; the latter two have `ok=false`. `data.attempts`, `steps`, `failed_step`,
   and `last_error` describe partial work when available. Lifecycle cancellation may only provide the terminal

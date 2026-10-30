@@ -74,6 +74,8 @@ type Bot struct {
 	wasGroupCombat bool         // you or a party member in sight was in combat last tick
 	routeOnce      sync.Once
 	routeGate      chan struct{}
+	routeCache     map[routeKey]*navigation.PathResult
+	routes         *routeRequests
 	pathCache      map[uint64]pathEntry     // units.nearby routes, see annotateNearby
 	cinfo          *combatInfo              // casts, combo points, evades (combatinfo.go)
 	npc            *npcState                // gossip, quest giver markers, trainer lists (npc.go)
@@ -667,7 +669,9 @@ func (b *Bot) warmNavigation() {
 		here := navigation.Point3D{X: x, Y: y, Z: z}
 		if (x != 0 || y != 0) && (m != warmMap || here.DistanceTo2D(warmAt) >= 500) { // in the world, somewhere new
 			start := time.Now()
-			b.nav.FindPath(m, here, navigation.Point3D{X: x + 5, Y: y, Z: z}) // the route itself doesn't matter: its tiles do
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			b.findPath(ctx, m, here, navigation.Point3D{X: x + 5, Y: y, Z: z})
+			cancel() // the route itself doesn't matter: its tiles do
 			warmMap, warmAt = m, here
 			b.log("navmesh warmed for map %d in %s", m, time.Since(start).Round(time.Millisecond))
 		}

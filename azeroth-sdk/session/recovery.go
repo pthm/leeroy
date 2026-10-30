@@ -113,7 +113,12 @@ func (c *recoveryCoordinator) close() {
 }
 func (b *Bot) setupRecovery() {
 	e := b.lua
-	c := &recoveryCoordinator{reqs: e.Reqs, now: time.Now, cancelMovement: b.moves.cancelTask}
+	c := &recoveryCoordinator{reqs: e.Reqs, now: time.Now, cancelMovement: func(id int, reason string) {
+		b.moves.cancelTask(id, reason)
+		if b.routes != nil {
+			b.routes.cancelTask(id, reason)
+		}
+	}}
 	c.terminated = func(task, attempts int, code string) {
 		e.RecordObservationEvent(types.Diagnostic{Kind: "recovery_transition", TaskID: task, Code: code, Details: types.DiagnosticDetails{Component: "recovery", State: "attention", Attempts: attempts}})
 	}

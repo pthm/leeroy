@@ -636,6 +636,7 @@ func (b *Bot) stateEvents() {
 func (b *Bot) setupActions() {
 	e := b.lua
 	b.setupMovementRequests()
+	b.setupRoutes()
 	b.setupRecovery()
 	e.Func("spells.cast", "(id [, guid = you]) → Request<CastDone>", "cast a spell on a unit: ok when it goes off, else the server's reason (out_of_range, line_of_sight, not_ready, no_power, bad_targets, moving, interrupted, cancelled, unit_not_infront, caster_aurastate, equipped_item_class, ...) or not_known; when it goes off but every target avoids it, how (miss, resist, immune, evade, reflect, dodge, parry...): power and cooldown are spent",
 		func(spell uint32, target uint64) map[string]any {

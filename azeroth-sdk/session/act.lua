@@ -634,8 +634,9 @@ local function recovery_move(c, p, tolerance)
   if p.map and me.position().map and p.map ~= me.position().map then return c:fail("unreachable", "recovery point is on another map") end
   local ground = world.ground_z(p.x, p.y, p.z)
   if ground == nil or math.abs(ground-p.z) > 3 then return c:fail("wrong_floor", "recovery point's floor could not be confirmed") end
-  local path = world.path(p.x, p.y, p.z)
-  if not path or path.gap > 3 then return c:fail("unreachable", "no complete path to the recovery point") end
+  local path = c:action("world.path", function() return world.path(p.x, p.y, p.z) end, 15)
+  if not path.ok then return path end
+  if not path.data or not path.data.reachable or path.data.gap > 3 then return c:fail("route_unreachable", "no complete path to the recovery point") end
   c:state("ghost_travel")
   local r = c:action("move.to", function() return move.to(p.x, p.y, p.z) end, 120)
   if not r.ok then return r end

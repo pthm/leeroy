@@ -904,24 +904,6 @@ func (b *Bot) setupItems() {
 				})
 		})
 
-	// ---------- world ----------
-	e.Func("world.path", "(x, y, z) → Path?", "the walking route from you: its length, and the gap between where it ends and the point (over a few yards: unreachable). nil if there's no path at all",
-		func(x, y, z float32) any {
-			if b.nav == nil {
-				return nil
-			}
-			px, py, pz, _, m := w.Position()
-			res, err := b.nav.FindPath(m, navigation.Point3D{X: px, Y: py, Z: pz}, navigation.Point3D{X: x, Y: y, Z: z})
-			if err != nil || res == nil || !res.Found || len(res.Points) == 0 {
-				return nil
-			}
-			length, prev := 0.0, navigation.Point3D{X: px, Y: py, Z: pz}
-			for _, p := range res.Points {
-				length += dist3(prev, p)
-				prev = p
-			}
-			return types.Path{Distance: math.Round(length*10) / 10, Gap: math.Round(dist3(prev, navigation.Point3D{X: x, Y: y, Z: z})*10) / 10}
-		})
 }
 
 // compareItem: an item against what you wear in its slot; nil until the items' info has loaded.

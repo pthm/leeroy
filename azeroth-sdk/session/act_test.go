@@ -97,7 +97,7 @@ const actBase = `
   alive = true
   me.gear = function() return {broken={}} end
   me.money = function() return 100 end
-  world = {ground_z = function(x, y, z) return z or 0 end, path = function() return {gap=0} end, in_sight = function() return true end}
+  world = {ground_z = function(x, y, z) return z or 0 end, path = function() return {ok=true,op="world.path",data={reachable=true,gap=0}} end, in_sight = function() return true end}
   moves = {}
   move = {to = function(x, y, z) moves[#moves + 1] = {x = x, y = y} pos = {x = x, y = y, z = 0} return {ok = true} end,
     stop = function() return {ok = true} end, face = function() faced = (faced or 0) + 1 return {ok = true} end}

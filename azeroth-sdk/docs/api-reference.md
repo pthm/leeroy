@@ -337,7 +337,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `world.ground_z(x, y [, z]) → number?` | the height to stand at (x, y) on your map, for move.to; nil without map data. With z (an NPC's spawn z from azworld) it finds the floor nearest that height: upstairs rooms, buildings, Stormwind's streets. Without it, the outdoor terrain (under any building) |  |
 | `world.in_sight(x, y, z) → bool?` | nothing solid (walls, rock, buildings) between your eyes and the point, as the server checks spells; nil without collision data |  |
 | `world.look([radius = 40]) → string` | a top-down text map of what's around you, north up: the ground (higher, lower, no floor), hostile creatures by letter with their aggro range shaded, other creatures, players and lootable corpses, then a line for each: level, distance, direction, o'clock, height above or below you, aggro radius and whether you're inside it, line of sight. wow look prints it |  |
-| `world.path(x, y, z) → Path?` | the walking route from you: its length, and the gap between where it ends and the point (over a few yards: unreachable). nil if there's no path at all | [Path](#path) |
+| `world.path(x, y, z) → Request<PathCheck>` | await a navmesh check from your current 3D position; verified only when both endpoint gaps are <=3 yards. Deadline 15s including queueing, max leg 4096 yards / 1024 tiles, at most 16 pending queries and one active search per session. Identical successful searches are cached (128 entries). Task pause/stop/failure/return and session close cancel pending work. Failures include route_unreachable, route_timeout, route_limit, route_busy and not_available; partial data never authorizes movement. | [Request](#request), [PathCheck](#pathcheck) |
 
 ## Types
 
@@ -469,12 +469,25 @@ Everything in [Place](#place), plus:
 | `quest?` | number | the quest it's for |
 | `lit?` | bool | the server marks it usable for you (it sparkles): a quest you have needs it (GM characters see every chest lit) |
 
-### Path
+### PathCheck
+
+PathCheck reports a navmesh leg without silently changing the requested floor.
 
 | Field | Type | |
 |---|---|---|
-| `distance` | number | walking distance |
-| `gap` | number | how far the best path ends from the target: over a few yards means you can't get there |
+| `status` | string | verified, partial, or failed; partial is a reachable prefix, not permission to walk it |
+| `reachable` | bool | true only with a navmesh path starting and ending within 3 yards of the requested 3D points |
+| `reason` | string | verified or the failure code; unknown checks never imply unreachable |
+| `map` | number |  |
+| `from` | Position |  |
+| `destination` | Position |  |
+| `source` | string | session_navmesh |
+| `waypoints` | Position[] | 3D path on this map; empty if walkability could not be established |
+| `distance` | number | walk distance in yards; zero if no path was established |
+| `gap?` | number | 3D endpoint gap in yards; absent if no path was established |
+| `start_gap?` | number | gap from requested start to the first navmesh point |
+| `vertical_gap?` | number | absolute endpoint Z gap |
+| `floor_valid?` | bool | whether both endpoints match requested elevations within 3 yards; absent without a path |
 
 ### Resource
 

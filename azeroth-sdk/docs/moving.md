@@ -23,10 +23,26 @@ Where things are from where you stand, walking and its traps. The rest of the SD
 - With a navigator, `move.to` permits a direct-line fallback only for a short hop of at most 5 yards; longer
   missing paths do not move. With no navigator it can walk directly. `data.no_path` records a failed navmesh
   lookup, and a walk that stops short returns `stuck`.
-  `world.path(x, y, z)` returns the walking distance and the gap between where the path ends and the point: a gap
-  over a few yards means the point can't be reached.
+  Inside a task, `local r = await(world.path(x, y, z))` checks a single leg without moving. A successful
+  `r.data` is a `PathCheck`: `status="verified"`, `reachable=true`, map, 3D waypoints, walking distance,
+  start/endpoint gaps, vertical gap and floor validity. Both 3D endpoint gaps must be at most 3 yards.
+  A disconnected endpoint returns `route_unreachable`, with a reachable prefix when available
+  (`status="partial"`); the caller chooses whether to use it. Missing navigation data returns
+  `not_available`. Unknown gaps and floors are omitted, never certified.
+- Route checks have a 15-second wall deadline including queueing (`route_timeout`). Legs are limited to
+  4096 yards in 3D and a 1024-tile search rectangle (`route_limit`). A session admits at most 16 pending
+  checks (`route_busy`) and runs one search at a time, shared with movement and nearby-unit reachability.
+  Up to 128 exact map/start/destination searches are cached; failures and cancelled searches are not cached.
+  Awaiting with a shorter timeout only stops the wait. Task pause/stop/failure/return or session close
+  cancels owned checks; recovery expiry does too.
+- Cancellation reaches tile loading, lock waits, sliced polygon search, and smoothing. A cancelled planner
+  cannot publish a late movement path. Cancellation is cooperative: a local file read already in the kernel
+  or one bounded Detour operation must return first. Floor/LOS helper queries remain synchronous.
+  Multi-leg `world.route`, default travel validation, shared danger estimates and the helper's full 3D
+  arrival contract remain outstanding.
 - `units.nearby` gives each living creature `in_sight`, and for the nearest `path_distance` (the walk) and
-  `reachable`; `distance` is a straight line. A mob in a mine below you can be 30 yards away and a 300-yard walk.
+  `reachable`; `distance` is a straight line. Their shared 60 ms route budget includes waiting and search;
+  an expired check stays unknown rather than being cached as unreachable. A mob in a mine below you can be 30 yards away and a 300-yard walk.
 - Indoors and upstairs, pass the point's z to get the right floor: `move.to(x, y, world.ground_z(x, y, z))`.
   `act.go_to` without a z uses your own height for points within 80 yards, so it stays on your floor in a cave or a
   building; for anywhere else, pass the z (azworld gives spawn and quest points with theirs).

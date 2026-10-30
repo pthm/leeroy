@@ -143,9 +143,21 @@ type Object struct {
 	Lit    bool   `json:"lit,omitempty" doc:"the server marks it usable for you (it sparkles): a quest you have needs it (GM characters see every chest lit)"`
 }
 
-type Path struct {
-	Distance float64 `json:"distance" doc:"walking distance"`
-	Gap      float64 `json:"gap" doc:"how far the best path ends from the target: over a few yards means you can't get there"`
+// PathCheck reports a navmesh leg without silently changing the requested floor.
+type PathCheck struct {
+	Status      string     `json:"status" doc:"verified, partial, or failed; partial is a reachable prefix, not permission to walk it"`
+	Reachable   bool       `json:"reachable" doc:"true only with a navmesh path starting and ending within 3 yards of the requested 3D points"`
+	Reason      string     `json:"reason" doc:"verified or the failure code; unknown checks never imply unreachable"`
+	Map         uint32     `json:"map"`
+	From        Position   `json:"from"`
+	Destination Position   `json:"destination"`
+	Source      string     `json:"source" doc:"session_navmesh"`
+	Waypoints   []Position `json:"waypoints" doc:"3D path on this map; empty if walkability could not be established"`
+	Distance    float64    `json:"distance" doc:"walk distance in yards; zero if no path was established"`
+	Gap         *float64   `json:"gap,omitempty" doc:"3D endpoint gap in yards; absent if no path was established"`
+	StartGap    *float64   `json:"start_gap,omitempty" doc:"gap from requested start to the first navmesh point"`
+	VerticalGap *float64   `json:"vertical_gap,omitempty" doc:"absolute endpoint Z gap"`
+	FloorValid  *bool      `json:"floor_valid,omitempty" doc:"whether both endpoints match requested elevations within 3 yards; absent without a path"`
 }
 
 // ---------- your character ----------

@@ -30,10 +30,10 @@ const recoveryWorld = actBase + `
 
 func TestRecoveryBoundedFailuresAndPostconditions(t *testing.T) {
 	for _, tc := range []struct{ name, stubs, body string }{
-		{"no automatic healer", `death.corpse=function() return {x=100,y=0,z=0,reclaim_in=0} end;world.path=function() return nil end;mobs={healer}`,
-			`r=act.recover{rest=false};assert(not r.ok and r.error.code=="unreachable" and spirits==0 and r.data.spirit_option.requires_permission)`},
-		{"explicit fallback", `death.corpse=function() return {x=100,y=0,z=0,reclaim_in=0} end;world.path=function() return nil end;mobs={healer}`,
-			`r=act.recover{rest=false,allow_spirit_fallback=true};assert(r.ok and spirits==1 and reclaims==0 and r.data.state=="done" and r.data.last_error.code=="unreachable")`},
+		{"no automatic healer", `death.corpse=function() return {x=100,y=0,z=0,reclaim_in=0} end;world.path=function() return {ok=false,op="world.path",error={code="route_unreachable",message="no path"}} end;mobs={healer}`,
+			`r=act.recover{rest=false};assert(not r.ok and r.error.code=="route_unreachable" and spirits==0 and r.data.spirit_option.requires_permission)`},
+		{"explicit fallback", `death.corpse=function() return {x=100,y=0,z=0,reclaim_in=0} end;world.path=function() return {ok=false,op="world.path",error={code="route_unreachable",message="no path"}} end;mobs={healer}`,
+			`r=act.recover{rest=false,allow_spirit_fallback=true};assert(r.ok and spirits==1 and reclaims==0 and r.data.state=="done" and r.data.last_error.code=="route_unreachable")`},
 		{"two reclaim failures", `death.reclaim=function() reclaims=reclaims+1;return {ok=false,op="death.reclaim",error={code="not_yet",message="timer not ready"}} end`,
 			`r=act.recover{rest=false};assert(not r.ok and r.error.code=="retry_exhausted" and reclaims==2 and spirits==0 and r.data.last_error.code=="not_yet")`},
 		{"timer never ready", `death.corpse=function() return {x=0,y=0,z=0,reclaim_in=99} end`,
