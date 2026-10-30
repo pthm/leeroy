@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -80,6 +81,21 @@ func benchCommand(cmd string, args []string) bool {
 		return pos
 	}
 	switch cmd {
+	case "scenario":
+		pos := parse(2, "check <scenario.yaml>")
+		if pos[0] != "check" || len(pos) != 2 {
+			die("usage: azbench scenario check <scenario.yaml>")
+		}
+		repo := repoRoot()
+		b, err := config.LoadBench(filepath.Join(repo, "bench"))
+		check(err)
+		s, err := b.LoadScenario(pos[1])
+		check(err)
+		report := run.CheckScenario(repo, s)
+		encoded, err := json.MarshalIndent(report, "", "  ")
+		check(err)
+		fmt.Println(string(encoded))
+		return true
 	case "run":
 		pos := parse(1, "<scenario.yaml> [--minutes n] [--dry-run] [--no-build]")
 		repo := repoRoot()

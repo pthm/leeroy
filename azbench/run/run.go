@@ -140,6 +140,11 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 		y, _ := yaml.Marshal(saved)
 		os.WriteFile(filepath.Join(r.dir, "scenario.yaml"), y, 0o644)
 	}
+	if !resume {
+		if err := SavePreflight(filepath.Join(r.dir, "preflight.json"), CheckScenario(r.repo, r.s)); err != nil {
+			return fmt.Errorf("save scenario preflight: %w", err)
+		}
+	}
 	if resume {
 		r.elapsed = r.played()
 		r.logf("resuming %s: %.0f of %d minutes played", r.dir, r.elapsed.Minutes(), r.s.Minutes)

@@ -52,6 +52,6 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: azbench run|matrix|resume|pause|status|restart|judge|report|compare|signals|reset|gm|apidoc|prices|standings ...")
+	fmt.Fprintln(os.Stderr, "usage: azbench run|scenario|matrix|resume|pause|status|restart|judge|report|compare|signals|reset|gm|apidoc|prices|standings ...")
 	os.Exit(2)
 }
