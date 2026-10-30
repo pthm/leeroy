@@ -190,6 +190,17 @@ type Achievements struct {
 	Criteria [][2]uint64 `json:"criteria" doc:"{criteria id, counter}"`
 }
 
+// Skill is a learned skill line. Value and Max are the unmodified base ranks in the character's update
+// fields, excluding temporary and permanent bonuses, so Value matches the judge's saved character_skills value.
+type Skill struct {
+	ID            uint32 `json:"id"`
+	Name          string `json:"name"`
+	Value         uint32 `json:"value"`
+	Max           uint32 `json:"max"`
+	Category      uint32 `json:"category" doc:"SkillLine.dbc category ID; 0 when metadata is unavailable"`
+	MetadataKnown bool   `json:"metadata_known" doc:"false when the DBC label is unavailable; ranks remain usable"`
+}
+
 // ---------- items ----------
 
 // Item is an item template and, for one you carry, where it is and its state. The template fields fill in once

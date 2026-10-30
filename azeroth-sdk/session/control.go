@@ -203,6 +203,7 @@ func (b *Bot) setupControl() {
 	}
 	b.setupCoreAPI()
 	b.setupAgentAPI()
+	b.setupSkills()
 	b.setupItems()
 	b.setupCombatLog()
 	b.setupNPC()
