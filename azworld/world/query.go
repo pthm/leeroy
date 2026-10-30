@@ -569,13 +569,7 @@ var commands = []command{
 		return out
 	}},
 
-	{"route", "route <x1> <y1> <x2> <y2> --level <your level> [--map 0] [--horde]  walking waypoints that prefer roads and avoid hostile mobs near or above your level", func(a []string, _ []bool, f map[string]string) any {
-		n := func(i int, what string) float64 { s, ok := arg(a, i); return num(s, what, ok) }
-		from, to := [2]float64{n(0, "x1"), n(1, "y1")}, [2]float64{n(2, "x2"), n(3, "y2")}
-		lv, has := f["level"]
-		_, horde := f["horde"]
-		return route(jsNum(orMap(f, "map", "0")), from, to, num(lv, "--level", has), horde)
-	}},
+	{"route", "route <x1> <y1> <x2> <y2> [--map 0] OR <x1> <y1> <z1> <x2> <y2> <z2> <map> --level N [--horde]  unverified terrain proposal; preserves explicit Z; 15s deadline, max 4096 yd and 64 waypoints; validate with world.route before walking", func(a []string, _ []bool, f map[string]string) any { return routeCommand(a, f) }},
 
 	{"map", "map <x> <y> --level <your level> [--radius 300] [--to <x2>,<y2>] [--out map.png] [--map 0]  PNG of terrain, roads and hostile mobs (open it with your Read tool)", func(a []string, _ []bool, f map[string]string) any {
 		sx, okx := arg(a, 0)
@@ -651,6 +645,10 @@ func Run(argv []string, w io.Writer) (code int) {
 	for i := 0; i < len(rest); i++ {
 		if strings.HasPrefix(rest[i], "--") {
 			k := rest[i][2:]
+			if cmd == "route" && k == "horde" {
+				flags[k] = ""
+				continue
+			}
 			if i+1 < len(rest) && rest[i+1] != "" && !strings.HasPrefix(rest[i+1], "--") {
 				i++
 				flags[k] = rest[i]
@@ -698,11 +696,16 @@ func Run(argv []string, w io.Writer) (code int) {
 		}
 	}()
 	v := c.run(args, nil, flags)
+	if cmd == "route" {
+		if r, ok := v.(*obj); ok && r.get("status") == "failed" {
+			code = 1
+		}
+	}
 	if v == nil || v == "" { // JSON.stringify with the drop-empty replacer gives undefined for a top-level null
 		fmt.Fprintln(w, "undefined")
 		return 0
 	}
 	w.Write(toJSON(v))
 	fmt.Fprintln(w)
-	return 0
+	return code
 }

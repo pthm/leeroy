@@ -6,30 +6,39 @@ package world
 // merchants walk the roads). Map images use the client's minimap where it was extracted.
 // Routes: A* on an 8-yard grid over the server's terrain (no slopes over ~45 degrees, swimming is slow), cheaper on
 // roads and more expensive near hostile mobs around or above your level. Terrain only: buildings, caves and
-// bridges aren't modelled, so follow the route with move_to, which uses the real navmesh between waypoints.
+// bridges are not modelled. Every plan needs session navmesh validation before execution.
 //
 // The arithmetic mirrors the TypeScript original (float32 grids, JS rounding, products kept out of FMA with
 // float64(...)) so routes come out the same.
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"sort"
 )
 
 const navCell = 8
 
 func roadPaths(m, x0, x1, y0, y1 float64) [][][2]float64 {
-	rows := q(fmt.Sprintf(`SELECT w.id, w.point, ROUND(w.position_x) x, ROUND(w.position_y) y FROM waypoint_data w
+	return roadPathsContext(context.Background(), m, x0, x1, y0, y1)
+}
+func roadPathsContext(ctx context.Context, m, x0, x1, y0, y1 float64) [][][2]float64 {
+	rows := qContext(ctx, fmt.Sprintf(`SELECT w.id, w.point, ROUND(w.position_x) x, ROUND(w.position_y) y FROM waypoint_data w
     WHERE w.id IN (SELECT a.path_id FROM creature c JOIN creature_addon a ON a.guid = c.guid JOIN creature_template t ON t.entry = c.id
       JOIN wowbench.reaction r ON r.faction_template = t.faction
       WHERE c.map = %s AND a.path_id > 0 AND r.to_alliance = 'friendly' AND r.to_horde <> 'friendly'
         AND c.position_x BETWEEN %s AND %s AND c.position_y BETWEEN %s AND %s)
-    ORDER BY w.id, w.point`, jsStr(m), jsStr(x0-300), jsStr(x1+300), jsStr(y0-300), jsStr(y1+300)))
+    ORDER BY w.id, w.point LIMIT 20001`, jsStr(m), jsStr(x0-300), jsStr(x1+300), jsStr(y0-300), jsStr(y1+300)))
+	if len(rows) > maxRouteRows {
+		panic(routeError{"route_limit", "too many road waypoints; use a smaller planning area"})
+	}
 	byID := map[float64]int{}
 	var paths [][][2]float64
 	for _, r := range rows {
+		checkRouteContext(ctx)
 		id := r.n("id")
 		k, ok := byID[id]
 		if !ok {
@@ -42,6 +51,7 @@ func roadPaths(m, x0, x1, y0, y1 float64) [][][2]float64 {
 	// keep travelling paths (not an NPC pacing in a room), clipped loosely to the box
 	out := [][][2]float64{}
 	for _, p := range paths {
+		checkRouteContext(ctx)
 		lx, hx, ly, hy := math.Inf(1), math.Inf(-1), math.Inf(1), math.Inf(-1)
 		in := false
 		for _, v := range p {
@@ -65,17 +75,25 @@ type threat struct {
 
 // threats: hostile spawns (to an Alliance character; horde flips it) with their levels
 func threats(m, x0, x1, y0, y1 float64, horde bool) []threat {
+	return threatsContext(context.Background(), m, x0, x1, y0, y1, horde)
+}
+func threatsContext(ctx context.Context, m, x0, x1, y0, y1 float64, horde bool) []threat {
 	side := "to_alliance"
 	if horde {
 		side = "to_horde"
 	}
 	var out []threat
-	for _, r := range q(fmt.Sprintf("SELECT s.id entry, t.name, t.minlevel lo, t.maxlevel hi, t.`rank` rk, ROUND(s.x) x, ROUND(s.y) y FROM wowbench.creature_spawn s\n"+
+	rows := qContext(ctx, fmt.Sprintf("SELECT s.id entry, t.name, t.minlevel lo, t.maxlevel hi, t.`rank` rk, ROUND(s.x) x, ROUND(s.y) y FROM wowbench.creature_spawn s\n"+
 		"    JOIN creature_template t ON t.entry = s.id JOIN wowbench.reaction r ON r.faction_template = t.faction\n"+
 		"    WHERE s.map = %s AND r.%s = 'hostile'\n"+
 		"      AND t.flags_extra & 128 = 0 AND t.unit_flags & 0x2000000 = 0 -- not invisible triggers / unselectable dummies\n"+
 		"      AND s.guid NOT IN (SELECT guid FROM game_event_creature) -- holiday spawns\n"+
-		"      AND s.x BETWEEN %s AND %s AND s.y BETWEEN %s AND %s", jsStr(m), side, jsStr(x0), jsStr(x1), jsStr(y0), jsStr(y1))) {
+		"      AND s.x BETWEEN %s AND %s AND s.y BETWEEN %s AND %s LIMIT 20001", jsStr(m), side, jsStr(x0), jsStr(x1), jsStr(y0), jsStr(y1)))
+	if len(rows) > maxRouteRows {
+		panic(routeError{"route_limit", "too many hostile spawns; use a smaller planning area"})
+	}
+	for _, r := range rows {
+		checkRouteContext(ctx)
 		out = append(out, threat{entry: r.n("entry"), name: jsStr(r.get("name")), level: (r.n("lo") + r.n("hi")) / 2,
 			elite: r.n("rk") > 0, x: r.n("x"), y: r.n("y")})
 	}
@@ -87,12 +105,15 @@ func threats(m, x0, x1, y0, y1 float64, horde bool) []threat {
 func aggro(lvl, pl float64) float64 { return math.Max(5, math.Min(40, 20+(lvl-pl))) }
 
 func route(m float64, from, to [2]float64, level float64, horde bool) *obj {
+	return planRoute(context.Background(), routeRequest{Map: m, From: [3]float64{from[0], from[1], 0}, To: [3]float64{to[0], to[1], 0}, Level: level, Horde: horde}, defaultRouteSource())
+}
+func searchTerrain(ctx context.Context, src routeSource, m float64, from, to [2]float64, level float64, horde bool) *obj {
 	const pad = 200
 	x0, x1 := math.Min(from[0], to[0])-pad, math.Max(from[0], to[0])+pad
 	y0, y1 := math.Min(from[1], to[1])-pad, math.Max(from[1], to[1])+pad
 	W, H := int(math.Ceil((y1-y0)/navCell))+1, int(math.Ceil((x1-x0)/navCell))+1
-	if W*H > 400_000 {
-		panic(qerr{fmt.Errorf("route too long for one query (max ~5000 yd): split it into legs")})
+	if W*H > maxRouteCells {
+		panic(routeError{"route_limit", "route rectangle exceeds 400000 terrain cells; split it into shorter legs"})
 	}
 	idx := func(x, y float64) int { return int(jsRound((x-x0)/navCell))*W + int(jsRound((y-y0)/navCell)) }
 	cx := func(i int) float64 { return x0 + float64(float64(i/W)*navCell) }
@@ -100,18 +121,21 @@ func route(m float64, from, to [2]float64, level float64, horde bool) *obj {
 	h, cost := make([]float32, W*H), make([]float32, W*H)
 	mapID := uint32(m)
 	for i := range h {
-		g, wl, _ := Sample(mapID, cx(i), cy(i))
+		checkRouteContext(ctx)
+		g, wl, _ := src.sample(mapID, cx(i), cy(i))
 		h[i], cost[i] = float32(g), 1
 		if !math.IsNaN(wl) && wl > g+1.5 {
 			cost[i] = 3 // swimming
 		}
 	}
 	road := make([]uint8, W*H)
-	for _, p := range roadPaths(m, x0, x1, y0, y1) {
+	for _, p := range src.roads(ctx, m, x0, x1, y0, y1) {
+		checkRouteContext(ctx)
 		for k := 1; k < len(p); k++ {
 			a, b := p[k-1], p[k]
 			n := math.Ceil(math.Hypot(b[0]-a[0], b[1]-a[1]) / (navCell / 2))
 			for s := 0.0; s <= n; s++ {
+				checkRouteContext(ctx)
 				x, y := a[0]+float64((b[0]-a[0])*s)/n, a[1]+float64((b[1]-a[1])*s)/n
 				if x >= x0 && x <= x1 && y >= y0 && y <= y1 {
 					road[idx(x, y)] = 1
@@ -120,22 +144,25 @@ func route(m float64, from, to [2]float64, level float64, horde bool) *obj {
 		}
 	}
 	for i := range road {
-		if RoadAt(mapID, cx(i), cy(i)) > 100 { // the client's road textures
+		checkRouteContext(ctx)
+		if src.roadAt(mapID, cx(i), cy(i)) > 100 { // the client's road textures
 			road[i] = 1
 		}
 	}
 	for i := range road {
+		checkRouteContext(ctx)
 		if road[i] != 0 {
 			cost[i] = float32(float64(cost[i]) * 0.6)
 		}
 	}
 	var mobs []threat
-	for _, t := range threats(m, x0, x1, y0, y1, horde) {
+	for _, t := range src.threats(ctx, m, x0, x1, y0, y1, horde) {
 		if t.level >= level-2 {
 			mobs = append(mobs, t)
 		}
 	}
 	for _, t := range mobs {
+		checkRouteContext(ctx)
 		r, weight := aggro(t.level, level), 4+float64(2*math.Max(0, t.level-level))
 		if t.elite {
 			r += 10
@@ -153,8 +180,12 @@ func route(m float64, from, to [2]float64, level float64, horde bool) *obj {
 	}
 	// A* over 8 neighbours; a step is blocked if steeper than ~45 degrees or off the map
 	start, goal := idx(from[0], from[1]), idx(to[0], to[1])
+	if math.IsNaN(float64(h[start])) || math.IsNaN(float64(h[goal])) {
+		panic(routeError{"not_available", "terrain height is unavailable at an endpoint"})
+	}
 	dist, prev, closed := make([]float32, W*H), make([]int32, W*H), make([]bool, W*H)
 	for i := range dist {
+		checkRouteContext(ctx)
 		dist[i], prev[i] = float32(math.Inf(1)), -1
 	}
 	type entry struct {
@@ -200,6 +231,7 @@ func route(m float64, from, to [2]float64, level float64, horde bool) *obj {
 	push(hEst(start), start)
 	steps := [][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}}
 	for len(heap) > 0 {
+		checkRouteContext(ctx)
 		i := pop().i
 		// each cell is expanded once: without this, stale heap entries (a cell queued again with a shorter distance,
 		// which mob costs make common) were expanded every time, and a 500-yard route took minutes
@@ -231,19 +263,23 @@ func route(m float64, from, to [2]float64, level float64, horde bool) *obj {
 		}
 	}
 	if prev[goal] < 0 && goal != start {
-		return newObj("error", "no walkable route on the terrain (water, cliffs, or the target is indoors/underground): try a nearer point")
+		panic(routeError{"terrain_unreachable", "terrain grid cannot connect these endpoints; this does not establish navmesh reachability"})
 	}
 	var cells []int
 	for i := goal; i >= 0; i = int(prev[i]) {
-		cells = append([]int{i}, cells...)
+		checkRouteContext(ctx)
+		cells = append(cells, i)
 	}
+	slices.Reverse(cells)
 	// waypoints: a point every ~40 yd or where the direction turns
 	pts := make([][3]float64, len(cells))
 	for k, i := range cells {
+		checkRouteContext(ctx)
 		pts[k] = [3]float64{cx(i), cy(i), jsRound(float64(h[i])*10) / 10}
 	}
 	way := [][3]float64{pts[0]}
 	for k := 1; k < len(pts)-1; k++ {
+		checkRouteContext(ctx)
 		a, b, c := way[len(way)-1], pts[k], pts[k+1]
 		turn := math.Abs(math.Atan2(c[1]-b[1], c[0]-b[0]) - math.Atan2(b[1]-a[1], b[0]-a[0]))
 		if math.Hypot(b[0]-a[0], b[1]-a[1]) >= 40 || (turn > 0.5 && turn < 2*math.Pi-0.5) {
@@ -253,6 +289,7 @@ func route(m float64, from, to [2]float64, level float64, horde bool) *obj {
 	way = append(way, [3]float64{to[0], to[1], pts[len(pts)-1][2]})
 	length, onRoad := 0.0, 0.0
 	for k := 1; k < len(cells); k++ {
+		checkRouteContext(ctx)
 		s := math.Hypot(cx(cells[k])-cx(cells[k-1]), cy(cells[k])-cy(cells[k-1]))
 		length += s
 		if road[cells[k]] != 0 {
@@ -266,8 +303,10 @@ func route(m float64, from, to [2]float64, level float64, horde bool) *obj {
 	byEntry := map[float64]*obj{}
 	var near []pass
 	for _, t := range mobs {
+		checkRouteContext(ctx)
 		d := math.Inf(1)
 		for _, i := range cells {
+			checkRouteContext(ctx)
 			d = math.Min(d, math.Hypot(cx(i)-t.x, cy(i)-t.y))
 		}
 		if d > aggro(t.level, level)+5 {
@@ -287,8 +326,9 @@ func route(m float64, from, to [2]float64, level float64, horde bool) *obj {
 	for i, p := range near {
 		passes[i] = p.o
 	}
-	return newObj("length", jsRound(length), "on_road", jsStr(jsRound(onRoad/math.Max(1, length)*100))+"%", "waypoints", way,
-		"passes_near", passes, "note", "walk it with move_to(x, y, ground_z(x, y)) leg by leg; terrain only, so buildings and caves aren't modelled")
+	checkRouteContext(ctx)
+	return newObj("road_fraction", onRoad/math.Max(1, length), "waypoints", way,
+		"exposure", newObj("source", "static_spawns_2d", "floor_checked", false, "los_checked", false, "passes_near", passes))
 }
 
 // mapImage: PNG around (x, y): terrain, roads (light), hostile mobs (red; brighter = higher level than you, big =
