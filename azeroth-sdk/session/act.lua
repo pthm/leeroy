@@ -178,13 +178,20 @@ end
 -- o.on_attacked(attackers) (your fighting), then carry on
 local function walk(o, x, y, z)
   local req = move.to(x, y, z)
-  if not o.on_attacked then return await(req, 600) end
+  if not o.on_attacked and not o.observe_danger then return await(req, 600) end
   local deadline = now() + 600000
   while now() < deadline do
     local r = await(req, 0.5)
     if not (r.error and r.error.code == "wait_timeout") then return r end
+    if o.observe_danger then
+      local d = o.observe_danger(me.position())
+      if o.stop_on_danger and d.state ~= "clear" then
+        await(move.stop(),2)
+        return result("act.travel",false,d,"danger_ahead","travel exposure is hostile or unknown")
+      end
+    end
     local foes = units.attackers(30)
-    if #foes > 0 then
+    if o.on_attacked and #foes > 0 then
       move.stop()
       o.on_attacked(foes)
       req = move.to(x, y, z)
@@ -234,6 +241,11 @@ function A.go_to(o)
   end
   return fail(r.error.code, r.error.message)
 end
+local go_to_impl = A.go_to
+local function travel_go_to(observe, stop, o)
+  o.observe_danger,o.stop_on_danger=observe,stop
+  return go_to_impl(o)
+end
 function A.travel(o)
   local map = o.map or me.position().map or 0
   local targets = {}
@@ -244,7 +256,13 @@ function A.travel(o)
     end
   end
   local validation, partial
-  local data = {status="unverified",completed_waypoints=0}
+  local data = {status="unverified",completed_waypoints=0,exposure={}}
+  local function exposure(p)
+    local d = A.danger{x=p.x,y=p.y,z=p.z or me.position().z}
+    data.exposure[#data.exposure+1]={position=p,check=d}
+    if #data.exposure>64 then table.remove(data.exposure,1) end
+    return d
+  end
   if o.validate ~= false then
     validation = await(world.route(targets,{map=map}), 16)
     data.validation, data.status = validation.data, validation.data and validation.data.status or "failed"
@@ -269,8 +287,15 @@ function A.travel(o)
     end
   end
   for i,p in ipairs(targets) do
-    local r = A.go_to{x=p.x,y=p.y,z=p.z,map=p.map,tolerance=o.tolerance or 4,
-      vertical_tolerance=o.vertical_tolerance or 3,unstuck=o.unstuck,on_attacked=o.on_attacked}
+    local danger = exposure(p)
+    if o.stop_on_danger and danger.state ~= "clear" then
+      data.waypoint,data.position=i,me.position()
+      return result("act.travel",false,data,"danger_ahead","leg exposure is hostile or unknown")
+    end
+    -- Travel already holds the lease; the observer stays private to this call.
+    local ok,r = pcall(travel_go_to, exposure, o.stop_on_danger,{x=p.x,y=p.y,z=p.z,map=p.map,tolerance=o.tolerance or 4,
+      vertical_tolerance=o.vertical_tolerance or 3,unstuck=o.unstuck,on_attacked=o.on_attacked})
+    if not ok then error(r,0) end
     if not r.ok then
       data.waypoint, data.position = i, r.data and r.data.position
       return result("act.travel",false,data,r.error.code,"waypoint "..i..": "..tostring(r.error.message))
@@ -607,16 +632,15 @@ function A.release()
   if r.ok then graveyard = me.position() end
   return r
 end
--- danger: living hostile creatures within r yards of a point (what attacks you the moment you come back there)
-function A.danger(x, y, r)
-  local out = {}
-  for _, u in ipairs(units.nearby(80)) do
-    if u.alive and u.reaction == "hostile" and u.attackable ~= false and math.sqrt((u.x - x) ^ 2 + (u.y - y) ^ 2) <= (r or 25) then
-      out[#out + 1] = u
-    end
-  end
-  return out
+-- Waiting local observation: unknown is deliberately distinct from an empty clear list.
+function A.danger(o)
+  if not task.current() then error("act.danger requires a task", 2) end
+  if type(o) ~= "table" then error("act.danger requires {x,y,z,radius}", 2) end
+  for k in pairs(o) do if k~="x" and k~="y" and k~="z" and k~="radius" then error("act.danger: unknown option "..tostring(k),2) end end
+  local r = await(world.danger(o.x,o.y,o.z,o.radius or 25),16)
+  return r.data or {state="unknown",hostiles={},reason=r.error and r.error.code or "not_available"}
 end
+doc("act.danger", "{x, y, z [, radius = 25]} → DangerCheck", "wait inside a task for local reachable-floor and point-to-point LOS evidence; radius 1..40. Unknown includes missing collision/navmesh or incomplete observation. Clear is an observation, not a safety guarantee")
 -- Recovery has one deadline and one resurrection-attempt budget across methods.
 local function recovery_context(o, id)
   local c = {deadline = now() + (o.timeout_s or 180) * 1000, id = id,
@@ -670,21 +694,8 @@ local function recovery_context(o, id)
   return c
 end
 
--- Conservative local evidence only: a hostile on an uncertain floor is not
--- discarded as safe. Shared arbitrary-point floor/LOS queries remain route work.
 recovery_danger = function(p)
-  if not p.z then return {state = "unknown", reason = "missing_floor"} end
-  local ground = world.ground_z(p.x, p.y, p.z)
-  if ground == nil or math.abs(ground-p.z) > 3 then return {state = "unknown", reason = "unverified_floor"} end
-  if A.dist(p.x, p.y) > 45 then return {state = "unknown", reason = "outside_local_observation"} end
-  local hostiles = {}
-  for _, u in ipairs(units.nearby(80)) do
-    if u.alive and u.reaction == "hostile" and u.attackable ~= false then
-      local gap = math.sqrt((u.x-p.x)^2 + (u.y-p.y)^2)
-      if gap <= math.max(25, u.aggro_radius or 0) + 2 then hostiles[#hostiles+1] = u end
-    end
-  end
-  return {state = #hostiles > 0 and "hostile" or "clear", hostiles = hostiles}
+  return A.danger{x=p.x,y=p.y,z=p.z,radius=27}
 end
 local function recovery_move(c, p, tolerance)
   local ended = c:guard(); if ended then return ended end
@@ -966,7 +977,7 @@ local helper_options = {
   rest = "hp mana max_s safe",
   make_room = "",
   go_to = "x y z map tolerance vertical_tolerance tries unstuck on_attacked",
-  travel = "points map tolerance vertical_tolerance unstuck on_attacked validate allow_partial",
+  travel = "points map tolerance vertical_tolerance unstuck on_attacked validate allow_partial stop_on_danger",
   approach = "unit range timeout",
   follow = "name distance until timeout_s",
   corpse_run = "safe timeout_s max_attempts",
@@ -990,7 +1001,7 @@ local function validate_helper_options(n, o)
   if n == "follow" and not o["until"] and not o.timeout_s then bad("until or timeout_s is required") end
   if n == "follow" and o.timeout_s and (type(o.timeout_s) ~= "number" or not (o.timeout_s > 0 and o.timeout_s <= 600)) then bad("timeout_s must be >0 and <=600") end
   if n == "follow" and (type(o.name) ~= "string" or o.name == "") then bad("name must be a nonempty player name") end
-  for _, k in ipairs({"unstuck", "safe", "spirit", "rest", "allow_spirit_fallback", "validate", "allow_partial"}) do
+  for _, k in ipairs({"unstuck", "safe", "spirit", "rest", "allow_spirit_fallback", "validate", "allow_partial", "stop_on_danger"}) do
     if o[k] ~= nil and type(o[k]) ~= "boolean" then bad(k .. " must be boolean") end
   end
   for _, k in ipairs({"on_attacked", "until"}) do
@@ -1097,7 +1108,7 @@ for name, d in pairs({
   cast = { "(id [, guid]) → ActResult", "face the target and cast if ready (waits for the result in a task)" },
   buff = { "(id [, guid]) → ActResult", "cast it unless the aura is already active (ok with data.status = already_active then)" },
   go_to = { "{x, y [, z, map, tolerance = 4, vertical_tolerance = 3, tries = 3, unstuck = false, on_attacked = nil]} → ActResult", "walk to the requested map and floor; explicit z is never replaced by a floor query. Success requires horizontal and vertical tolerances; wrong_floor/wrong_map/unreachable include observed position and gaps. Without z, select a floor with ground_z or fail. tries is 1..32 for stuck retries; unstuck=true authorizes a last-resort hearth (unstuck_home). on_attacked stops to call your combat handler, then resumes" },
-  travel = { "{points = {{x, y, z}, ...} [, map, tolerance = 4, vertical_tolerance = 3, validate = true, allow_partial = false, unstuck = false, on_attacked = nil]} → ActResult", "validate all 1..64 3D waypoints with world.route before moving, then go_to each while holding movement ownership. Named waypoints accept x,y,z,map. Report first failed waypoint, completed_waypoints and validation evidence. allow_partial=true may walk a known route_unreachable prefix but still returns failure for the requested destination. validate=false permits unverified 2D waypoints; allow_partial then is invalid. Hostile exposure is not yet assessed" },
+  travel = { "{points = {{x, y, z}, ...} [, map, tolerance = 4, vertical_tolerance = 3, validate = true, allow_partial = false, stop_on_danger = false, unstuck = false, on_attacked = nil]} → ActResult", "validate all 1..64 3D waypoints with world.route before moving, then go_to each while holding movement ownership. Named waypoints accept x,y,z,map. Report first failed waypoint, completed_waypoints and validation evidence. allow_partial=true may walk a known route_unreachable prefix but still returns failure for the requested destination. validate=false permits unverified 2D waypoints; allow_partial then is invalid. Exposure is checked before each leg and during movement; the latest 64 observations are retained. stop_on_danger=true stops on hostile or unknown evidence" },
   approach = { "{unit [, range = 4, timeout = 60]} → ActResult<Creature>", "move within range and verify facing; reuse a pending walk until the target moves; bounded by timeout" },
   follow = { "{name [, distance = 5, until = fn, timeout_s = 600]} → ActResult", "requires until or timeout_s; check until each pass, fail timeout at the deadline (at most 600 seconds), or player_not_visible after 5 seconds of absence" },
   reach_npc = { "{npc_entry|npc_guid [, x, y, z]} → ActResult<Creature>", "find an NPC by exactly one of npc_entry or npc_guid (walking to x, y, z first) and stand next to it" },

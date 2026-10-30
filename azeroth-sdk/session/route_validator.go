@@ -16,6 +16,9 @@ const maxRouteWaypoints = 8192
 
 func queryFailure(data any, code, message string) *script.Outcome {
 	switch d := data.(type) {
+	case types.DangerCheck:
+		d.State, d.Reason = "unknown", code
+		return script.Fail(code, message, d)
 	case types.PathCheck:
 		return routeFailure(d, code, message)
 	case types.RouteCheck:

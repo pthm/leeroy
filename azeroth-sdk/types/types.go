@@ -855,3 +855,10 @@ type ComboPoints struct {
 	Target GUID  `json:"target"`
 	Points uint8 `json:"points"`
 }
+
+// DangerCheck is local observed evidence, never a guarantee against unseen spawns.
+type DangerCheck struct {
+	State    string     `json:"state" doc:"clear, hostile, or unknown; clear applies only to the observed local area"`
+	Hostiles []Creature `json:"hostiles"`
+	Reason   string     `json:"reason,omitempty"`
+}

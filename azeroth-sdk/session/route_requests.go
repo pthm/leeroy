@@ -164,6 +164,7 @@ func (b *Bot) setupRoutes() {
 	}}
 	b.routes = r
 	b.registerRouteValidator(r)
+	b.registerDanger(r)
 	inactive, closeSession := e.OnTaskInactive, e.OnClose
 	e.OnTaskInactive = func(id int, reason string) {
 		if inactive != nil {

@@ -98,6 +98,14 @@ const actBase = `
   me.gear = function() return {broken={}} end
   me.money = function() return 100 end
   world = {ground_z = function(x, y, z) return z or 0 end, path = function() return {ok=true,op="world.path",data={reachable=true,gap=0}} end, in_sight = function() return true end}
+  world.danger = function(x,y,z,r)
+    local d={state="clear",hostiles={}}
+    if z==nil or world.ground_z(x,y,z)==nil or math.abs(world.ground_z(x,y,z)-z)>3 then d.state="unknown" end
+    for _,u in ipairs(units.nearby(80)) do
+      if u.alive and u.reaction=="hostile" and math.sqrt((u.x-x)^2+(u.y-y)^2)<=r then d.hostiles[#d.hostiles+1]=u;d.state="hostile" end
+    end
+    return {ok=true,data=d}
+  end
   world.route = function(points, opts) return {ok=true,op="world.route",data={status="verified",from=pos,completed_legs=#points,waypoints=points}} end
   moves = {}
   move = {to = function(x, y, z) moves[#moves + 1] = {x = x, y = y, z = z} pos = {x = x, y = y, z = z or 0} return {ok = true} end,
