@@ -12,8 +12,8 @@ import (
 
 func flatRouteSource() routeSource {
 	return routeSource{
-		sample:  func(uint32, float64, float64) (float64, float64, uint16) { return 0, math.NaN(), 0 },
-		roadAt:  func(uint32, float64, float64) uint8 { return 0 },
+		sample:  func(context.Context, uint32, float64, float64) (float64, float64, uint16) { return 0, math.NaN(), 0 },
+		roadAt:  func(context.Context, uint32, float64, float64) uint8 { return 0 },
 		roads:   func(context.Context, float64, float64, float64, float64, float64) [][][2]float64 { return nil },
 		threats: func(context.Context, float64, float64, float64, float64, float64, bool) []threat { return nil },
 	}
@@ -58,7 +58,7 @@ func TestTwoDimensionalPlanUsesTerrainWithoutCertification(t *testing.T) {
 	req := routeFixture()
 	req.ExplicitZ = false
 	src := flatRouteSource()
-	src.sample = func(uint32, float64, float64) (float64, float64, uint16) { return 42, math.NaN(), 0 }
+	src.sample = func(context.Context, uint32, float64, float64) (float64, float64, uint16) { return 42, math.NaN(), 0 }
 	plan := planRoute(context.Background(), req, src)
 	points := plan.get("waypoints").([][3]float64)
 	if plan.get("status") != "unverified" || points[0][2] != 42 || points[len(points)-1][2] != 42 || plan.get("terrain_endpoint_gaps") != nil {
@@ -70,9 +70,11 @@ func TestTerrainMissingAndDisconnectedAreDistinct(t *testing.T) {
 	req.From[0] = -40
 	req.To[0] = 40
 	src := flatRouteSource()
-	src.sample = func(uint32, float64, float64) (float64, float64, uint16) { return math.NaN(), math.NaN(), 0 }
+	src.sample = func(context.Context, uint32, float64, float64) (float64, float64, uint16) {
+		return math.NaN(), math.NaN(), 0
+	}
 	assertRouteCode(t, planRoute(context.Background(), req, src), "not_available")
-	src.sample = func(_ uint32, x, y float64) (float64, float64, uint16) {
+	src.sample = func(_ context.Context, _ uint32, x, y float64) (float64, float64, uint16) {
 		if x >= 0 {
 			return 1000, math.NaN(), 0
 		}
@@ -99,7 +101,11 @@ func TestTerrainCancellationStopsSampling(t *testing.T) {
 	defer cancel()
 	src := flatRouteSource()
 	calls := 0
-	src.sample = func(uint32, float64, float64) (float64, float64, uint16) { calls++; cancel(); return 0, math.NaN(), 0 }
+	src.sample = func(context.Context, uint32, float64, float64) (float64, float64, uint16) {
+		calls++
+		cancel()
+		return 0, math.NaN(), 0
+	}
 	assertRouteCode(t, planRoute(ctx, routeFixture(), src), "cancelled")
 	if calls != 1 {
 		t.Fatalf("continued sampling after cancellation: %d", calls)
@@ -133,7 +139,7 @@ func TestTerrainDeadlineIncludesAdmission(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 	src := flatRouteSource()
-	src.sample = func(uint32, float64, float64) (float64, float64, uint16) {
+	src.sample = func(context.Context, uint32, float64, float64) (float64, float64, uint16) {
 		t.Error("sampled without admission")
 		return 0, 0, 0
 	}
@@ -143,7 +149,7 @@ func TestTerrainDeadlineIncludesAdmission(t *testing.T) {
 }
 func TestTerrainLimitsBeforeIOAndOutputBound(t *testing.T) {
 	src := flatRouteSource()
-	src.sample = func(uint32, float64, float64) (float64, float64, uint16) {
+	src.sample = func(context.Context, uint32, float64, float64) (float64, float64, uint16) {
 		t.Error("sampled an invalid query")
 		return 0, 0, 0
 	}
@@ -205,4 +211,15 @@ func TestRouteCLIExplicitForms(t *testing.T) {
 	if !three.ExplicitZ || three.From != [3]float64{1, 2, -30} || three.To != [3]float64{4, 5, 60} || three.Map != 571 || three.Horde {
 		t.Fatalf("%+v", three)
 	}
+}
+
+func TestRoadCacheLockCancellation(t *testing.T) {
+	roadMu.Lock()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	src := flatRouteSource()
+	src.roadAt = roadAtContext
+	plan := planRoute(ctx, routeFixture(), src)
+	roadMu.Unlock()
+	assertRouteCode(t, plan, "route_timeout")
 }

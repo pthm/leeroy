@@ -1,6 +1,8 @@
 package pathfinding
 
 import (
+	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -112,45 +114,89 @@ func (tm *TerrainManager) GetHeight(mapID uint32, x, y, z float32) (float32, boo
 }
 
 func (tm *TerrainManager) getOrLoadGrid(mapID uint32, gx, gy int) (*gridTerrain, error) {
+	return tm.getOrLoadGridContext(context.Background(), mapID, gx, gy)
+}
+func (tm *TerrainManager) getOrLoadGridContext(ctx context.Context, mapID uint32, gx, gy int) (*gridTerrain, error) {
 	key := packGridKey(mapID, gx, gy)
 
-	tm.mu.RLock()
+	if err := lockContext(ctx, tm.mu.TryRLock); err != nil {
+		return nil, err
+	}
 	g, ok := tm.grids[key]
 	tm.mu.RUnlock()
 	if ok {
 		return g, nil
 	}
 
-	tm.mu.Lock()
+	if err := lockContext(ctx, tm.mu.TryLock); err != nil {
+		return nil, err
+	}
 	defer tm.mu.Unlock()
 
 	if g, ok = tm.grids[key]; ok {
 		return g, nil
 	}
 
-	gt, err := tm.loadGrid(mapID, gx, gy)
+	gt, err := tm.loadGridContext(ctx, mapID, gx, gy)
 	if err != nil {
 		// Cache negative? For now, don't cache failures to allow retries if files appear.
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	tm.grids[key] = gt
 	return gt, nil
 }
 
-func (tm *TerrainManager) loadGrid(mapID uint32, gx, gy int) (*gridTerrain, error) {
-	gt, err := tm.loadGridHeights(mapID, gx, gy)
-	if err == nil && gt != nil {
-		file := fmt.Sprintf("%s/%03d%02d%02d.map", tm.mapsDir, mapID, gx, gy)
-		gt.water = loadWater(file)
-		gt.area = loadArea(file)
+func (tm *TerrainManager) loadGridContext(ctx context.Context, mapID uint32, gx, gy int) (*gridTerrain, error) {
+	file := fmt.Sprintf("%s/%03d%02d%02d.map", tm.mapsDir, mapID, gx, gy)
+	b, err := readTerrainFile(ctx, file)
+	if err != nil {
+		return nil, err
 	}
-	return gt, err
+	gt, err := decodeGridHeights(ctx, b, file)
+	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	gt.water, gt.area = decodeWater(b), decodeArea(b)
+	return gt, ctx.Err()
 }
 
-// loadWater reads the MLIQ section (GridTerrainData::LoadLiquidData); nil if absent or unreadable.
-func loadWater(fileName string) *gridWater {
-	b, err := os.ReadFile(fileName)
-	if err != nil || len(b) < 40 {
+const maxTerrainFileBytes = 16 << 20
+
+func readTerrainFile(ctx context.Context, file string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxTerrainFileBytes {
+		return nil, fmt.Errorf("terrain file must be regular and at most 16 MiB: %s", file)
+	}
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(contextReader{ctx, f}, maxTerrainFileBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxTerrainFileBytes {
+		return nil, fmt.Errorf("terrain file exceeds 16 MiB: %s", file)
+	}
+	return b, ctx.Err()
+}
+
+// decodeWater reads the MLIQ section; nil if absent or unreadable.
+func decodeWater(b []byte) *gridWater {
+	if len(b) < 40 {
 		return nil
 	}
 	off := int(binary.LittleEndian.Uint32(b[28:]))
@@ -180,10 +226,9 @@ func loadWater(fileName string) *gridWater {
 	return g
 }
 
-// loadArea reads the area section (GridTerrainData::LoadAreaData): one area id per 8x8-vertex cell; nil if absent.
-func loadArea(fileName string) []uint16 {
-	b, err := os.ReadFile(fileName)
-	if err != nil || len(b) < 40 {
+// decodeArea reads one area id per 8x8-vertex cell; nil if absent.
+func decodeArea(b []byte) []uint16 {
+	if len(b) < 40 {
 		return nil
 	}
 	off := int(binary.LittleEndian.Uint32(b[12:]))
@@ -212,6 +257,12 @@ func (tm *TerrainManager) GetArea(mapID uint32, x, y float32) uint16 {
 	if err != nil || gt == nil || gt.area == nil {
 		return 0
 	}
+	return gt.areaAt(x, y)
+}
+func (gt *gridTerrain) areaAt(x, y float32) uint16 {
+	if gt.area == nil {
+		return 0
+	}
 	i, j := int(128*(32-x/sizeOfGrids))&127, int(128*(32-y/sizeOfGrids))&127
 	return gt.area[(i>>3)*16+(j>>3)]
 }
@@ -224,6 +275,12 @@ func (tm *TerrainManager) GetWaterLevel(mapID uint32, x, y float32) (float32, bo
 	}
 	gt, err := tm.getOrLoadGrid(mapID, gx, gy)
 	if err != nil || gt == nil || gt.water == nil {
+		return 0, false
+	}
+	return gt.waterAt(x, y)
+}
+func (gt *gridTerrain) waterAt(x, y float32) (float32, bool) {
+	if gt.water == nil {
 		return 0, false
 	}
 	wt := gt.water
@@ -247,17 +304,13 @@ func (tm *TerrainManager) GetWaterLevel(mapID uint32, x, y float32) (float32, bo
 	return wt.levels[cx*wt.w+cy], true
 }
 
-func (tm *TerrainManager) loadGridHeights(mapID uint32, gx, gy int) (*gridTerrain, error) {
-	fileName := fmt.Sprintf("%s/%03d%02d%02d.map", tm.mapsDir, mapID, gx, gy)
-	f, err := os.Open(fileName)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
+func decodeGridHeights(ctx context.Context, b []byte, fileName string) (*gridTerrain, error) {
+	f := bytes.NewReader(b)
+	reader := contextReader{ctx, f}
 
 	// Read file header (10 uint32)
 	var header [10]uint32
-	if err := binary.Read(f, binary.LittleEndian, &header); err != nil {
+	if err := binary.Read(reader, binary.LittleEndian, &header); err != nil {
 		return nil, fmt.Errorf("read map header: %w", err)
 	}
 	if header[0] != mapMagicUint || header[1] != mapVersion {
@@ -282,16 +335,16 @@ func (tm *TerrainManager) loadGridHeights(mapID uint32, gx, gy int) (*gridTerrai
 	// height header: fourcc, flags, gridHeight, gridMaxHeight
 	var hhFourCC, hhFlags uint32
 	var gridHeight, gridMaxHeight float32
-	if err := binary.Read(f, binary.LittleEndian, &hhFourCC); err != nil {
+	if err := binary.Read(reader, binary.LittleEndian, &hhFourCC); err != nil {
 		return nil, err
 	}
-	if err := binary.Read(f, binary.LittleEndian, &hhFlags); err != nil {
+	if err := binary.Read(reader, binary.LittleEndian, &hhFlags); err != nil {
 		return nil, err
 	}
-	if err := binary.Read(f, binary.LittleEndian, &gridHeight); err != nil {
+	if err := binary.Read(reader, binary.LittleEndian, &gridHeight); err != nil {
 		return nil, err
 	}
-	if err := binary.Read(f, binary.LittleEndian, &gridMaxHeight); err != nil {
+	if err := binary.Read(reader, binary.LittleEndian, &gridMaxHeight); err != nil {
 		return nil, err
 	}
 	if hhFourCC != mapHeightMagic {
@@ -313,10 +366,10 @@ func (tm *TerrainManager) loadGridHeights(mapID uint32, gx, gy int) (*gridTerrai
 		// v9: 129*129 uint16, v8: 128*128 uint16
 		v9 := make([]uint16, 129*129)
 		v8 := make([]uint16, 128*128)
-		if err := binary.Read(f, binary.LittleEndian, &v9); err != nil {
+		if err := binary.Read(reader, binary.LittleEndian, &v9); err != nil {
 			return nil, err
 		}
-		if err := binary.Read(f, binary.LittleEndian, &v8); err != nil {
+		if err := binary.Read(reader, binary.LittleEndian, &v8); err != nil {
 			return nil, err
 		}
 		gt.v9u16 = v9
@@ -327,10 +380,10 @@ func (tm *TerrainManager) loadGridHeights(mapID uint32, gx, gy int) (*gridTerrai
 	case (hhFlags & mapHeightAsInt8) != 0:
 		v9 := make([]uint8, 129*129)
 		v8 := make([]uint8, 128*128)
-		if err := binary.Read(f, binary.LittleEndian, &v9); err != nil {
+		if err := binary.Read(reader, binary.LittleEndian, &v9); err != nil {
 			return nil, err
 		}
-		if err := binary.Read(f, binary.LittleEndian, &v8); err != nil {
+		if err := binary.Read(reader, binary.LittleEndian, &v8); err != nil {
 			return nil, err
 		}
 		gt.v9u8 = v9
@@ -342,10 +395,10 @@ func (tm *TerrainManager) loadGridHeights(mapID uint32, gx, gy int) (*gridTerrai
 		// float
 		v9 := make([]float32, 129*129)
 		v8 := make([]float32, 128*128)
-		if err := binary.Read(f, binary.LittleEndian, &v9); err != nil {
+		if err := binary.Read(reader, binary.LittleEndian, &v9); err != nil {
 			return nil, err
 		}
-		if err := binary.Read(f, binary.LittleEndian, &v8); err != nil {
+		if err := binary.Read(reader, binary.LittleEndian, &v8); err != nil {
 			return nil, err
 		}
 		gt.v9f = v9
@@ -561,4 +614,36 @@ func (tm *TerrainManager) GetGridHeight(mapID uint32, x, y float32) (float32, bo
 func (tm *TerrainManager) EnsureGridLoaded(mapID uint32, gx, gy int32) error {
 	_, err := tm.getOrLoadGrid(mapID, int(gx), int(gy))
 	return err
+}
+
+// GetGridSampleContext samples terrain height, water and area with cancellable
+// loading and cache-lock waits. Absent surfaces are NaN; errors do not enter the cache.
+func (tm *TerrainManager) GetGridSampleContext(ctx context.Context, mapID uint32, x, y float32) (height, water float32, area uint16, err error) {
+	height, water = float32(math.NaN()), float32(math.NaN())
+	if err = ctx.Err(); err != nil {
+		return
+	}
+	gx, gy := gameToGridCoords(x, y)
+	if gx < 0 || gy < 0 || gx >= 64 || gy >= 64 {
+		return
+	}
+	gt, e := tm.getOrLoadGridContext(ctx, mapID, gx, gy)
+	if e != nil {
+		err = e
+		return
+	}
+	if gt.hasHeight {
+		height = gt.getHeight(x, y)
+	} else {
+		height = gt.gridHeight
+	}
+	if height <= invalidHeight+1 || math.IsInf(float64(height), 0) {
+		height = float32(math.NaN())
+	}
+	if h, ok := gt.waterAt(x, y); ok {
+		water = h
+	}
+	area = gt.areaAt(x, y)
+	err = ctx.Err()
+	return
 }

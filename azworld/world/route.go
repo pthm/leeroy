@@ -31,14 +31,14 @@ type routeRequest struct {
 	Horde     bool
 }
 type routeSource struct {
-	sample  func(uint32, float64, float64) (float64, float64, uint16)
-	roadAt  func(uint32, float64, float64) uint8
+	sample  func(context.Context, uint32, float64, float64) (float64, float64, uint16)
+	roadAt  func(context.Context, uint32, float64, float64) uint8
 	roads   func(context.Context, float64, float64, float64, float64, float64) [][][2]float64
 	threats func(context.Context, float64, float64, float64, float64, float64, bool) []threat
 }
 
 func defaultRouteSource() routeSource {
-	return routeSource{Sample, RoadAt, roadPathsContext, threatsContext}
+	return routeSource{sampleRouteTerrain, roadAtContext, roadPathsContext, threatsContext}
 }
 
 var routeSlot = make(chan struct{}, 1)
@@ -130,9 +130,9 @@ func planRoute(parent context.Context, r routeRequest, src routeSource) (out *ob
 	if len(way) > maxRouteWaypoints {
 		panic(routeError{"route_limit", "plan needs more than 64 waypoints; split into shorter queries before submitting to world.route"})
 	}
-	fromGround, _, _ := src.sample(uint32(r.Map), r.From[0], r.From[1])
+	fromGround, _, _ := src.sample(ctx, uint32(r.Map), r.From[0], r.From[1])
 	checkRouteContext(ctx)
-	toGround, _, _ := src.sample(uint32(r.Map), r.To[0], r.To[1])
+	toGround, _, _ := src.sample(ctx, uint32(r.Map), r.To[0], r.To[1])
 	checkRouteContext(ctx)
 	if !finite(fromGround) || !finite(toGround) {
 		panic(routeError{"not_available", "terrain height is unavailable at an exact endpoint"})

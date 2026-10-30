@@ -122,7 +122,7 @@ func searchTerrain(ctx context.Context, src routeSource, m float64, from, to [2]
 	mapID := uint32(m)
 	for i := range h {
 		checkRouteContext(ctx)
-		g, wl, _ := src.sample(mapID, cx(i), cy(i))
+		g, wl, _ := src.sample(ctx, mapID, cx(i), cy(i))
 		h[i], cost[i] = float32(g), 1
 		if !math.IsNaN(wl) && wl > g+1.5 {
 			cost[i] = 3 // swimming
@@ -145,7 +145,7 @@ func searchTerrain(ctx context.Context, src routeSource, m float64, from, to [2]
 	}
 	for i := range road {
 		checkRouteContext(ctx)
-		if src.roadAt(mapID, cx(i), cy(i)) > 100 { // the client's road textures
+		if src.roadAt(ctx, mapID, cx(i), cy(i)) > 100 { // the client's road textures
 			road[i] = 1
 		}
 	}

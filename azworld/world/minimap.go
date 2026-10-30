@@ -2,13 +2,16 @@ package world
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"image"
 	"image/png"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 // The game client's own map data (extracted by cmd/clientdata into data/): minimap/<map>/<gx>_<gy>.png, one
@@ -39,6 +42,7 @@ func MinimapTile(m uint32, gx, gy int) []byte {
 
 var (
 	tileMu sync.Mutex
+	roadMu sync.Mutex
 	tiles  = map[[3]int]image.Image{}
 	roads  = map[[3]int][]byte{}
 )
@@ -67,21 +71,63 @@ func MinimapAt(m uint32, x, y float64) (rgb [3]uint8, ok bool) {
 }
 
 // RoadAt is how much of the ground at a world point is road (0-255; 0 without client data).
-func RoadAt(m uint32, x, y float64) uint8 {
+func RoadAt(m uint32, x, y float64) uint8 { return roadAtContext(context.Background(), m, x, y) }
+func roadAtContext(ctx context.Context, m uint32, x, y float64) uint8 {
+	checkRouteContext(ctx)
+	if !roadMu.TryLock() {
+		timer := time.NewTicker(time.Millisecond)
+		defer timer.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				panic(ctx.Err())
+			case <-timer.C:
+			}
+			checkRouteContext(ctx)
+			if roadMu.TryLock() {
+				break
+			}
+		}
+	}
+	defer roadMu.Unlock()
+	checkRouteContext(ctx)
 	gx, gy := gridOf(x), gridOf(y)
 	k := [3]int{int(m), gx, gy}
-	tileMu.Lock()
 	t, seen := roads[k]
 	if !seen {
-		t, _ = os.ReadFile(clientFile("roads", m, gx, gy, "bin"))
-		roads[k] = t
+		file := clientFile("roads", m, gx, gy, "bin")
+		var cache bool
+		t, cache = readRoadTile(file)
+		checkRouteContext(ctx)
+		if cache {
+			roads[k] = t
+		}
 	}
-	tileMu.Unlock()
 	const n = 128
-	if len(t) < n*n {
+	if len(t) != n*n {
 		return 0
 	}
-	r := min(n-1, int((float64(GridSize*float64(32-gx))-x)/GridSize*n))
-	c := min(n-1, int((float64(GridSize*float64(32-gy))-y)/GridSize*n))
+	r := max(0, min(n-1, int((float64(GridSize*float64(32-gx))-x)/GridSize*n)))
+	c := max(0, min(n-1, int((float64(GridSize*float64(32-gy))-y)/GridSize*n)))
 	return t[r*n+c]
+}
+func readRoadTile(file string) ([]byte, bool) {
+	info, err := os.Stat(file)
+	if err != nil {
+		return nil, os.IsNotExist(err)
+	}
+	// Reject nonregular files before opening; a road tile is exactly 128x128 bytes.
+	if !info.Mode().IsRegular() || info.Size() != 128*128 {
+		return nil, true
+	}
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, false
+	}
+	defer f.Close()
+	b := make([]byte, 128*128)
+	if _, err := io.ReadFull(f, b); err != nil {
+		return nil, false
+	}
+	return b, true
 }
