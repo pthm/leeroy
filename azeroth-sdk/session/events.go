@@ -10,12 +10,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/pthm/leeroy/azeroth-sdk/metrics"
-	"math"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/pthm/leeroy/azeroth-sdk/client"
@@ -123,13 +120,6 @@ func (b *Bot) request(op string, args map[string]any, timeout time.Duration, che
 // refuse resolves a request at once as failed (the action was never sent); done as ok.
 func (b *Bot) refuse(op string, args map[string]any, code, msg string) map[string]any {
 	return b.lua.Reqs.Now(script.Spec{Op: op, Args: args}, script.Fail(code, msg, nil))
-}
-
-func taskLabel(name string) string {
-	if name == "" {
-		return "a wow call"
-	}
-	return "task " + strconv.Quote(name)
 }
 
 // noNPC validates an observed NPC GUID. Template entries belong in act's npc_entry selector.
@@ -645,105 +635,7 @@ func (b *Bot) stateEvents() {
 // setupActions: move.to / move.stop and spells.cast as requests.
 func (b *Bot) setupActions() {
 	e := b.lua
-	type move struct {
-		id                int
-		x, y, z           float32
-		started, deadline time.Time
-		straight          bool
-		task              string      // the task that asked for it
-		planned, cancel   atomic.Bool // route worked out (started/deadline/straight set); superseded or stopped
-	}
-	var cur *move // ponytail: guarded by the engine lock (Lua calls) and only read in Check (tick goroutine)
-	// routes are worked out off the Lua thread (a long or cold-tile path takes longer than a script step may run);
-	// planMu keeps them in call order so a superseded route can't land after its replacement
-	var planMu sync.Mutex
-	dist := func(m *move) float64 {
-		x, y, z, _ := b.GetPosition()
-		return math.Sqrt(float64((x-m.x)*(x-m.x) + (y-m.y)*(y-m.y) + (z-m.z)*(z-m.z)))
-	}
-	e.OnStop = func(req int) { // task.stop on a task waiting for its walk: stop walking too
-		if m := cur; m != nil && m.id == req && b.lua.Reqs.Result(m.id)["pending"] == true {
-			m.cancel.Store(true)
-			b.lua.Reqs.Resolve(m.id, script.Ok(types.MoveDone{Stopped: true, Distance: math.Round(dist(m)*10) / 10}))
-			b.StopMoving()
-		}
-	}
-	e.Func("move.to", "(x, y, z) → Request<MoveDone>", "walk there along the navmesh: ok on arrival, else stuck or timeout. Calling it again near the same point (chasing) keeps the same request; a different point supersedes it. With no navmesh path it walks a straight line (no_path)",
-		func(x, y, z float32) map[string]any {
-			args := map[string]any{"x": x, "y": y, "z": z}
-			if lock := b.world.MovementLock(); lock != "" {
-				return b.refuse("move.to", args, lock, map[string]string{"in_flight": "you're on a flight: wait for flight_end",
-					"teleporting": "you're being teleported: wait a moment", "feared": "you're feared: the server moves you",
-					"confused": "you're confused: the server moves you", "charmed": "something controls you",
-					"stunned": "you're stunned", "rooted": "you're rooted"}[lock])
-			}
-			if m := cur; m != nil && b.lua.Reqs.Result(m.id)["pending"] == true {
-				if dx, dy := m.x-x, m.y-y; dx*dx+dy*dy < 100 {
-					m.x, m.y, m.z = x, y, z
-					if m.planned.Load() && planMu.TryLock() { // short chase repaths stay inline
-						b.MoveTo(x, y, z)
-						planMu.Unlock()
-					}
-					return b.lua.Reqs.Result(m.id)
-				}
-				m.cancel.Store(true)
-				msg := "a newer move.to replaced this one"
-				if by := b.lua.CurrentTask(); by != m.task {
-					// two tasks steering at once cancel each other's walks: say which, or it looks like a bug
-					msg = fmt.Sprintf("a move.to from %s replaced this one from %s: two tasks moving you cancel each other", taskLabel(by), taskLabel(m.task))
-				}
-				b.lua.Reqs.Resolve(m.id, script.Fail("superseded", msg, nil))
-			}
-			m := &move{x: x, y: y, z: z, task: b.lua.CurrentTask()}
-			cur = m
-			go func() {
-				planMu.Lock()
-				defer planMu.Unlock()
-				if m.cancel.Load() {
-					return
-				}
-				m.straight = b.MoveTo(x, y, z) != nil
-				if m.cancel.Load() { // stopped while planning (a newer move.to plans after this)
-					b.StopMoving()
-				}
-				px, py, pz, _ := b.GetPosition()
-				d := math.Sqrt(float64((px-x)*(px-x) + (py-y)*(py-y) + (pz-z)*(pz-z)))
-				m.started = time.Now()
-				m.deadline = m.started.Add(time.Duration(d/5*1.5+10) * time.Second)
-				m.planned.Store(true)
-			}()
-			req := b.request("move.to", args, time.Hour, func() *script.Outcome {
-				if !m.planned.Load() {
-					return nil
-				}
-				d := math.Round(dist(m)*10) / 10
-				res := types.MoveDone{Distance: d, NoPath: m.straight}
-				switch {
-				case d < 2.5 || (d < 5 && !b.IsMoving()):
-					return script.Ok(res)
-				case !b.IsMoving() && time.Since(m.started) > time.Second:
-					msg := fmt.Sprintf("stopped %.0f yd short", d)
-					if m.straight {
-						msg += " (no navmesh path, walked a straight line: blocked by terrain?)"
-					}
-					return script.Fail("stuck", msg, res)
-				case time.Now().After(m.deadline):
-					b.StopMoving()
-					return script.Fail("timeout", fmt.Sprintf("still %.0f yd away", d), res)
-				}
-				return nil
-			}, nil)
-			m.id = req["id"].(int)
-			return req
-		})
-	e.Func("move.stop", "() → Request<MoveDone>", "stop walking (a pending move.to resolves ok with stopped = true)", func() map[string]any {
-		if cur != nil {
-			cur.cancel.Store(true)
-			b.lua.Reqs.Resolve(cur.id, script.Ok(types.MoveDone{Stopped: true, Distance: math.Round(dist(cur)*10) / 10}))
-		}
-		b.StopMoving()
-		return b.done("move.stop", nil, nil)
-	})
+	b.setupMovementRequests()
 	e.Func("spells.cast", "(id [, guid = you]) → Request<CastDone>", "cast a spell on a unit: ok when it goes off, else the server's reason (out_of_range, line_of_sight, not_ready, no_power, bad_targets, moving, interrupted, cancelled, unit_not_infront, caster_aurastate, equipped_item_class, ...) or not_known; when it goes off but every target avoids it, how (miss, resist, immune, evade, reflect, dodge, parry...): power and cooldown are spent",
 		func(spell uint32, target uint64) map[string]any {
 			if target == 0 {

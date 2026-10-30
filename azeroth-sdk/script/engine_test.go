@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -160,7 +161,11 @@ func TestTaskControl(t *testing.T) {
 	e := NewEngine(nolog, nil)
 	e.Func("t.act", "() → Request", "", func() map[string]any { return e.Reqs.Start(Spec{Op: "act", Timeout: time.Minute}) })
 	var stopped []int
-	e.OnStop = func(req int) { stopped = append(stopped, req) }
+	e.OnTaskInactive = func(id int, reason string) {
+		if reason == "task_stopped" {
+			stopped = append(stopped, id)
+		}
+	}
 	e.Eval(`log = {}
 		task.spawn("main", function() task.stop("main") log[#log+1] = "survived" end)
 		task.spawn("w", function() local r = await(t.act()) log[#log+1] = r.ok and "w ok" or "w fail" end)
@@ -184,7 +189,7 @@ func TestTaskControl(t *testing.T) {
 	e.Eval(`task.spawn("a", function() await(t.act()) end) task.spawn("b", function() wait(60) end)
 		task.spawn("boss", function() n = task.stop() end)`)
 	tick(e, 3)
-	if v, _ := e.Eval(`return n`); v != 2.0 || len(stopped) != 1 || stopped[0] != 2 {
+	if v, _ := e.Eval(`return n`); v != 2.0 || !slices.Contains(stopped, 4) || !slices.Contains(stopped, 5) {
 		t.Fatalf("stop all: n=%v walks stopped=%v", v, stopped)
 	}
 	if _, err := e.Eval(`task.spawn("self", function() task.stop(task.current()) end)`); err != nil {

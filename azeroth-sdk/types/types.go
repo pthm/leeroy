@@ -560,14 +560,15 @@ type Event struct {
 // ---------- scripts and status ----------
 
 type TaskInfo struct {
-	ID         int    `json:"id"`
-	Name       string `json:"name"`
-	State      string `json:"state" doc:"new, running, waiting, paused, done, failed, stopped"`
-	Status     string `json:"status,omitempty" doc:"what it says it's doing (task.status)"`
-	WaitingFor string `json:"waiting_for,omitempty" doc:"e.g. 1.5s, request 12, event kill"`
-	Seconds    int    `json:"seconds" doc:"since it started"`
-	BusyMS     int    `json:"busy_ms" doc:"time it has spent running Lua (and the API calls it made) since it started: the game waits while it does"`
-	Error      string `json:"error,omitempty" doc:"why it failed: file:line: message, then a traceback when the error was deeper than one call"`
+	Movement   []MovementOwner `json:"movement,omitempty" doc:"active or queued movement belonging to this task"`
+	ID         int             `json:"id"`
+	Name       string          `json:"name"`
+	State      string          `json:"state" doc:"new, running, waiting, paused, done, failed, stopped"`
+	Status     string          `json:"status,omitempty" doc:"what it says it's doing (task.status)"`
+	WaitingFor string          `json:"waiting_for,omitempty" doc:"e.g. 1.5s, request 12, event kill"`
+	Seconds    int             `json:"seconds" doc:"since it started"`
+	BusyMS     int             `json:"busy_ms" doc:"time it has spent running Lua (and the API calls it made) since it started: the game waits while it does"`
+	Error      string          `json:"error,omitempty" doc:"why it failed: file:line: message, then a traceback when the error was deeper than one call"`
 }
 
 // Gear grades what you wear against your level, from the game's own numbers: item level, quality, durability.
@@ -743,7 +744,21 @@ type Flight struct {
 }
 
 // Movement says who's moving your character.
+// MovementOwner identifies one active or queued raw movement request.
+type MovementOwner struct {
+	TaskID      int      `json:"task_id" doc:"zero for an immediate evaluation"`
+	Task        string   `json:"task,omitempty"`
+	Call        string   `json:"call,omitempty" doc:"enclosing helper call, when present"`
+	RequestID   int      `json:"request_id"`
+	Priority    string   `json:"priority"`
+	Phase       string   `json:"phase" doc:"queued, planning, walking"`
+	Destination Position `json:"destination"`
+}
+
 type Movement struct {
+	Owner *MovementOwner  `json:"owner,omitempty" doc:"active local movement owner; server movement lock is independent"`
+	Queue []MovementOwner `json:"queue,omitempty"`
+
 	State       string    `json:"state" doc:"free (you are), in_flight, teleporting, feared, confused, charmed (the server moves you: move.to is refused), stunned, rooted"`
 	Destination *Position `json:"destination,omitempty" doc:"where the server is taking you (a flight, fear)"`
 	SecondsLeft float64   `json:"seconds_left,omitempty"`

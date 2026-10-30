@@ -375,6 +375,9 @@ func (b *Bot) setupTravel() {
 	e.Func("me.movement", "() → Movement", "who's moving you: free, or the server (in_flight, teleporting, feared, confused, charmed: move.to is refused), or stunned / rooted; with where the server is taking you",
 		func() types.Movement {
 			mv := types.Movement{State: w.MovementLock()}
+			if b.moves != nil {
+				mv.Owner, mv.Queue = b.moves.snapshot()
+			}
 			if mv.State == "" {
 				mv.State = "free"
 			}

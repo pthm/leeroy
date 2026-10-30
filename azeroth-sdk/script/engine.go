@@ -57,9 +57,11 @@ type Engine struct {
 	workspace     *os.Root
 	workspacePath string
 
-	// OnStop is called when task.stop ends a task that was waiting on a request (its id), so the session can
-	// cancel what the task started (a walk). Called with mu held.
-	OnStop func(req int)
+	// Lifecycle hooks run with the engine lock held; they must not reenter the engine.
+	nativeCall     *diagnosticCall // request currently being invoked, under mu
+	OnTaskInactive func(taskID int, reason string)
+	OnClose        func()
+	TaskMovement   func(taskID int) []types.MovementOwner
 }
 
 const executionLimit = 3 * time.Second
@@ -366,6 +368,9 @@ func (e *Engine) TakeScriptErrors() map[string]any {
 func (e *Engine) Close() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.OnClose != nil {
+		e.OnClose()
+	}
 	for _, t := range e.tasks {
 		e.endTaskDiagnostics(t, "session_closed")
 	}
@@ -424,6 +429,9 @@ func (e *Engine) Func(name, sig, desc string, fn any) {
 		var diagnostic *diagnosticCall
 		if strings.Contains(sig, "→ Request") {
 			diagnostic = e.beginDiagnostic(L, name, nativeDiagnosticArgs(name, sig, L))
+			prior := e.nativeCall
+			e.nativeCall = diagnostic
+			defer func() { e.nativeCall = prior }()
 			defer func() {
 				if p := recover(); p != nil {
 					e.endDiagnostic(diagnostic, false, "script_error", 0, 0)
@@ -495,6 +503,25 @@ func (e *Engine) CurrentTask() string {
 	return ""
 }
 
+// CurrentTaskIdentity is available inside a registered function with the engine lock held.
+// Task zero denotes an immediate evaluation, not a shared movement owner.
+func (e *Engine) CurrentTaskIdentity() (id int, name, call string) {
+	if c := e.nativeCall; c != nil {
+		call = c.event.ParentCall
+		if call == "" {
+			call = c.event.Call
+		}
+		return c.event.TaskID, c.event.Task, call
+	}
+	if e.cur != nil {
+		id, name = e.cur.ID, e.cur.Name
+		if n := len(e.cur.calls); n > 0 {
+			call = e.cur.calls[n-1].event.Call
+		}
+	}
+	return
+}
+
 // TasksHeld lists the tasks; call it with the engine lock held (from a registered function).
 func (e *Engine) TasksHeld() []types.TaskInfo {
 	ids := []int{}
@@ -518,6 +545,9 @@ func (e *Engine) TasksHeld() []types.TaskInfo {
 			case "event":
 				ti.WaitingFor = "event " + strings.Join(t.wait.types, ",")
 			}
+		}
+		if e.TaskMovement != nil {
+			ti.Movement = e.TaskMovement(t.ID)
 		}
 		out = append(out, ti)
 	}
@@ -1020,6 +1050,13 @@ func (e *Engine) finish(t *Task) {
 	if t.State == "failed" {
 		code = "script_error"
 	}
+	if e.OnTaskInactive != nil {
+		reason := code
+		if t.State == "done" {
+			reason = "task_finished"
+		}
+		e.OnTaskInactive(t.ID, reason)
+	}
 	e.endTaskDiagnostics(t, code)
 	delete(e.byThread, t.co)
 	if !t.Handler {
@@ -1228,12 +1265,6 @@ func (e *Engine) registerRuntime() {
 			n := 0
 			for _, id := range ids {
 				if t := e.tasks[id]; t != nil && t.State != "done" && t.State != "failed" && t.State != "stopped" {
-					w := t.wait
-					if t.State == "paused" && t.paused == "waiting" || t.State == "waiting" {
-						if w.kind == "await" && e.OnStop != nil {
-							e.OnStop(w.req)
-						}
-					}
 					t.State, t.Ended = "stopped", time.Now()
 					e.finish(t)
 					n++
@@ -1249,6 +1280,9 @@ func (e *Engine) registerRuntime() {
 			ok := t != nil && (t.State == "waiting" || t.State == "new")
 			if ok {
 				t.paused, t.State = t.State, "paused"
+				if e.OnTaskInactive != nil {
+					e.OnTaskInactive(t.ID, "task_paused")
+				}
 			}
 			L.Push(lua.LBool(ok))
 			return 1

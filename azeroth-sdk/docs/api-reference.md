@@ -213,10 +213,12 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | | Returns |
 |---|---|---|
+| `move.cancel(request_id) → Request` | explicitly cancel active or queued movement by request ID, including another task's; the walk fails cancelled; not_pending if absent | [Request](#request) |
 | `move.face(guid) → Request` | turn to face a unit (melee and most spells need it) | [Request](#request) |
 | `move.jump() → Request` | jump (over a low obstacle; part of getting unstuck) | [Request](#request) |
-| `move.stop() → Request<MoveDone>` | stop walking (a pending move.to resolves ok with stopped = true) | [Request](#request), [MoveDone](#movedone) |
-| `move.to(x, y, z) → Request<MoveDone>` | walk there along the navmesh: ok on arrival, else stuck or timeout. Calling it again near the same point (chasing) keeps the same request; a different point supersedes it. With no navmesh path it walks a straight line (no_path) | [Request](#request), [MoveDone](#movedone) |
+| `move.owner() → MovementOwner?` | active local movement owner, or nil when idle; queued requests are in me.movement and task.list | [MovementOwner](#movementowner) |
+| `move.stop() → Request<MoveDone>` | stop this task's active movement; its walk fails cancelled. Refuses another caller's movement with movement_busy | [Request](#request), [MoveDone](#movedone) |
+| `move.to(x, y, z) → Request<MoveDone>` | walk along the navmesh; same-task replacement returns replaced_by_owner; other callers queue FIFO for at most 5 seconds then movement_busy. Planning waits at most 15 seconds; walking at most 600 seconds. Task pause/termination cancels its moves | [Request](#request), [MoveDone](#movedone) |
 | `move.turn(o) → Request` | face an angle (radians, as me.position().o) | [Request](#request) |
 | `move.unstuck() → Request<Teleport>` | the failsafe when you're truly stuck: what the real client's "Character stuck" does: a 10 s cast that hearths you home (me.home()). Not in combat or on a flight; shares the hearthstone's cooldown | [Request](#request), [Teleport](#teleport) |
 
@@ -862,14 +864,28 @@ Status is what a player sees on screen, in one call (me.status, `wow status`): e
 
 ### Movement
 
-Movement says who's moving your character.
-
 | Field | Type | |
 |---|---|---|
+| `owner?` | MovementOwner | active local movement owner; server movement lock is independent |
+| `queue?` | MovementOwner[] |  |
 | `state` | string | free (you are), in_flight, teleporting, feared, confused, charmed (the server moves you: move.to is refused), stunned, rooted |
 | `destination?` | Position | where the server is taking you (a flight, fear) |
 | `seconds_left?` | number |  |
 | `flight?` | Flight |  |
+
+### MovementOwner
+
+Movement says who's moving your character. MovementOwner identifies one active or queued raw movement request.
+
+| Field | Type | |
+|---|---|---|
+| `task_id` | number | zero for an immediate evaluation |
+| `task?` | string |  |
+| `call?` | string | enclosing helper call, when present |
+| `request_id` | number |  |
+| `priority` | string |  |
+| `phase` | string | queued, planning, walking |
+| `destination` | Position |  |
 
 ### Flight
 
@@ -1014,6 +1030,7 @@ LootRoll: a group loot roll waiting for your choice.
 
 | Field | Type | |
 |---|---|---|
+| `movement?` | MovementOwner[] | active or queued movement belonging to this task |
 | `id` | number |  |
 | `name` | string |  |
 | `state` | string | new, running, waiting, paused, done, failed, stopped |

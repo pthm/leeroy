@@ -54,8 +54,7 @@ type BotEvent struct {
 
 // Bot implements the WoW client bot logic with behavior tree AI.
 type Bot struct {
-	rec              *Recorder // optional event log (-record)
-	lastMoveNoPath   bool
+	rec              *Recorder                    // optional event log (-record)
 	lastAttackReject atomic.Pointer[attackReject] // for bot.last_attack_error() // last move_to found no navmesh path (move_to returns false)
 	id               string
 	config           Config
@@ -80,6 +79,7 @@ type Bot struct {
 	notify         func(text string)        // a notice event (set by setupControl)
 	acked          func(key string) bool    // takes a server confirmation (chat echo, invite ok) setupControl recorded
 	wm             *worldMsgs               // reputation, MOTD, refused travel... (worldmsg.go)
+	moves          *movementRequests
 	lua            *script.Engine
 	slowTicks      int       // slow ticks since the last slow_tick event
 	slowEmitted    time.Time // the last slow_tick event
@@ -833,7 +833,11 @@ func (b *Bot) runMovementLoop(stop <-chan struct{}, done chan<- struct{}) {
 // Behavior tree construction
 // ============================================================
 
-func (b *Bot) moveToPoint(x, y, z float32) {
+func (b *Bot) moveToPoint(x, y, z float32) { b.moveToPointGuarded(x, y, z, nil) }
+
+// valid is checked while holding movementMu before publishing a planned path.
+// Cancellation marks the request invalid before taking movementMu to stop it.
+func (b *Bot) moveToPointGuarded(x, y, z float32, valid func() bool) (noPath bool) {
 	b.ensureMovementController()
 	if b.world.Falling() { // no steering in the air
 		return
@@ -934,7 +938,7 @@ func (b *Bot) moveToPoint(x, y, z float32) {
 	var pts []navigation.Point3D
 	if b.nav != nil {
 		result, err := b.nav.FindPath(mapID, current, navigation.Point3D{X: x, Y: y, Z: z})
-		b.lastMoveNoPath = !(err == nil && result != nil && result.Found)
+		noPath = !(err == nil && result != nil && result.Found)
 		if err != nil {
 			b.log("pathfinding error: %v", err) // e.g. mmaps version mismatch; was silent
 		}
@@ -973,9 +977,13 @@ func (b *Bot) moveToPoint(x, y, z float32) {
 	// Hand off to the (now only) movement implementation.
 	// The controller handles time-based following, 500ms HBs, and explicit turns at direction changes.
 	b.movementMu.Lock()
+	if valid != nil && !valid() {
+		b.movementMu.Unlock()
+		return
+	}
 	b.ensureMovementControllerLocked()
 	if b.moveController != nil {
-		b.moveController.SetPath(pts, now, po, mapID)
+		b.moveController.SetPath(pts, time.Now(), po, mapID)
 		b.isMoving = true
 		b.lastMoveCommandPos = requestedDest
 		b.lastMoveCommandTime = now
@@ -983,6 +991,7 @@ func (b *Bot) moveToPoint(x, y, z float32) {
 	b.movementMu.Unlock()
 
 	// The controller will emit the appropriate START / HB packets.
+	return
 }
 
 type terrainHeightNavigator interface {
@@ -1322,8 +1331,7 @@ func (b *Bot) SetSheathed(state uint32) error {
 }
 
 func (b *Bot) MoveTo(x, y, z float32) error {
-	b.moveToPoint(x, y, z)
-	if b.lastMoveNoPath {
+	if b.moveToPointGuarded(x, y, z, nil) {
 		return fmt.Errorf("no navmesh path; walking a straight line")
 	}
 	return nil
