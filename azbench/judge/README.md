@@ -154,8 +154,13 @@ are inclusive per operation: adding nested helper and raw-action durations would
 
 `azbench status` shows up to three fresh active episodes, ranked by recorded action time and episode span.
 This is observed failed-action time, not an estimate of all time lost to a problem. The evidence view keeps
-the last 200 action, status, tool and lifecycle records and reports how many were omitted. Task status is an
+the last 200 action, status, tool, quest/group observation and lifecycle records and reports how many were omitted. Task status is an
 agent claim; it does not prove quest completion or a planning mistake.
+
+Quest observations are complete client-log snapshots sampled once a second and emitted on change. Completion
+bits indicate completed objectives, not turn-in; disappearing from the log can also mean abandonment. Raw
+counters do not include inventory objectives. Group observations contain roster GUIDs, without assuming a
+shared plan or readiness. Both appear in the evidence sequence without altering action counts or judge scores.
 
 Tool diagnostics recognize Claude tool-use/result pairs, Codex command-execution items and OpenCode tool-use
 parts. `tools.observed_timeouts` and `observed_denials` count explicit structured codes, not words in error

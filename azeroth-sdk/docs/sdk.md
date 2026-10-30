@@ -190,6 +190,12 @@ Diagnostic action fields include only selected identifiers, coordinates, outcome
 not copy command text, chat, arbitrary arguments, result payloads or error messages. Task status remains an
 agent-authored observation, not proof that an action succeeded.
 
+The recorder also samples the complete observed quest log once a second and emits `quest_state` on change,
+including an initial snapshot. It records IDs, completion/failure bits and raw objective counters, without
+quest text. Inventory objectives require item observations. A missing character snapshot is marked unavailable;
+an empty available log means no quests were observed. Removal does not establish turn-in. `group_state` records
+the initial roster and server group updates using GUIDs, without names, chat, readiness or position claims.
+
 ## The Lua API
 
 `help()` lists every function from inside the game (`wow 'return help("items")'`).
@@ -211,27 +217,55 @@ agent-authored observation, not proof that an action succeeded.
 | `death` | your corpse, releasing, reclaiming, spirit healers |
 | `chat`, `group`, `trade`, `summon` | other players |
 | `talents` | your talent trees and spending points |
+| `skills` | learned skill IDs, names, base values, maxima and categories (`list`, `get`) |
 | `task`, `events`, `wait`, `await`, `ask` | the runtime (above) |
 | `act` | utilities that wait: walking with retries, NPC errands, resting, recovering from death |
 | `client` | the raw protocol, for what the API doesn't cover |
 
 **Conventions:**
 
-- **Queries** are nouns and return one value or one table: `me.level()`, `me.health()` → `{current, max}`,
+- **Local queries** return one value or one table: `me.level()`, `me.health()` → `{current, max}`,
   `units.nearby(40)` → creatures, nearest first. A `?` on a result type (`me.casting() → Casting?`) means nil when
   there's nothing: out of sight, none, or not loaded yet. Names of creatures, items and quests fill in a moment
   after you first see them (the client asks the server): call again.
+- **Server-backed lookups** return requests even when cached: `items.info(item_entry)`, `quests.info(quest_id)`,
+  `vendor.items(npc_guid)` and `me.achievements()`. Use `await` inside a task and check `ok` before reading `data`.
+  Item/quest/achievement lookups have a five-second deadline: `not_found` requires an explicit negative server
+  answer, `not_available` means the query could not be sent, and `timeout` means no answer arrived. This server
+  currently ignores invalid quest IDs, so they time out; an invalid item ID receives `not_found`.
 - **Actions** are verbs and return a request (above). Error codes are stable strings (`out_of_range`,
   `not_known`, `bags_full`, `stuck`, `timeout`...).
 - **One shape per thing:** a creature, item, quest or spell is the same table wherever it appears.
 - **GUIDs are strings** (64-bit numbers don't fit in a Lua number): pass them back unchanged. An `item` argument is
   an item entry (number) or the GUID of one you carry; `npc_guid` and `guid` are GUIDs, `npc_entry` and `entry` are template IDs. Raw NPC calls
   require a GUID string and never reinterpret an entry as a GUID.
-  Other GUID parameters currently also accept a unit, item or object table and use its `guid`.
+  Parameters named `guid` or ending in `_guid` require decimal GUID strings. Explicit item selector unions
+  still accept an entry or an item table carrying a GUID.
+- **Arguments are checked before native actions run.** Missing required values, extra arguments, wrong scalar
+  types, fractional IDs, non-finite coordinates and overflowing integers raise signature errors. Omitted or nil
+  optional scalar arguments use their documented literal defaults. Symbolic defaults such as `you` or `last`
+  are resolved by the operation. Options reject unknown fields; travel validates every waypoint before moving.
+
 - **Options tables:** `act` functions and a few others take one table: `act.go_to{x = 1, y = 2}`.
 - **`act`** covers plumbing, not play: walking with stuck handling, following, NPC errands (accept, turn in, sell,
   repair, train), objects, resting, flying, and recovering from death (`act.recover`). Its source is
   `session/act.lua`.
+
+```lua
+task.spawn("inspect", function()
+  local item = await(items.info(117))
+  if item.ok then log(item.data.name) else log(item.error.code) end
+  local quest = await(quests.info(62))
+  if quest.ok then log(quest.data.summary) else log(quest.error.code) end
+end)
+local mining = skills.get(186) -- nil if not in your observed learned skills
+if mining then log(mining.value .. "/" .. mining.max) end
+```
+
+Skill ranks exclude temporary/equipment bonuses and correspond to the judge's saved `character_skills` values.
+Missing client DBC labels set `metadata_known=false`; the observed ranks are still available. Use
+`spells.find(name)` for the highest known spell rank; the redundant `act.best` helper has been removed.
+
 
 **The Lua** is 5.1 (gopher-lua) with `goto`, `bit32`, `table.unpack` and `load(string)` from 5.2. Numbers are
 doubles; there's no `//`, `&` or `|` (use `bit32.band` and friends). A function's multiple returns are cut to the

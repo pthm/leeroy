@@ -10,7 +10,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | Function | | Returns |
 |---|---|---|
 | `answer(id, choice) → bool` | answer an ask(): id is the attention event's seq; returns true after emitting the answer |  |
-| `ask(question, {options} [, {default, timeout}]) → choice, "answered"\|"timeout"` | ask the agent and wait for answer() (tasks only) |  |
+| `ask(question, {options} [, {[default = nil, timeout = nil]}]) → choice, "answered"\|"timeout"` | ask the agent and wait for answer() (tasks only); timeout is positive seconds, nil waits indefinitely |  |
 | `await(request [, timeout_s = 30]) → ActionResult` | wait for an action's result (tasks only); wait_timeout does not cancel the request | [ActionResult](#actionresult) |
 | `doc(name, sig, desc) → nil` | document a function of your own so help() lists it |  |
 | `help([prefix]) → {lines}` | this reference: every function whose name starts with prefix ("items", "act.go") |  |
@@ -25,7 +25,6 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 |---|---|---|
 | `act.accept{npc_entry\|npc_guid, quest [, x, y, z]} → ActResult` | walk to a quest giver and accept the quest | [ActResult](#actresult) |
 | `act.approach{unit [, range = 4, timeout = 60]} → ActResult<Creature>` | move within range of a unit and face it | [ActResult](#actresult), [Creature](#creature) |
-| `act.best({rank ids}) → id` | the highest rank you know of a spell |  |
 | `act.buff(id [, guid]) → ActResult` | cast it unless the aura is already active (ok with data.status = already_active then) | [ActResult](#actresult) |
 | `act.cast(id [, guid]) → ActResult` | face the target and cast if ready (waits for the result in a task) | [ActResult](#actresult) |
 | `act.consume("Food" \| "Drink") → ActResult<Consumed>` | wait up to 30 seconds for the first matching item to be used; no_consumable if absent (sit still after) | [ActResult](#actresult), [Consumed](#consumed) |
@@ -35,7 +34,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `act.fail(op, code, message) → ActResult` | a failed result | [ActResult](#actresult) |
 | `act.fly{to = node id or name [, npc_entry or npc_guid]} → ActResult<Flight>` | walk to a flight master nearby, fly to a known destination and wait until you land | [ActResult](#actresult), [Flight](#flight) |
 | `act.follow{name [, distance = 5, until = fn]} → ActResult` | stay near a player until until() is true | [ActResult](#actresult) |
-| `act.go_to{x, y [, z, tolerance = 4, tries = 3, unstuck = false, on_attacked = fn]} → ActResult` | walk there; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs. Without on_attacked it walks on while mobs hit you and drags them along; with it, it stops whenever something targets you, calls on_attacked(attackers) (your fighting) and then carries on | [ActResult](#actresult) |
+| `act.go_to{x, y [, z, tolerance = 4, tries = 3, unstuck = false, on_attacked = nil]} → ActResult` | walk there; tries must be 1..32; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs. Without on_attacked it walks on while mobs hit you and drags them along; with it, it stops whenever something targets you, calls on_attacked(attackers) (your fighting) and then carries on | [ActResult](#actresult) |
 | `act.hp() → 0..1` | your health fraction |  |
 | `act.in_range(id, guid) → bool` | within the spell's range of the unit |  |
 | `act.loot_nearby{[dist = 8, make_room = false]} → ActResult<Looted>` | loot at most 32 nearby corpses per call; fail on approach or loot errors with partial items/money. Destruction is opt-in with make_room = true, with one retry per corpse | [ActResult](#actresult), [Looted](#looted) |
@@ -53,7 +52,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `act.spirit_res() → ActResult` | as a ghost, resurrect at the nearest spirit healer in sight (costs durability) | [ActResult](#actresult) |
 | `act.talk{npc_entry\|npc_guid, fn [, x, y, z]} → ActResult` | walk to an NPC and return fn(npc) as ActResult; fn must return a completed action result | [ActResult](#actresult) |
 | `act.train{npc_entry\|npc_guid, spells [, x, y, z, continue_on_error = false]} → ActResult<TrainErrand>` | learn 1..64 unique requested spells; stop on the first failure unless continue_on_error; return TrainErrand with learned, already_known, failed and remaining IDs | [ActResult](#actresult), [TrainErrand](#trainerrand) |
-| `act.travel{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false, on_attacked = fn]} → ActResult` | go_to each waypoint (e.g. from azworld route) | [ActResult](#actresult) |
+| `act.travel{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false, on_attacked = nil]} → ActResult` | go_to each of 1..4096 waypoints (e.g. from azworld route); all waypoint fields are checked before movement starts | [ActResult](#actresult) |
 | `act.turn_in{npc_entry\|npc_guid, quest [, reward = 0, x, y, z]} → ActResult` | walk to the quest ender and turn the quest in | [ActResult](#actresult) |
 | `act.use_object{entry [, count = 1, quest_id, x, y, z, radius = 80, max_attempts = 3, timeout_s = 60]} → ActResult<ObjectUse>` | use objects count times, or until observed progress/completion of quest_id; absent quest, missing progress, attempt limit or deadline fails with partial counts; at most 32 attempts | [ActResult](#actresult), [ObjectUse](#objectuse) |
 | `act.vendor{npc_entry\|npc_guid [, x, y, z, sell_junk = false, repair = false, buy = {{entry, count}, ...}]} → ActResult<VendorErrand>` | perform only requested operations (at least one required, at most 64 purchases); stop on failure and return VendorErrand partial data and steps | [ActResult](#actresult), [VendorErrand](#vendorerrand) |
@@ -114,7 +113,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `events.handlers() → {{id, types, name}}` | your event handlers |  |
 | `events.off(id or name) → nil` | remove a handler: by the id events.on returned, or the name you gave it |  |
 | `events.on(type or {types}, fn [, name]) → id` | run fn(event) as a task for each matching event; the same name replaces a handler |  |
-| `events.query{since, types, match, last = 50, limit} → {events}` | past events; types may end in * ("quest_*"), match searches the data |  |
+| `events.query{[since = 0, types = nil, match = nil, last = 50, limit = nil]} → {events}` | past events; types may end in * ("quest_*"), match searches the data; options may be omitted |  |
 | `events.seq() → seq` | the latest event's sequence number |  |
 | `events.wait(type or {types} [, timeout_s]) → event` | the next matching event, nil on timeout (tasks only) |  |
 | `events.watch{[stall_s = 180, below = 0, window_s = 300, every_s = 0]} → settings` | when to emit stall (no XP for stall_s seconds, or fewer than below XP/hour over the last window_s; 0 = off) and progress (a digest every every_s; 0 = off) events. Subscribe to them to be woken |  |
@@ -1493,6 +1492,8 @@ DiagnosticDetails is an allowlist: arbitrary request arguments, results, error m
 | `command_family?` | string |  |
 | `tool_coverage?` | bool |  |
 | `duration_known?` | bool |  |
+| `quest_log?` | DiagnosticQuestLog |  |
+| `group?` | DiagnosticGroup |  |
 
 ### DiagnosticDestination
 
@@ -1504,6 +1505,35 @@ DiagnosticDestination preserves omitted altitude/map rather than inventing a zer
 | `y` | number |  |
 | `z?` | number |  |
 | `map?` | number |  |
+
+### DiagnosticQuestLog
+
+DiagnosticQuestLog is a complete observed client quest log, at most 25 entries. Removal from the log does not establish turn-in: a quest can also be abandoned. Available=false means character fields are absent.
+
+| Field | Type | |
+|---|---|---|
+| `available` | bool |  |
+| `quests` | DiagnosticQuest[] |  |
+
+### DiagnosticQuest
+
+| Field | Type | |
+|---|---|---|
+| `id` | number |  |
+| `complete` | bool |  |
+| `failed` | bool |  |
+| `counters` | [number, number, number, number] | raw objective counters from character fields; inventory objectives require separate item observations |
+
+### DiagnosticGroup
+
+DiagnosticGroup records the server's roster, at most 40 members including self. It does not establish a shared plan, readiness, visibility or fresh positions. Names and chat are deliberately excluded.
+
+| Field | Type | |
+|---|---|---|
+| `in_group` | bool |  |
+| `id` | GUID |  |
+| `leader` | GUID |  |
+| `members` | GUID[] |  |
 
 ### Attacking
 

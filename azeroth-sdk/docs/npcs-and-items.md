@@ -7,8 +7,10 @@ Quest givers, vendors, trainers, objects, your bags and gear. The rest of the SD
 - NPCs have `roles` (`quest_giver`, `vendor`, `trainer`, `repair`, `flight_master`, `innkeeper`, `spirit_healer`...);
   quest givers have `quest_status` (the marker a client draws). `azworld near x y --kind <role>` finds the nearest.
 - Raw NPC calls take `npc_guid`, the observed GUID string, and need you within ~5 yards.
-  Waiting helpers take exactly one of `npc_entry` (a template ID) or `npc_guid`. `gossip.open(npc)` returns what an NPC says, its options and its quests;
-  `gossip.select(index)` picks an option.
+  Waiting helpers take exactly one of `npc_entry` (a template ID) or `npc_guid`. `await(gossip.open(npc_guid))`
+  returns `data.kind` (`gossip`, `quest`, `vendor`, `trainer`, or `flight`); dialogue contents are in `data.value`.
+  `await(gossip.select(index))` picks an option and may also return `kind="closed"`, confirming dialogue closure
+  only. No server response produces `timeout`, not success. An explicitly refused open produces `not_available`.
 - Vendors: `await(vendor.items(npc_guid))` (cached or uncached; typed failure on refusal or timeout), `vendor.buy(npc, entry, count)`,
   `vendor.sell(npc, item)`, `vendor.sell_junk(npc)` (every grey), `vendor.repair(npc)`. `act.vendor{...}` walks
   there and performs only the operations requested: `act.vendor{npc_entry = 123, repair = true}`.
@@ -18,7 +20,8 @@ Quest givers, vendors, trainers, objects, your bags and gear. The rest of the SD
   `act.train{npc_entry = 123, spells = {133, 116}}` skips spells already known and stops on failure;
   `continue_on_error = true` attempts the rest but still reports failure. The level-70 "<Class> Trainer" NPCs in Northshire are placeholders that teach nothing.
 - Quests: `quests.accept(npc, quest)`, `quests.turn_in(npc, quest [, reward index])` (0 = the first choice;
-  `quests.info(id)` lists the choices), `quests.log()`, `quests.info(id)` (the quest giver's text), `quests.abandon`.
+  `await(quests.info(id)).data` lists the choices on success), `quests.log()`, `quests.info(id)` (an awaitable lookup
+  of the quest giver's text), `quests.abandon`.
   `act.accept` and `act.turn_in` walk there first. A kill objective also counts the creatures whose
   `kill_credit` lists its entry (`units.nearby`, `units.get`). A turn-in fails at once with `incomplete` when the objectives
   aren't done; a `quest_failed` event means an escort died or a timer ran out: abandon it and take it again.
@@ -28,7 +31,7 @@ Quest givers, vendors, trainers, objects, your bags and gear. The rest of the SD
 - `items.list()` has each item's name, quality and vendor price once its info has loaded (a second after it first
   appears). `items.free_slots()`, `items.destroy(item)`, `items.use(entry)`, `items.equip(item)`.
 - `items.compare(item)` shows the change against what you wear in that slot (item level, stats, armor, dps) and
-  `usable = false` with the reason when you can't use it. `items.info(entry)` has the details; `me.gear()` every
+  `usable = false` with the reason when you can't use it. `await(items.info(entry)).data` has the details on success; `me.gear()` every
   slot; `items.broken()` what's at 0 durability.
 - Group loot: a `loot_roll_start` event per item up for rolls; `items.roll(roll, "need"|"greed"|"disenchant"|"pass")`
   before the countdown ends (`items.rolls()` lists the open ones), then `loot_roll` and `loot_roll_won` events
