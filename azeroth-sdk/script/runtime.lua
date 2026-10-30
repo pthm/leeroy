@@ -35,7 +35,10 @@ do
       end
       -- f waited: wait in the task, then carry on. What the wait returns (await's result, events.wait's event) is
       -- handed down outside resume: gopher-lua faults resuming a native function's yield with values
-      handed = { yield(unpack(res, 2)) }
+      local values = { yield(unpack(res, 2)) }
+      -- Only the outer coroutine receives values from the scheduler. Deeper
+      -- protected calls resume without arguments and must preserve that handoff.
+      if #values > 0 then handed = values end
       res = { resume(co) }
       handed = nil
     end

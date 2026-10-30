@@ -316,3 +316,37 @@ func TestPcallAwait(t *testing.T) {
 		}
 	}
 }
+
+func TestNestedProtectedWaitResults(t *testing.T) {
+	e := NewEngine(nolog, nil)
+	defer e.Close()
+	e.Func("probe.request", "() → Request", "test", func() map[string]any { return e.Reqs.Start(Spec{Op: "probe", Timeout: time.Minute}) })
+	if _, err := e.Eval(`
+  task.spawn("nested",function()
+   local ok, value = pcall(function()
+    local inner, r = pcall(function()
+     local deepest, result = pcall(function() return await(probe.request(), 1) end)
+     assert(deepest and result.ok and result.data == 42)
+     return result
+    end)
+    assert(inner and r.data == 42)
+    local event_ok, event = pcall(function() return events.wait("probe_event", 1) end)
+    assert(event_ok and event.data.value == 7)
+    local timeout_ok, timed = pcall(function() return pcall(function() return await(probe.request(), 0.01) end) end)
+    assert(timeout_ok and timed)
+    return r.data
+   end)
+   assert(ok and value == 42); nested_done=true
+  end)
+ `); err != nil {
+		t.Fatal(err)
+	}
+	tick(e, 2)
+	e.Reqs.Resolve(1, Ok(42))
+	tick(e, 2)
+	e.Emit("probe_event", map[string]any{"value": 7})
+	tick(e, 6)
+	if v, _ := e.Eval(`return nested_done`); v != true {
+		t.Fatalf("nested wait failed: %+v", e.TasksHeld())
+	}
+}
