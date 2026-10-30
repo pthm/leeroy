@@ -115,7 +115,7 @@ const actBase = `
   move._check = function() return {ok=true} end
   mobs = {}
   units = {nearby = function() return mobs end, attackers = function() return {} end, get = function() return nil end}
-  spells = {usable = function() return true end, known = function() return true end, info = function() return {range = 30} end}
+  spells = {check = function() return {usable=true} end, usable = function() return true end, known = function() return true end, info = function() return {range = 30} end}
   items = {list = function() return {} end}
 `
 
@@ -196,7 +196,7 @@ func TestActResultEnvelopes(t *testing.T) {
 		{"cast", `raw = {id = 17, op = "spells.cast", ok = true, data = {spell = 133}}
           spells.cast = function() return raw end`, `r = act.cast(133, "me")
           assert(raw.op == "spells.cast" and raw.id == 17)
-          assert(r.op == "act.cast" and r.ok and r.data.spell == 133)`},
+          assert(r.op == "act.cast" and r.ok and r.data.action.spell == 133 and raw.data.spell == 133)`},
 		{"buff active", `units.has_aura = function() return true end`, `r = act.buff(133)
           assert(r.op == "act.buff" and r.ok and r.data.status == "already_active")`},
 		{"buff missing spell", ``, `r = act.buff(nil)

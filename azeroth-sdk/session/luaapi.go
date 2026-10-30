@@ -311,12 +311,8 @@ func (b *Bot) setupCoreAPI() {
 
 	// ---------- spells ----------
 	e.Func("spells.known", "(id) → bool", "whether you know the spell (that rank)", w.KnowsSpell)
-	e.Func("spells.usable", "(id [, guid]) → bool", "known, off cooldown, affordable, and any aura state it needs is there (Victory Rush after a kill, Execute below 20% on that target)", func(id uint32, g uint64) bool {
-		if g == 0 {
-			g = w.CharGUID()
-		}
-		return b.CanCast(id, g)
-	})
+	e.Func("spells.check", "(id [, guid]) → SpellCheck", "local spell readiness with specific refusal reasons and unavailable checks; omitted guid means self. Range is nominal, target_valid means observed; the server remains authoritative", b.spellCheck)
+	e.Func("spells.usable", "(id [, guid]) → bool", "convenience for spells.check(id,guid).usable; unknown details do not certify server acceptance", func(id uint32, g uint64) bool { return b.spellCheck(id, g).Usable })
 	e.Func("spells.cast_at", "(id, x, y, z) → Request<CastDone>", "cast a ground-targeted spell (Blizzard, Flare...)", func(id uint32, x, y, z float32) map[string]any {
 		args := map[string]any{"spell": id, "x": x, "y": y, "z": z}
 		if !w.KnowsSpell(id) {

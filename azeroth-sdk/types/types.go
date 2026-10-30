@@ -862,3 +862,17 @@ type DangerCheck struct {
 	Hostiles []Creature `json:"hostiles"`
 	Reason   string     `json:"reason,omitempty"`
 }
+
+// SpellCheck reports local readiness; the server remains authoritative.
+type SpellCheck struct {
+	Usable        bool     `json:"usable"`
+	Reason        string   `json:"reason,omitempty"`
+	CooldownMS    *float64 `json:"cooldown_ms,omitempty"`
+	PowerNeeded   *uint32  `json:"power_needed,omitempty"`
+	RangeYards    *float64 `json:"range_yards,omitempty" doc:"nominal DBC estimate; modifiers and hitboxes may differ"`
+	DistanceYards *float64 `json:"distance_yards,omitempty"`
+	InSight       *bool    `json:"in_sight,omitempty"`
+	Facing        *bool    `json:"facing,omitempty"`
+	TargetValid   *bool    `json:"target_valid,omitempty" doc:"target is observed; not a promise of spell eligibility"`
+	Unknown       []string `json:"unknown" doc:"checks for which evidence is unavailable; usable does not promise server acceptance"`
+}

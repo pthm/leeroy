@@ -79,8 +79,7 @@ end
 local function frac(r) return (r.max and r.max > 0) and r.current / r.max or 1 end
 function A.hp() return frac(me.health()) end
 function A.mana() local p = me.power() return p.type == "mana" and frac(p) or 1 end
-function A.ready(id, guid) return id ~= nil and me.casting() == nil and spells.usable(id, guid) end
-function A.in_range(id, guid)
+function A.within_nominal_range(id, guid)
   local sp, u = spells.info(id), units.get(guid)
   return sp ~= nil and u ~= nil and u.distance <= math.max(sp.range or 5, 5)
 end
@@ -135,23 +134,58 @@ local function face(guid)
   if task.current() then return await(f, 2) end
   return f
 end
--- cast(id [, guid]): face the target and cast if ready; in a task it waits for the result
-function A.cast(id, guid)
-  guid = guid or me.guid()
-  if not A.ready(id, guid) then
-    if task.current() then wait(0.2) end -- a loop that retries can't spin past the execution limit
-    return result("act.cast", false, nil, "not_ready", "on cooldown, casting, not enough power, or its condition isn't met (spells.usable)")
+-- One lease and deadline cover stopping, optional approach, facing and both attempts.
+function A.cast(id, guid, o)
+  guid,o=guid or me.guid(),o or {}
+  if type(o)~="table" then error("act.cast options must be a table",2) end
+  for k in pairs(o) do if k~="approach" and k~="max_move_yards" and k~="max_time_s" then error("act.cast: unknown option "..tostring(k),2) end end
+  if o.approach~=nil and type(o.approach)~="boolean" then error("act.cast: approach must be boolean",2) end
+  local max_s,max_move=o.max_time_s or 30,o.max_move_yards or 10
+  if type(max_s)~="number" or not(max_s>0 and max_s<=60) then error("act.cast: max_time_s must be >0..60",2) end
+  if type(max_move)~="number" or not(max_move>0 and max_move<=40) then error("act.cast: max_move_yards must be >0..40",2) end
+  local deadline=now()+max_s*1000
+  local data={attempts=0,corrections={}}
+  local function finish(r) data.action=r.data;return {ok=r.ok,op="act.cast",data=data,error=r.error} end
+  local function action(fn)
+    local left=(deadline-now())/1000
+    if left<=0 then return A.fail("act.cast","cast_timeout","cast correction deadline expired") end
+    local r=await(fn(),left)
+    if r.error and r.error.code=="wait_timeout" then return A.fail("act.cast","cast_timeout","no matching server outcome before the deadline") end
+    return r
   end
-  if guid == me.guid() then return await(spells.cast(id, guid)) end
-  local faced = face(guid)
-  if not faced.ok then return faced end
-  local r = await(spells.cast(id, guid))
-  if task.current() and r.ok == false and r.error and r.error.code == "unit_not_infront" then -- it moved: once more
-    faced = face(guid)
-    if not faced.ok then return faced end
-    r = await(spells.cast(id, guid))
-  end
-  return r
+  local check=spells.check(id,guid);data.check=check
+  local correctable=check.reason=="unit_not_infront" or (o.approach and (check.reason=="out_of_range" or check.reason=="line_of_sight"))
+  if not check.usable and not correctable then return finish(A.fail("act.cast",check.reason or "not_available","spell readiness check refused the cast")) end
+  local r=movement_scope("normal",0,max_s,function()
+    local stopped=action(move.stop);if not stopped.ok then return stopped end
+    if o.approach and (check.reason=="out_of_range" or check.reason=="line_of_sight") then
+      local u=units.get(guid)
+      if not u then return A.fail("act.cast","unit_gone","target is no longer visible") end
+      local here=me.position()
+      local distance=A.dist(u.x,u.y,u.z)
+      local travel=math.max(0,distance-math.max(1,(check.range_yards or 5)-1))
+      if check.reason=="line_of_sight" then travel=distance end
+      if travel>max_move then return A.fail("act.cast","move_limit","approach would exceed max_move_yards") end
+      local fraction=distance>0 and travel/distance or 0
+      local x,y,z=here.x+(u.x-here.x)*fraction,here.y+(u.y-here.y)*fraction,here.z+(u.z-here.z)*fraction
+      local path=action(function() return world.path(x,y,z) end)
+      if not path.ok then return path end
+      if not path.data or not path.data.reachable then return A.fail("act.cast","route_unreachable","approach has no verified route") end
+      local moved=action(function() return move.to(x,y,z) end);if not moved.ok then return moved end
+      stopped=action(move.stop);if not stopped.ok then return stopped end
+      data.corrections[#data.corrections+1]="approach"
+    end
+    for attempt=1,2 do
+      if guid~=me.guid() then
+        local faced=action(function() return move.face(guid) end);if not faced.ok then return faced end
+        data.corrections[#data.corrections+1]="face"
+      end
+      data.attempts=attempt
+      local cast=action(function() return spells.cast(id,guid) end)
+      if cast.ok or not cast.error or cast.error.code~="unit_not_infront" or attempt==2 then return cast end
+    end
+  end)
+  return finish(r)
 end
 function A.buff(id, guid)
   guid = guid or me.guid()
@@ -1099,13 +1133,12 @@ for name, d in pairs({
   dist = { "(x, y [, z]) → yards", "distance from you (2D without z)" },
   hp = { "() → 0..1", "your health fraction" },
   mana = { "() → 0..1", "your mana fraction (1 for rage/energy users)" },
-  ready = { "(id [, guid]) → bool", "known, off cooldown, affordable, and you're not casting" },
-  in_range = { "(id, guid) → bool", "within the spell's range of the unit" },
+  within_nominal_range = { "(id, guid) → bool", "distance-only nominal range estimate; no LOS, facing or eligibility checks" },
   npc = { "(entry [, dist = 60]) → Creature?", "the nearest living observed creature with that entry, or nil when none is visible" },
   player = { "(name) → Player?", "an observed player by name, or nil when not visible (including distant group members)" },
   consume = { "(\"Food\" | \"Drink\") → ActResult<Consumed>", "wait up to 30 seconds for the first matching item to be used; no_consumable if absent (sit still after)" },
   make_room = { "{} → ActResult<Consumed>", "destroy the cheapest loaded poor-quality item that is not a possible usable gear upgrade; wait up to 5 seconds for confirmation, or no_disposable_item; options may be omitted" },
-  cast = { "(id [, guid]) → ActResult", "face the target and cast if ready (waits for the result in a task)" },
+  cast = { "(id [, guid, options]) → ActResult", "spells.check, stop only owned movement, face and await a server outcome; one facing retry. options: approach=false, max_move_yards=10 (max40), max_time_s=30 (max60). Optional approach requires a verified path. data preserves check, attempts, corrections and server action" },
   buff = { "(id [, guid]) → ActResult", "cast it unless the aura is already active (ok with data.status = already_active then)" },
   go_to = { "{x, y [, z, map, tolerance = 4, vertical_tolerance = 3, tries = 3, unstuck = false, on_attacked = nil]} → ActResult", "walk to the requested map and floor; explicit z is never replaced by a floor query. Success requires horizontal and vertical tolerances; wrong_floor/wrong_map/unreachable include observed position and gaps. Without z, select a floor with ground_z or fail. tries is 1..32 for stuck retries; unstuck=true authorizes a last-resort hearth (unstuck_home). on_attacked stops to call your combat handler, then resumes" },
   travel = { "{points = {{x, y, z}, ...} [, map, tolerance = 4, vertical_tolerance = 3, validate = true, allow_partial = false, stop_on_danger = false, unstuck = false, on_attacked = nil]} → ActResult", "validate all 1..64 3D waypoints with world.route before moving, then go_to each while holding movement ownership. Named waypoints accept x,y,z,map. Report first failed waypoint, completed_waypoints and validation evidence. allow_partial=true may walk a known route_unreachable prefix but still returns failure for the requested destination. validate=false permits unverified 2D waypoints; allow_partial then is invalid. Exposure is checked before each leg and during movement; the latest 64 observations are retained. stop_on_danger=true stops on hostile or unknown evidence" },
