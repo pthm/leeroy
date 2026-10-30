@@ -82,7 +82,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | Function | | Returns |
 |---|---|---|
 | `combat.attack(guid) → Request<Attacking>` | start auto-attacking (selects it too): ok when the swing starts, else not_in_range, bad_facing, dead_target, cant_attack. Completion: server attack state was observed, or the same attack is already active. | [Request](#request), [Attacking](#attacking) |
-| `combat.fight([id = last]) → Fight?` | one fight from the log: its summary and positioning, every actor's position each second, and the timeline of hits, heals, casts, kills and deaths | [Fight](#fight) |
+| `combat.fight([id = last]) → Fight?` | nil if the requested fight is absent from the retained log; otherwise its summary and positioning, every actor's position each second, and the timeline of hits, heals, casts, kills and deaths | [Fight](#fight) |
 | `combat.fight_text([id = last [, {[map = false, at = nil]}]]) → string` | one fight as text (what wow fight prints): summary and positioning, a map of everyone's movement, the key moments, the timeline. map = true: the map and moments only; at = s: the map at that second |  |
 | `combat.fights([n = 20]) → FightHeader[]` | your last fights, newest first: id, when, how long, outcome, enemies, damage and adds (the fight log; wow fights) | [FightHeader](#fightheader) |
 | `combat.fights_text([n = 20]) → string` | the fight log's list as text (what wow fights prints) |  |
@@ -99,7 +99,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | Function | | Returns |
 |---|---|---|
 | `death.accept_res() → Request` | accept a player's resurrection (after a resurrect_offered event): you come back where your body lies. Completion: the character is observed alive and no longer a ghost. | [Request](#request) |
-| `death.corpse() → Corpse?` | your corpse and when you can reclaim it; nil while alive. Right after dying it asks the server: call again a moment later | [Corpse](#corpse) |
+| `death.corpse() → Request<Corpse>` | observed corpse and reclaim timer; cached for 3 seconds, otherwise asks the server with a 5-second deadline. not_found means alive or an explicit absent-corpse reply; not_available means send failure; silence is timeout. Completion: a current server corpse location was observed; an explicit absence fails not_found. | [Request](#request), [Corpse](#corpse) |
 | `death.reclaim() → Request` | as a ghost within ~30 yd of your corpse, come back to life there. Completion: the character is observed alive and no longer a ghost. | [Request](#request) |
 | `death.release() → Request` | release your spirit: ok once you're a ghost at the graveyard. Completion: ghost state is observed, or the character is already a ghost. | [Request](#request) |
 | `death.spirit_res(npc_guid) → Request` | as a ghost next to a spirit healer: resurrect there (resurrection sickness from level 11, and your gear loses durability). Completion: the character is observed alive and no longer a ghost; healer cost is not sent by the server beforehand. | [Request](#request) |
@@ -161,7 +161,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `items.count(entry) → number` | how many of an item you carry |  |
 | `items.destroy(item [, count = all]) → Request` | destroy an item you carry (entry or guid): gone for good. Completion: the requested inventory count decrease was observed. | [Request](#request) |
 | `items.equip(item [, slot]) → Request<Equipped>` | wear an item you carry (entry or guid) in its slot, or in the slot you name: main_hand, off_hand (a second one-hander, with Dual Wield), finger1, finger2, trinket1, trinket2. Completion: the requested item is observed equipped in the requested slot. | [Request](#request), [Equipped](#equipped) |
-| `items.find(name) → Item?` | an item you carry, by name (any case); count is how many you have in all | [Item](#item) |
+| `items.find(name) → Item?` | an observed carried item matched by its loaded name (any case); nil means no loaded-name match, not proof of inventory absence. count is the total among matching loaded items | [Item](#item) |
 | `items.free_slots() → number` | empty bag slots; at 0, loot and item rewards are refused |  |
 | `items.info(item_entry) → Request<Item>` | an item's template: stats, slot, prices and usability. Cached answers resolve immediately; not_found for an explicit negative answer, not_available if the query cannot be sent, timeout after 5 seconds. Completion: an item template was observed or explicitly absent; absence fails not_found. | [Request](#request), [Item](#item) |
 | `items.list() → Item[]` | everything you wear and carry (equipped, bags, backpack) | [Item](#item) |
@@ -202,7 +202,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `me.spellbook() → Spellbook` | the class spells you could know at your level against the ones you do, and what's missing (learn them at your trainer) | [Spellbook](#spellbook) |
 | `me.stance() → number` | warrior stance / druid form index (0 = none) |  |
 | `me.states() → string[]` | your aura states: defense (you dodged, parried or blocked: Revenge), health_below_20, ... (some abilities need one) |  |
-| `me.stats() → Stats?` | your character sheet: what gear, buffs and talents add up to | [Stats](#stats) |
+| `me.stats() → Stats?` | your character sheet: what gear, buffs and talents add up to; nil until the character object is observed | [Stats](#stats) |
 | `me.status() → Status` | what you'd see on screen, in one call: you (health, power, auras, cast, breath), your target and every mob in your fight, the NPCs, objects, players and mobs around you, your group, quests, what to improve (gear, untrained spells, talents, bag upgrades), your last minute of fighting, your tasks. Each part has a detail call | [Status](#status) |
 | `me.target() → GUID?` | your selected target, nil for none |  |
 | `me.timers() → MirrorTimer[]` | your breath (underwater), fatigue (deep water) and fire timers while one runs: at 0 you take damage every few seconds until you surface or turn back | [MirrorTimer](#mirrortimer) |
@@ -314,7 +314,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `units.behind(guid) → bool` | whether you stand behind the unit (backstab and similar need it) |  |
 | `units.get(guid) → (Creature \| Player)?` | one unit by GUID; nil if it's out of sight | [Creature](#creature), [Player](#player) |
 | `units.has_aura(guid, spell) → bool` | whether the unit has that aura (buff or debuff) |  |
-| `units.in_sight(guid) → bool?` | line of sight to a unit (see world.in_sight) |  |
+| `units.in_sight(guid) → bool?` | line of sight to an observed unit; nil if the unit or collision evidence is unavailable (see world.in_sight) |  |
 | `units.inspect(guid) → Inspect?` | what you'd see inspecting a player: class, race, level and the gear they wear with item levels (names fill in a moment after the first call); nil if out of sight | [Inspect](#inspect) |
 | `units.nearby([dist = 30]) → Creature[]` | creatures within dist yards (alive and dead), nearest first | [Creature](#creature) |
 | `units.players([dist = 30]) → Player[]` | players within dist yards, nearest first | [Player](#player) |
@@ -335,8 +335,8 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | Function | | Returns |
 |---|---|---|
 | `world.danger(x, y, z [, radius = 25]) → Request<DangerCheck>` | local observed hostile exposure from an arbitrary point, with navmesh floor and point-to-point LOS checks. Radius 1..40; 15s shared route deadline and admission limit. Missing evidence is unknown, never clear; observation coverage is limited to 80 yards around you. Completion: a bounded observed-state assessment completed; inspect data.state, including unknown. | [Request](#request), [DangerCheck](#dangercheck) |
-| `world.ground_z(x, y [, z]) → number?` | the height to stand at (x, y) on your map, for move.to; nil without map data. With z (an NPC's spawn z from azworld) it finds the floor nearest that height: upstairs rooms, buildings, Stormwind's streets. Without it, the outdoor terrain (under any building) |  |
-| `world.in_sight(x, y, z) → bool?` | nothing solid (walls, rock, buildings) between your eyes and the point, as the server checks spells; nil without collision data |  |
+| `world.ground_z(x, y [, z]) → number?` | the height to stand at (x, y) on your map, for move.to; nil when the floor cannot be confirmed within the 60 ms spatial budget. With z (an NPC's spawn z from azworld) it finds the floor nearest that height: upstairs rooms, buildings, Stormwind's streets. Without it, the outdoor terrain (under any building) |  |
+| `world.in_sight(x, y, z) → bool?` | nothing solid (walls, rock, buildings) between your eyes and the point, as the server checks spells; nil when collision evidence is unavailable or its 60 ms budget expires |  |
 | `world.look([radius = 40]) → string` | a top-down text map of what's around you, north up: the ground (higher, lower, no floor), hostile creatures by letter with their aggro range shaded, other creatures, players and lootable corpses, then a line for each: level, distance, direction, o'clock, height above or below you, aggro radius and whether you're inside it, line of sight. wow look prints it |  |
 | `world.path(x, y, z) → Request<PathCheck>` | await a navmesh check from your current 3D position; verified only when both endpoint gaps are <=3 yards. Deadline 15s including queueing, max leg 4096 yards / 1024 tiles, at most 16 pending queries and one active search per session. Identical successful searches are cached (128 entries). Task pause/stop/failure/return and session close cancel pending work. Failures include route_unreachable, route_timeout, route_limit, route_busy and not_available; partial data never authorizes movement.. Completion: both requested 3D endpoints connect on the navmesh; partial paths fail. | [Request](#request), [PathCheck](#pathcheck) |
 | `world.route(points [, opts = nil]) → Request<RouteCheck>` | validate 1..64 ordered 3D waypoints from your captured position before walking. points are {x,y,z} tuples or {x=...,y=...,z=...,map=...}; opts accepts only map (default current map), and every point must be on the current map. One 15s deadline covers queueing and all legs; max 4096 yards/1024 tiles per leg and 8192 output points. Shares world.path admission, cancellation and cache. Returns connected navmesh prefix, completed_legs, first blocked_leg and per-leg gaps; partial and timeout results remain failures. Does not assess hostile exposure.. Completion: every requested leg connects within one shared deadline. | [Request](#request), [RouteCheck](#routecheck) |
@@ -1608,6 +1608,7 @@ DiagnosticDetails is an allowlist: arbitrary request arguments, results, error m
 
 | Field | Type | |
 |---|---|---|
+| `route?` | DiagnosticRoute |  |
 | `movement?` | MovementOwner |  |
 | `alive?` | bool |  |
 | `sample_available?` | bool |  |
@@ -1633,6 +1634,22 @@ DiagnosticDetails is an allowlist: arbitrary request arguments, results, error m
 | `duration_known?` | bool |  |
 | `quest_log?` | DiagnosticQuestLog |  |
 | `group?` | DiagnosticGroup |  |
+
+### DiagnosticRoute
+
+DiagnosticRoute omits the potentially large waypoint arrays while retaining the geometric evidence needed to explain a terminal route result.
+
+| Field | Type | |
+|---|---|---|
+| `source` | string |  |
+| `status` | string |  |
+| `from` | Position |  |
+| `destination` | Position |  |
+| `distance` | number |  |
+| `gap?` | number |  |
+| `floor_valid?` | bool |  |
+| `completed_legs?` | number |  |
+| `blocked_leg?` | number |  |
 
 ### DiagnosticGear
 
@@ -2192,6 +2209,7 @@ The `data` of an ok result, per op.
 | Op | Data |
 |---|---|
 | `combat.attack` | Attacking |
+| `death.corpse` | Corpse |
 | `flights.map` | FlightMap |
 | `flights.take` | Flight |
 | `gossip.open` | GossipWindow |

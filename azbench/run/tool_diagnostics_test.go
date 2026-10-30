@@ -23,6 +23,7 @@ func TestToolDiagnosticsRuntimeOutcomes(t *testing.T) {
 		{"codex", `{"type":"item.started","timestamp":"2026-10-30T00:00:00Z","item":{"type":"command_execution","id":"i1","command":"azworld route secret-argument"}}
 {"type":"item.completed","timestamp":"2026-10-30T00:00:03Z","item":{"type":"command_execution","id":"i1","status":"completed","exit_code":124,"aggregated_output":"timeout permission denied secret-error"}}`, "exec_command", "azworld", "failed", "tool_error", 3000},
 		{"opencode", `{"type":"tool_use","part":{"callID":"c1","tool":"bash","state":{"status":"error","input":{"command":"sleep secret-argument"},"time":{"start":1000,"end":5000},"error_code":"ETIMEDOUT","error":"secret-error"}}}`, "bash", "sleep", "failed", "tool_timeout", 4000},
+		{"opencode exit", `{"type":"tool_use","part":{"callID":"c1","tool":"bash","state":{"status":"completed","input":{"command":"rg secret"},"metadata":{"exit":2},"time":{"start":1000,"end":5000}}}}`, "bash", "rg", "failed", "tool_error", 4000},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var events []types.Diagnostic
@@ -43,6 +44,14 @@ func TestToolDiagnosticsRuntimeOutcomes(t *testing.T) {
 				t.Fatalf("private data copied: %s", b)
 			}
 		})
+	}
+}
+
+func TestCommandFamilyShellWrapper(t *testing.T) {
+	for _, command := range []string{"/bin/zsh -lc 'wow help'", `/bin/bash -lc "wow help"`, "wow help"} {
+		if commandFamily(command) != "wow" {
+			t.Fatal(command)
+		}
 	}
 }
 

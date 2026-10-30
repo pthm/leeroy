@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,8 +44,24 @@ func commandFamily(command string) string {
 		return "unknown"
 	}
 	name := filepath.Base(words[0])
+	if (name == "zsh" || name == "bash" || name == "sh") && len(words) >= 3 && (words[1] == "-lc" || words[1] == "-c") {
+		body := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(strings.TrimPrefix(command, words[0])), words[1]))
+		if len(body) >= 2 && body[0] == '\'' && body[len(body)-1] == '\'' {
+			body = body[1 : len(body)-1]
+		} else if strings.HasPrefix(body, "\"") {
+			if decoded, err := strconv.Unquote(body); err == nil {
+				body = decoded
+			}
+		}
+		// Do not recursively parse arbitrary shell programs or nested wrappers.
+		inner := strings.Fields(body)
+		if len(inner) == 0 {
+			return "unknown"
+		}
+		name = filepath.Base(inner[0])
+	}
 	switch name {
-	case "wow", "azworld", "standings", "sleep", "tail", "cat", "ls", "grep", "mkdir", "head", "wc", "sort", "uniq", "cut":
+	case "wow", "azworld", "standings", "sleep", "tail", "cat", "ls", "grep", "mkdir", "head", "wc", "sort", "uniq", "cut", "rg":
 		return name
 	}
 	return "unknown"
@@ -149,7 +166,12 @@ func (d *toolDiagnostics) observe(m map[string]any) {
 		}
 		d.begin(id, stringValue(part["tool"]), stringValue(object(state["input"])["command"]), start)
 		if state["status"] == "completed" || state["status"] == "error" {
-			d.end(id, end, state["status"] == "error", nil, errorCode(state), true)
+			var exit *int
+			if value, ok := object(state["metadata"])["exit"].(float64); ok {
+				n := int(value)
+				exit = &n
+			}
+			d.end(id, end, state["status"] == "error", exit, errorCode(state), true)
 		}
 	}
 }
