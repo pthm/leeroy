@@ -88,3 +88,16 @@ func TestRuntimeDocsValidate(t *testing.T) {
 		t.Fatal("duplicate documentation accepted")
 	}
 }
+
+func TestRuntimeOptionsRejectTypos(t *testing.T) {
+	e := NewEngine(nolog, nil)
+	defer e.Close()
+	for _, code := range []string{`events.query{sincee=1}`, `events.query{last=-1}`, `events.query{since=0/0}`, `events.query(false)`, `ask("q",{}, {timeuot=1})`, `ask("q",{}, {timeout=0})`} {
+		if _, err := e.Eval(code); err == nil {
+			t.Errorf("accepted %s", code)
+		}
+	}
+	if _, err := e.Eval(`return events.query(), events.query{last=1}`); err != nil {
+		t.Fatal(err)
+	}
+}

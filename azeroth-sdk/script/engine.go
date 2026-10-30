@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1314,8 +1315,22 @@ func (e *Engine) registerRuntime() {
 		},
 		// events.query{since, types, match, last, limit} -> events (history; nothing is consumed)
 		"query": func(L *lua.LState) int {
+			if L.GetTop() > 1 {
+				L.RaiseError("events.query accepts one options table")
+			}
+			if L.Get(1) != lua.LNil {
+				checkOptions(L, "events.query", "{[since=0, types=nil, match=nil, last=50, limit=nil]}", L.Get(1), []Parameter{{Name: "since", Optional: true}, {Name: "types", Optional: true}, {Name: "match", Optional: true}, {Name: "last", Optional: true}, {Name: "limit", Optional: true}})
+			}
 			q := Query{Last: 50}
 			if t, ok := L.Get(1).(*lua.LTable); ok {
+				for _, key := range []string{"since", "last", "limit"} {
+					if v := t.RawGetString(key); v != lua.LNil {
+						n, ok := v.(lua.LNumber)
+						if !ok || float64(n) < 0 || float64(n) > 9007199254740991 || math.Trunc(float64(n)) != float64(n) {
+							L.RaiseError("events.query: %s must be an exact nonnegative integer", key)
+						}
+					}
+				}
 				q.Since = uint64(lua.LVAsNumber(t.RawGetString("since")))
 				q.Types = strList(t.RawGetString("types"))
 				q.Match = lua.LVAsString(t.RawGetString("match"))
@@ -1390,10 +1405,10 @@ var runtimeDocs = [][3]string{
 	{"events.off", "(id or name) → nil", "remove a handler: by the id events.on returned, or the name you gave it"},
 	{"events.handlers", "() → {{id, types, name}}", "your event handlers"},
 	{"events.wait", "(type or {types} [, timeout_s]) → event", "the next matching event, nil on timeout (tasks only)"},
-	{"events.query", "{since, types, match, last = 50, limit} → {events}", "past events; types may end in * (\"quest_*\"), match searches the data"},
+	{"events.query", "{[since = 0, types = nil, match = nil, last = 50, limit = nil]} → {events}", "past events; types may end in * (\"quest_*\"), match searches the data; options may be omitted"},
 	{"events.seq", "() → seq", "the latest event's sequence number"},
 	{"events.emit", "(name, data) → seq", "an event of your own, type \"script.<name>\""},
-	{"ask", "(question, {options} [, {default, timeout}]) → choice, \"answered\"|\"timeout\"", "ask the agent and wait for answer() (tasks only)"},
+	{"ask", "(question, {options} [, {[default = nil, timeout = nil]}]) → choice, \"answered\"|\"timeout\"", "ask the agent and wait for answer() (tasks only); timeout is positive seconds, nil waits indefinitely"},
 	{"answer", "(id, choice) → bool", "answer an ask(): id is the attention event's seq; returns true after emitting the answer"},
 }
 

@@ -3,7 +3,7 @@ package session
 import "testing"
 
 const errandWorld = actBase + `
-  npc = {guid = "npc-123", entry = 123, name = "Vendor", alive = true, distance = 2,
+  npc = {guid = "456", entry = 123, name = "Vendor", alive = true, distance = 2,
     roles = {"vendor", "repair", "trainer"}}
   mobs = {npc}
   units.get = function(g) if g == npc.guid then return npc end end

@@ -18,7 +18,7 @@ Spells, attacks and fights, and looking back at a fight. The rest of the SDK is 
   retrying the same call unchanged gets the same answer.
 - `combat.attack(guid)` starts auto-attack. A refused swing is an `attack_failed` event (`not_in_range`,
   `bad_facing`: `move.face`).
-- Each spell rank is its own id: `spells.known`, `act.best({rank ids})` for the highest you know.
+- Each spell rank is its own id: `spells.known(id)` tests one rank; `spells.find(name)` returns the highest rank you know.
 - Every fight ends with a `fight_end` event: duration, damage dealt and taken, abilities used, outcomes. A unit's
   `casting`, a `unit_cast_start` event, `units.auras`, `threat_pct` and `combat.threat(guid)` show what the game
   shows a player.

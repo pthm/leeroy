@@ -43,9 +43,6 @@ end
 local function frac(r) return (r.max and r.max > 0) and r.current / r.max or 1 end
 function A.hp() return frac(me.health()) end
 function A.mana() local p = me.power() return p.type == "mana" and frac(p) or 1 end
-function A.best(ids)
-  for i = #ids, 1, -1 do if spells.known(ids[i]) then return ids[i] end end
-end
 function A.ready(id, guid) return id ~= nil and me.casting() == nil and spells.usable(id, guid) end
 function A.in_range(id, guid)
   local sp, u = spells.info(id), units.get(guid)
@@ -568,7 +565,7 @@ function A.recover(o)
       spirit = false
     end
   end
-  local r = spirit and A.spirit_res() or A.corpse_run(o)
+  local r = spirit and A.spirit_res() or A.corpse_run{safe = o.safe}
   if not r.ok and not spirit then r = A.spirit_res() end
   r = wrapped("act.recover", r)
   if r.ok and o.rest ~= false then
@@ -627,7 +624,7 @@ local function validate_npc_options(n, o)
     bad("supply exactly one of npc_entry or npc_guid")
   end
   if o.npc_entry ~= nil and not positive_int(o.npc_entry) then bad("npc_entry must be a positive integer") end
-  if o.npc_guid ~= nil and (type(o.npc_guid) ~= "string" or o.npc_guid == "") then bad("npc_guid must be a GUID string") end
+  if o.npc_guid ~= nil and (type(o.npc_guid) ~= "string" or not o.npc_guid:match("^%d+$")) then bad("npc_guid must be a decimal GUID string") end
   for _, k in ipairs({"sell_junk", "repair", "continue_on_error"}) do
     if o[k] ~= nil and type(o[k]) ~= "boolean" then bad(k .. " must be boolean") end
   end
@@ -671,6 +668,12 @@ local helper_options = {
   loot_nearby = "dist make_room",
   rest = "hp mana max_s",
   make_room = "",
+  go_to = "x y z tolerance tries unstuck on_attacked",
+  travel = "points tolerance unstuck on_attacked",
+  approach = "unit range timeout",
+  follow = "name distance until",
+  corpse_run = "safe",
+  recover = "spirit rest safe",
 }
 local function validate_helper_options(n, o)
   if n == "consume" then
@@ -684,13 +687,24 @@ local function validate_helper_options(n, o)
   local allowed = {}
   for field in fields:gmatch("%S+") do allowed[field] = true end
   for k in pairs(o) do if not allowed[k] then bad("unknown option " .. tostring(k)) end end
+  if n == "go_to" and (o.x == nil or o.y == nil) then bad("x and y are required") end
+  if n == "approach" and (type(o.unit) ~= "string" or not o.unit:match("^%d+$")) then bad("unit must be a GUID string") end
+  if n == "follow" and (type(o.name) ~= "string" or o.name == "") then bad("name must be a nonempty player name") end
+  for _, k in ipairs({"unstuck", "safe", "spirit", "rest"}) do
+    if o[k] ~= nil and type(o[k]) ~= "boolean" then bad(k .. " must be boolean") end
+  end
+  for _, k in ipairs({"on_attacked", "until"}) do
+    if o[k] ~= nil and type(o[k]) ~= "function" then bad(k .. " must be a function") end
+  end
+  if o.tries ~= nil and (not positive_int(o.tries) or o.tries > 32) then bad("tries must be an integer from 1 to 32") end
   if n == "use_object" and not positive_int(o.entry) then bad("entry is required and must be a positive ID") end
   for _, k in ipairs({"entry", "count", "quest_id", "max_attempts"}) do
     if o[k] ~= nil and not positive_int(o[k]) then bad(k .. " must be a positive integer") end
   end
-  for _, k in ipairs({"radius", "dist", "timeout_s", "max_s"}) do
+  for _, k in ipairs({"radius", "dist", "timeout_s", "max_s", "timeout", "tolerance", "range"}) do
     if o[k] ~= nil and (type(o[k]) ~= "number" or not (o[k] > 0 and o[k] < math.huge)) then bad(k .. " must be positive and finite") end
   end
+  if o.distance ~= nil and (type(o.distance) ~= "number" or not (o.distance >= 0 and o.distance < math.huge)) then bad("distance must be nonnegative and finite") end
   for _, k in ipairs({"hp", "mana"}) do
     if o[k] ~= nil and (type(o[k]) ~= "number" or not (o[k] >= 0 and o[k] <= 1)) then bad(k .. " must be a fraction from 0 to 1") end
   end
@@ -703,6 +717,24 @@ local function validate_helper_options(n, o)
     if (o.max_attempts or 3) > 32 then bad("max_attempts must be at most 32") end
     if not o.quest_id and (o.count or 1) > (o.max_attempts or 3) then bad("count cannot exceed max_attempts") end
   end
+  if n == "travel" then
+    if type(o.points) ~= "table" or #o.points < 1 or #o.points > 4096 then bad("points must contain 1..4096 waypoints") end
+    local count = 0
+    for k, p in pairs(o.points) do
+      count = count + 1
+      if not positive_int(k) or k > #o.points or type(p) ~= "table" then bad("points must be a dense array of waypoints") end
+      local positional = p[1] ~= nil or p[2] ~= nil or p[3] ~= nil
+      for key in pairs(p) do
+        if positional then
+          if key ~= 1 and key ~= 2 and key ~= 3 then bad("positional waypoints accept only {x, y, z} positions") end
+        elseif key ~= "x" and key ~= "y" and key ~= "z" then bad("named waypoints accept only x, y, z") end
+      end
+      local x, y, z = p[1] or p.x, p[2] or p.y, p[3] or p.z
+      local function finite(v) return type(v) == "number" and v == v and math.abs(v) < math.huge end
+      if not finite(x) or not finite(y) or (z ~= nil and not finite(z)) then bad("each waypoint requires finite x, y and optional z") end
+    end
+    if count ~= #o.points then bad("points must be a dense array") end
+  end
 end
 for _, n in ipairs({ "go_to", "travel", "approach", "follow", "reach_npc", "accept", "turn_in", "vendor", "train", "talk",
   "use_object", "rest", "release", "corpse_run", "spirit_res", "recover", "loot_nearby", "fly", "cast", "buff", "consume", "make_room" }) do
@@ -713,6 +745,7 @@ for _, n in ipairs({ "go_to", "travel", "approach", "follow", "reach_npc", "acce
     end
     local call = task._action_begin("act." .. n, o, ...)
     local ok, r = pcall(function(...)
+      if takes_options[n] and select("#", ...) > 0 then error("act." .. n .. " accepts one options table", 2) end
       if takes_options[n] and o ~= nil and type(o) ~= "table" then
         error("act." .. n .. " takes an options table, act." .. n .. "{...}, not a " .. type(o) .. ": help(\"act." .. n .. "\") lists its fields", 2)
       end
@@ -737,7 +770,6 @@ for name, d in pairs({
   dist = { "(x, y [, z]) → yards", "distance from you (2D without z)" },
   hp = { "() → 0..1", "your health fraction" },
   mana = { "() → 0..1", "your mana fraction (1 for rage/energy users)" },
-  best = { "({rank ids}) → id", "the highest rank you know of a spell" },
   ready = { "(id [, guid]) → bool", "known, off cooldown, affordable, and you're not casting" },
   in_range = { "(id, guid) → bool", "within the spell's range of the unit" },
   npc = { "(entry [, dist = 60]) → Creature?", "the nearest living observed creature with that entry, or nil when none is visible" },
@@ -746,8 +778,8 @@ for name, d in pairs({
   make_room = { "{} → ActResult<Consumed>", "destroy the cheapest loaded poor-quality item that is not a possible usable gear upgrade; wait up to 5 seconds for confirmation, or no_disposable_item; options may be omitted" },
   cast = { "(id [, guid]) → ActResult", "face the target and cast if ready (waits for the result in a task)" },
   buff = { "(id [, guid]) → ActResult", "cast it unless the aura is already active (ok with data.status = already_active then)" },
-  go_to = { "{x, y [, z, tolerance = 4, tries = 3, unstuck = false, on_attacked = fn]} → ActResult", "walk there; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs. Without on_attacked it walks on while mobs hit you and drags them along; with it, it stops whenever something targets you, calls on_attacked(attackers) (your fighting) and then carries on" },
-  travel = { "{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false, on_attacked = fn]} → ActResult", "go_to each waypoint (e.g. from azworld route)" },
+  go_to = { "{x, y [, z, tolerance = 4, tries = 3, unstuck = false, on_attacked = nil]} → ActResult", "walk there; tries must be 1..32; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs. Without on_attacked it walks on while mobs hit you and drags them along; with it, it stops whenever something targets you, calls on_attacked(attackers) (your fighting) and then carries on" },
+  travel = { "{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false, on_attacked = nil]} → ActResult", "go_to each of 1..4096 waypoints (e.g. from azworld route); all waypoint fields are checked before movement starts" },
   danger = { "(x, y [, r = 25]) → Creature[]", "living hostile creatures within r yards of a point: check a spot before you go there or come back to life there" },
   approach = { "{unit [, range = 4, timeout = 60]} → ActResult<Creature>", "move within range of a unit and face it" },
   follow = { "{name [, distance = 5, until = fn]} → ActResult", "stay near a player until until() is true" },

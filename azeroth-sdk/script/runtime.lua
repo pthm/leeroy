@@ -63,6 +63,9 @@ end
 -- From a task: emits an "attention" event and waits for the agent's answer(id, choice). id is the event's seq.
 function ask(question, options, opts)
   opts = opts or {}
+  if type(opts) ~= "table" then error("ask: expected options table; accepted fields: default, timeout", 2) end
+  for k in pairs(opts) do if k ~= "default" and k ~= "timeout" then error("ask: unknown option " .. tostring(k) .. "; accepted fields: default, timeout", 2) end end
+  if opts.timeout ~= nil and (type(opts.timeout) ~= "number" or not (opts.timeout > 0 and opts.timeout < math.huge)) then error("ask: timeout must be positive finite seconds", 2) end
   local id = events.emit("attention", {question = question, options = options, default = opts.default})
   local deadline = opts.timeout and (now() + opts.timeout * 1000)
   while true do
