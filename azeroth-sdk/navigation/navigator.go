@@ -4,6 +4,7 @@
 package navigation
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sync"
@@ -41,6 +42,9 @@ type PathResult struct {
 type Navigator interface {
 	// FindPath computes a path from start to dest on the given map.
 	FindPath(mapID uint32, start, dest Point3D) (*PathResult, error)
+
+	// FindPathContext cancels loading, lock waits, search and smoothing cooperatively.
+	FindPathContext(ctx context.Context, mapID uint32, start, dest Point3D) (*PathResult, error)
 
 	// FindRandomPath finds a random walkable point near center.
 	FindRandomPath(mapID uint32, center Point3D, radius float32) (*PathResult, error)
@@ -101,7 +105,10 @@ func NewEmbeddedNavigator(dataDir string) Navigator {
 }
 
 func (n *embeddedNavigator) FindPath(mapID uint32, start, dest Point3D) (*PathResult, error) {
-	result, err := n.svc.FindPath(mapID, pathfinding.Point3D{X: start.X, Y: start.Y, Z: start.Z},
+	return n.FindPathContext(context.Background(), mapID, start, dest)
+}
+func (n *embeddedNavigator) FindPathContext(ctx context.Context, mapID uint32, start, dest Point3D) (*PathResult, error) {
+	result, err := n.svc.FindPathContext(ctx, mapID, pathfinding.Point3D{X: start.X, Y: start.Y, Z: start.Z},
 		pathfinding.Point3D{X: dest.X, Y: dest.Y, Z: dest.Z})
 	if err != nil {
 		return nil, err

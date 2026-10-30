@@ -1,6 +1,7 @@
 package pathfinding
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/rand"
@@ -88,12 +89,17 @@ type PathFinder struct {
 
 // NewPathFinder creates a PathFinder for the given map.
 func NewPathFinder(mmapMgr *MMapManager, terrainMgr *TerrainManager, vmapMgr *VMapManager, mapID uint32) (*PathFinder, error) {
-	md, err := mmapMgr.getOrLoadMapData(mapID)
+	return newPathFinderContext(context.Background(), mmapMgr, terrainMgr, vmapMgr, mapID)
+}
+func newPathFinderContext(ctx context.Context, mmapMgr *MMapManager, terrainMgr *TerrainManager, vmapMgr *VMapManager, mapID uint32) (*PathFinder, error) {
+	md, err := mmapMgr.getOrLoadMapDataContext(ctx, mapID)
 	if err != nil {
 		return nil, err
 	}
 
-	md.mu.RLock()
+	if err := lockContext(ctx, md.mu.TryRLock); err != nil {
+		return nil, err
+	}
 	query := detour.DtAllocNavMeshQuery()
 	if status := query.Init(md.navMesh, 8192); detour.DtStatusFailed(status) {
 		md.mu.RUnlock()
@@ -168,7 +174,7 @@ func (pf *PathFinder) ensureTilesForPoint(p Point3D) error {
 }
 
 // ensureTilesForPath loads all tiles that might be needed for a path from start to dest.
-func (pf *PathFinder) ensureTilesForPath(start, dest Point3D) error {
+func (pf *PathFinder) ensureTilesForPath(ctx context.Context, start, dest Point3D) error {
 	sgx, sgy := gameToGridCoords(start.X, start.Y)
 	dgx, dgy := gameToGridCoords(dest.X, dest.Y)
 
@@ -188,12 +194,15 @@ func (pf *PathFinder) ensureTilesForPath(start, dest Point3D) error {
 	minGY -= gridMargin
 	maxGY += gridMargin
 
+	if (maxGX-minGX+1)*(maxGY-minGY+1) > MaxQueryTiles {
+		return ErrQueryLimit
+	}
 	for gx := minGX; gx <= maxGX; gx++ {
 		for gy := minGY; gy <= maxGY; gy++ {
 			if gx < 0 || gy < 0 || gx > 63 || gy > 63 {
 				continue
 			}
-			if err := pf.mmapMgr.EnsureTileLoaded(pf.mapID, int32(gx), int32(gy)); err != nil {
+			if err := pf.mmapMgr.EnsureTileLoadedContext(ctx, pf.mapID, int32(gx), int32(gy)); err != nil {
 				return err
 			}
 		}
@@ -203,12 +212,27 @@ func (pf *PathFinder) ensureTilesForPath(start, dest Point3D) error {
 
 // FindPath computes a path from start to dest using smooth path generation.
 func (pf *PathFinder) FindPath(start, dest Point3D) (*PathResult, error) {
+	return pf.FindPathContext(context.Background(), start, dest)
+}
+func (pf *PathFinder) FindPathContext(ctx context.Context, start, dest Point3D) (*PathResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeout)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := validateLeg(start, dest); err != nil {
+		return nil, err
+	}
 	// Ensure tiles are loaded for both points and all intermediate tiles.
-	if err := pf.ensureTilesForPath(start, dest); err != nil {
+	if err := pf.ensureTilesForPath(ctx, start, dest); err != nil {
 		return nil, err
 	}
 
-	pf.navMeshRLock()
+	if pf.meshMu != nil {
+		if err := lockContext(ctx, pf.meshMu.TryRLock); err != nil {
+			return nil, err
+		}
+	}
 	defer pf.navMeshRUnlock()
 
 	if !pf.haveTile(start) || !pf.haveTile(dest) {
@@ -259,7 +283,14 @@ func (pf *PathFinder) FindPath(start, dest Point3D) (*PathResult, error) {
 		polyPath[0] = startPoly
 		polyPathSize = 1
 	} else {
-		status := pf.query.FindPath(startPoly, endPoly, startPoint[:], endPoint[:], pf.filter, polyPath, &polyPathSize, maxPathLength)
+		status := pf.query.InitSlicedFindPath(startPoly, endPoly, startPoint[:], endPoint[:], pf.filter, 0)
+		status, err := runSlicedSearch(ctx, status, pf.query.UpdateSlicedFindPath)
+		if err != nil {
+			return nil, err
+		}
+		if !detour.DtStatusFailed(status) {
+			status = pf.query.FinalizeSlicedFindPath(polyPath, &polyPathSize, maxPathLength)
+		}
 		if polyPathSize == 0 || detour.DtStatusFailed(status) {
 			return &PathResult{
 				Type:   PathfindNopath,
@@ -285,8 +316,11 @@ func (pf *PathFinder) FindPath(start, dest Point3D) (*PathResult, error) {
 	smoothPath := make([]float32, maxPointPathLength*vertexSize)
 	var smoothPathSize int
 
-	status := pf.findSmoothPath(startPoint[:], endPoint[:], polyPath, uint32(polyPathSize), smoothPath, &smoothPathSize, uint32(maxPointPathLength))
+	status := pf.findSmoothPath(ctx, startPoint[:], endPoint[:], polyPath, uint32(polyPathSize), smoothPath, &smoothPathSize, uint32(maxPointPathLength))
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	// Special case: start and end on same poly, only 1 point returned.
 	if polyPathSize == 1 && smoothPathSize == 1 {
 		copy(smoothPath[1*vertexSize:], endPoint[:])
@@ -315,6 +349,9 @@ func (pf *PathFinder) FindPath(start, dest Point3D) (*PathResult, error) {
 	// (AC additionally runs NormalizePath/UpdateAllowedPositionZ which may adjust further using maps/vmaps;
 	// when aux data has full fidelity the getMapHeight path above would be used instead.)
 	for i := range points {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if r, ok := pf.getNearestPolyHeightLocked(points[i].X, points[i].Y, points[i].Z+0.5, 20); ok {
 			points[i].Z = r
 		}
@@ -404,7 +441,7 @@ func (pf *PathFinder) getPolyByLocation(point []float32, distance *float32, clos
 	return invalidPolyRef
 }
 
-func (pf *PathFinder) findSmoothPath(startPos, endPos []float32, polyPath []detour.DtPolyRef, polyPathSize uint32,
+func (pf *PathFinder) findSmoothPath(ctx context.Context, startPos, endPos []float32, polyPath []detour.DtPolyRef, polyPathSize uint32,
 	smoothPath []float32, smoothPathSize *int, maxSmoothPathSize uint32) detour.DtStatus {
 	*smoothPathSize = 0
 	nsmoothPath := uint32(0)
@@ -432,6 +469,9 @@ func (pf *PathFinder) findSmoothPath(startPos, endPos []float32, polyPath []deto
 	nsmoothPath++
 
 	for npolys > 0 && nsmoothPath < maxSmoothPathSize {
+		if ctx.Err() != nil {
+			return detour.DT_FAILURE
+		}
 		var steerPos [3]float32
 		var steerPosFlag detour.DtStraightPathFlags
 		var steerPosRef detour.DtPolyRef
@@ -727,6 +767,9 @@ func (s *PathFindingService) getPool(mapID uint32) *pathFinderPool {
 }
 
 func (s *PathFindingService) acquirePathFinder(mapID uint32) (*PathFinder, error) {
+	return s.acquirePathFinderContext(context.Background(), mapID)
+}
+func (s *PathFindingService) acquirePathFinderContext(ctx context.Context, mapID uint32) (*PathFinder, error) {
 	pool := s.getPool(mapID)
 
 	pool.mu.Lock()
@@ -738,7 +781,7 @@ func (s *PathFindingService) acquirePathFinder(mapID uint32) (*PathFinder, error
 	}
 	pool.mu.Unlock()
 
-	return NewPathFinder(s.mmapMgr, s.terrainMgr, s.vmapMgr, mapID)
+	return newPathFinderContext(ctx, s.mmapMgr, s.terrainMgr, s.vmapMgr, mapID)
 }
 
 func (s *PathFindingService) releasePathFinder(mapID uint32, pf *PathFinder) {
@@ -750,13 +793,24 @@ func (s *PathFindingService) releasePathFinder(mapID uint32, pf *PathFinder) {
 
 // FindPath finds a path from start to dest within the same map.
 func (s *PathFindingService) FindPath(mapID uint32, start, dest Point3D) (*PathResult, error) {
-	pf, err := s.acquirePathFinder(mapID)
+	return s.FindPathContext(context.Background(), mapID, start, dest)
+}
+func (s *PathFindingService) FindPathContext(ctx context.Context, mapID uint32, start, dest Point3D) (*PathResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, QueryTimeout)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := validateLeg(start, dest); err != nil {
+		return nil, err
+	}
+	pf, err := s.acquirePathFinderContext(ctx, mapID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire pathfinder for map %d: %w", mapID, err)
 	}
 	defer s.releasePathFinder(mapID, pf)
 
-	return pf.FindPath(start, dest)
+	return pf.FindPathContext(ctx, start, dest)
 }
 
 // FindRandomPath finds a random valid path within radius of center.

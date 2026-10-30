@@ -1,6 +1,7 @@
 package pathfinding
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -59,11 +60,14 @@ func (m *MMapManager) GetNavMesh(mapID uint32) (*detour.DtNavMesh, error) {
 
 // EnsureTileLoaded ensures the tile at (x, y) for the given map is loaded.
 func (m *MMapManager) EnsureTileLoaded(mapID uint32, x, y int32) error {
-	md, err := m.getOrLoadMapData(mapID)
+	return m.EnsureTileLoadedContext(context.Background(), mapID, x, y)
+}
+func (m *MMapManager) EnsureTileLoadedContext(ctx context.Context, mapID uint32, x, y int32) error {
+	md, err := m.getOrLoadMapDataContext(ctx, mapID)
 	if err != nil {
 		return err
 	}
-	return m.loadTile(md, mapID, x, y)
+	return m.loadTileContext(ctx, md, mapID, x, y)
 }
 
 // EnsureAllTilesLoaded loads every .mmtile present for the map to ensure complete nav graph (matches runtime server behavior for pathing).
@@ -116,14 +120,21 @@ func (m *MMapManager) CreateQuery(mapID uint32) (*detour.DtNavMeshQuery, error) 
 }
 
 func (m *MMapManager) getOrLoadMapData(mapID uint32) (*mapData, error) {
-	m.mu.RLock()
+	return m.getOrLoadMapDataContext(context.Background(), mapID)
+}
+func (m *MMapManager) getOrLoadMapDataContext(ctx context.Context, mapID uint32) (*mapData, error) {
+	if err := lockContext(ctx, m.mu.TryRLock); err != nil {
+		return nil, err
+	}
 	md, ok := m.meshes[mapID]
 	m.mu.RUnlock()
 	if ok {
 		return md, nil
 	}
 
-	m.mu.Lock()
+	if err := lockContext(ctx, m.mu.TryLock); err != nil {
+		return nil, err
+	}
 	defer m.mu.Unlock()
 
 	// Double-check after acquiring write lock.
@@ -132,7 +143,7 @@ func (m *MMapManager) getOrLoadMapData(mapID uint32) (*mapData, error) {
 		return md, nil
 	}
 
-	navMesh, err := m.loadNavMesh(mapID)
+	navMesh, err := m.loadNavMeshContext(ctx, mapID)
 	if err != nil {
 		return nil, err
 	}
@@ -145,8 +156,18 @@ func (m *MMapManager) getOrLoadMapData(mapID uint32) (*mapData, error) {
 	return md, nil
 }
 
-func (m *MMapManager) loadNavMesh(mapID uint32) (*detour.DtNavMesh, error) {
+func (m *MMapManager) loadNavMeshContext(ctx context.Context, mapID uint32) (*detour.DtNavMesh, error) {
 	fileName := fmt.Sprintf("%s/%03d.mmap", m.mmapsDir, mapID)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(fileName)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("map is not a regular file: %s", fileName)
+	}
 	file, err := os.Open(fileName)
 	if err != nil {
 		return nil, fmt.Errorf("could not open mmap file '%s': %w", fileName, err)
@@ -155,22 +176,28 @@ func (m *MMapManager) loadNavMesh(mapID uint32) (*detour.DtNavMesh, error) {
 
 	// DtNavMeshParams binary layout: orig[3]float32, tileWidth float32, tileHeight float32, maxTiles uint32, maxPolys uint32 = 28 bytes
 	var params detour.DtNavMeshParams
-	if err := binary.Read(file, binary.LittleEndian, &params.Orig); err != nil {
+	if err := binary.Read(contextReader{ctx, file}, binary.LittleEndian, &params.Orig); err != nil {
 		return nil, fmt.Errorf("could not read params from '%s': %w", fileName, err)
 	}
-	if err := binary.Read(file, binary.LittleEndian, &params.TileWidth); err != nil {
+	if err := binary.Read(contextReader{ctx, file}, binary.LittleEndian, &params.TileWidth); err != nil {
 		return nil, fmt.Errorf("could not read params from '%s': %w", fileName, err)
 	}
-	if err := binary.Read(file, binary.LittleEndian, &params.TileHeight); err != nil {
+	if err := binary.Read(contextReader{ctx, file}, binary.LittleEndian, &params.TileHeight); err != nil {
 		return nil, fmt.Errorf("could not read params from '%s': %w", fileName, err)
 	}
-	if err := binary.Read(file, binary.LittleEndian, &params.MaxTiles); err != nil {
+	if err := binary.Read(contextReader{ctx, file}, binary.LittleEndian, &params.MaxTiles); err != nil {
 		return nil, fmt.Errorf("could not read params from '%s': %w", fileName, err)
 	}
-	if err := binary.Read(file, binary.LittleEndian, &params.MaxPolys); err != nil {
+	if err := binary.Read(contextReader{ctx, file}, binary.LittleEndian, &params.MaxPolys); err != nil {
 		return nil, fmt.Errorf("could not read params from '%s': %w", fileName, err)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if params.MaxTiles <= 0 || params.MaxTiles > 65536 {
+		return nil, fmt.Errorf("invalid navmesh tile capacity: %d", params.MaxTiles)
+	}
 	navMesh := detour.DtAllocNavMesh()
 	if status := navMesh.Init(&params); detour.DtStatusFailed(status) {
 		return nil, fmt.Errorf("failed to initialize dtNavMesh for map %03d, status: %d", mapID, status)
@@ -180,9 +207,14 @@ func (m *MMapManager) loadNavMesh(mapID uint32) (*detour.DtNavMesh, error) {
 }
 
 func (m *MMapManager) loadTile(md *mapData, mapID uint32, x, y int32) error {
+	return m.loadTileContext(context.Background(), md, mapID, x, y)
+}
+func (m *MMapManager) loadTileContext(ctx context.Context, md *mapData, mapID uint32, x, y int32) error {
 	packed := packTileID(x, y)
 
-	md.mu.Lock()
+	if err := lockContext(ctx, md.mu.TryLock); err != nil {
+		return err
+	}
 	defer md.mu.Unlock()
 
 	if md.loadedTiles[packed] {
@@ -190,8 +222,21 @@ func (m *MMapManager) loadTile(md *mapData, mapID uint32, x, y int32) error {
 	}
 
 	fileName := fmt.Sprintf("%s/%03d%02d%02d.mmtile", m.mmapsDir, mapID, x, y)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	info, statErr := os.Stat(fileName)
+	if statErr == nil && !info.Mode().IsRegular() {
+		return fmt.Errorf("tile is not a regular file: %s", fileName)
+	}
+	if statErr != nil && !os.IsNotExist(statErr) {
+		return statErr
+	}
 	file, err := os.Open(fileName)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
 		// Tile file doesn't exist; mark as loaded so we don't retry the expensive os.Open on every GetHeight/FindPath.
 		md.loadedTiles[packed] = true
 		return nil
@@ -200,7 +245,7 @@ func (m *MMapManager) loadTile(md *mapData, mapID uint32, x, y int32) error {
 
 	// Read the MmapTileHeader.
 	headerBuf := make([]byte, mmapTileHeaderSize)
-	if _, err := io.ReadFull(file, headerBuf); err != nil {
+	if _, err := io.ReadFull(contextReader{ctx, file}, headerBuf); err != nil {
 		return fmt.Errorf("could not read header from '%s': %w", fileName, err)
 	}
 
@@ -216,8 +261,11 @@ func (m *MMapManager) loadTile(md *mapData, mapID uint32, x, y int32) error {
 
 	dataSize := binary.LittleEndian.Uint32(headerBuf[12:16])
 
+	if dataSize > maxTileBytes {
+		return fmt.Errorf("tile exceeds %d bytes: %s", maxTileBytes, fileName)
+	}
 	data := make([]byte, dataSize)
-	if _, err := io.ReadFull(file, data); err != nil {
+	if _, err := io.ReadFull(contextReader{ctx, file}, data); err != nil {
 		return fmt.Errorf("could not read tile data from '%s': %w", fileName, err)
 	}
 
@@ -227,6 +275,9 @@ func (m *MMapManager) loadTile(md *mapData, mapID uint32, x, y int32) error {
 		return fmt.Errorf("tile data too small in '%s'", fileName)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	var tileRef detour.DtTileRef
 	if status := md.navMesh.AddTile(data, int(dataSize), detour.DT_TILE_FREE_DATA, 0, &tileRef); detour.DtStatusFailed(status) {
 		return fmt.Errorf("could not add tile %03d[%02d,%02d] to navmesh, status: %d", mapID, x, y, status)

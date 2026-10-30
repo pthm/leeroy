@@ -2,6 +2,7 @@ package movement
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"math"
 	"os"
@@ -68,6 +69,12 @@ type fakeHeightNavigator struct {
 	terrain func(mapID uint32, x, y float32) (float32, bool)
 }
 
+func (n fakeHeightNavigator) FindPathContext(ctx context.Context, mapID uint32, start, dest navigation.Point3D) (*navigation.PathResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return n.FindPath(mapID, start, dest)
+}
 func (n fakeHeightNavigator) FindPath(mapID uint32, start, dest navigation.Point3D) (*navigation.PathResult, error) {
 	return nil, fmt.Errorf("not implemented")
 }
@@ -99,6 +106,12 @@ type fakeRandomNavigator struct {
 	terrain func(mapID uint32, x, y float32) (float32, bool)
 }
 
+func (n *fakeRandomNavigator) FindPathContext(ctx context.Context, mapID uint32, start, dest navigation.Point3D) (*navigation.PathResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return n.FindPath(mapID, start, dest)
+}
 func (n *fakeRandomNavigator) FindPath(mapID uint32, start, dest navigation.Point3D) (*navigation.PathResult, error) {
 	return nil, fmt.Errorf("not implemented")
 }
