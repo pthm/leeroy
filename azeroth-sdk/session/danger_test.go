@@ -11,7 +11,7 @@ func TestDangerRequiresLocalFloorSightAndConnection(t *testing.T) {
 	mob := types.Creature{Unit: types.Unit{Alive: true, Reaction: "hostile", Place: types.Place{X: 10}}, Attackable: true}
 	source := dangerSource{path: func(_ context.Context, _ uint32, a, b navigation.Point3D) (*navigation.PathResult, error) {
 		return &navigation.PathResult{Found: true, Points: []navigation.Point3D{a, b}}, nil
-	}, sight: func(uint32, navigation.Point3D, navigation.Point3D) (bool, bool) { return true, true }}
+	}, sight: func(context.Context, uint32, navigation.Point3D, navigation.Point3D) (bool, bool) { return true, true }}
 	for _, tc := range []struct {
 		name  string
 		point types.Position
@@ -23,7 +23,7 @@ func TestDangerRequiresLocalFloorSightAndConnection(t *testing.T) {
 		{"remote", types.Position{X: 100}, nil, "unknown"},
 		{"no collision", types.Position{}, func(s *dangerSource) { s.sight = nil }, "unknown"},
 		{"wall", types.Position{}, func(s *dangerSource) {
-			s.sight = func(uint32, navigation.Point3D, navigation.Point3D) (bool, bool) { return false, true }
+			s.sight = func(context.Context, uint32, navigation.Point3D, navigation.Point3D) (bool, bool) { return false, true }
 		}, "clear"},
 		{"different floor", types.Position{Z: 50}, func(s *dangerSource) {
 			s.path = func(_ context.Context, _ uint32, a, b navigation.Point3D) (*navigation.PathResult, error) {

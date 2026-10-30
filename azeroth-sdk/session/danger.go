@@ -11,7 +11,7 @@ import (
 
 type dangerSource struct {
 	path  func(context.Context, uint32, navigation.Point3D, navigation.Point3D) (*navigation.PathResult, error)
-	sight func(uint32, navigation.Point3D, navigation.Point3D) (bool, bool)
+	sight func(context.Context, uint32, navigation.Point3D, navigation.Point3D) (bool, bool)
 }
 
 func checkDanger(ctx context.Context, here, point types.Position, radius float64, mobs []types.Creature, src dangerSource) types.DangerCheck {
@@ -45,7 +45,7 @@ func checkDanger(ctx context.Context, here, point types.Position, radius float64
 		eye, target := p, q
 		eye.Z += 1.8
 		target.Z += 1.5
-		clear, known := src.sight(point.Map, eye, target)
+		clear, known := src.sight(ctx, point.Map, eye, target)
 		if !known {
 			uncertain = "collision_unavailable"
 			continue
@@ -86,9 +86,9 @@ func (b *Bot) registerDanger(r *routeRequests) {
 		mobs := b.creatures(b.GetNearbyUnits(80))
 		src := dangerSource{path: r.find}
 		if los, ok := b.nav.(interface {
-			InLineOfSight(uint32, navigation.Point3D, navigation.Point3D) (bool, bool)
+			InLineOfSightContext(context.Context, uint32, navigation.Point3D, navigation.Point3D) (bool, bool)
 		}); ok {
-			src.sight = los.InLineOfSight
+			src.sight = los.InLineOfSightContext
 		}
 		id, _, _ := b.lua.CurrentTaskIdentity()
 		return r.submit(id, "world.danger", map[string]any{"x": x, "y": y, "z": z, "radius": radius}, types.DangerCheck{State: "unknown", Hostiles: []types.Creature{}}, func(ctx context.Context, _ *routeRequest) *script.Outcome {

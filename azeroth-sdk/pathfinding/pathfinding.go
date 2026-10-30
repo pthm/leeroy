@@ -842,12 +842,15 @@ func (s *PathFindingService) GetHeight(mapID uint32, x, y, z float32) (float32, 
 
 // FloorHeight: the navmesh floor nearest (x, y, hint); see PathFinder.FloorHeight.
 func (s *PathFindingService) FloorHeight(mapID uint32, x, y, hint float32) (float32, bool) {
-	pf, err := s.acquirePathFinder(mapID)
+	return s.FloorHeightContext(context.Background(), mapID, x, y, hint)
+}
+func (s *PathFindingService) FloorHeightContext(ctx context.Context, mapID uint32, x, y, hint float32) (float32, bool) {
+	pf, err := s.acquirePathFinderContext(ctx, mapID)
 	if err != nil {
 		return 0, false
 	}
 	defer s.releasePathFinder(mapID, pf)
-	return pf.FloorHeight(x, y, hint)
+	return pf.floorHeightContext(ctx, x, y, hint)
 }
 
 // GetTerrainHeight returns the raw map grid height at (x,y), without using the
@@ -962,8 +965,15 @@ func (pf *PathFinder) GetHeight(x, y, z float32) (float32, bool) {
 // FloorHeight returns the height of the navmesh surface nearest (x, y, hint): the walkable floor at that spot,
 // including floors inside buildings and on bridges, which the server's navmesh models from its own vmaps.
 func (pf *PathFinder) FloorHeight(x, y, hint float32) (float32, bool) {
-	_ = pf.ensureTilesForPoint(Point3D{X: x, Y: y, Z: hint})
-	pf.navMeshRLock()
+	return pf.floorHeightContext(context.Background(), x, y, hint)
+}
+func (pf *PathFinder) floorHeightContext(ctx context.Context, x, y, hint float32) (float32, bool) {
+	if err := pf.ensureTilesForPath(ctx, Point3D{X: x, Y: y, Z: hint}, Point3D{X: x, Y: y, Z: hint}); err != nil {
+		return 0, false
+	}
+	if pf.meshMu != nil && lockContext(ctx, pf.meshMu.TryRLock) != nil {
+		return 0, false
+	}
 	defer pf.navMeshRUnlock()
 	point := [3]float32{y, hint, x} // detour order: (y, z, x)
 	extents := [3]float32{1.5, 8.0, 1.5}
@@ -972,7 +982,7 @@ func (pf *PathFinder) FloorHeight(x, y, hint float32) (float32, bool) {
 	if st := pf.query.FindNearestPoly(point[:], extents[:], pf.filter, &ref, closest[:]); !detour.DtStatusSucceed(st) || ref == invalidPolyRef {
 		return 0, false
 	}
-	return closest[1], true
+	return closest[1], ctx.Err() == nil
 }
 
 func (pf *PathFinder) getHeightLocked(x, y, z float32) (float32, bool) {
@@ -1023,4 +1033,80 @@ func (s *PathFindingService) InLineOfSight(mapID uint32, x1, y1, z1, x2, y2, z2 
 		return true, false
 	}
 	return s.vmapMgr.InLineOfSight(mapID, Vector3{x1, y1, z1}, Vector3{x2, y2, z2})
+}
+
+func (pf *PathFinder) getHeightContext(ctx context.Context, x, y, z float32) (float32, bool) {
+	point := Point3D{X: x, Y: y, Z: z}
+	if pf.ensureTilesForPath(ctx, point, point) != nil {
+		return 0, false
+	}
+	if pf.meshMu != nil && lockContext(ctx, pf.meshMu.TryRLock) != nil {
+		return 0, false
+	}
+	defer pf.navMeshRUnlock()
+	// AC WorldObject::GetMapHeight adds max(collision, Z_OFFSET) to the hint z before Map::GetHeight.
+	searchZ := z + Z_OFFSET_FIND_HEIGHT
+
+	mapHeight := float32(-100000.0)
+	if pf.terrainMgr != nil {
+		if gridH, ok := gridHeightContext(ctx, pf.terrainMgr, pf.mapID, x, y); ok {
+			if fuzzyGe(searchZ, gridH-GROUND_HEIGHT_TOLERANCE) {
+				mapHeight = gridH
+			}
+		}
+	}
+
+	vmapHeight := float32(-100000.0)
+	if pf.vmapMgr != nil {
+		if vh, ok := pf.vmapMgr.GetHeightContext(ctx, pf.mapID, x, y, searchZ, DEFAULT_HEIGHT_SEARCH); ok && vh > INVALID_HEIGHT {
+			vmapHeight = vh
+		}
+	}
+	if ctx.Err() != nil {
+		return 0, false
+	}
+	// AC Map::GetHeight: with both, the model floor wins only when it's above the terrain or nearer to z. Taking any
+	// model floor found below dropped bots walking over a mine or cave through the ground into it.
+	if vmapHeight > -100000.0 {
+		if mapHeight > -100000.0 && vmapHeight <= mapHeight && math.Abs(float64(mapHeight-searchZ)) <= math.Abs(float64(vmapHeight-searchZ)) {
+			return mapHeight, true
+		}
+		return vmapHeight, true
+	}
+
+	if mapHeight > -100000.0 {
+		return mapHeight, true
+	}
+
+	// Last resort poly query. It must be at or below searchZ, matching a downward
+	// height query. Probing upward can select higher navmesh layers and then feed
+	// that Z back into bot movement.
+	if pH, ok := pf.getNavMeshHeightAtOrBelowLocked(x, y, searchZ, DEFAULT_HEIGHT_SEARCH); ok {
+		return pH, true
+	}
+	return 0, false
+}
+func gridHeightContext(ctx context.Context, tm *TerrainManager, m uint32, x, y float32) (float32, bool) {
+	h, _, _, err := tm.GetGridSampleContext(ctx, m, x, y)
+	return h, err == nil && !math.IsNaN(float64(h))
+}
+func (s *PathFindingService) GetHeightContext(ctx context.Context, m uint32, x, y, z float32) (float32, bool) {
+	pf, err := s.acquirePathFinderContext(ctx, m)
+	if err != nil {
+		return 0, false
+	}
+	defer s.releasePathFinder(m, pf)
+	return pf.getHeightContext(ctx, x, y, z)
+}
+func (s *PathFindingService) GetTerrainHeightContext(ctx context.Context, m uint32, x, y float32) (float32, bool) {
+	if s.terrainMgr == nil {
+		return 0, false
+	}
+	return gridHeightContext(ctx, s.terrainMgr, m, x, y)
+}
+func (s *PathFindingService) InLineOfSightContext(ctx context.Context, m uint32, x1, y1, z1, x2, y2, z2 float32) (bool, bool) {
+	if s.vmapMgr == nil {
+		return false, false
+	}
+	return s.vmapMgr.InLineOfSightContext(ctx, m, Vector3{x1, y1, z1}, Vector3{x2, y2, z2})
 }

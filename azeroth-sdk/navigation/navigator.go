@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"time"
 
 	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
 )
@@ -125,20 +126,28 @@ func (n *embeddedNavigator) FindRandomPath(mapID uint32, center Point3D, radius 
 }
 
 func (n *embeddedNavigator) GetHeight(mapID uint32, x, y, z float32) (float32, bool) {
-	return n.svc.GetHeight(mapID, x, y, z)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+	return n.svc.GetHeightContext(ctx, mapID, x, y, z)
 }
 
 // InLineOfSight: line of sight between two points against world models (buildings, caves), as the server checks spells.
 func (n *embeddedNavigator) InLineOfSight(mapID uint32, a, b Point3D) (bool, bool) {
-	return n.svc.InLineOfSight(mapID, a.X, a.Y, a.Z, b.X, b.Y, b.Z)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+	return n.InLineOfSightContext(ctx, mapID, a, b)
 }
 
 func (n *embeddedNavigator) GetTerrainHeight(mapID uint32, x, y float32) (float32, bool) {
-	return n.svc.GetTerrainHeight(mapID, x, y)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+	return n.svc.GetTerrainHeightContext(ctx, mapID, x, y)
 }
 
 func (n *embeddedNavigator) FloorHeight(mapID uint32, x, y, hint float32) (float32, bool) {
-	return n.svc.FloorHeight(mapID, x, y, hint)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+	return n.svc.FloorHeightContext(ctx, mapID, x, y, hint)
 }
 
 func (n *embeddedNavigator) GetWaterLevel(mapID uint32, x, y float32) (float32, bool) {
@@ -170,4 +179,8 @@ func convertResult(r *pathfinding.PathResult) *PathResult {
 // or separate optional package if needed for bridge scenarios.
 func NewRemoteNavigator(address string) (Navigator, error) {
 	return nil, fmt.Errorf("remote pathfinding (gRPC) is optional and not built-in for core use; use NewEmbeddedNavigator(dataDir) instead")
+}
+
+func (n *embeddedNavigator) InLineOfSightContext(ctx context.Context, m uint32, a, b Point3D) (bool, bool) {
+	return n.svc.InLineOfSightContext(ctx, m, a.X, a.Y, a.Z, b.X, b.Y, b.Z)
 }

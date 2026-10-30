@@ -3,7 +3,9 @@ package pathfinding
 import (
 	"bufio"
 	"container/list"
+	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -490,13 +492,16 @@ type WorldModel struct {
 }
 
 func (w *WorldModel) readFile(filename string) error {
-	f, err := os.Open(filename)
+	return w.readFileContext(context.Background(), filename)
+}
+func (w *WorldModel) readFileContext(ctx context.Context, filename string) error {
+	f, reader, err := openVMapContext(ctx, filename)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	br := bufio.NewReader(f)
+	br := bufio.NewReader(reader)
 
 	var chunk [8]byte
 	if _, err := io.ReadFull(br, chunk[:]); err != nil {
@@ -577,10 +582,16 @@ func readFloat32(r io.Reader) (float32, error) {
 }
 
 func (w *WorldModel) getHeight(ray Ray, maxDist float32) float32 {
+	return w.getHeightContext(context.Background(), ray, maxDist)
+}
+func (w *WorldModel) getHeightContext(ctx context.Context, ray Ray, maxDist float32) float32 {
 	// return min t , caller computes height
 	minT := maxDist
 	for i := range w.groupModels {
-		t := w.groupModels[i].getHeight(ray, maxDist)
+		if ctx.Err() != nil {
+			return math.MaxFloat32
+		}
+		t := w.groupModels[i].getHeightContext(ctx, ray, maxDist)
 		if t < minT {
 			minT = t
 		}
@@ -738,6 +749,9 @@ func validateVMapVectorChunk(name string, chunkSize, count, elemBytes, maxCount 
 }
 
 func (g *GroupModel) getHeight(ray Ray, maxDist float32) float32 {
+	return g.getHeightContext(context.Background(), ray, maxDist)
+}
+func (g *GroupModel) getHeightContext(ctx context.Context, ray Ray, maxDist float32) float32 {
 	// Brute force over the group's triangles, after a bounds check: most of a building's groups are nowhere near
 	// the ray, and skipping them takes path ground-snapping from ~3 ms to microseconds per point.
 	// ponytail: the triangle BIH (groupTree) would go further if one big group dominates
@@ -745,7 +759,10 @@ func (g *GroupModel) getHeight(ray Ray, maxDist float32) float32 {
 		return math.MaxFloat32
 	}
 	bestT := maxDist
-	for _, tri := range g.Mesh {
+	for i, tri := range g.Mesh {
+		if i%256 == 0 && ctx.Err() != nil {
+			return math.MaxFloat32
+		}
 		if tri.idx0 >= uint32(len(g.Vertices)) || tri.idx1 >= uint32(len(g.Vertices)) || tri.idx2 >= uint32(len(g.Vertices)) {
 			continue
 		}
@@ -857,14 +874,21 @@ func ensureTrailingSlash(p string) string {
 }
 
 func (vm *VMapManager) getTree(mapID uint32) (*StaticMapTree, error) {
-	vm.mu.RLock()
+	return vm.getTreeContext(context.Background(), mapID)
+}
+func (vm *VMapManager) getTreeContext(ctx context.Context, mapID uint32) (*StaticMapTree, error) {
+	if err := lockContext(ctx, vm.mu.TryRLock); err != nil {
+		return nil, err
+	}
 	t, ok := vm.trees[mapID]
 	vm.mu.RUnlock()
 	if ok {
 		return t, nil
 	}
 
-	vm.mu.Lock()
+	if err := lockContext(ctx, vm.mu.TryLock); err != nil {
+		return nil, err
+	}
 	defer vm.mu.Unlock()
 	if t, ok = vm.trees[mapID]; ok {
 		return t, nil
@@ -876,7 +900,10 @@ func (vm *VMapManager) getTree(mapID uint32) (*StaticMapTree, error) {
 		modelCacheLimit: vm.modelCacheLimit,
 	}
 	mapFile := fmt.Sprintf("%03d.vmtree", mapID) // e.g. 001.vmtree for map 1
-	if !tree.InitMap(mapFile) {
+	if !tree.initMapContext(ctx, mapFile) {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		// no vmap for this map or error
 		vm.trees[mapID] = nil
 		return nil, fmt.Errorf("no vmap for map %d", mapID)
@@ -886,8 +913,11 @@ func (vm *VMapManager) getTree(mapID uint32) (*StaticMapTree, error) {
 }
 
 // GetHeight returns ground height by downward ray using vmap if available, else -inf.
-func (vm *VMapManager) GetHeight(mapID uint32, x, y, z float32, maxSearch float32) (float32, bool) {
-	tree, err := vm.getTree(mapID)
+func (vm *VMapManager) GetHeight(mapID uint32, x, y, z, maxSearch float32) (float32, bool) {
+	return vm.GetHeightContext(context.Background(), mapID, x, y, z, maxSearch)
+}
+func (vm *VMapManager) GetHeightContext(ctx context.Context, mapID uint32, x, y, z, maxSearch float32) (float32, bool) {
+	tree, err := vm.getTreeContext(ctx, mapID)
 	if err != nil || tree == nil {
 		return 0, false
 	}
@@ -904,13 +934,15 @@ func (vm *VMapManager) GetHeight(mapID uint32, x, y, z float32, maxSearch float3
 			}
 			tileX := uint32(tileGX)
 			tileY := uint32(tileGY)
-			_ = tree.LoadMapTile(tileX, tileY)
+			if tree.loadMapTileContext(ctx, tileX, tileY) != nil {
+				return 0, false
+			}
 		}
 	}
 
 	pos := Vector3{X: x, Y: y, Z: z}
-	h := tree.getHeight(pos, maxSearch)
-	if h > INVALID_HEIGHT {
+	h := tree.getHeightContext(ctx, pos, maxSearch)
+	if h > INVALID_HEIGHT && ctx.Err() == nil {
 		return h, true
 	}
 	return 0, false
@@ -942,19 +974,22 @@ type modelCacheEntry struct {
 }
 
 func (s *StaticMapTree) InitMap(fname string) bool {
+	return s.initMapContext(context.Background(), fname)
+}
+func (s *StaticMapTree) initMapContext(ctx context.Context, fname string) bool {
 	full := s.basePath + fname
-	f, err := os.Open(full)
+	f, reader, err := openVMapContext(ctx, full)
 	if err != nil {
 		return false
 	}
 	defer f.Close()
 
 	var chunk [8]byte
-	if _, err := io.ReadFull(f, chunk[:]); err != nil {
+	if _, err := io.ReadFull(reader, chunk[:]); err != nil {
 		return false
 	}
 	var tiled byte
-	if err := binary.Read(f, binary.LittleEndian, &tiled); err != nil {
+	if err := binary.Read(reader, binary.LittleEndian, &tiled); err != nil {
 		return false
 	}
 	s.isTiled = tiled != 0
@@ -962,44 +997,45 @@ func (s *StaticMapTree) InitMap(fname string) bool {
 	s.modelLRU = list.New()
 
 	// NODE
-	if _, err := io.ReadFull(f, chunk[:4]); err != nil {
+	if _, err := io.ReadFull(reader, chunk[:4]); err != nil {
 		return false
 	}
-	if err := s.tree.readFromFile(f); err != nil {
+	if err := s.tree.readFrom(reader); err != nil {
 		return false
 	}
 	s.treeValues = make(map[uint32]*ModelInstance)
 
 	// GOBJ
-	if _, err := io.ReadFull(f, chunk[:4]); err != nil {
+	if _, err := io.ReadFull(reader, chunk[:4]); err != nil {
 		return false
 	}
 
 	// For non-tiled, read global spawn
 	if !s.isTiled {
 		var spawn ModelSpawn
-		if err := spawn.readFromFile(f); err == nil {
-			spawn.iPos.X = VMAP_mid - spawn.iPos.X
-			spawn.iPos.Y = VMAP_mid - spawn.iPos.Y
-			model := &WorldModel{}
-			modelPath := s.basePath + spawn.name
-			if err := model.readFile(modelPath); err == nil {
-				inst := &ModelInstance{spawn: spawn}
-				inst.initTransform()
-				s.addModelToCacheLocked(modelPath, model)
-				s.dataMu.Lock()
-				s.treeValues[0] = inst
-				s.dataMu.Unlock()
-			}
+		if err := spawn.readFrom(reader); err != nil {
+			return false
 		}
+		spawn.iPos.X = VMAP_mid - spawn.iPos.X
+		spawn.iPos.Y = VMAP_mid - spawn.iPos.Y
+		// Keep the instance even if its model cannot be loaded. A missing
+		// global model must remain unknown instead of becoming empty space.
+		inst := &ModelInstance{spawn: spawn}
+		inst.initTransform()
+		s.treeValues[0] = inst
 	}
 
 	s.loadedTiles = make(map[uint32]bool)
-	return true
+	return ctx.Err() == nil
 }
 
 func (s *StaticMapTree) LoadMapTile(tileX, tileY uint32) error {
-	s.loadMu.Lock()
+	return s.loadMapTileContext(context.Background(), tileX, tileY)
+}
+func (s *StaticMapTree) loadMapTileContext(ctx context.Context, tileX, tileY uint32) error {
+	if err := lockContext(ctx, s.loadMu.TryLock); err != nil {
+		return err
+	}
 	defer s.loadMu.Unlock()
 	tid := packTileID(int32(tileX), int32(tileY))
 	if !s.isTiled {
@@ -1010,45 +1046,62 @@ func (s *StaticMapTree) LoadMapTile(tileX, tileY uint32) error {
 		return nil
 	}
 	tileFile := s.basePath + getTileFileName(s.mapID, tileX, tileY)
-	f, err := os.Open(tileFile)
+	f, reader, err := openVMapContext(ctx, tileFile)
 	if err != nil {
-		s.loadedTiles[tid] = false
-		return nil // optional tile
+		if errors.Is(err, os.ErrNotExist) {
+			s.loadedTiles[tid] = false
+			return nil
+		}
+		return err
 	}
 	defer f.Close()
 
 	// bufio makes the many small reads in spawn parsing (1k+ per tile) much faster
-	br := bufio.NewReader(f)
+	br := bufio.NewReader(reader)
 
 	var chunk [8]byte
-	io.ReadFull(br, chunk[:]) // magic
+	if _, err := io.ReadFull(br, chunk[:]); err != nil {
+		return err
+	}
 
 	var numSpawns uint32
-	binary.Read(br, binary.LittleEndian, &numSpawns)
+	if err := binary.Read(br, binary.LittleEndian, &numSpawns); err != nil {
+		return err
+	}
+	if numSpawns > 100000 {
+		return fmt.Errorf("vmap tile spawn limit exceeded")
+	}
 	loadedRefs := 0
 	for i := uint32(0); i < numSpawns; i++ {
 		var spawn ModelSpawn
 		if err := spawn.readFrom(br); err != nil {
-			break
+			return err
 		}
 		// vmap stores positions in internal rep (mid - game). Convert to game coords for our logic.
 		spawn.iPos.X = VMAP_mid - spawn.iPos.X
 		spawn.iPos.Y = VMAP_mid - spawn.iPos.Y
 		var ref uint32
-		binary.Read(br, binary.LittleEndian, &ref)
+		if err := binary.Read(br, binary.LittleEndian, &ref); err != nil {
+			return err
+		}
 		// Only keep spawns that can contribute to height (have explicit bounds).
 		// This keeps treeValues small, reduces snapshot allocs in getHeight, and
 		// avoids tracking thousands of tiny doodads.
 		if (spawn.Flags & 0x4) != 0 {
 			inst := &ModelInstance{spawn: spawn}
 			inst.initTransform()
-			s.dataMu.Lock()
+			if err := lockContext(ctx, s.dataMu.TryLock); err != nil {
+				return err
+			}
 			if _, exists := s.treeValues[ref]; !exists {
 				s.treeValues[ref] = inst
 				loadedRefs++
 			}
 			s.dataMu.Unlock()
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	s.loadedTiles[tid] = true
 	return nil
@@ -1060,7 +1113,10 @@ func getTileFileName(mapID, tileX, tileY uint32) string {
 }
 
 func (s *StaticMapTree) getHeight(pos Vector3, maxSearch float32) float32 {
-	candidates := s.heightCandidates(pos)
+	return s.getHeightContext(context.Background(), pos, maxSearch)
+}
+func (s *StaticMapTree) getHeightContext(ctx context.Context, pos Vector3, maxSearch float32) float32 {
+	candidates := s.heightCandidatesContext(ctx, pos)
 	if len(candidates) == 0 {
 		return INVALID_HEIGHT
 	}
@@ -1068,23 +1124,28 @@ func (s *StaticMapTree) getHeight(pos Vector3, maxSearch float32) float32 {
 	// Find smallest positive world-space intersection distance (closest hit when shooting down).
 	minT := maxSearch
 	for _, mi := range candidates {
-		model, ok := s.modelForInstance(mi)
+		model, ok := s.modelForInstanceContext(ctx, mi)
 		if !ok {
-			continue
+			return INVALID_HEIGHT
 		}
-		t := s.intersectModelHeight(mi, model, pos, maxSearch)
+		t := s.intersectModelHeightContext(ctx, mi, model, pos, maxSearch)
 		if t > 0 && t < minT {
 			minT = t
 		}
 	}
-	if minT >= maxSearch {
+	if ctx.Err() != nil || minT >= maxSearch {
 		return INVALID_HEIGHT
 	}
 	return pos.Z - minT
 }
 
 func (s *StaticMapTree) heightCandidates(pos Vector3) []*ModelInstance {
-	s.dataMu.RLock()
+	return s.heightCandidatesContext(context.Background(), pos)
+}
+func (s *StaticMapTree) heightCandidatesContext(ctx context.Context, pos Vector3) []*ModelInstance {
+	if lockContext(ctx, s.dataMu.TryRLock) != nil {
+		return nil
+	}
 	defer s.dataMu.RUnlock()
 	if len(s.treeValues) == 0 {
 		return nil
@@ -1095,6 +1156,9 @@ func (s *StaticMapTree) heightCandidates(pos Vector3) []*ModelInstance {
 	// and many loaded vmap tiles this looked like a leak and could trigger OOM.
 	candidates := make([]*ModelInstance, 0, 8)
 	for _, mi := range s.treeValues {
+		if ctx.Err() != nil {
+			return nil
+		}
 		if s.modelInstanceNearLocked(mi, pos) {
 			candidates = append(candidates, mi)
 		}
@@ -1119,7 +1183,12 @@ func (s *StaticMapTree) modelInstanceNearLocked(mi *ModelInstance, pos Vector3) 
 }
 
 func (s *StaticMapTree) modelForInstance(mi *ModelInstance) (*WorldModel, bool) {
-	s.dataMu.RLock()
+	return s.modelForInstanceContext(context.Background(), mi)
+}
+func (s *StaticMapTree) modelForInstanceContext(ctx context.Context, mi *ModelInstance) (*WorldModel, bool) {
+	if lockContext(ctx, s.dataMu.TryRLock) != nil {
+		return nil, false
+	}
 	if mi == nil || mi.spawn.name == "" {
 		s.dataMu.RUnlock()
 		return nil, false
@@ -1133,10 +1202,14 @@ func (s *StaticMapTree) modelForInstance(mi *ModelInstance) (*WorldModel, bool) 
 	// Serialize lazy model loads and cache mutation. Without this, hundreds of
 	// bots can notice the same absent model and simultaneously read the same
 	// large .vmo into memory.
-	s.loadMu.Lock()
+	if lockContext(ctx, s.loadMu.TryLock) != nil {
+		return nil, false
+	}
 	defer s.loadMu.Unlock()
 
-	s.dataMu.RLock()
+	if lockContext(ctx, s.dataMu.TryRLock) != nil {
+		return nil, false
+	}
 	if mi == nil || mi.spawn.name == "" {
 		s.dataMu.RUnlock()
 		return nil, false
@@ -1150,12 +1223,7 @@ func (s *StaticMapTree) modelForInstance(mi *ModelInstance) (*WorldModel, bool) 
 	}
 
 	model := &WorldModel{}
-	if err := model.readFile(modelFile); err != nil {
-		s.dataMu.Lock()
-		if mi.spawn.name != "" && s.basePath+mi.spawn.name+".vmo" == modelFile {
-			mi.spawn.name = ""
-		}
-		s.dataMu.Unlock()
+	if err := model.readFileContext(ctx, modelFile); err != nil {
 		return nil, false
 	}
 
@@ -1223,11 +1291,16 @@ func bytesToMiB(bytes int64) float64 {
 }
 
 func (s *StaticMapTree) intersectModelHeight(mi *ModelInstance, model *WorldModel, pos Vector3, maxSearch float32) float32 {
+	return s.intersectModelHeightContext(context.Background(), mi, model, pos, maxSearch)
+}
+func (s *StaticMapTree) intersectModelHeightContext(ctx context.Context, mi *ModelInstance, model *WorldModel, pos Vector3, maxSearch float32) float32 {
 	if model == nil {
 		return INVALID_HEIGHT
 	}
 
-	s.dataMu.RLock()
+	if lockContext(ctx, s.dataMu.TryRLock) != nil {
+		return INVALID_HEIGHT
+	}
 	if mi == nil {
 		s.dataMu.RUnlock()
 		return INVALID_HEIGHT
@@ -1250,7 +1323,7 @@ func (s *StaticMapTree) intersectModelHeight(mi *ModelInstance, model *WorldMode
 	d := mat3MulVec(iInvRot, Vector3{0, 0, -1})
 	ray := NewRay(p, d)
 	modelMax := maxSearch * iInvScale
-	t := model.getHeight(ray, modelMax)
+	t := model.getHeightContext(ctx, ray, modelMax)
 	if t < modelMax {
 		return t * scale
 	}
@@ -1292,8 +1365,11 @@ func (tm *TerrainManager) getCombinedHeightWithVMap(mapID uint32, x, y, z float3
 // InLineOfSight reports whether the segment a-b is clear of world models (buildings, caves, mines, bridges: WMOs),
 // like the server's spell line-of-sight check, which ignores M2 doodads (trees, fences) and terrain.
 // ok=false when no vmap data could be loaded for the map.
-func (vm *VMapManager) InLineOfSight(mapID uint32, a, b Vector3) (clear bool, ok bool) {
-	tree, err := vm.getTree(mapID)
+func (vm *VMapManager) InLineOfSight(mapID uint32, a, b Vector3) (bool, bool) {
+	return vm.InLineOfSightContext(context.Background(), mapID, a, b)
+}
+func (vm *VMapManager) InLineOfSightContext(ctx context.Context, mapID uint32, a, b Vector3) (clear bool, ok bool) {
+	tree, err := vm.getTreeContext(ctx, mapID)
 	if err != nil || tree == nil {
 		return true, false
 	}
@@ -1302,7 +1378,9 @@ func (vm *VMapManager) InLineOfSight(mapID uint32, a, b Vector3) (clear bool, ok
 		for dx := -1; dx <= 1; dx++ {
 			for dy := -1; dy <= 1; dy++ {
 				if x, y := gx+dx, gy+dy; x >= 0 && y >= 0 && x <= 63 && y <= 63 {
-					_ = tree.LoadMapTile(uint32(x), uint32(y))
+					if tree.loadMapTileContext(ctx, uint32(x), uint32(y)) != nil {
+						return false, false
+					}
 				}
 			}
 		}
@@ -1310,14 +1388,20 @@ func (vm *VMapManager) InLineOfSight(mapID uint32, a, b Vector3) (clear bool, ok
 	d := b.Sub(a)
 	dist := float32(math.Sqrt(float64(d.Dot(d))))
 	if dist < 0.1 {
-		return true, true
+		return true, ctx.Err() == nil
 	}
 	dir := d.Mul(1 / dist)
 	lo := Vector3{min32(a.X, b.X), min32(a.Y, b.Y), min32(a.Z, b.Z)}
 	hi := Vector3{max32(a.X, b.X), max32(a.Y, b.Y), max32(a.Z, b.Z)}
-	tree.dataMu.RLock()
+	if lockContext(ctx, tree.dataMu.TryRLock) != nil {
+		return false, false
+	}
 	cands := make([]*ModelInstance, 0, 8)
 	for _, mi := range tree.treeValues {
+		if ctx.Err() != nil {
+			tree.dataMu.RUnlock()
+			return false, false
+		}
 		if mi == nil || mi.spawn.name == "" || mi.spawn.Flags&0x1 != 0 { // MOD_M2: doodads don't block spells
 			continue
 		}
@@ -1331,22 +1415,24 @@ func (vm *VMapManager) InLineOfSight(mapID uint32, a, b Vector3) (clear bool, ok
 	}
 	tree.dataMu.RUnlock()
 	for _, mi := range cands {
-		model, okm := tree.modelForInstance(mi)
+		model, okm := tree.modelForInstanceContext(ctx, mi)
 		if !okm || model == nil {
-			continue
+			return false, false
 		}
-		tree.dataMu.RLock()
+		if lockContext(ctx, tree.dataMu.TryRLock) != nil {
+			return false, false
+		}
 		// internal coordinates (x' = mid - x, y' = mid - y), as the server's ModelInstance::intersectRay
 		off := a.Sub(mi.iPos)
 		p := mat3MulVec(mi.iInvRot, Vector3{-off.X, -off.Y, off.Z}).Mul(mi.iInvScale)
 		md := mat3MulVec(mi.iInvRot, Vector3{-dir.X, -dir.Y, dir.Z})
 		maxT := dist * mi.iInvScale
 		tree.dataMu.RUnlock()
-		if t := model.getHeight(NewRay(p, md), maxT); t < maxT {
+		if t := model.getHeightContext(ctx, NewRay(p, md), maxT); t < maxT {
 			return false, true
 		}
 	}
-	return true, true
+	return true, ctx.Err() == nil
 }
 
 // hitByRay: whether the ray meets the box within maxDist (slab test).
@@ -1371,4 +1457,26 @@ func (b AABox) hitByRay(ray Ray, maxDist float32) bool {
 		}
 	}
 	return true
+}
+
+// Bounded regular files and cancellation between chunks; a kernel read already
+// underway must return before cancellation can be observed.
+func openVMapContext(ctx context.Context, path string) (*os.File, io.Reader, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	st, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	if !st.Mode().IsRegular() || st.Size() > 64<<20 {
+		f.Close()
+		return nil, nil, fmt.Errorf("vmap file must be regular and at most 64 MiB")
+	}
+	return f, contextReader{ctx: ctx, r: io.LimitReader(f, 64<<20)}, nil
 }
