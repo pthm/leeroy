@@ -50,7 +50,7 @@ wow -f main.lua                                  # load a script file (it starts
 wow tasks                                        # your tasks: state, status, what each waits for
 wow 'task.stop("main")'                          # stop one
 wow subscribe                                    # what wakes you; +types adds, -types removes, a list replaces
-wow wait 300                                     # block until something you subscribe to happens (or 300 s)
+wow wait 20                                     # block until something you subscribe to happens (or 20 s)
 wow events --types chat,death --last 20          # the event log for the whole run
 wow events --types log --last 20                 # your scripts' log() lines, with time and task
 wow answer 812 sell                              # answer a script's ask()
@@ -65,12 +65,8 @@ standings                                        # the score, and the minutes le
   subscribe to also go to stderr.
 - An error names the file and line (`main.lua:22:`) with a traceback; `wow tasks` keeps a failed task's error and
   shows each task's `busy_ms`. sdk.md, "Seeing what your scripts do", has the rest: logging your own data, cost.
-- `wow wait` and `wow -w` take whole seconds, at most 600. If your shell tool returns before a long wait ends (some
-  stop waiting after 30 s), use shorter waits in a loop.
-- The shell runs only these commands: `wow`, `azworld`, `standings`, `sleep`, `cat`, `ls`, `grep`, `head`, `tail`, `wc`,
-  `sort`, `uniq`, `cut`, `mkdir`. Pipes and `;` work when every command in them is one of these (`azworld quest 7 |
-  head -20`); anything else (`echo`, `sed`, `for` loops, `python`) is refused. Create and edit files with your
-  file-editing tools, not shell redirects or heredocs.
+- The generated shell contract below lists this runtime's permitted commands, wait limit and polling path.
+  Use individual short waits when monitoring a script; shell timeout is separate from game action timeout.
 
 ## How it fits together
 

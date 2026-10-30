@@ -90,6 +90,9 @@ func (p *player) workspace() error {
 		if err != nil {
 			return err
 		}
+		if name == "AGENTS.md" {
+			b = append(b, []byte(shellContract(p.a.Runtime))...)
+		}
 		if err := os.WriteFile(filepath.Join(p.ws, name), b, 0o644); err != nil {
 			return err
 		}
@@ -264,7 +267,7 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 	}
 	cmd.Env = append(env, "PATH="+filepath.Join(repo, "bench/agent/bin")+":"+os.Getenv("PATH"),
 		"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "WOWBENCH_BOARD="+filepath.Join(p.r.dir, "board"),
-		"WOWBENCH_CHAR="+a.Char, fmt.Sprintf("WOW_PORT=%d", p.port))
+		"WOWBENCH_CHAR="+a.Char, fmt.Sprintf("WOW_MAX_WAIT=%d", agentMaxWaitSeconds), fmt.Sprintf("WOW_PORT=%d", p.port))
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // so stopping it stops its tools too
 	return cmd
 }
@@ -272,7 +275,7 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 // agentCommands: the shell commands an agent may run (bench/agent/AGENTS.md lists them): its three tools and
 // read-only file and text commands, so output can be piped through head or grep
 var agentCommands = []string{"wow", "azworld", "standings", "sleep", "tail", "cat", "ls", "grep", "mkdir", "head", "wc",
-	"sort", "uniq", "cut"}
+	"sort", "uniq", "cut", "rg"}
 
 // opencodeConfig is the same sandbox as Claude's allowed tools: write only in the workspace, read the SDK and server
 // source, and run only the agent's tools and a few read-only commands. "ask" can't be answered in opencode run, so

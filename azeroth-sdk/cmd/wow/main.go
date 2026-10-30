@@ -4,7 +4,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"github.com/pthm/leeroy/azeroth-sdk/jqjson"
 	"io"
@@ -29,12 +28,12 @@ wow tasks [--all]                   your running script tasks (state, status, wh
 wow events [--types chat,quest_*] [--last 50] [--since seq] [--match text]
                                     the event log (chat, combat, loot, quests, action results, errors, script logs)
 wow wait [--types chat:whisper,death] [--match text] [seconds]
-                                    block until a matching event happens (default: your subscription), max 600s
+                                    block until a matching event happens (default: your subscription), max $MAX_WAIT seconds (active runtime limit)
 wow subscribe [types | +types | -types]
                                     what wakes you (wow wait) and what replies show in full: show it, replace it,
                                     or add/remove types. Chat by kind: chat:whisper, chat:npc_*, chat (all)
 wow answer <id> <choice>            answer a script's ask() (an "attention" event)
-wow -w 60 'lua'                     sleep 60s first, then evaluate
+wow -w 20 'lua'                     sleep 20s first, then evaluate
 Every eval reply carries "events": what happened since your last call (counts by type, important ones in full).
 Subscribed chat, invites, trades, script questions, script errors and slow ticks are also printed to stderr
 ("wow: chat ...", "wow: script_errors ..."), so a reply piped through jq or cut can't hide them.
@@ -210,7 +209,7 @@ func run(args []string) int {
 	}
 	switch arg(0) {
 	case "--help", "-h", "help":
-		fmt.Print(wowUsage)
+		fmt.Print(strings.ReplaceAll(wowUsage, "$MAX_WAIT", strconv.Itoa(maxWaitSeconds())))
 		return 0
 	case "status":
 		return evalLua("return me.status()")
@@ -261,6 +260,14 @@ func run(args []string) int {
 		p, ok := params(args[1:])
 		if !ok {
 			return 1
+		}
+		if value := jqjson.Field(p, "timeout_s"); value != nil {
+			n, err := strconv.Atoi(fmt.Sprint(value))
+			if err != nil || !validWait(n) {
+				return 1
+			}
+		} else {
+			p.Set("timeout_s", maxWaitSeconds())
 		}
 		r, ok := rpc("events.wait", p)
 		if !ok {
@@ -313,7 +320,10 @@ func run(args []string) int {
 			return 1
 		}
 		n, _ := strconv.Atoi(arg(1))
-		time.Sleep(time.Duration(min(n, 600)) * time.Second)
+		if !validWait(n) {
+			return 1
+		}
+		time.Sleep(time.Duration(n) * time.Second)
 		args = args[2:]
 	case "-c": // legacy: wait for chat
 		if !digits.MatchString(arg(1)) {
@@ -322,7 +332,11 @@ func run(args []string) int {
 		}
 		p := jqjson.NewObj()
 		p.Set("types", []any{"chat"})
-		p.Set("timeout_s", json.Number(arg(1)))
+		n, err := strconv.Atoi(arg(1))
+		if err != nil || !validWait(n) {
+			return 1
+		}
+		p.Set("timeout_s", n)
 		rpc("events.wait", p)
 		args = args[2:]
 	}
@@ -355,4 +369,19 @@ func minus(a, b []any) []any {
 		}
 	}
 	return out
+}
+
+func maxWaitSeconds() int {
+	n, err := strconv.Atoi(os.Getenv("WOW_MAX_WAIT"))
+	if err == nil && n > 0 && n <= 600 {
+		return n
+	}
+	return 600
+}
+func validWait(n int) bool {
+	if n < 0 || n > maxWaitSeconds() {
+		fmt.Fprintf(os.Stderr, "wow: wait must be 0..%d seconds; use repeated wow wait 20 calls for longer monitoring\n", maxWaitSeconds())
+		return false
+	}
+	return true
 }
