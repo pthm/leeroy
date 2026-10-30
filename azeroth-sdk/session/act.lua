@@ -194,37 +194,94 @@ local function walk(o, x, y, z)
 end
 
 function A.go_to(o)
-  local tol = o.tolerance or 4
-  -- no z given: the floor nearest your own height when it's close by (in a cave or a building, not the ground above)
-  local hint = o.z or (A.dist(o.x, o.y) < 80 and me.position().z or nil)
-  local z = (hint and world.ground_z(o.x, o.y, hint)) or world.ground_z(o.x, o.y) or o.z or me.position().z
+  local tol, ztol = o.tolerance or 4, o.vertical_tolerance or 3
+  local initial = me.position()
+  local map = o.map or initial.map or 0
+  local z = o.z
+  -- An explicit elevation is the destination. Only select a floor if it was omitted.
+  if z == nil then
+    local hint = A.dist(o.x, o.y) < 80 and initial.z or nil
+    z = hint and world.ground_z(o.x, o.y, hint) or world.ground_z(o.x, o.y)
+  end
+  local function evidence()
+    local p = me.position()
+    return {position=p, destination={x=o.x,y=o.y,z=z,map=map},
+      distance=A.dist(o.x,o.y), vertical_gap=z and math.abs(p.z-z) or nil}
+  end
+  local function fail(code, message) return result("act.go_to", false, evidence(), code, message) end
+  if (initial.map or 0) ~= map then return fail("wrong_map", "destination is on another map") end
+  if z == nil then return fail("wrong_floor", "destination floor is unknown; supply z") end
+  local function arrived(d) return d.distance <= tol and d.vertical_gap <= ztol end
   local r
   for n = 1, o.tries or 3 do
-    if A.dist(o.x, o.y) <= tol then move.stop() return result("act.go_to", true, { distance = A.dist(o.x, o.y) }) end
+    local d = evidence()
+    if (d.position.map or 0) ~= map then return fail("wrong_map", "map changed during travel") end
+    if arrived(d) then move.stop() return result("act.go_to", true, d) end
     r = walk(o, o.x, o.y, z)
-    if not r.ok and (r.error.code == "preempted" or r.error.code == "lease_timeout" or r.error.code == "cancelled" or r.error.code == "task_paused" or r.error.code == "movement_busy" or r.error.code == "replaced_by_owner") then return r end
-    if A.dist(o.x, o.y) <= tol then return result("act.go_to", true, { distance = A.dist(o.x, o.y) }) end
-    if r.ok and r.data and r.data.stopped then return result("act.go_to", false, nil, "stopped", "move.stop() was called on the way") end
-    if not r.ok and r.error.code == "superseded" then return result("act.go_to", false, nil, "superseded", r.error.message) end
-    if not r.ok and (r.error.code == "in_flight" or r.error.code == "teleporting") then return result("act.go_to", false, nil, r.error.code, r.error.message) end
-    if not r.ok and r.error.code == "stuck" then sidestep(o, n) else wait(1) end
+    d = evidence()
+    if (d.position.map or 0) ~= map then return fail("wrong_map", "map changed during travel") end
+    -- Control and query failures cannot be masked by a coincidentally nearby position.
+    if not r.ok and r.error.code ~= "stuck" then return fail(r.error.code, r.error.message) end
+    if d.distance <= tol and d.vertical_gap > ztol then return fail("wrong_floor", "walk ended at the right x,y on another floor") end
+    if r.data and r.data.no_path then return fail("route_unreachable", "movement did not establish a navmesh path") end
+    if arrived(d) then return result("act.go_to", true, d) end
+    if r.ok then return fail("unreachable", "walk completed outside the destination tolerance") end
+    if n < (o.tries or 3) then sidestep(o, n) end
   end
-  -- the failsafe: still stuck after every try -> the client's "Character stuck" (hearths you home)
-  if not r.ok and r.error.code == "stuck" and o.unstuck == true and not me.in_combat() then
-    log("act.go_to: stuck at " .. math.floor(me.position().x) .. "," .. math.floor(me.position().y) .. " heading for " ..
-      math.floor(o.x) .. "," .. math.floor(o.y) .. ": using the Stuck spell (hearth home)")
+  if r.error.code == "stuck" and o.unstuck == true and not me.in_combat() then
     local u = await(move.unstuck(), 30)
-    if u.ok then return result("act.go_to", false, u.data, "unstuck_home", "stuck: the Stuck spell took you home (me.home()); try another route") end
+    if u.ok then return fail("unstuck_home", "stuck: the Stuck spell took you home (me.home()); try another route") end
   end
-  return result("act.go_to", false, r and r.data, r and r.error and r.error.code or "stuck", r and r.error and r.error.message)
+  return fail(r.error.code, r.error.message)
 end
 function A.travel(o)
-  for i, p in ipairs(o.points) do
-    local r = A.go_to{ x = p[1] or p.x, y = p[2] or p.y, z = p[3] or p.z, tolerance = o.tolerance or 6, unstuck = o.unstuck,
-      on_attacked = o.on_attacked }
-    if not r.ok then return result("act.travel", false, { waypoint = i }, r.error.code, "waypoint " .. i .. ": " .. tostring(r.error.message)) end
+  local map = o.map or me.position().map or 0
+  local targets = {}
+  for i,p in ipairs(o.points) do
+    targets[i] = {x=p[1] or p.x,y=p[2] or p.y,z=p[3] or p.z,map=p.map or map}
+    if targets[i].map ~= map or map ~= (me.position().map or 0) then
+      return result("act.travel",false,{waypoint=i,completed_waypoints=0},"wrong_map","all waypoints must be on the current map")
+    end
   end
-  return result("act.travel", true)
+  local validation, partial
+  local data = {status="unverified",completed_waypoints=0}
+  if o.validate ~= false then
+    validation = await(world.route(targets,{map=map}), 16)
+    data.validation, data.status = validation.data, validation.data and validation.data.status or "failed"
+    if not validation.ok then
+      data.waypoint = validation.data and validation.data.blocked_leg
+      if not o.allow_partial or data.status ~= "partial" or validation.error.code ~= "route_unreachable" then
+        return result("act.travel",false,data,validation.error.code,validation.error.message)
+      end
+      partial = true
+      local prefix = {}
+      for i=1,validation.data.completed_legs do prefix[#prefix+1]=targets[i] end
+      local points = validation.data.waypoints
+      if #points > 0 then
+        local last = points[#points]
+        prefix[#prefix+1] = {x=last.x,y=last.y,z=last.z,map=map}
+      end
+      targets = prefix
+    end
+    local start = validation.data and validation.data.from
+    if not start or A.dist(start.x,start.y,start.z)>3 then
+      return result("act.travel",false,data,"route_stale","character moved while the route was checked")
+    end
+  end
+  for i,p in ipairs(targets) do
+    local r = A.go_to{x=p.x,y=p.y,z=p.z,map=p.map,tolerance=o.tolerance or 4,
+      vertical_tolerance=o.vertical_tolerance or 3,unstuck=o.unstuck,on_attacked=o.on_attacked}
+    if not r.ok then
+      data.waypoint, data.position = i, r.data and r.data.position
+      return result("act.travel",false,data,r.error.code,"waypoint "..i..": "..tostring(r.error.message))
+    end
+    data.completed_waypoints = partial and math.min(i,validation.data.completed_legs) or i
+  end
+  if partial then
+    data.partial_walked = true
+    return result("act.travel",false,data,validation.error.code,"walked the authorized prefix; requested destination remains unreachable")
+  end
+  return result("act.travel",true,data)
 end
 function A.approach(o)
   local range, deadline = o.range or 4, now() + (o.timeout or 60) * 1000
@@ -908,8 +965,8 @@ local helper_options = {
   loot_nearby = "dist make_room",
   rest = "hp mana max_s safe",
   make_room = "",
-  go_to = "x y z tolerance tries unstuck on_attacked",
-  travel = "points tolerance unstuck on_attacked",
+  go_to = "x y z map tolerance vertical_tolerance tries unstuck on_attacked",
+  travel = "points map tolerance vertical_tolerance unstuck on_attacked validate allow_partial",
   approach = "unit range timeout",
   follow = "name distance until timeout_s",
   corpse_run = "safe timeout_s max_attempts",
@@ -933,7 +990,7 @@ local function validate_helper_options(n, o)
   if n == "follow" and not o["until"] and not o.timeout_s then bad("until or timeout_s is required") end
   if n == "follow" and o.timeout_s and (type(o.timeout_s) ~= "number" or not (o.timeout_s > 0 and o.timeout_s <= 600)) then bad("timeout_s must be >0 and <=600") end
   if n == "follow" and (type(o.name) ~= "string" or o.name == "") then bad("name must be a nonempty player name") end
-  for _, k in ipairs({"unstuck", "safe", "spirit", "rest", "allow_spirit_fallback"}) do
+  for _, k in ipairs({"unstuck", "safe", "spirit", "rest", "allow_spirit_fallback", "validate", "allow_partial"}) do
     if o[k] ~= nil and type(o[k]) ~= "boolean" then bad(k .. " must be boolean") end
   end
   for _, k in ipairs({"on_attacked", "until"}) do
@@ -944,7 +1001,7 @@ local function validate_helper_options(n, o)
   for _, k in ipairs({"entry", "count", "quest_id", "max_attempts"}) do
     if o[k] ~= nil and not positive_int(o[k]) then bad(k .. " must be a positive integer") end
   end
-  for _, k in ipairs({"radius", "dist", "timeout_s", "max_s", "timeout", "tolerance", "range"}) do
+  for _, k in ipairs({"radius", "dist", "timeout_s", "max_s", "timeout", "tolerance", "vertical_tolerance", "range"}) do
     if o[k] ~= nil and (type(o[k]) ~= "number" or not (o[k] > 0 and o[k] < math.huge)) then bad(k .. " must be positive and finite") end
   end
   if o.distance ~= nil and (type(o.distance) ~= "number" or not (o.distance >= 0 and o.distance < math.huge)) then bad("distance must be nonnegative and finite") end
@@ -964,8 +1021,10 @@ local function validate_helper_options(n, o)
     if (o.max_attempts or 3) > 32 then bad("max_attempts must be at most 32") end
     if not o.quest_id and (o.count or 1) > (o.max_attempts or 3) then bad("count cannot exceed max_attempts") end
   end
+  if o.map ~= nil and (type(o.map) ~= "number" or o.map < 0 or o.map > 4294967295 or o.map ~= math.floor(o.map)) then bad("map must be an unsigned integer") end
   if n == "travel" then
-    if type(o.points) ~= "table" or #o.points < 1 or #o.points > 4096 then bad("points must contain 1..4096 waypoints") end
+    if o.allow_partial and o.validate == false then bad("allow_partial requires validation") end
+    if type(o.points) ~= "table" or #o.points < 1 or #o.points > 64 then bad("points must contain 1..64 waypoints") end
     local count = 0
     for k, p in pairs(o.points) do
       count = count + 1
@@ -974,11 +1033,13 @@ local function validate_helper_options(n, o)
       for key in pairs(p) do
         if positional then
           if key ~= 1 and key ~= 2 and key ~= 3 then bad("positional waypoints accept only {x, y, z} positions") end
-        elseif key ~= "x" and key ~= "y" and key ~= "z" then bad("named waypoints accept only x, y, z") end
+        elseif key ~= "x" and key ~= "y" and key ~= "z" and key ~= "map" then bad("named waypoints accept only x, y, z, map") end
       end
       local x, y, z = p[1] or p.x, p[2] or p.y, p[3] or p.z
       local function finite(v) return type(v) == "number" and v == v and math.abs(v) < math.huge end
       if not finite(x) or not finite(y) or (z ~= nil and not finite(z)) then bad("each waypoint requires finite x, y and optional z") end
+      if o.validate ~= false and z == nil then bad("validated waypoints require z; use validate=false for unverified 2D travel") end
+      if p.map ~= nil and (not finite(p.map) or p.map < 0 or p.map > 4294967295 or p.map ~= math.floor(p.map)) then bad("waypoint map must be an unsigned integer") end
     end
     if count ~= #o.points then bad("points must be a dense array") end
   end
@@ -1035,9 +1096,8 @@ for name, d in pairs({
   make_room = { "{} → ActResult<Consumed>", "destroy the cheapest loaded poor-quality item that is not a possible usable gear upgrade; wait up to 5 seconds for confirmation, or no_disposable_item; options may be omitted" },
   cast = { "(id [, guid]) → ActResult", "face the target and cast if ready (waits for the result in a task)" },
   buff = { "(id [, guid]) → ActResult", "cast it unless the aura is already active (ok with data.status = already_active then)" },
-  go_to = { "{x, y [, z, tolerance = 4, tries = 3, unstuck = false, on_attacked = nil]} → ActResult", "walk there; tries must be 1..32; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs. Without on_attacked it walks on while mobs hit you and drags them along; with it, it stops whenever something targets you, calls on_attacked(attackers) (your fighting) and then carries on" },
-  travel = { "{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false, on_attacked = nil]} → ActResult", "go_to each of 1..4096 waypoints (e.g. from azworld route); all waypoint fields are checked before movement starts" },
-  danger = { "(x, y [, r = 25]) → Creature[]", "living hostile creatures within r yards of a point: check a spot before you go there or come back to life there" },
+  go_to = { "{x, y [, z, map, tolerance = 4, vertical_tolerance = 3, tries = 3, unstuck = false, on_attacked = nil]} → ActResult", "walk to the requested map and floor; explicit z is never replaced by a floor query. Success requires horizontal and vertical tolerances; wrong_floor/wrong_map/unreachable include observed position and gaps. Without z, select a floor with ground_z or fail. tries is 1..32 for stuck retries; unstuck=true authorizes a last-resort hearth (unstuck_home). on_attacked stops to call your combat handler, then resumes" },
+  travel = { "{points = {{x, y, z}, ...} [, map, tolerance = 4, vertical_tolerance = 3, validate = true, allow_partial = false, unstuck = false, on_attacked = nil]} → ActResult", "validate all 1..64 3D waypoints with world.route before moving, then go_to each while holding movement ownership. Named waypoints accept x,y,z,map. Report first failed waypoint, completed_waypoints and validation evidence. allow_partial=true may walk a known route_unreachable prefix but still returns failure for the requested destination. validate=false permits unverified 2D waypoints; allow_partial then is invalid. Hostile exposure is not yet assessed" },
   approach = { "{unit [, range = 4, timeout = 60]} → ActResult<Creature>", "move within range and verify facing; reuse a pending walk until the target moves; bounded by timeout" },
   follow = { "{name [, distance = 5, until = fn, timeout_s = 600]} → ActResult", "requires until or timeout_s; check until each pass, fail timeout at the deadline (at most 600 seconds), or player_not_visible after 5 seconds of absence" },
   reach_npc = { "{npc_entry|npc_guid [, x, y, z]} → ActResult<Creature>", "find an NPC by exactly one of npc_entry or npc_guid (walking to x, y, z first) and stand next to it" },

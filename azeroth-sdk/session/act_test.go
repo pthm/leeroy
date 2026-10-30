@@ -98,8 +98,9 @@ const actBase = `
   me.gear = function() return {broken={}} end
   me.money = function() return 100 end
   world = {ground_z = function(x, y, z) return z or 0 end, path = function() return {ok=true,op="world.path",data={reachable=true,gap=0}} end, in_sight = function() return true end}
+  world.route = function(points, opts) return {ok=true,op="world.route",data={status="verified",from=pos,completed_legs=#points,waypoints=points}} end
   moves = {}
-  move = {to = function(x, y, z) moves[#moves + 1] = {x = x, y = y} pos = {x = x, y = y, z = 0} return {ok = true} end,
+  move = {to = function(x, y, z) moves[#moves + 1] = {x = x, y = y, z = z} pos = {x = x, y = y, z = z or 0} return {ok = true} end,
     stop = function() return {ok = true} end, face = function() faced = (faced or 0) + 1 return {ok = true} end}
   move._acquire = function() return {ok=true, data={lease_id=1}} end
   move._release = function() return {ok=true} end

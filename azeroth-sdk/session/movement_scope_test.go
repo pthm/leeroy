@@ -93,7 +93,7 @@ func TestMovementHelperLeaseSpansWaypoints(t *testing.T) {
    if #moves==0 then events.wait("next",2) end
    return old_to(x,y,z)
   end
-  task.spawn("travel",function() travel_result=act.travel{points={{100,0},{200,0}}} end)
+  task.spawn("travel",function() travel_result=act.travel{points={{100,0,0},{200,0,0}}} end)
  `)
 	e.CallTick()
 	o, _ := f.control.snapshot()
