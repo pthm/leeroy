@@ -229,3 +229,14 @@ func (b *Bot) steeringRequest(op string, args map[string]any, fn func() *script.
 	out := b.moves.steer(id, fn)
 	return b.lua.Reqs.Now(script.Spec{Op: op, Args: args}, out)
 }
+
+func (m *movementRequests) leaseStatus(task, lease int) *script.Outcome {
+	m.mu.Lock()
+	defer m.unlock()
+	m.expireLeaseLocked()
+	l := m.leases[task]
+	if l == nil || l.owner.LeaseID != lease {
+		return script.Fail("cancelled", "movement owner is no longer active", nil)
+	}
+	return l.failure
+}

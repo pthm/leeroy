@@ -24,9 +24,10 @@ type Diagnostic struct {
 // DiagnosticDetails is an allowlist: arbitrary request arguments, results, error messages, commands,
 // prompts and chat are never copied here. Status is explicitly agent-authored and limited to 512 bytes.
 type DiagnosticDetails struct {
-	Movement        *MovementOwner `json:"movement,omitempty"`
-	Alive           *bool          `json:"alive,omitempty"`
-	SampleAvailable *bool          `json:"sample_available,omitempty"`
+	Route           *DiagnosticRoute `json:"route,omitempty"`
+	Movement        *MovementOwner   `json:"movement,omitempty"`
+	Alive           *bool            `json:"alive,omitempty"`
+	SampleAvailable *bool            `json:"sample_available,omitempty"`
 
 	Gear          *DiagnosticGear        `json:"gear,omitempty"`
 	Target        string                 `json:"target,omitempty"`
@@ -87,4 +88,18 @@ type DiagnosticGear struct {
 	Money          uint32   `json:"money"`
 	MainHandBroken bool     `json:"main_hand_broken"`
 	BrokenSlots    []string `json:"broken_slots"`
+}
+
+// DiagnosticRoute omits the potentially large waypoint arrays while retaining
+// the geometric evidence needed to explain a terminal route result.
+type DiagnosticRoute struct {
+	Source        string   `json:"source"`
+	Status        string   `json:"status"`
+	From          Position `json:"from"`
+	Destination   Position `json:"destination"`
+	Distance      float64  `json:"distance"`
+	Gap           *float64 `json:"gap,omitempty"`
+	FloorValid    *bool    `json:"floor_valid,omitempty"`
+	CompletedLegs int      `json:"completed_legs,omitempty"`
+	BlockedLeg    int      `json:"blocked_leg,omitempty"`
 }

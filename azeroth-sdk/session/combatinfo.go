@@ -330,7 +330,10 @@ func (b *Bot) setupCombatInfo() {
 				return b.refuse("move.unstuck", nil, "failed", err.Error())
 			}
 			handle := b.request("move.unstuck", nil, 20*time.Second, func() *script.Outcome {
-				out := b.moves.steer(task, func() *script.Outcome { return nil })
+				out := b.moves.leaseStatus(task, lease)
+				if out != nil && out.Code == "teleported" {
+					return nil
+				} // wait for the matching transfer event
 				return out
 			}, func(ev script.Event) *script.Outcome {
 				switch d := ev.Data.(type) {

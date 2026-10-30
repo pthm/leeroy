@@ -225,11 +225,17 @@ func (b *Bot) startRecording() {
 	// position and state once a second, as mod-recorder's "pos"
 	go func() {
 		b.lua.RecordObservation("runtime_state", types.DiagnosticDetails{Component: "tooling", State: "instrumented_v1"})
+		var previousGear *types.DiagnosticGear
 		sampleCondition := func() {
 			available := w.GetObject(w.CharGUID()) != nil
 			alive := b.IsAlive() && !b.IsGhost()
 			g := b.gear()
-			b.lua.RecordObservation("character_state", types.DiagnosticDetails{SampleAvailable: &available, Alive: &alive, Gear: &types.DiagnosticGear{Money: w.Money(), MainHandBroken: g.Weapon != nil && g.Weapon.Broken, BrokenSlots: g.Broken}})
+			gear := types.DiagnosticGear{Money: w.Money(), MainHandBroken: g.Weapon != nil && g.Weapon.Broken, BrokenSlots: g.Broken}
+			if available && (previousGear == nil || !reflect.DeepEqual(*previousGear, gear)) {
+				b.lua.RecordObservation("gear_state", types.DiagnosticDetails{Gear: &gear})
+				previousGear = &gear
+			}
+			b.lua.RecordObservation("character_state", types.DiagnosticDetails{SampleAvailable: &available, Alive: &alive, Gear: &gear})
 		}
 		sampleCondition()
 		var previous *types.DiagnosticQuestLog

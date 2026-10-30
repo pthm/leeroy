@@ -733,8 +733,23 @@ func (b *Bot) setupWatch() {
 			return map[string]any{"stall_s": stallS, "below": below, "window_s": windowS, "every_s": everyS}
 		})
 	start := time.Now()
+	stopped := make(chan struct{})
+	previousClose := b.lua.OnClose
+	b.lua.OnClose = func() {
+		close(stopped)
+		if previousClose != nil {
+			previousClose()
+		}
+	}
 	go func() {
-		for range time.Tick(5 * time.Second) {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopped:
+				return
+			case <-ticker.C:
+			}
 			mu.Lock()
 			now := time.Now()
 			for len(gains) > 0 && now.Sub(gains[0].t).Seconds() > max(windowS, everyS) {

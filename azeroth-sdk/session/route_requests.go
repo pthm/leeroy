@@ -103,7 +103,20 @@ func (r *routeRequests) finish(j *routeRequest, out *script.Outcome) {
 		if !out.OK {
 			outcome = "failed"
 		}
-		r.observe(types.Diagnostic{Kind: "route_finished", Op: j.op, Request: j.id, TaskID: j.task, Outcome: outcome, Code: out.Code, DurationMS: time.Since(j.started).Milliseconds()})
+		details := types.DiagnosticDetails{}
+		switch d := out.Data.(type) {
+		case types.PathCheck:
+			details.Route = &types.DiagnosticRoute{Source: d.Source, Status: d.Status, From: d.From, Destination: d.Destination, Distance: d.Distance, Gap: d.Gap, FloorValid: d.FloorValid}
+		case types.RouteCheck:
+			details.Route = &types.DiagnosticRoute{Source: d.Source, Status: d.Status, From: d.From, Destination: d.Destination, Distance: d.Distance, CompletedLegs: d.CompletedLegs, BlockedLeg: d.BlockedLeg}
+			if len(d.Legs) > 0 {
+				last := d.Legs[len(d.Legs)-1]
+				details.Route.Gap, details.Route.FloorValid = last.Gap, last.FloorValid
+			}
+		case types.DangerCheck:
+			details.State = d.State
+		}
+		r.observe(types.Diagnostic{Kind: "route_finished", Op: j.op, Request: j.id, TaskID: j.task, Outcome: outcome, Code: out.Code, DurationMS: time.Since(j.started).Milliseconds(), Details: details})
 	}
 	r.reqs.Resolve(j.id, out)
 }
