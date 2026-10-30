@@ -3,7 +3,7 @@ package session
 // Items, vendors and game objects: the inventory side of the protocol the client doesn't implement.
 // Registered from setupControl. Item templates come from CMSG_ITEM_QUERY_SINGLE and are cached for the
 // process (they're static server data); vendor lists from CMSG_LIST_INVENTORY. Both answers arrive
-// asynchronously, so the first call returns nil and a call a moment later has the data.
+// asynchronously; public template and vendor lookups expose awaitable requests.
 
 import (
 	"bytes"
@@ -134,8 +134,23 @@ func itemInfo(w *client.WorldClient, entry uint32) *itemProto {
 }
 
 func parseItemQuery(data []byte) {
+	if len(data) < 4 {
+		return
+	}
 	r := bytes.NewReader(data)
-	u32 := func() (v uint32) { binary.Read(r, binary.LittleEndian, &v); return }
+	malformed := false
+	u32 := func() (v uint32) {
+		if binary.Read(r, binary.LittleEndian, &v) != nil {
+			malformed = true
+		}
+		return
+	}
+	str := func() string {
+		if bytes.IndexByte(data[len(data)-r.Len():], 0) < 0 {
+			malformed = true
+		}
+		return readCString(r)
+	}
 	f32 := func() (v float32) { binary.Read(r, binary.LittleEndian, &v); return }
 	entry := u32()
 	items.Lock()
@@ -146,10 +161,10 @@ func parseItemQuery(data []byte) {
 	}
 	p := &itemProto{Entry: entry, Class: u32(), SubClass: u32()}
 	u32() // sound override
-	p.Name = readCString(r)
-	readCString(r)
-	readCString(r)
-	readCString(r)
+	p.Name = str()
+	str()
+	str()
+	str()
 	u32() // display
 	p.Quality = u32()
 	u32()
@@ -196,10 +211,13 @@ func parseItemQuery(data []byte) {
 		}
 	}
 	u32() // bonding
-	readCString(r)
+	str()
 	r.Seek(12, io.SeekCurrent) // page text, language, page material
 	p.StartQuest = u32()
 	p.Slot = invSlots[p.InvType].name
+	if malformed {
+		return
+	}
 	items.proto[entry] = p
 }
 
@@ -428,13 +446,7 @@ func (b *Bot) setupItems() {
 		}
 		return n
 	})
-	e.Func("items.info", "(entry) → Item?", "an item's template: stats, slot, prices, whether you can use it; nil the first time (it asks the server: call again a moment later)",
-		func(entry uint32) any {
-			if it := itemTemplate(w, entry); it.Name != "" {
-				return it
-			}
-			return nil
-		})
+	e.Func("items.info", "(item_entry) → Request<Item>", "an item's template: stats, slot, prices and usability. Cached answers resolve immediately; not_found for an explicit negative answer, not_available if the query cannot be sent, timeout after 5 seconds", b.itemLookup)
 	e.Func("items.broken", "() → Item[]", "equipped items at 0 durability (they give nothing; a broken weapon means fighting bare-handed)", func() []types.Item {
 		out := []types.Item{}
 		for _, it := range bagItems(w) {

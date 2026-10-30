@@ -281,9 +281,30 @@ func questInfo(w *client.WorldClient, id uint32) *questProto {
 
 // parseQuestQuery: SMSG_QUEST_QUERY_RESPONSE (AzerothCore PlayerMenu::SendQuestQueryResponse)
 func parseQuestQuery(data []byte) {
+	if len(data) < 4 {
+		return
+	}
 	r := bytes.NewReader(data)
-	u32 := func() (v uint32) { binary.Read(r, binary.LittleEndian, &v); return }
+	malformed := false
+	u32 := func() (v uint32) {
+		if binary.Read(r, binary.LittleEndian, &v) != nil {
+			malformed = true
+		}
+		return
+	}
+	str := func() string {
+		if bytes.IndexByte(data[len(data)-r.Len():], 0) < 0 {
+			malformed = true
+		}
+		return readCString(r)
+	}
 	id := u32()
+	if id&0x80000000 != 0 {
+		quests.Lock()
+		quests.proto[id&^0x80000000] = nil
+		quests.Unlock()
+		return
+	}
 	u32() // method
 	p := &questProto{level: int32(u32()), minLevel: u32()}
 	for i := 0; i < 7; i++ { // zone, type, suggested players, rep objectives x4
@@ -311,9 +332,9 @@ func parseQuestQuery(data []byte) {
 	for i := 0; i < 15+4; i++ { // reputations (15), POI (4)
 		u32()
 	}
-	p.title, p.summary, p.details = readCString(r), readCString(r), readCString(r)
-	readCString(r) // area description
-	p.completed = readCString(r)
+	p.title, p.summary, p.details = str(), str(), str()
+	str() // area description
+	p.completed = str()
 	for i := 0; i < 4; i++ {
 		p.npcOrGo[i], p.needKill[i] = u32(), u32()
 		u32() // item drop
@@ -323,7 +344,10 @@ func parseQuestQuery(data []byte) {
 		p.items[i] = [2]uint32{u32(), u32()}
 	}
 	for i := 0; i < 4; i++ {
-		p.objectives[i] = readCString(r)
+		p.objectives[i] = str()
+	}
+	if malformed {
+		return
 	}
 	quests.Lock()
 	quests.proto[id] = p

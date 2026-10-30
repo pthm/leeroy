@@ -511,6 +511,7 @@ type Equipped struct {
 }
 
 var OpResults = map[string]any{
+	"items.info": Item{}, "quests.info": QuestInfo{}, "me.achievements": Achievements{}, "vendor.items": []VendorItem{},
 	"move.to": MoveDone{}, "move.stop": MoveDone{}, "spells.cast": CastDone{}, "spells.cast_at": CastDone{},
 	"items.use": CastDone{}, "objects.use": CastDone{}, "items.loot": Looted{}, "items.equip": Equipped{}, "items.roll": LootRollResult{},
 	"vendor.buy": ItemReceived{}, "vendor.sell": Sold{}, "vendor.sell_junk": Sold{}, "vendor.repair": Repaired{},

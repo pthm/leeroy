@@ -72,7 +72,7 @@ type agentState struct {
 	reclaimAt time.Time
 	earned    map[uint32]bool   // achievement ids
 	criteria  map[uint32]uint64 // achievement criteria id -> counter
-	achAsked  bool
+	achLoaded bool
 	zone      uint32 // from SMSG_INIT_WORLD_STATES, sent on login and every zone/area change
 	area      uint32
 	resFrom   uint64                 // who offered to resurrect us (SMSG_RESURRECT_REQUEST)
@@ -178,21 +178,8 @@ func (b *Bot) setupAgentAPI() {
 		}
 		return types.Location{Zone: names[z], Area: names[a], ZoneID: z, AreaID: a}
 	})
-	e.Func("me.achievements", "() → Achievements", "what you've earned and your criteria progress (the world database's wowbench.achievement tables have names). The first call asks the server", func() types.Achievements {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		if !s.achAsked {
-			s.achAsked = true
-			w.SendPacketRaw(cmsgInspectAchieves, packGUID(w.CharGUID()))
-		}
-		out := types.Achievements{Earned: []uint32{}, Criteria: [][2]uint64{}}
-		for id := range s.earned {
-			out.Earned = append(out.Earned, id)
-		}
-		for id, n := range s.criteria {
-			out.Criteria = append(out.Criteria, [2]uint64{uint64(id), n})
-		}
-		return out
+	e.Func("me.achievements", "() → Request<Achievements>", "earned achievements and criteria progress; cached answers resolve immediately. not_available if the query cannot be sent, timeout after 5 seconds; an empty confirmed list is valid", func() map[string]any {
+		return b.lookup("me.achievements", nil, s.achievements, func() error { return w.SendPacketRaw(cmsgInspectAchieves, packGUID(w.CharGUID())) })
 	})
 
 	// ---------- spells ----------
@@ -362,32 +349,7 @@ func (b *Bot) setupAgentAPI() {
 
 	// ---------- quests ----------
 	e.Func("quests.log", "() → Quest[]", "your quests with their objectives and progress (titles fill in once the server answers)", b.questLog)
-	e.Func("quests.info", "(quest) → QuestInfo?", "any quest's text (the story, what to do, who to return to) and rewards, as the quest giver shows them; nil the first time (it asks the server: call again a moment later)",
-		func(id uint32) any {
-			p := questInfo(w, id)
-			if p == nil {
-				return nil
-			}
-			q := types.QuestInfo{ID: id, Title: p.title, Level: p.level, MinLevel: p.minLevel, Summary: b.gameText(p.summary),
-				Details: b.gameText(p.details), Completed: b.gameText(p.completed), Money: p.money, Spell: p.rewSpell, NextQuest: p.next}
-			for _, o := range p.objectives {
-				if o != "" {
-					q.Objectives = append(q.Objectives, b.gameText(o))
-				}
-			}
-			items := func(l [][2]uint32) (out []types.Item) {
-				for _, it := range l {
-					if it[0] != 0 {
-						t := itemTemplate(w, it[0])
-						t.Count = it[1]
-						out = append(out, t)
-					}
-				}
-				return out
-			}
-			q.Rewards, q.Choices = items(p.rewards[:]), items(p.choices[:])
-			return q
-		})
+	e.Func("quests.info", "(quest_id) → Request<QuestInfo>", "quest text, objectives and reward entries; item names may still be loading (await items.info for their templates). Cached answers resolve immediately; not_found for an explicit negative answer, not_available if the query cannot be sent, timeout after 5 seconds", b.questLookup)
 	e.Func("quests.accept", "(npc_guid, quest_id) → Request<QuestDone>", "talk to a quest giver and accept a quest it offers", func(npc uint64, quest uint32) map[string]any {
 		args := map[string]any{"npc_guid": gs(npc), "quest": quest}
 		if r := b.noNPC("quests.accept", args, &npc); r != nil {
@@ -755,15 +717,37 @@ func (s *agentState) onPacket(me uint64, op uint16, data []byte) {
 		if readPackedGUID(r) != me {
 			return
 		}
-		for id := u32(); id != 0xFFFFFFFF && r.Len() > 0; id = u32() {
-			s.earned[id] = true
+		earned, criteria := map[uint32]bool{}, map[uint32]uint64{}
+		for {
+			if r.Len() < 4 {
+				return
+			}
+			id := u32()
+			if id == 0xFFFFFFFF {
+				break
+			}
+			if r.Len() < 4 {
+				return
+			}
+			earned[id] = true
 			u32() // packed date
 		}
-		for id := u32(); id != 0xFFFFFFFF && r.Len() > 0; id = u32() {
-			s.criteria[id] = readPackedGUID(r)
+		for {
+			if r.Len() < 4 {
+				return
+			}
+			id := u32()
+			if id == 0xFFFFFFFF {
+				break
+			}
+			criteria[id] = readPackedGUID(r)
 			readPackedGUID(r)
+			if r.Len() < 16 {
+				return
+			}
 			r.Seek(16, io.SeekCurrent) // flags, date, 2x elapsed
 		}
+		s.earned, s.criteria, s.achLoaded = earned, criteria, true
 	case 0x2C2: // SMSG_INIT_WORLD_STATES: map, zone, area, ...
 		u32()
 		s.zone, s.area = u32(), u32()
