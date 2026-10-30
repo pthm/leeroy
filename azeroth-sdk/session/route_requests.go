@@ -17,6 +17,8 @@ const maxRouteRequests = 16
 
 type routeRequest struct {
 	id, task int
+	op       string
+	started  time.Time
 	ctx      context.Context
 	cancel   context.CancelFunc
 	data     any
@@ -24,6 +26,7 @@ type routeRequest struct {
 	reason   string
 }
 type routeRequests struct {
+	observe func(types.Diagnostic)
 	mu      sync.Mutex
 	reqs    *script.Requests
 	jobs    map[int]*routeRequest
@@ -62,7 +65,7 @@ func (r *routeRequests) submit(task int, op string, args map[string]any, data an
 		return h
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
-	j := &routeRequest{id: id, task: task, ctx: ctx, cancel: cancel, data: data}
+	j := &routeRequest{id: id, task: task, op: op, started: time.Now(), ctx: ctx, cancel: cancel, data: data}
 	r.jobs[id] = j
 	r.mu.Unlock()
 	// A completed/cancelled job retains its slot until the computation exits.
@@ -95,6 +98,13 @@ func (r *routeRequests) finish(j *routeRequest, out *script.Outcome) {
 	}
 	j.done = true
 	r.mu.Unlock()
+	if r.observe != nil {
+		outcome := "succeeded"
+		if !out.OK {
+			outcome = "failed"
+		}
+		r.observe(types.Diagnostic{Kind: "route_finished", Op: j.op, Request: j.id, TaskID: j.task, Outcome: outcome, Code: out.Code, DurationMS: time.Since(j.started).Milliseconds()})
+	}
 	r.reqs.Resolve(j.id, out)
 }
 func (r *routeRequests) cancelTask(task int, reason string) {
@@ -156,7 +166,7 @@ func checkRoute(data types.PathCheck, from, to navigation.Point3D, res *navigati
 }
 func (b *Bot) setupRoutes() {
 	e := b.lua
-	r := &routeRequests{reqs: e.Reqs, jobs: map[int]*routeRequest{}, timeout: pathfinding.QueryTimeout, find: func(ctx context.Context, m uint32, from, to navigation.Point3D) (*navigation.PathResult, error) {
+	r := &routeRequests{observe: e.RecordObservationEvent, reqs: e.Reqs, jobs: map[int]*routeRequest{}, timeout: pathfinding.QueryTimeout, find: func(ctx context.Context, m uint32, from, to navigation.Point3D) (*navigation.PathResult, error) {
 		if b.nav == nil {
 			return nil, errors.New("navigation data is unavailable")
 		}

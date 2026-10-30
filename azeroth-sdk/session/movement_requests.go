@@ -21,6 +21,7 @@ type movementBackend struct {
 	moving   func() bool
 	lock     func() string
 	inactive func(int, string)
+	observe  func(types.Diagnostic)
 }
 type movementRequest struct {
 	lease                     *movementLease
@@ -50,6 +51,7 @@ type movementRequests struct {
 	lease       *movementLease
 	leases      map[int]*movementLease
 	queue       []*movementRequest
+	events      []types.Diagnostic
 	completions []movementCompletion
 	inactive    []movementInactive
 	wake        chan struct{}
@@ -65,9 +67,15 @@ func newMovementRequests(reqs *script.Requests, backend movementBackend) *moveme
 
 // Resolve outside mu: request observers and event listeners may inspect ownership.
 func (m *movementRequests) unlock() {
-	completed, inactive := m.completions, m.inactive
+	completed, inactive, events := m.completions, m.inactive, m.events
+	m.events = nil
 	m.completions, m.inactive = nil, nil
 	m.mu.Unlock()
+	if m.backend.observe != nil {
+		for _, event := range events {
+			m.backend.observe(event)
+		}
+	}
 	if m.backend.inactive != nil {
 		for _, event := range inactive {
 			m.backend.inactive(event.task, event.reason)
@@ -84,6 +92,9 @@ func (m *movementRequests) finishLocked(r *movementRequest, result *script.Outco
 	}
 	m.completions = append(m.completions, movementCompletion{r.owner.RequestID, result})
 	if m.active == r {
+		if m.lease == nil {
+			m.ownerEventLocked(r.owner, "released", result.Code, 0)
+		}
 		m.backend.stop()
 		m.active = nil
 	}
@@ -98,6 +109,9 @@ func (m *movementRequests) activateLocked(r *movementRequest) {
 		return
 	}
 	m.active = r
+	if m.lease == nil {
+		m.ownerEventLocked(r.owner, "acquired", "", m.now().Sub(r.queued).Milliseconds())
+	}
 	r.owner.Phase = "planning"
 	r.deadline = m.now().Add(15 * time.Second)
 	if m.lease != nil && m.lease.deadline.Before(r.deadline) {
@@ -338,6 +352,7 @@ func (b *Bot) setupMovementRequests() {
 			return types.Position{X: float64(x), Y: float64(y), Z: float64(z)}
 		},
 		moving: b.IsMoving, lock: b.world.MovementLock,
+		observe: e.RecordObservationEvent,
 		inactive: func(task int, reason string) {
 			if b.routes != nil {
 				b.routes.cancelTask(task, reason)
@@ -393,4 +408,8 @@ func (m *movementRequests) invalidateWorld(reason string) {
 	if m.active != nil {
 		m.finishLocked(m.active, out)
 	}
+}
+
+func (m *movementRequests) ownerEventLocked(owner types.MovementOwner, state, code string, wait int64) {
+	m.events = append(m.events, types.Diagnostic{Kind: "movement_owner", TaskID: owner.TaskID, Task: owner.Task, Call: owner.Call, Request: owner.RequestID, Code: code, DurationMS: max(0, wait), Details: types.DiagnosticDetails{State: state, Movement: &owner}})
 }

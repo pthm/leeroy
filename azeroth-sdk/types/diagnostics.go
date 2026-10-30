@@ -24,6 +24,10 @@ type Diagnostic struct {
 // DiagnosticDetails is an allowlist: arbitrary request arguments, results, error messages, commands,
 // prompts and chat are never copied here. Status is explicitly agent-authored and limited to 512 bytes.
 type DiagnosticDetails struct {
+	Movement        *MovementOwner `json:"movement,omitempty"`
+	Alive           *bool          `json:"alive,omitempty"`
+	SampleAvailable *bool          `json:"sample_available,omitempty"`
+
 	Gear          *DiagnosticGear        `json:"gear,omitempty"`
 	Target        string                 `json:"target,omitempty"`
 	Destination   *DiagnosticDestination `json:"destination,omitempty"`

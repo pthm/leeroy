@@ -69,12 +69,13 @@ func (m *movementRequests) invalidateLeaseLocked(reason *script.Outcome) {
 	if l == nil {
 		return
 	}
+	m.ownerEventLocked(l.owner, "released", reason.Code, 0)
 	l.failure = reason
 	m.inactive = append(m.inactive, movementInactive{l.owner.TaskID, reason.Code})
-	m.lease = nil
 	if m.active != nil {
 		m.finishLocked(m.active, reason)
 	}
+	m.lease = nil
 	// Keep the failed lease attached to its task until its wrappers unwind. A
 	// callback returning after preemption cannot silently acquire movement again.
 }
@@ -85,6 +86,7 @@ func (m *movementRequests) grantLeaseLocked(r *movementRequest) {
 	l.deadline = m.now().Add(l.duration)
 	l.depth = 1
 	m.lease = l
+	m.ownerEventLocked(l.owner, "acquired", "", m.now().Sub(r.queued).Milliseconds())
 	m.leases[l.owner.TaskID] = l
 	m.completions = append(m.completions, movementCompletion{r.owner.RequestID, script.Ok(map[string]any{"lease_id": l.owner.LeaseID})})
 }
@@ -163,6 +165,7 @@ func (m *movementRequests) release(taskID, leaseID int) *script.Outcome {
 	if l.depth == 0 {
 		delete(m.leases, taskID)
 		if m.lease == l {
+			m.ownerEventLocked(l.owner, "released", "", 0)
 			if m.active != nil {
 				m.finishLocked(m.active, script.Fail("cancelled", "movement control scope ended", l.owner))
 			}

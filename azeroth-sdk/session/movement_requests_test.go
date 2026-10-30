@@ -370,3 +370,23 @@ func TestMovementWorldInvalidationPoisonsSleepingLease(t *testing.T) {
 	f.resultCode(t, h["id"].(int), "world_changed")
 	f.walking(t, f.start(2, 200))
 }
+
+func TestMovementDiagnosticsDoNotHoldControllerLock(t *testing.T) {
+	f := newMovementFixture(t, false)
+	var mu sync.Mutex
+	var events []types.Diagnostic
+	f.control.backend.observe = func(e types.Diagnostic) { f.control.snapshot(); mu.Lock(); events = append(events, e); mu.Unlock() }
+	f.control.acquire(1, "normal", "call", "normal", 0, 60)
+	f.control.acquire(2, "recovery", "call", "recovery", 0, 60)
+	mu.Lock()
+	defer mu.Unlock()
+	preempt := 0
+	for _, e := range events {
+		if e.Code == "preempted" {
+			preempt++
+		}
+	}
+	if preempt != 1 {
+		t.Fatalf("preemptions=%d events=%+v", preempt, events)
+	}
+}

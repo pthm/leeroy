@@ -96,6 +96,7 @@ type Evidence struct {
 }
 type Summary struct {
 	Schema          int         `json:"schema"`
+	Reliability     Reliability `json:"reliability"`
 	Coverage        Coverage    `json:"coverage"`
 	ByOperation     []Aggregate `json:"by_operation"`
 	Tools           ToolSummary `json:"tools"`
@@ -210,7 +211,7 @@ func Read(agent string, paths ...string) Summary {
 			sessions[stream] = true
 		}
 		streams[stream] = append(streams[stream], ev)
-		if ev.Kind == "action_finished" || ev.Kind == "task_status" || ev.Kind == "runtime_state" || ev.Kind == "tool_call" || ev.Kind == "quest_state" || ev.Kind == "group_state" || ev.Kind == "recovery_transition" || ev.Kind == "gear_state" {
+		if ev.Kind == "action_finished" || ev.Kind == "task_status" || ev.Kind == "runtime_state" || ev.Kind == "tool_call" || ev.Kind == "quest_state" || ev.Kind == "group_state" || ev.Kind == "recovery_transition" || ev.Kind == "gear_state" || ev.Kind == "movement_owner" || ev.Kind == "route_finished" || ev.Kind == "character_state" {
 			s.Evidence = append(s.Evidence, Evidence{Ref: ev.ref, T: ev.T, Kind: ev.Kind, Task: ev.Task, TaskID: ev.TaskID, Call: ev.Call, ParentCall: ev.ParentCall, Op: ev.Op, Outcome: ev.Outcome, Code: ev.Code, Details: ev.Details})
 			if len(s.Evidence) > 200 {
 				s.Evidence = s.Evidence[1:]
@@ -377,6 +378,7 @@ func Read(agent string, paths ...string) Summary {
 	} else {
 		s.Unavailable = append(s.Unavailable, "tool_timeouts", "tool_denials")
 	}
+	s.summarizeReliability(events)
 	return s
 }
 

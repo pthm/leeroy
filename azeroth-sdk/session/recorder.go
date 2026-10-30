@@ -224,6 +224,14 @@ func (b *Bot) startRecording() {
 
 	// position and state once a second, as mod-recorder's "pos"
 	go func() {
+		b.lua.RecordObservation("runtime_state", types.DiagnosticDetails{Component: "tooling", State: "instrumented_v1"})
+		sampleCondition := func() {
+			available := w.GetObject(w.CharGUID()) != nil
+			alive := b.IsAlive() && !b.IsGhost()
+			g := b.gear()
+			b.lua.RecordObservation("character_state", types.DiagnosticDetails{SampleAvailable: &available, Alive: &alive, Gear: &types.DiagnosticGear{Money: w.Money(), MainHandBroken: g.Weapon != nil && g.Weapon.Broken, BrokenSlots: g.Broken}})
+		}
+		sampleCondition()
 		var previous *types.DiagnosticQuestLog
 		observeQuests := func() {
 			current := observedQuests(w.GetObject(w.CharGUID()))
@@ -241,6 +249,7 @@ func (b *Bot) startRecording() {
 				b.Record("logout", nil)
 				return
 			case <-t.C:
+				sampleCondition()
 				observeQuests()
 				x, y, z, o, m := w.Position()
 				hp, hpmax := b.GetHealth()
