@@ -37,9 +37,9 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   cancels owned checks; recovery expiry does too.
 - Cancellation reaches tile loading, lock waits, sliced polygon search, and smoothing. A cancelled planner
   cannot publish a late movement path. Cancellation is cooperative: a local file read already in the kernel
-  or one bounded Detour operation must return first. Floor/LOS helper queries remain synchronous.
+  or one bounded Detour operation must return first. Floor/LOS helper queries remain synchronous but have a cooperative 60 ms spatial budget; expiry is unknown.
   Movement-lease preemption or expiry also cancels that task's pending route checks, freeing the search
-  slot for the next owner. Shared danger estimates and route-specific diagnostic events remain outstanding.
+  slot for the next owner. Route outcomes retain status, source, endpoints, gap and floor evidence in diagnostics.
 - `await(world.route(points, {map=...}))` checks an ordered route from your captured current position.
   Supply 1..64 3D waypoints as `{x,y,z}` tuples or `{x=...,y=...,z=...,map=...}` records; options accept
   only `map`, defaulting to the current map. Every waypoint must be on that map. One 15-second deadline
@@ -58,7 +58,13 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   `completed_waypoints`, the failed `waypoint`, and `validation` evidence; an authorized prefix walk sets
   `partial_walked=true`. `validate=false` permits unverified 2D planning and labels `data.status="unverified"`;
   it cannot be combined with `allow_partial`. A position change during validation returns `route_stale`.
-  These checks establish walkability; hostile exposure is not yet assessed.
+  Exposure is observed before each leg and during walking, retaining the latest 64 observations.
+  It is diagnostic by default. `stop_on_danger=true` pauses movement while checking and returns
+  `danger_ahead` for hostile or unknown evidence; it resumes only after clear evidence.
+- `await(world.danger(x,y,z,radius))` or waiting `act.danger{x,y,z,radius=25}` yields a `DangerCheck`
+  (`clear`, `hostile`, or `unknown`). It combines observed living hostiles, aggro range, reachable floor and LOS.
+  It shares route admission, cancellation and the 15-second deadline. Points outside the local observation
+  radius or without collision/navmesh evidence are unknown, never implicitly safe.
 - `units.nearby` gives each living creature `in_sight`, and for the nearest `path_distance` (the walk) and
   `reachable`; `distance` is a straight line. Their shared 60 ms route budget includes waiting and search;
   an expired check stays unknown rather than being cached as unreachable. A mob in a mine below you can be 30 yards away and a 300-yard walk.
@@ -104,8 +110,10 @@ Where things are from where you stand, walking and its traps. The rest of the SD
 - `act.approach` retains its pending walk until the target moves and checks stopping/facing before success.
   `act.follow` requires `until` or `timeout_s`, has a maximum 600-second duration, and returns
   `player_not_visible` after 5 seconds of absence. Its stopping callback is checked each pass.
-- Raw `move.unstuck` arbitration, teleport invalidation, movement-owner diagnostic events, and interruption
-  of native path queries remain pending. A lease by itself does not establish route safety or recovery safety.
+- Raw `move.unstuck` uses the same owner and a 20-second lease. It succeeds only after an observed teleport.
+  Teleport, map transfer and login reset invalidate movement leases and pending plans with `teleported` or
+  `world_changed`. Movement-owner diagnostics record acquisition, waits, releases and preemption.
+  A lease by itself does not establish route safety or recovery safety.
 - `units.nearby` leaves out units nobody can select: the invisible triggers the server uses for events and scripts.
 - Entering a place triggers it as in the game: exploration objectives complete, inns and cities make you rest.
 - While the server moves you (a flight, a teleport, fear, confusion) the client sends no movement of its own:

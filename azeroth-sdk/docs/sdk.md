@@ -228,21 +228,25 @@ the initial roster and server group updates using GUIDs, without names, chat, re
 
 - **Local queries** return one value or one table: `me.level()`, `me.health()` → `{current, max}`,
   `units.nearby(40)` → creatures, nearest first. A `?` on a result type (`me.casting() → Casting?`) means nil when
-  there's nothing: out of sight, none, or not loaded yet. Names of creatures, items and quests fill in a moment
+  the function's documented condition holds; for example, `me.casting()` is nil while idle. Names of creatures, items and quests fill in a moment
   after you first see them (the client asks the server): call again.
 - **Server-backed lookups** return requests even when cached: `items.info(item_entry)`, `quests.info(quest_id)`,
   `vendor.items(npc_guid)` and `me.achievements()`. Use `await` inside a task and check `ok` before reading `data`.
-  Item/quest/achievement lookups have a five-second deadline: `not_found` requires an explicit negative server
+  Item/quest/achievement/corpse lookups have a five-second deadline: `not_found` requires an explicit negative server
   answer, `not_available` means the query could not be sent, and `timeout` means no answer arrived. This server
   currently ignores invalid quest IDs, so they time out; an invalid item ID receives `not_found`.
-- **Actions** are verbs and return a request (above). Error codes are stable strings (`out_of_range`,
+- **Actions** are verbs and return a request (above). Each raw action documents its observed postcondition.
+  Generic packets and GM commands cannot establish arbitrary effects: `client.send`, `chat.command`,
+  `group.ready`, and `group.decline` return `unconfirmed` after a successful send. Inspect the resulting
+  state; do not blindly retry a potentially non-idempotent operation.
+   Error codes are stable strings (`out_of_range`,
   `not_known`, `bags_full`, `stuck`, `timeout`...).
 - **One shape per thing:** a creature, item, quest or spell is the same table wherever it appears.
 - **GUIDs are strings** (64-bit numbers don't fit in a Lua number): pass them back unchanged. An `item` argument is
   an item entry (number) or the GUID of one you carry; `npc_guid` and `guid` are GUIDs, `npc_entry` and `entry` are template IDs. Raw NPC calls
   require a GUID string and never reinterpret an entry as a GUID.
   Parameters named `guid` or ending in `_guid` require decimal GUID strings. Explicit item selector unions
-  still accept an entry or an item table carrying a GUID.
+  accept a positive numeric entry below 2^32 or a decimal instance GUID string at least 2^32; item tables and quoted entries are rejected.
 - **Arguments are checked before native actions run.** Missing required values, extra arguments, wrong scalar
   types, fractional IDs, non-finite coordinates and overflowing integers raise signature errors. Omitted or nil
   optional scalar arguments use their documented literal defaults. Symbolic defaults such as `you` or `last`

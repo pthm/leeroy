@@ -16,7 +16,7 @@ Quest givers, vendors, trainers, objects, your bags and gear. The rest of the SD
   there and performs only the operations requested: `act.vendor{npc_entry = 123, repair = true}`.
   Selling junk and repairing default to false. A failed step stops the errand; inspect `data.completed`,
   `data.remaining`, and `steps` before deciding whether to retry.
-- Trainers: `trainer.list(npc)` (what it teaches you, cost, level, available now), `trainer.learn(npc, spell)`. The
+- Trainers: `await(trainer.list(npc_guid))` (what it teaches you, cost, level, available now), `trainer.learn(npc, spell)`. The
   `act.train{npc_entry = 123, spells = {133, 116}}` skips spells already known and stops on failure;
   `continue_on_error = true` attempts the rest but still reports failure. The level-70 "<Class> Trainer" NPCs in Northshire are placeholders that teach nothing.
 - Quests: `quests.accept(npc, quest)`, `quests.turn_in(npc, quest [, reward index])` (0 = the first choice;
@@ -30,7 +30,7 @@ Quest givers, vendors, trainers, objects, your bags and gear. The rest of the SD
 
 - `items.list()` has each item's name, quality and vendor price once its info has loaded (a second after it first
   appears). `items.free_slots()`, `items.destroy(item)`, `items.use(entry)`, `items.equip(item)`.
-- `items.compare(item)` shows the change against what you wear in that slot (item level, stats, armor, dps) and
+- `await(items.compare(item))` waits for the item and equipped templates (five seconds) and shows the change against what you wear in that slot (item level, stats, armor, dps) and
   `usable = false` with the reason when you can't use it. `await(items.info(entry)).data` has the details on success; `me.gear()` every
   slot; `items.broken()` what's at 0 durability.
 - Group loot: a `loot_roll_start` event per item up for rolls; `items.roll(roll, "need"|"greed"|"disenchant"|"pass")`
@@ -51,3 +51,10 @@ Quest givers, vendors, trainers, objects, your bags and gear. The rest of the SD
   An absent or disappearing quest fails. Without `quest_id`, it verifies `count` successful uses instead.
   The defaults are three attempts and a 60-second deadline (`max_attempts`, `timeout_s`); failure preserves
   confirmed use count and attempted use count. Increasing `count` above three requires increasing `max_attempts`.
+
+## Professions
+
+`skills.list()` and `skills.get(skill_id)` expose observed base ranks and caps; metadata availability is
+explicit. Gather with `objects.use(guid)` and cast known recipes with `spells.cast(recipe_id)`. Both await
+server cast completion; inspect inventory and skill changes separately. Object-use success does not itself
+prove quest progress. A non-casting object requires an observed object state change, otherwise it times out.

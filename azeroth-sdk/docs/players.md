@@ -15,7 +15,7 @@ Groups, chat, trades and the players around you. The rest of the SDK is in sdk.m
   `events.on("chat", fn)` reacts in a script. Messages sent while your session restarts are lost.
 - Groups: `group.invite(name)` (fails with `bad_player_name`, `already_in_group`, `group_full`...), the invitee gets
   a `party_invite` event and calls `group.accept()`; `group.info()`, `group.leave()`. A `ready_check` event:
-  answer with `group.ready(true)`. A `summon_request` event: `summon.accept()` resolves when you arrive, or `summon.decline()`.
+  answer with `group.ready(true)`; its result is `unconfirmed` because the protocol provides no matching acknowledgement. A `summon_request` event: `summon.accept()` resolves when you arrive, or `summon.decline()`.
   `group.report([minutes])`: how each member spent the last minutes (fighting, travelling, idle, dead, with the
   group), from what you've seen of them.
 - The server's message of the day comes as a `motd` event; battleground and arena queue changes as `battleground`.

@@ -6,10 +6,18 @@ Spells, attacks and fights, and looking back at a fight. The rest of the SDK is 
 
 - `me.casting()` is set from the moment you call `spells.cast` (or `items.use`) until the cast ends. Moving
   interrupts a cast.
-- `spells.usable(id, guid)` checks cooldown, power and the aura state a spell needs (Victory Rush only after a
-  kill, Execute below 20% health, Revenge after a block or dodge: `me.states()`, a unit's `states`) before a cast;
-  the result says whether it went off or why not (`out_of_range`, `not_ready`, `no_power`, `line_of_sight`,
-  `bad_targets`, `caster_aurastate`...).
+- `spells.check(id, guid)` returns readiness evidence: cooldown, power needed, observed target, nominal range,
+  line of sight, facing, and `unknown` checks. `usable` means no known local refusal; server acceptance is
+  separate. Nominal DBC range excludes talents/hitboxes, so `nominal_range_exceeded` is advisory.
+  `spells.usable` is the boolean convenience view; use `act.within_nominal_range` only for that estimate.
+- `act.cast(id, guid, options)` holds one normal-priority movement lease, stops only owned movement, faces
+  the target, and waits for the server. It performs at most two casts, retrying only a facing refusal.
+  `data.check`, `data.attempts`, `data.corrections`, and `data.action` preserve what happened.
+  It never stops a competing owner (`movement_busy`). The default deadline is 30 seconds, at most 60.
+- Explicit `options.approach=true` permits one approach along a verified path. `max_move_yards=10` (at most
+  40) bounds the measured path length; it is not just straight-line displacement. Without this option,
+  the helper does not move toward the target. One shared deadline covers planning, movement, facing, and casting.
+  `cast_timeout` means no matching result before that deadline; an already sent server cast may complete later.
 - `spells.cooldown(id)` and `items.cooldown(item)` say how long until a spell or item is ready, including
   cooldowns still running from before you logged in (the Hearthstone) and shared ones (all potions). A potion used
   in combat reads `-1`: its cooldown only starts when you leave combat.

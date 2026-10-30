@@ -10,7 +10,7 @@ import (
 )
 
 func TestScenarioPreflightQuestCaveAndHogger(t *testing.T) {
-	for _, quest := range []int{62, 47, 176} {
+	for _, quest := range []int{7, 62, 176} {
 		t.Run(fmt.Sprint(quest), func(t *testing.T) {
 			s := &config.Scenario{Name: "fixture", Goal: fmt.Sprintf("quest:%d", quest), Level: 5, Minutes: 60, Start: &config.Place{}, Agents: []config.Agent{{Name: "mage", Race: "human", Class: "mage"}}}
 			floors := 0
@@ -23,7 +23,7 @@ func TestScenarioPreflightQuestCaveAndHogger(t *testing.T) {
 					return []map[string]string{{"MinLevel": "1"}}, nil
 				case strings.Contains(q, "estimated_health") && quest == 176:
 					return []map[string]string{{"entry": "448", "name": "Hogger", "maxlevel": "11", "rank": "1", "estimated_health": "666"}}, nil
-				case strings.Contains(q, "areatrigger_involvedrelation") && quest == 47:
+				case strings.Contains(q, "areatrigger_involvedrelation") && quest == 62:
 					return []map[string]string{{"entry": "123", "map": "0", "x": "1", "y": "2", "z": "-30"}}, nil
 				case strings.Contains(q, "queststarter") || strings.Contains(q, "questender"):
 					return []map[string]string{{"entry": "240", "spawns": "1"}}, nil
@@ -44,7 +44,7 @@ func TestScenarioPreflightQuestCaveAndHogger(t *testing.T) {
 			if warning != (quest == 176) {
 				t.Fatal("combat evidence missing or invented", report)
 			}
-			if quest == 47 && floors != 2 {
+			if quest == 62 && floors != 2 {
 				t.Fatal("cave floor not checked")
 			}
 		})

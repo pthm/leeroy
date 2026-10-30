@@ -57,10 +57,17 @@ Each agent:
 
 opencode runs with its own empty config (`<run>/<agent>/opencode/`, not `~/.config/opencode`) and the same sandbox as
 Claude Code's allowed tools: it writes only in its workspace, reads the SDK and server source, and runs only `wow`,
-`azworld`, `standings` and `sleep`, `tail`, `cat`, `ls`, `grep`, `mkdir`. `smoke-openrouter.yaml` checks both
+`azworld`, `standings`, and the command inventory generated into each workspace from the runtime configuration. `smoke-openrouter.yaml` checks both
 OpenRouter paths for a few cents.
 
 ## Matrices
 
 A matrix (`bench/matrices/*.yaml`) is a grid of solo runs: tasks crossed with races, classes, durations and
 repetitions. See [matrices/README.md](../matrices/README.md).
+
+## Preflight
+
+`bin/azbench scenario check <scenario.yaml>` prints bounded, read-only checks of goals, starting floors,
+quest prerequisites/spawns, combat levels/estimated health and hit penalties, and starting resources.
+Unknown evidence stays unknown. Every new run saves this as `preflight.json`; resume preserves the original.
+The assessment is not injected into prompts or workspaces and never chooses an agent's strategy.
