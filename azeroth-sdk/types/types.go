@@ -160,6 +160,35 @@ type PathCheck struct {
 	FloorValid  *bool      `json:"floor_valid,omitempty" doc:"whether both endpoints match requested elevations within 3 yards; absent without a path"`
 }
 
+// RouteLeg is one requested waypoint's navmesh validation, in execution order.
+type RouteLeg struct {
+	Index       int      `json:"index" doc:"1-based requested waypoint index"`
+	From        Position `json:"from"`
+	Destination Position `json:"destination"`
+	Status      string   `json:"status"`
+	Reason      string   `json:"reason"`
+	Distance    float64  `json:"distance"`
+	Gap         *float64 `json:"gap,omitempty"`
+	StartGap    *float64 `json:"start_gap,omitempty"`
+	VerticalGap *float64 `json:"vertical_gap,omitempty"`
+	FloorValid  *bool    `json:"floor_valid,omitempty"`
+}
+
+// RouteCheck certifies connected navmesh legs from the character's captured position.
+type RouteCheck struct {
+	Status        string     `json:"status" doc:"verified, partial, or failed; partial never counts as reaching the requested destination"`
+	Reason        string     `json:"reason"`
+	Map           uint32     `json:"map"`
+	Source        string     `json:"source" doc:"session_navmesh; live hostile exposure is not yet assessed"`
+	From          Position   `json:"from"`
+	Destination   Position   `json:"destination"`
+	Waypoints     []Position `json:"waypoints" doc:"connected navmesh prefix, including a partial last leg when known; at most 8192 points"`
+	Distance      float64    `json:"distance" doc:"walk distance of the known prefix, in yards"`
+	CompletedLegs int        `json:"completed_legs" doc:"number of requested waypoints fully validated"`
+	BlockedLeg    int        `json:"blocked_leg,omitempty" doc:"1-based first failed or unfinished requested waypoint"`
+	Legs          []RouteLeg `json:"legs" doc:"completed checks, including the first failed check when available"`
+}
+
 // ---------- your character ----------
 
 type Resource struct {

@@ -19,7 +19,7 @@ type routeRequest struct {
 	id, task int
 	ctx      context.Context
 	cancel   context.CancelFunc
-	data     types.PathCheck
+	data     any
 	done     bool
 	reason   string
 }
@@ -41,7 +41,13 @@ func routeFailure(data types.PathCheck, code, message string) *script.Outcome {
 }
 func (r *routeRequests) start(task int, m uint32, from, to navigation.Point3D) map[string]any {
 	data := types.PathCheck{Status: "failed", Map: m, From: routePosition(from, m), Destination: routePosition(to, m), Source: "session_navmesh", Waypoints: []types.Position{}}
-	h := r.reqs.Start(script.Spec{Op: "world.path", Args: map[string]any{"x": to.X, "y": to.Y, "z": to.Z}, Timeout: time.Hour})
+	return r.submit(task, "world.path", map[string]any{"x": to.X, "y": to.Y, "z": to.Z}, data, func(ctx context.Context, j *routeRequest) *script.Outcome {
+		result, err := r.find(ctx, m, from, to)
+		return checkRoute(data, from, to, result, err)
+	})
+}
+func (r *routeRequests) submit(task int, op string, args map[string]any, data any, run func(context.Context, *routeRequest) *script.Outcome) map[string]any {
+	h := r.reqs.Start(script.Spec{Op: op, Args: args, Timeout: time.Hour})
 	id := h["id"].(int)
 	r.mu.Lock()
 	code, message := "", ""
@@ -52,7 +58,7 @@ func (r *routeRequests) start(task int, m uint32, from, to navigation.Point3D) m
 	}
 	if code != "" {
 		r.mu.Unlock()
-		r.reqs.Resolve(id, routeFailure(data, code, message))
+		r.reqs.Resolve(id, queryFailure(data, code, message))
 		return h
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
@@ -64,8 +70,7 @@ func (r *routeRequests) start(task int, m uint32, from, to navigation.Point3D) m
 	stop := context.AfterFunc(ctx, func() { r.finish(j, nil) })
 	go func() {
 		defer func() { stop(); cancel(); r.mu.Lock(); delete(r.jobs, id); r.mu.Unlock() }()
-		result, err := r.find(ctx, m, from, to)
-		r.finish(j, checkRoute(data, from, to, result, err))
+		r.finish(j, run(ctx, j))
 	}()
 	return h
 }
@@ -76,13 +81,13 @@ func (r *routeRequests) finish(j *routeRequest, out *script.Outcome) {
 		return
 	}
 	if j.reason != "" {
-		out = routeFailure(j.data, j.reason, "route cancelled because its owner became inactive")
+		out = queryFailure(j.data, j.reason, "route cancelled because its owner became inactive")
 	} else if err := j.ctx.Err(); err != nil {
 		code := "cancelled"
 		if errors.Is(err, context.DeadlineExceeded) {
 			code = "route_timeout"
 		}
-		out = routeFailure(j.data, code, "route deadline or cancellation reached; use shorter legs (maximum 4096 yards)")
+		out = queryFailure(j.data, code, "route deadline or cancellation reached; use shorter legs (maximum 4096 yards)")
 	}
 	if out == nil {
 		r.mu.Unlock()
@@ -158,6 +163,7 @@ func (b *Bot) setupRoutes() {
 		return b.findPath(ctx, m, from, to)
 	}}
 	b.routes = r
+	b.registerRouteValidator(r)
 	inactive, closeSession := e.OnTaskInactive, e.OnClose
 	e.OnTaskInactive = func(id int, reason string) {
 		if inactive != nil {
