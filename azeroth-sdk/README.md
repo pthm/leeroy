@@ -148,6 +148,8 @@ AC_DATA_DIR=$PWD/../data go test ./...         # with it: pathfinding and moveme
 Agent-facing documentation, in `docs/`. It describes; it doesn't coach: how to play well within the rules is the
 agent's to work out.
 
+The [agent tooling reliability and API contract spec](../bench/tooling-reliability-spec.md) defines the planned API, runtime, and benchmark tooling changes.
+
 | File | |
 |---|---|
 | [`game.md`](docs/game.md) | the rules of the game: stats, gear, classes and roles, XP, combat, death, quests, travel, groups, chat |

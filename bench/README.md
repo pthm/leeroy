@@ -11,7 +11,7 @@ commands below run from the repo root; server and client setup is in the [repo R
 | `matrices/*.yaml` | grids of solo runs: task × race × class × minutes × reps ([matrices/README.md](matrices/README.md)) |
 | `specs.yaml` | class specs a scenario's agents can take: class and spec, role, what to optimise, key stats |
 | `places.yaml` | named starting positions (`start: goldshire`) |
-| `tooling-reliability-spec.md` | durable diagnostics, routing, movement, casting, recovery, and runtime shell contracts |
+| [`tooling-reliability-spec.md`](tooling-reliability-spec.md) | unified spec for API signatures and results, diagnostics, routing, movement, casting, recovery, and runtime shell contracts |
 | `agent/` | what the agent is given: `AGENTS.md` and its three tools in `bin/` (links to `bin/wow`, `bin/azworld`, `bin/azbench`) |
 | `workspaces/<agent>/` | each agent's persistent script library and notes (gitignored) |
 | `runs/` | results (gitignored) |
