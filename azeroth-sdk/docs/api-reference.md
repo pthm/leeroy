@@ -28,7 +28,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `act.best({rank ids}) → id` | the highest rank you know of a spell |  |
 | `act.buff(id [, guid]) → ActResult` | cast it unless the aura is already active (ok with data.status = already_active then) | [ActResult](#actresult) |
 | `act.cast(id [, guid]) → ActResult` | face the target and cast if ready (waits for the result in a task) | [ActResult](#actresult) |
-| `act.consume("Food" \| "Drink") → bool` | eat or drink the first such item you carry (sit still after) |  |
+| `act.consume("Food" \| "Drink") → ActResult<Consumed>` | wait up to 30 seconds for the first matching item to be used; no_consumable if absent (sit still after) | [ActResult](#actresult), [Consumed](#consumed) |
 | `act.corpse_run{[safe = true]} → ActResult` | as a ghost, walk to your corpse and reclaim it; with hostiles at the corpse it reclaims from the far side of the reclaim circle, 32 yd out (safe = false: on the spot) | [ActResult](#actresult) |
 | `act.danger(x, y [, r = 25]) → Creature[]` | living hostile creatures within r yards of a point: check a spot before you go there or come back to life there | [Creature](#creature) |
 | `act.dist(x, y [, z]) → yards` | distance from you (2D without z) |  |
@@ -38,24 +38,24 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `act.go_to{x, y [, z, tolerance = 4, tries = 3, unstuck = false, on_attacked = fn]} → ActResult` | walk there; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs. Without on_attacked it walks on while mobs hit you and drags them along; with it, it stops whenever something targets you, calls on_attacked(attackers) (your fighting) and then carries on | [ActResult](#actresult) |
 | `act.hp() → 0..1` | your health fraction |  |
 | `act.in_range(id, guid) → bool` | within the spell's range of the unit |  |
-| `act.loot_nearby{[dist = 8]} → ActResult<Item[]>` | walk to and loot every lootable corpse within dist; with full bags it destroys your cheapest grey for room (error bags_full when there's none) | [ActResult](#actresult), [Item](#item) |
-| `act.make_room() → bool` | destroy your cheapest grey item to free a bag slot |  |
+| `act.loot_nearby{[dist = 8, make_room = false]} → ActResult<Looted>` | loot at most 32 nearby corpses per call; fail on approach or loot errors with partial items/money. Destruction is opt-in with make_room = true, with one retry per corpse | [ActResult](#actresult), [Looted](#looted) |
+| `act.make_room{} → ActResult<Consumed>` | destroy the cheapest loaded poor-quality item that is not a possible usable gear upgrade; wait up to 5 seconds for confirmation, or no_disposable_item; options may be omitted | [ActResult](#actresult), [Consumed](#consumed) |
 | `act.mana() → 0..1` | your mana fraction (1 for rage/energy users) |  |
 | `act.must(result) → ActResult` | the result if ok, else raise its error (ends the task) | [ActResult](#actresult) |
-| `act.npc(entry [, dist = 60]) → Creature` | the nearest living creature with that entry | [Creature](#creature) |
+| `act.npc(entry [, dist = 60]) → Creature?` | the nearest living observed creature with that entry, or nil when none is visible | [Creature](#creature) |
 | `act.ok(op, data) → ActResult` | an ok result for your own act-style functions | [ActResult](#actresult) |
-| `act.player(name) → Player` | a player by name (nearby or in your group) | [Player](#player) |
+| `act.player(name) → Player?` | an observed player by name, or nil when not visible (including distant group members) | [Player](#player) |
 | `act.reach_npc{npc_entry\|npc_guid [, x, y, z]} → ActResult<Creature>` | find an NPC by exactly one of npc_entry or npc_guid (walking to x, y, z first) and stand next to it | [ActResult](#actresult), [Creature](#creature) |
 | `act.ready(id [, guid]) → bool` | known, off cooldown, affordable, and you're not casting |  |
 | `act.recover{[spirit = false, rest = true, safe = true]} → ActResult` | back to life: release, corpse run (reclaiming away from hostiles at the corpse), the spirit healer if that fails or with spirit = true (unless hostiles camp the graveyard: then the corpse run), then rest | [ActResult](#actresult) |
 | `act.release() → ActResult` | release your spirit | [ActResult](#actresult) |
-| `act.rest{[hp = 0.95, mana = 0.9, max_s = 40]} → ActResult` | eat/drink if you carry food/water and wait until topped up; fails if attacked | [ActResult](#actresult) |
+| `act.rest{[hp = 0.95, mana = 0.9, max_s = 40]} → ActResult<Rested>` | wait for both requested fractions (0..1); no consumable allows passive regeneration. Item-use failures propagate; rest_timeout includes achieved fractions | [ActResult](#actresult), [Rested](#rested) |
 | `act.spirit_res() → ActResult` | as a ghost, resurrect at the nearest spirit healer in sight (costs durability) | [ActResult](#actresult) |
 | `act.talk{npc_entry\|npc_guid, fn [, x, y, z]} → ActResult` | walk to an NPC and return fn(npc) as ActResult; fn must return a completed action result | [ActResult](#actresult) |
 | `act.train{npc_entry\|npc_guid, spells [, x, y, z, continue_on_error = false]} → ActResult<TrainErrand>` | learn 1..64 unique requested spells; stop on the first failure unless continue_on_error; return TrainErrand with learned, already_known, failed and remaining IDs | [ActResult](#actresult), [TrainErrand](#trainerrand) |
 | `act.travel{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false, on_attacked = fn]} → ActResult` | go_to each waypoint (e.g. from azworld route) | [ActResult](#actresult) |
 | `act.turn_in{npc_entry\|npc_guid, quest [, reward = 0, x, y, z]} → ActResult` | walk to the quest ender and turn the quest in | [ActResult](#actresult) |
-| `act.use_object{entry [, count = 1, quest, x, y, z, radius = 80]} → ActResult` | use objects (crates, chests, quest objects) count times or until the quest is complete | [ActResult](#actresult) |
+| `act.use_object{entry [, count = 1, quest_id, x, y, z, radius = 80, max_attempts = 3, timeout_s = 60]} → ActResult<ObjectUse>` | use objects count times, or until observed progress/completion of quest_id; absent quest, missing progress, attempt limit or deadline fails with partial counts; at most 32 attempts | [ActResult](#actresult), [ObjectUse](#objectuse) |
 | `act.vendor{npc_entry\|npc_guid [, x, y, z, sell_junk = false, repair = false, buy = {{entry, count}, ...}]} → ActResult<VendorErrand>` | perform only requested operations (at least one required, at most 64 purchases); stop on failure and return VendorErrand partial data and steps | [ActResult](#actresult), [VendorErrand](#vendorerrand) |
 
 ### chat
@@ -1396,6 +1396,34 @@ TrainErrand lists spell IDs. AlreadyKnown is observed before training; Remaining
 | `already_known` | number[] |  |
 | `failed` | number[] |  |
 | `remaining` | number[] |  |
+
+### Consumed
+
+Consumed identifies the selected item and preserves the underlying use/destroy result data. Only ok=true confirms the item was used or destroyed.
+
+| Field | Type | |
+|---|---|---|
+| `item` | Item |  |
+| `action?` | any |  |
+
+### ObjectUse
+
+ObjectUse counts confirmed uses separately from attempted uses; quest progress is observed from the log.
+
+| Field | Type | |
+|---|---|---|
+| `used` | number |  |
+| `attempts` | number |  |
+| `status?` | string | already_complete, quest_complete, quest_progress, count_reached |
+
+### Rested
+
+Rested reports the observed fractions even when the requested thresholds were not reached.
+
+| Field | Type | |
+|---|---|---|
+| `hp` | number |  |
+| `mana` | number |  |
 
 ### Attacking
 

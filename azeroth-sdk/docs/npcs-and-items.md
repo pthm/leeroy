@@ -35,5 +35,16 @@ Quest givers, vendors, trainers, objects, your bags and gear. The rest of the SD
   (`loot_roll_all_passed` when nobody wants it).
 - Full bags: loot stays on the corpse and turn-ins with an item reward fail with `bags_full` (and an "Inventory is
   full" notice).
+- `act.loot_nearby{dist = 8}` returns confirmed items and money, including partial work on failure. It destroys
+  nothing unless `make_room = true`; that allows one attempt to free space and retry per corpse.
+  `act.make_room()` protects possible usable gear upgrades and items with missing information, and waits for
+  the selected item's destruction to be confirmed. `act.consume("Food")` and `act.consume("Drink")` also wait
+  for confirmation; check their `ActResult` before assuming consumption started.
+- `act.rest{hp = 0.95, mana = 0.9, max_s = 40}` requires both thresholds. Missing consumables allow passive
+  regeneration, but an item-use failure propagates. Expiry returns `rest_timeout` with achieved fractions.
 - `objects.use(guid)` within ~5 yards uses a chest, node or quest object. `objects.nearby` says what each takes
   (`gather`, `skill`, `can_use`, `key`), `lit` when one of your quests needs it, and how far the walk is.
+- `act.use_object{entry = object_entry, quest_id = quest_id}` verifies progress or completion in your quest log.
+  An absent or disappearing quest fails. Without `quest_id`, it verifies `count` successful uses instead.
+  The defaults are three attempts and a 60-second deadline (`max_attempts`, `timeout_s`); failure preserves
+  confirmed use count and attempted use count. Increasing `count` above three requires increasing `max_attempts`.

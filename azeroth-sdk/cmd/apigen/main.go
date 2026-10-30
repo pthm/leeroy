@@ -42,6 +42,7 @@ var roots = []any{
 	types.Threat{}, types.Gossip{}, types.Gear{}, types.Spellbook{}, types.QuestInfo{}, types.Trainer{}, types.Reputation{},
 	types.Request{}, types.ActionResult{}, types.ActResult{}, types.Error{}, types.Event{},
 	types.VendorErrand{}, types.TrainErrand{},
+	types.Consumed{}, types.ObjectUse{}, types.Rested{},
 }
 
 func main() {

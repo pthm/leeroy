@@ -229,6 +229,16 @@ Update `azeroth-sdk/docs/sdk.md` to introduce raw requests and waiting helper re
 
 ## Verification and rollout
 
+Implementation started on 2026-10-30. The initial stack contains:
+
+| Change | Implemented and unit tested | Remaining boundary |
+|---|---|---|
+| `tzyvkpts` — result contracts | Separate `Request`, `ActionResult`, and `ActResult`; immediate raw actions return handles; task-only `await` distinguishes wait timeout from eventual completion; waiting helper envelopes preserve partial data and omit raw IDs; buff no-op returns success explicitly | Mechanical success criteria for every raw action and complete contract-registry validation are still pending |
+| `pznosnry` — NPC errands | Explicit entry/GUID helper selectors; raw NPC GUIDs cannot fall back to entries; errand option validation; vendor/trainer failure propagation and partial work; partial raw sales/repairs fail; awaitable vendor lists | Other server-backed lookups, validation outside these helpers, and profession queries remain pending |
+| `uqxkokkt` — item/quest postconditions | Confirmed consume/destroy; gear-aware disposal; opt-in bag clearing; checked loot steps; rest thresholds/deadline; bounded object use with verified quest progress; recovery propagates a failed rest | Movement ownership, full recovery supervision, and cancellation of underlying requests remain pending |
+
+The initial stack uses unit tests and mocked Lua action sequences, including real scheduler waits for item confirmation. `go test ./... ./azeroth-sdk/...` passes. The API reference is regenerated from the GM session via `azbench apidoc`; a GM smoke test also verifies an immediate spell refusal, a missing quest, and rejection of the old ambiguous NPC selector. This does not complete the live gameplay acceptance matrix. Structured diagnostic events/reporting, runtime permission smoke tests, route validation, casting readiness/corrections, scenario preflight, and matched benchmark runs have not yet been implemented by this stack. The rollout below remains the target order for the outstanding work.
+
 Implement in this order so later work has trustworthy contracts and evidence:
 
 1. **API contract and diagnostics.** Define requests, results, identifiers, error codes, and event schemas together. Add contract tests, task status events, report coverage, paused-run handling, cost `null`, and cross-runtime command smoke tests. Use saved recent reports as the baseline for judge scores; missing diagnostics in old artifacts remain explicitly unavailable.

@@ -23,3 +23,23 @@ type TrainErrand struct {
 	Failed       []uint32 `json:"failed"`
 	Remaining    []uint32 `json:"remaining"`
 }
+
+// Consumed identifies the selected item and preserves the underlying use/destroy result data.
+// Only ok=true confirms the item was used or destroyed.
+type Consumed struct {
+	Item   Item `json:"item"`
+	Action any  `json:"action,omitempty"`
+}
+
+// ObjectUse counts confirmed uses separately from attempted uses; quest progress is observed from the log.
+type ObjectUse struct {
+	Used     int    `json:"used"`
+	Attempts int    `json:"attempts"`
+	Status   string `json:"status,omitempty" doc:"already_complete, quest_complete, quest_progress, count_reached"`
+}
+
+// Rested reports the observed fractions even when the requested thresholds were not reached.
+type Rested struct {
+	HP   float64 `json:"hp"`
+	Mana float64 `json:"mana"`
+}
