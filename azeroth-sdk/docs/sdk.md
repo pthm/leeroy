@@ -38,7 +38,8 @@ end)
   including walks it started without awaiting. Other actions it started (an auto-attack, a cast) carry on.
 - `task.pause(id)` takes a waiting task off the schedule (false if it isn't waiting) and `task.resume(id)` puts
   it back on the same wait: a result or an event that came in meanwhile is still delivered. A walk cancelled
-  by pause stays cancelled after resume; its result has `error.code = "task_paused"`.
+  by pause stays cancelled after resume; its result has `error.code = "task_paused"`. Active movement leases
+  are also invalidated; resumed helper scopes return that failure when they unwind.
 - A task that raises an error ends `failed`; the others keep running. Each end is a `task_finished` event.
 - Every evaluation, task step and `on_tick` call has a 3-second execution limit: a loop must `wait`, `await` or
   `events.wait` on every pass to let the rest run, including passes where nothing happens (a check that returns at
