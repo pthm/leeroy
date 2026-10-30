@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pthm/leeroy/azbench/diagnostics"
 	"github.com/pthm/leeroy/azeroth-sdk/metrics"
 )
 
@@ -242,15 +243,15 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 		case typ == "result":
 			if _, ok := e["total_cost_usd"].(float64); ok {
 				var tk tokens // per model; usage is partial
-				if mu, ok := e["modelUsage"].(map[string]any); ok {
+				if mu, ok := e["modelUsage"].(map[string]any); ok && len(mu) > 0 {
 					for _, m := range mu {
 						tk.in += fnum(get(m, "inputTokens"))
 						tk.out += fnum(get(m, "outputTokens"))
 						tk.cr += fnum(get(m, "cacheReadInputTokens"))
 						tk.cw += fnum(get(m, "cacheCreationInputTokens"))
 					}
+					results[str(e["session_id"])] = tk
 				}
-				results[str(e["session_id"])] = tk
 			}
 		}
 	}
@@ -469,17 +470,24 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 			continue
 		}
 		logged[u.session] = true
-		if in, out, cr, cw, ok := claudeLogUsage(u.session); ok {
+		if in, out, cr, cw, ok := savedUsage(ar.run, "claude", u.session); ok {
 			tok.in, tok.out, tok.cr, tok.cw = tok.in+in, tok.out+out, tok.cr+cr, tok.cw+cw
 			parts++
 		} else {
 			logged[u.session] = false
 		}
 	}
+	seenThreads := map[string]bool{}
 	for _, th := range threads {
-		if in, out, cr, ok := codexLogUsage(th); ok {
+		if seenThreads[th] {
+			continue
+		}
+		seenThreads[th] = true
+		if in, out, cr, _, ok := savedUsage(ar.run, "codex", th); ok {
 			tok.in, tok.out, tok.cr = tok.in+in, tok.out+out, tok.cr+cr
 			parts++
+		} else {
+			outputKnown = false
 		}
 	}
 	if ocSeen {
@@ -547,11 +555,17 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 		combat.Add(e)
 	}
 	co, use := coop[char], metrics.Use(char, pos)
+	diag := diagnostics.Read(ar.agent, ar.record, filepath.Join(ar.run, "harness.jsonl"))
+	if costOut != nil {
+		diag.Coverage.CostStatus = "estimated"
+	}
+	judgeState := savedJudgeState(ar.run)
 
 	return obj{
 		{"agent", ar.agent}, {"char", char}, {"runtime", meta["runtime"]}, {"model", meta["model"]}, {"provider", meta["provider"]},
 		{"hours", r1(H)}, {"progress", progress}, {"progress_per_hour", rate(by["all"])},
 		{"score", final},
+		{"score_provisional", judgeState != "completed"}, {"judge_state", judgeState}, {"diagnostics", diag},
 		{"duty_cycle_pct", share("script")}, // time with a script task running
 		{"idle_gaps", obj{{"n", len(gaps)}, {"median_s", median(gaps)}, {"p90_s", p90(gaps)},
 			{"total_min", r1(sum(gaps) / 60)}}},
@@ -685,16 +699,27 @@ func teamResults(dir string, n int, cards []map[string]any) obj {
 	for i, r := range res {
 		agents[i] = r
 	}
-	team := obj{{"agents", agents}, {"faction_score", round1(faction)}, {"by_model", byModel(cards)}, {"team_s", teamS}}
+	state := savedRunState(dir, cards)
+	if state != "completed" {
+		teamS = nil
+	}
+	team := obj{{"agents", agents}, {"faction_score", round1(faction)}, {"by_model", byModel(cards)}, {"team_s", teamS}, {"state", state}, {"diagnostics", teamDiagnostics(cards)}}
 	// what OpenRouter billed for the run (the key's spend from start to finish), against the token-priced estimate
 	if or := readJSON(filepath.Join(dir, "openrouter.json")); or["start"] != nil && or["end"] != nil {
-		est := 0.0
+		est, available := 0.0, true
 		for _, c := range cards {
 			if c["provider"] == "openrouter" {
+				if c["cost_usd"] == nil {
+					available = false
+				}
 				est += fnum(c["cost_usd"])
 			}
 		}
-		team = append(team, kv{"openrouter", obj{{"billed_usd", round2(fnum(or["end"]) - fnum(or["start"]))}, {"estimated_usd", round2(est)}}})
+		var estimated any
+		if available {
+			estimated = round2(est)
+		}
+		team = append(team, kv{"openrouter", obj{{"billed_usd", round2(fnum(or["end"]) - fnum(or["start"]))}, {"estimated_usd", estimated}}})
 	}
 	return team
 }
@@ -712,9 +737,6 @@ func Report(dir string) {
 	var rows []obj
 	for _, ar := range reportAgents(dir) {
 		if ar.run == "" {
-			continue
-		}
-		if _, err := os.Stat(filepath.Join(ar.run, "agent.jsonl")); err != nil {
 			continue
 		}
 		c := card(ar, teamEvents, coop, pos)
