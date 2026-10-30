@@ -28,7 +28,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `act.buff(id [, guid]) → ActResult` | cast it unless the aura is already active (ok with data.status = already_active then) | [ActResult](#actresult) |
 | `act.cast(id [, guid]) → ActResult` | face the target and cast if ready (waits for the result in a task) | [ActResult](#actresult) |
 | `act.consume("Food" \| "Drink") → ActResult<Consumed>` | wait up to 30 seconds for the first matching item to be used; no_consumable if absent (sit still after) | [ActResult](#actresult), [Consumed](#consumed) |
-| `act.corpse_run{[safe = true]} → ActResult` | as a ghost, walk to your corpse and reclaim it; with hostiles at the corpse it reclaims from the far side of the reclaim circle, 32 yd out (safe = false: on the spot) | [ActResult](#actresult) |
+| `act.corpse_run{[safe = true, timeout_s = 180, max_attempts = 2]} → ActResult<Recovery>` | bounded ghost travel and reclaim; confirm path endpoint, floor, reclaim distance, line of sight and timer. Default safe=true rejects nearby hostiles or unverified floor evidence. timeout_s >0..600, max_attempts 1..2; preserve failed movement and resurrection steps; no healer fallback; check gear after resurrection; needs_repair for broken main hand | [ActResult](#actresult), [Recovery](#recovery) |
 | `act.danger(x, y [, r = 25]) → Creature[]` | living hostile creatures within r yards of a point: check a spot before you go there or come back to life there | [Creature](#creature) |
 | `act.dist(x, y [, z]) → yards` | distance from you (2D without z) |  |
 | `act.fail(op, code, message) → ActResult` | a failed result | [ActResult](#actresult) |
@@ -46,10 +46,10 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `act.player(name) → Player?` | an observed player by name, or nil when not visible (including distant group members) | [Player](#player) |
 | `act.reach_npc{npc_entry\|npc_guid [, x, y, z]} → ActResult<Creature>` | find an NPC by exactly one of npc_entry or npc_guid (walking to x, y, z first) and stand next to it | [ActResult](#actresult), [Creature](#creature) |
 | `act.ready(id [, guid]) → bool` | known, off cooldown, affordable, and you're not casting |  |
-| `act.recover{[spirit = false, rest = true, safe = true]} → ActResult` | back to life: release, corpse run (reclaiming away from hostiles at the corpse), the spirit healer if that fails or with spirit = true (unless hostiles camp the graveyard: then the corpse run), then rest | [ActResult](#actresult) |
+| `act.recover{[spirit = false, allow_spirit_fallback = false, rest = true, safe = true, timeout_s = 180, max_attempts = 2]} → ActResult<Recovery>` | one session recovery attempt: duplicate callers join the first caller's policy and result. Release, reclaim and optionally rest; healer use requires spirit=true or allow_spirit_fallback=true. timeout_s >0..600 and at most 2 total resurrection attempts across methods; fallback reserves the second attempt when possible. Return attention on failure or needs_repair for a broken main hand; never restart another task. Synchronous path query cancellation remains unsupported; exact healer cost is unavailable | [ActResult](#actresult), [Recovery](#recovery) |
 | `act.release() → ActResult` | release your spirit | [ActResult](#actresult) |
-| `act.rest{[hp = 0.95, mana = 0.9, max_s = 40]} → ActResult<Rested>` | wait for both requested fractions (0..1); no consumable allows passive regeneration. Item-use failures propagate; rest_timeout includes achieved fractions | [ActResult](#actresult), [Rested](#rested) |
-| `act.spirit_res() → ActResult` | as a ghost, resurrect at the nearest spirit healer in sight (costs durability) | [ActResult](#actresult) |
+| `act.rest{[hp = 0.95, mana = 0.9, max_s = 40, safe = false]} → ActResult<Rested>` | wait for both requested fractions (0..1); no consumable allows passive regeneration. Item-use failures propagate; rest_timeout includes achieved fractions. safe=true rechecks local floor/hostile evidence each pass | [ActResult](#actresult), [Rested](#rested) |
+| `act.spirit_res{[timeout_s = 180, max_attempts = 2]} → ActResult<Recovery>` | explicitly authorize spirit-healer resurrection and its durability penalty. Reject hostile or unverified healer sites, propagate movement failures, require observed resurrection, and check gear. At most 2 attempts within timeout_s >0..600; no rest or automatic farming restart | [ActResult](#actresult), [Recovery](#recovery) |
 | `act.talk{npc_entry\|npc_guid, fn [, x, y, z]} → ActResult` | walk to an NPC and return fn(npc) as ActResult; fn must return a completed action result | [ActResult](#actresult) |
 | `act.train{npc_entry\|npc_guid, spells [, x, y, z, continue_on_error = false]} → ActResult<TrainErrand>` | learn 1..64 unique requested spells; stop on the first failure unless continue_on_error; return TrainErrand with learned, already_known, failed and remaining IDs | [ActResult](#actresult), [TrainErrand](#trainerrand) |
 | `act.travel{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false, on_attacked = nil]} → ActResult` | go_to each of 1..4096 waypoints (e.g. from azworld route); all waypoint fields are checked before movement starts | [ActResult](#actresult) |
@@ -1463,6 +1463,45 @@ Rested reports the observed fractions even when the requested thresholds were no
 | `hp` | number |  |
 | `mana` | number |  |
 
+### Recovery
+
+Recovery is the bounded helper report, including partial work on failure. Lifecycle cancellation may only provide state and the last observed attempt count.
+
+| Field | Type | |
+|---|---|---|
+| `state` | string | terminal: done, attention, needs_repair |
+| `attempts` | number | resurrection requests attempted, at most 2; includes immediate refusals |
+| `alive?` | bool | observed at helper completion; absent on coordinator cancellation |
+| `steps?` | RecoveryStep[] |  |
+| `failed_step?` | string |  |
+| `last_error?` | Error | underlying failure preserved when the terminal code is retry_exhausted |
+| `action?` | any | underlying failure data |
+| `control?` | any | ownership failure details when acquisition or scope release failed |
+| `health?` | Resource |  |
+| `power?` | Resource |  |
+| `gear?` | Gear |  |
+| `money?` | number |  |
+| `repair_options?` | Creature[] | at most 20 observed repair NPCs; no automatic travel |
+| `spirit_option?` | RecoverySpiritOption |  |
+
+### RecoveryStep
+
+| Field | Type | |
+|---|---|---|
+| `op` | string |  |
+| `ok` | bool |  |
+| `request_id?` | number |  |
+| `error?` | Error |  |
+
+### RecoverySpiritOption
+
+| Field | Type | |
+|---|---|---|
+| `npc_guid` | GUID |  |
+| `durability_loss` | bool | spirit healing has a durability penalty |
+| `cost_known` | bool | currently false: the exact server-configured cost is not exposed |
+| `requires_permission?` | bool |  |
+
 ### Diagnostic
 
 Diagnostic is a versioned, bounded observation. A session event is identified by (session, seq). A harness event instead uses (artifact path, seq). Agent claims never establish game outcomes.
@@ -1492,6 +1531,7 @@ DiagnosticDetails is an allowlist: arbitrary request arguments, results, error m
 
 | Field | Type | |
 |---|---|---|
+| `gear?` | DiagnosticGear |  |
 | `target?` | string |  |
 | `destination?` | DiagnosticDestination |  |
 | `spell_id?` | number |  |
@@ -1513,6 +1553,16 @@ DiagnosticDetails is an allowlist: arbitrary request arguments, results, error m
 | `duration_known?` | bool |  |
 | `quest_log?` | DiagnosticQuestLog |  |
 | `group?` | DiagnosticGroup |  |
+
+### DiagnosticGear
+
+DiagnosticGear reports observed equipment condition, not a repair plan.
+
+| Field | Type | |
+|---|---|---|
+| `money` | number |  |
+| `main_hand_broken` | bool |  |
+| `broken_slots` | string[] |  |
 
 ### DiagnosticDestination
 

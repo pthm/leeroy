@@ -70,6 +70,7 @@ func actWorld(t *testing.T, stubs, body string) *script.Engine {
 	if err := e.DoString(stubs); err != nil {
 		t.Fatal(err)
 	}
+	installTestRecovery(t, e)
 	if err := e.DoString(actLua); err != nil {
 		t.Fatal(err)
 	}
@@ -94,12 +95,15 @@ const actBase = `
     ghost = function() return not alive end, in_combat = function() return false end, casting = function() return nil end,
     health = function() return {current = 100, max = 100} end, power = function() return {type = "mana", current = 100, max = 100} end}
   alive = true
-  world = {ground_z = function(x, y, z) return 0 end}
+  me.gear = function() return {broken={}} end
+  me.money = function() return 100 end
+  world = {ground_z = function(x, y, z) return z or 0 end, path = function() return {gap=0} end, in_sight = function() return true end}
   moves = {}
   move = {to = function(x, y, z) moves[#moves + 1] = {x = x, y = y} pos = {x = x, y = y, z = 0} return {ok = true} end,
     stop = function() return {ok = true} end, face = function() faced = (faced or 0) + 1 return {ok = true} end}
   move._acquire = function() return {ok=true, data={lease_id=1}} end
   move._release = function() return {ok=true} end
+  move._check = function() return {ok=true} end
   mobs = {}
   units = {nearby = function() return mobs end, attackers = function() return {} end, get = function() return nil end}
   spells = {usable = function() return true end, known = function() return true end, info = function() return {range = 30} end}
@@ -155,17 +159,18 @@ func TestActCorpseRunSafeSpot(t *testing.T) {
 	}
 }
 
-// act.recover{spirit = true} at a graveyard camped by hostiles runs to the corpse instead of resurrecting into them.
-func TestActRecoverCampedGraveyard(t *testing.T) {
+// Explicit spirit permission still refuses a camped healer site.
+func TestActRecoverRefusesCampedGraveyard(t *testing.T) {
 	e := actWorld(t, actBase+`
   alive = false
   mobs = {{name = "Gray Forest Wolf", level = 8, alive = true, reaction = "hostile", attackable = true, x = 5, y = 5}}
+  mobs[#mobs+1] = {guid="9",x=0,y=0,z=0,distance=0,roles={"spirit_healer"}}
   death = {corpse = function() return {x = 0, y = 0, z = 0, reclaim_in = 0} end,
     reclaim = function() alive = true return {ok = true} end,
     spirit_res = function() spirit = true alive = true return {ok = true} end}`,
 		`mobs_at_corpse = false r = act.recover{spirit = true, rest = false}`)
-	if v, _ := e.Eval(`return r.ok, spirit == true`); fmt.Sprint(v) != "[true false]" {
-		t.Fatalf("ok, used the spirit healer = %v, want the corpse run", v)
+	if v, _ := e.Eval(`return r.ok, spirit == true`); fmt.Sprint(v) != "[false false]" {
+		t.Fatalf("ok, used the spirit healer = %v, want refusal", v)
 	}
 }
 

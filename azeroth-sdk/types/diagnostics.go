@@ -24,6 +24,7 @@ type Diagnostic struct {
 // DiagnosticDetails is an allowlist: arbitrary request arguments, results, error messages, commands,
 // prompts and chat are never copied here. Status is explicitly agent-authored and limited to 512 bytes.
 type DiagnosticDetails struct {
+	Gear          *DiagnosticGear        `json:"gear,omitempty"`
 	Target        string                 `json:"target,omitempty"`
 	Destination   *DiagnosticDestination `json:"destination,omitempty"`
 	SpellID       uint32                 `json:"spell_id,omitempty"`
@@ -75,4 +76,11 @@ type DiagnosticDestination struct {
 	Y   float64  `json:"y"`
 	Z   *float64 `json:"z,omitempty"`
 	Map *uint32  `json:"map,omitempty"`
+}
+
+// DiagnosticGear reports observed equipment condition, not a repair plan.
+type DiagnosticGear struct {
+	Money          uint32   `json:"money"`
+	MainHandBroken bool     `json:"main_hand_broken"`
+	BrokenSlots    []string `json:"broken_slots"`
 }

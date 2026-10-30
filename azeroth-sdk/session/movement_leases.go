@@ -193,6 +193,15 @@ func (m *movementRequests) steer(taskID int, fn func() *script.Outcome) *script.
 	return fn()
 }
 func (m *movementRequests) registerLeases(e *script.Engine) {
+	e.InternalFunc("move._check", "() → ActResult", func() map[string]any {
+		id, _, _ := e.CurrentTaskIdentity()
+		o := m.steer(id, func() *script.Outcome { return script.Ok(nil) })
+		r := map[string]any{"ok": o.OK, "op": "move.with_control", "data": o.Data}
+		if !o.OK {
+			r["error"] = map[string]any{"code": o.Code, "message": o.Message}
+		}
+		return r
+	})
 	e.InternalFunc("move._acquire", "(priority, queue_timeout_s, max_s) → Request", func(priority string, queue, max float64) map[string]any {
 		id, name, call := e.CurrentTaskIdentity()
 		return m.acquire(id, name, call, priority, queue, max)

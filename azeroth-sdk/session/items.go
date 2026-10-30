@@ -912,7 +912,7 @@ func (b *Bot) setupItems() {
 			}
 			px, py, pz, _, m := w.Position()
 			res, err := b.nav.FindPath(m, navigation.Point3D{X: px, Y: py, Z: pz}, navigation.Point3D{X: x, Y: y, Z: z})
-			if err != nil || res == nil || len(res.Points) == 0 {
+			if err != nil || res == nil || !res.Found || len(res.Points) == 0 {
 				return nil
 			}
 			length, prev := 0.0, navigation.Point3D{X: px, Y: py, Z: pz}

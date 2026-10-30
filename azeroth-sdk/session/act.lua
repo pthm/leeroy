@@ -514,6 +514,7 @@ function A.fly(o)
 end
 
 -- ---------- recovery ----------
+local recovery_danger
 function A.rest(o)
   o = o or {}
   local deadline, attempted, steps = now() + (o.max_s or 40) * 1000, {}, {}
@@ -524,6 +525,9 @@ function A.rest(o)
   step(steps, "move.stop", stopped)
   if not stopped.ok then return finish(stopped) end
   while A.hp() < (o.hp or 0.95) or A.mana() < (o.mana or 0.9) do
+    if not me.alive() or me.ghost() then return finish(A.fail("act.rest", "not_alive", "cannot rest while dead")) end
+    if o.safe then local control=move._check(); if not control.ok then return finish(control) end end
+    if o.safe and recovery_danger(me.position()).state ~= "clear" then return finish(A.fail("act.rest", "unsafe_recovery", "resting location became hostile or unverified")) end
     if me.in_combat() then return finish(A.fail("act.rest", "attacked", "attacked while resting")) end
     if now() >= deadline then return finish(A.fail("act.rest", "rest_timeout", "requested health and mana thresholds were not reached")) end
     for _, need in ipairs({{kind = "Food", low = A.hp() < (o.hp or 0.95)}, {kind = "Drink", low = A.mana() < (o.mana or 0.9)}}) do
@@ -556,98 +560,256 @@ function A.danger(x, y, r)
   end
   return out
 end
--- safe_spot: of the points on a ring around (x, y), the one farthest from danger; nil when nothing hostile is near
-local function safe_spot(x, y, radius)
-  local foes = A.danger(x, y, radius + 30)
-  if #foes == 0 then return nil end
-  local best, far = nil, -1
-  for k = 0, 11 do
-    local a = k * math.pi / 6
-    local px, py = x + radius * math.cos(a), y + radius * math.sin(a)
-    local near = math.huge
-    for _, u in ipairs(foes) do near = math.min(near, math.sqrt((u.x - px) ^ 2 + (u.y - py) ^ 2)) end
-    if near > far then best, far = { x = px, y = py }, near end
+-- Recovery has one deadline and one resurrection-attempt budget across methods.
+local function recovery_context(o, id)
+  local c = {deadline = now() + (o.timeout_s or 180) * 1000, id = id,
+    limit = o.max_attempts or 2, data = {state = "dead", attempts = 0, steps = {}}}
+  function c:state(state)
+    if self.data.state ~= state or self.reported_attempts ~= self.data.attempts then
+      self.reported_attempts = self.data.attempts
+      self.data.state = state
+      death._recovery_state(state, self.data.attempts)
+    end
   end
-  return best
+  function c:fail(code, message, cause)
+    if cause then self.data.last_error = cause.error; self.data.failed_step = cause.op; self.data.action = cause.data end
+    return {op = "act.recover", ok = false, data = self.data, error = {code = code, message = message}}
+  end
+  function c:guard()
+    if now() >= self.deadline then return self:fail("recovery_timeout", "recovery deadline expired") end
+    local control = move._check()
+    if not control.ok then return self:fail(control.error.code, control.error.message, control) end
+    if self.id then
+      local r = death._recovery_check(self.id)
+      if not r.ok then return self:fail(r.error.code, r.error.message, r) end
+    end
+  end
+  function c:sleep(seconds)
+    local r = self:guard(); if r then return r end
+    wait(math.max(0, math.min(seconds, 1, (self.deadline-now())/1000)))
+    return self:guard()
+  end
+  function c:action(op, fn, seconds)
+    local r = self:guard(); if r then return r end
+    r = await(fn(), math.max(0.001, math.min(seconds or 10, (self.deadline-now())/1000)))
+    self.data.steps[#self.data.steps+1] = {op = op, ok = r.ok, request_id = r.id, error = r.error}
+    local ended = self:guard(); if ended then return ended end
+    if not r.ok then
+      local failed = self:fail(r.error.code, r.error.message, r)
+      self.data.failed_step = op
+      return failed
+    end
+    return r
+  end
+  function c:finish(r)
+    self.data.alive = me.alive() and not me.ghost()
+    if r.ok and not self.data.alive then r = self:fail("not_alive", "resurrection did not leave the character alive") end
+    self:state(r.ok and "done" or (r.error.code == "needs_repair" and "needs_repair" or "attention"))
+    if not r.ok and r.data ~= self.data then self.data.control = r.data end
+    if self.data.steps and #self.data.steps == 0 then self.data.steps = nil end
+    r.data = self.data
+    return r
+  end
+  return c
 end
--- corpse_run: walk to the corpse and reclaim it; with hostiles around the corpse (usually what killed you), reclaim
--- from the side of the reclaim circle farthest from them instead of on top of them (safe = false: on the spot)
-function A.corpse_run(o)
-  o = o or {}
-  local moved = false
-  while not me.alive() do
-    local c = death.corpse()
-    if not c then wait(1) -- asked the server
-    elseif A.dist(c.x, c.y) > 25 and not moved then
-      local r = A.go_to{ x = c.x, y = c.y, z = c.z, tolerance = 15 }
-      if not r.ok then return wrapped("act.corpse_run", r) end
-    elseif o.safe ~= false and not moved then
-      moved = true
-      -- the edge of the reclaim circle (the server allows ~39 yd; 32 leaves room): at 24 yd a mob five levels up
-      -- still had you in its ~25 yd aggro radius
-      local spot = safe_spot(c.x, c.y, 32)
-      if spot then
-        log("act.corpse_run: hostiles at the corpse, reclaiming from " .. math.floor(spot.x) .. "," .. math.floor(spot.y))
-        A.go_to{ x = spot.x, y = spot.y, tolerance = 3 }
+
+-- Conservative local evidence only: a hostile on an uncertain floor is not
+-- discarded as safe. Shared arbitrary-point floor/LOS queries remain route work.
+recovery_danger = function(p)
+  if not p.z then return {state = "unknown", reason = "missing_floor"} end
+  local ground = world.ground_z(p.x, p.y, p.z)
+  if ground == nil or math.abs(ground-p.z) > 3 then return {state = "unknown", reason = "unverified_floor"} end
+  if A.dist(p.x, p.y) > 45 then return {state = "unknown", reason = "outside_local_observation"} end
+  local hostiles = {}
+  for _, u in ipairs(units.nearby(80)) do
+    if u.alive and u.reaction == "hostile" and u.attackable ~= false then
+      local gap = math.sqrt((u.x-p.x)^2 + (u.y-p.y)^2)
+      if gap <= math.max(25, u.aggro_radius or 0) + 2 then hostiles[#hostiles+1] = u end
+    end
+  end
+  return {state = #hostiles > 0 and "hostile" or "clear", hostiles = hostiles}
+end
+local function recovery_move(c, p, tolerance)
+  local ended = c:guard(); if ended then return ended end
+  if p.map and me.position().map and p.map ~= me.position().map then return c:fail("unreachable", "recovery point is on another map") end
+  local ground = world.ground_z(p.x, p.y, p.z)
+  if ground == nil or math.abs(ground-p.z) > 3 then return c:fail("wrong_floor", "recovery point's floor could not be confirmed") end
+  local path = world.path(p.x, p.y, p.z)
+  if not path or path.gap > 3 then return c:fail("unreachable", "no complete path to the recovery point") end
+  c:state("ghost_travel")
+  local r = c:action("move.to", function() return move.to(p.x, p.y, p.z) end, 120)
+  if not r.ok then return r end
+  local here = me.position()
+  if math.abs(here.z-p.z) > 3 then return c:fail("wrong_floor", "walk ended on another floor") end
+  if A.dist(p.x, p.y) > (tolerance or 4) or (r.data and r.data.no_path) then return c:fail("unreachable", "walk did not confirm the recovery point") end
+  return r
+end
+local function corpse_recovery(c, o, attempt_limit)
+  if me.alive() and not me.ghost() then return A.ok("act.corpse_run") end
+  if not me.ghost() then return c:fail("not_a_ghost", "release before running to the corpse") end
+  local corpse
+  while not corpse do
+    local ended = c:guard(); if ended then return ended end
+    corpse = death.corpse()
+    if not corpse then ended = c:sleep(0.5); if ended then return ended end end
+  end
+  if A.dist(corpse.x, corpse.y, corpse.z) > 35 then
+    local r = recovery_move(c, corpse, 4); if not r.ok then return r end
+  end
+  local target = {x = corpse.x, y = corpse.y, z = corpse.z, map = corpse.map}
+  if o.safe ~= false and recovery_danger(target).state ~= "clear" then
+    local best, margin
+    for k=0,11 do
+      local a = k*math.pi/6
+      local p = {x=corpse.x+32*math.cos(a), y=corpse.y+32*math.sin(a), z=corpse.z, map=corpse.map}
+      if recovery_danger(p).state == "clear" then
+        local nearest = math.huge
+        for _, u in ipairs(units.nearby(80)) do
+          if u.alive and u.reaction == "hostile" then nearest = math.min(nearest, math.sqrt((u.x-p.x)^2+(u.y-p.y)^2)) end
+        end
+        if not margin or nearest > margin then best, margin = p, nearest end
       end
-    elseif c.reclaim_in > 0 then wait(c.reclaim_in)
+    end
+    if not best then return c:fail("unsafe_recovery", "no observed clear reclaim point on the corpse floor") end
+    target = best
+  end
+  if A.dist(target.x,target.y,target.z) > 3 then
+    local r = recovery_move(c,target,3); if not r.ok then return r end
+  end
+  while c.data.attempts < attempt_limit do
+    local ended = c:guard(); if ended then return ended end
+    if me.alive() and not me.ghost() then return A.ok("act.corpse_run") end
+    local current = death.corpse()
+    if not current then return c:fail("corpse_unavailable", "corpse state became unavailable") end
+    local here = me.position()
+    if (current.map and here.map and current.map ~= here.map) or math.abs(here.z-current.z)>3 or A.dist(current.x,current.y,current.z)>35 then
+      return c:fail("wrong_floor", "not within reclaim range on the corpse floor")
+    end
+    if world.in_sight(current.x,current.y,current.z) ~= true then return c:fail("unsafe_recovery", "line of sight to the corpse is blocked or unknown") end
+    if o.safe ~= false and recovery_danger(here).state ~= "clear" then return c:fail("unsafe_recovery", "reclaim location is hostile or unverified") end
+    if current.reclaim_in > 0 then
+      c:state("reclaim_wait"); ended = c:sleep(current.reclaim_in); if ended then return ended end
     else
-      local r = await(death.reclaim())
-      if r.ok == false then wait(1) end
+      c.data.attempts = c.data.attempts + 1; c:state("reclaiming")
+      local r = c:action("death.reclaim", death.reclaim, 5)
+      if r.ok then
+        if me.alive() and not me.ghost() then return r end
+        r = c:fail("not_alive", "reclaim response did not confirm resurrection")
+      end
+      if r.error.code == "recovery_timeout" or r.error.code == "task_paused" then return r end
+      c.data.last_error = r.error
+      if c.data.attempts < attempt_limit then ended = c:sleep(1); if ended then return ended end end
     end
   end
-  return result("act.corpse_run", true)
+  return c:fail("retry_exhausted", "corpse reclaim attempt limit reached")
 end
-function A.spirit_res()
-  while not me.alive() do
-    local healer
-    for _, u in ipairs(units.nearby(60)) do
-      for _, role in ipairs(u.roles or {}) do if role == "spirit_healer" then healer = healer or u end end
-    end
-    if not healer and graveyard and A.dist(graveyard.x, graveyard.y) > 20 then -- walked off: back to where you released
-      local r = A.go_to{ x = graveyard.x, y = graveyard.y, z = graveyard.z, tolerance = 10 }
-      if not r.ok then return wrapped("act.spirit_res", r) end
-    elseif not healer then
-      return result("act.spirit_res", false, nil, "not_found", "no spirit healer in sight (they stand at graveyards: azworld can find one)")
-    end
-    if healer and healer.distance > 5 then A.approach{ unit = healer.guid, range = 5 }
-    elseif healer then await(death.spirit_res(healer.guid)) end
+local function spirit_recovery(c)
+  if me.alive() and not me.ghost() then return A.ok("act.spirit_res") end
+  if not me.ghost() then return c:fail("not_a_ghost", "release before spirit resurrection") end
+  local healer
+  for _, u in ipairs(units.nearby(60)) do
+    for _, role in ipairs(u.roles or {}) do if role == "spirit_healer" then healer = healer or u end end
   end
-  return result("act.spirit_res", true)
+  if not healer then return c:fail("not_found", "no spirit healer is visible") end
+  c.data.spirit_option = {npc_guid=healer.guid, durability_loss=true, cost_known=false}
+  if recovery_danger(healer).state ~= "clear" then return c:fail("unsafe_recovery", "spirit healer location is hostile or unverified") end
+  if healer.distance > 4 then
+    local r = recovery_move(c,healer,4); if not r.ok then return r end
+  end
+  while c.data.attempts < c.limit do
+    if me.alive() and not me.ghost() then return A.ok("act.spirit_res") end
+    local ended = c:guard(); if ended then return ended end
+    if recovery_danger(me.position()).state ~= "clear" then return c:fail("unsafe_recovery", "spirit healer location is hostile or unverified") end
+    if world.in_sight(healer.x,healer.y,healer.z) ~= true then return c:fail("unsafe_recovery", "spirit healer line of sight is blocked or unknown") end
+    c.data.attempts = c.data.attempts + 1; c:state("spirit_healer")
+    local r = c:action("death.spirit_res",function() return death.spirit_res(healer.guid) end,5)
+    if r.ok and me.alive() and not me.ghost() then return r end
+    if not r.ok and (r.error.code == "recovery_timeout" or r.error.code == "task_paused") then return r end
+    c.data.last_error = r.error or {code="not_alive",message="spirit resurrection did not leave the character alive"}
+    if c.data.attempts < c.limit then ended = c:sleep(1); if ended then return ended end end
+  end
+  return c:fail("retry_exhausted", "spirit resurrection attempt limit reached")
 end
--- recover: back to life however it takes: release, run to the corpse (the spirit healer if that fails, or with
--- spirit = true), then rest unless rest = false. Pair it with a death handler:
---   events.on("death", function() act.recover() end, "recover")
--- the spirit healer brings you back where you stand: no use when hostiles are camping the graveyard
-local function graveyard_camped()
-  local p = me.position()
-  local foes = A.danger(p.x, p.y, 30)
-  return #foes > 0, foes
+local function recovery_snapshot(c)
+  c.data.health,c.data.power,c.data.gear,c.data.money = me.health(),me.power(),me.gear(),me.money()
+  if not c.data.health or not c.data.power or not c.data.gear or c.data.money == nil then return c:fail("state_unavailable", "post-resurrection state is unavailable") end
+  if c.data.gear.weapon and c.data.gear.weapon.broken then
+    c.data.repair_options = {}
+    for _, u in ipairs(units.nearby(80)) do
+      for _, role in ipairs(u.roles or {}) do if role=="repair" and #c.data.repair_options<20 then c.data.repair_options[#c.data.repair_options+1]=u end end
+    end
+    if #c.data.repair_options == 0 then c.data.repair_options = nil end
+    return c:fail("needs_repair", "main-hand weapon is broken")
+  end
+end
+local function recovery_postconditions(c,o)
+  local ended = c:guard(); if ended then return ended end
+  if not me.alive() or me.ghost() then return c:fail("not_alive", "character died again; recovery will not repeat the death cycle") end
+  local snapshot_error = recovery_snapshot(c); if snapshot_error then return snapshot_error end
+  if o.rest ~= false then
+    if recovery_danger(me.position()).state ~= "clear" then return c:fail("unsafe_recovery", "cannot rest at a hostile or unverified location") end
+    c:state("resting")
+    local r = A.rest{safe=true,max_s=math.min(40,math.max(0.001,(c.deadline-now())/1000))}
+    if not r.ok then return c:fail(r.error.code,r.error.message,r) end
+    ended=c:guard();if ended then return ended end
+    if not me.alive() or me.ghost() then return c:fail("not_alive", "character died while resting") end
+    snapshot_error = recovery_snapshot(c); if snapshot_error then return snapshot_error end
+  end
+  return A.ok("act.recover")
+end
+function A.corpse_run(o)
+  o=o or {};local c=recovery_context(o)
+  local r=corpse_recovery(c,o,c.limit)
+  if r.ok then r=recovery_postconditions(c,{rest=false}) end
+  return c:finish(r)
+end
+function A.spirit_res(o)
+  o=o or {};local c=recovery_context(o)
+  -- Calling this helper directly is explicit permission for the healer cost.
+  local r=spirit_recovery(c)
+  if r.ok then r=recovery_postconditions(c,{rest=false}) end
+  return c:finish(r)
 end
 function A.recover(o)
-  o = o or {}
-  if me.alive() then return result("act.recover", true) end
-  if not me.ghost() then
-    local r = A.release()
-    if not r.ok then return wrapped("act.recover", r) end
-  end
-  local spirit = o.spirit
-  if spirit and o.safe ~= false then
-    local camped, foes = graveyard_camped()
-    if camped then
-      log("act.recover: " .. #foes .. " hostile creature(s) at the graveyard (" .. tostring(foes[1].name) .. ", level " ..
-        tostring(foes[1].level) .. "): running to the corpse instead of the spirit healer")
-      spirit = false
+  o=o or {}
+  local attempt=death._recovery_begin(o.timeout_s or 180)
+  if attempt.error then error(attempt.error,2) end
+  if not attempt.owner then return await(attempt.request,601) end
+  local c=recovery_context(o,attempt.id)
+  if not me.alive() or me.ghost() then c:state(me.ghost() and "ghost_travel" or "dead") end
+  local ok,r=pcall(movement_scope,"recovery",5,o.timeout_s or 180,function()
+    local ended=c:guard();if ended then return ended end
+    if not me.alive() or me.ghost() then
+      if not me.ghost() then
+        c:state("releasing")
+        local released=c:action("death.release",death.release,10)
+        if not released.ok then return released end
+        if not me.ghost() then return c:fail("not_a_ghost","release did not produce a ghost") end
+        graveyard=me.position()
+      end
+      local recovered
+      if o.spirit then recovered=spirit_recovery(c)
+      else recovered=corpse_recovery(c,o,o.allow_spirit_fallback and math.max(1,c.limit-1) or c.limit) end
+      if not recovered.ok and not o.spirit and o.allow_spirit_fallback and c.data.attempts<c.limit then
+        local ended=c:guard();if ended then return ended end
+        recovered=spirit_recovery(c)
+      end
+      if not recovered.ok then
+        for _,u in ipairs(units.nearby(60)) do for _,role in ipairs(u.roles or {}) do
+          if role=="spirit_healer" then c.data.spirit_option={npc_guid=u.guid,durability_loss=true,cost_known=false,requires_permission=not(o.spirit or o.allow_spirit_fallback)} end
+        end end
+        return recovered
+      end
     end
+    return recovery_postconditions(c,o)
+  end)
+  if not ok then
+    local failed=c:finish(c:fail("script_error","recovery raised a Lua error"))
+    death._recovery_finish(attempt.id,failed)
+    error(r,0)
   end
-  local r = spirit and A.spirit_res() or A.corpse_run{safe = o.safe}
-  if not r.ok and not spirit then r = A.spirit_res() end
-  r = wrapped("act.recover", r)
-  if r.ok and o.rest ~= false then
-    local rested = A.rest()
-    if not rested.ok then return wrapped("act.recover", rested) end
-  end
-  return r
+  r=c:finish(r)
+  return death._recovery_finish(attempt.id,r)
 end
 
 -- task.keep: a script that doesn't stop when it ends. It runs fn as a task called name and runs it again each time
@@ -676,7 +838,7 @@ doc("task.keep", "(name, fn, ...) → id", "run fn as a task and run it again wh
 -- and the ones that take an options table check they got one (act.loot_nearby(10) means act.loot_nearby{dist = 10})
 local takes_options = { go_to = true, travel = true, approach = true, follow = true, reach_npc = true, accept = true,
   turn_in = true, vendor = true, train = true, talk = true, use_object = true, rest = true, corpse_run = true,
-  recover = true, loot_nearby = true, fly = true, make_room = true }
+  recover = true, spirit_res = true, loot_nearby = true, fly = true, make_room = true }
 local npc_options = {
   reach_npc = "npc_entry npc_guid x y z",
   accept = "npc_entry npc_guid x y z quest",
@@ -741,14 +903,15 @@ end
 local helper_options = {
   use_object = "entry count quest_id x y z radius max_attempts timeout_s",
   loot_nearby = "dist make_room",
-  rest = "hp mana max_s",
+  rest = "hp mana max_s safe",
   make_room = "",
   go_to = "x y z tolerance tries unstuck on_attacked",
   travel = "points tolerance unstuck on_attacked",
   approach = "unit range timeout",
   follow = "name distance until timeout_s",
-  corpse_run = "safe",
-  recover = "spirit rest safe",
+  corpse_run = "safe timeout_s max_attempts",
+  spirit_res = "timeout_s max_attempts",
+  recover = "spirit rest safe allow_spirit_fallback timeout_s max_attempts",
 }
 local function validate_helper_options(n, o)
   if n == "consume" then
@@ -767,7 +930,7 @@ local function validate_helper_options(n, o)
   if n == "follow" and not o["until"] and not o.timeout_s then bad("until or timeout_s is required") end
   if n == "follow" and o.timeout_s and (type(o.timeout_s) ~= "number" or not (o.timeout_s > 0 and o.timeout_s <= 600)) then bad("timeout_s must be >0 and <=600") end
   if n == "follow" and (type(o.name) ~= "string" or o.name == "") then bad("name must be a nonempty player name") end
-  for _, k in ipairs({"unstuck", "safe", "spirit", "rest"}) do
+  for _, k in ipairs({"unstuck", "safe", "spirit", "rest", "allow_spirit_fallback"}) do
     if o[k] ~= nil and type(o[k]) ~= "boolean" then bad(k .. " must be boolean") end
   end
   for _, k in ipairs({"on_attacked", "until"}) do
@@ -790,6 +953,10 @@ local function validate_helper_options(n, o)
   end
   if (o.x == nil) ~= (o.y == nil) then bad("coordinates require both x and y") end
   if o.make_room ~= nil and type(o.make_room) ~= "boolean" then bad("make_room must be boolean") end
+  if n == "recover" or n == "corpse_run" or n == "spirit_res" then
+    if o.timeout_s and o.timeout_s > 600 then bad("timeout_s must be at most 600") end
+    if o.max_attempts and o.max_attempts > 2 then bad("max_attempts must be 1 or 2") end
+  end
   if n == "use_object" then
     if (o.max_attempts or 3) > 32 then bad("max_attempts must be at most 32") end
     if not o.quest_id and (o.count or 1) > (o.max_attempts or 3) then bad("count cannot exceed max_attempts") end
@@ -814,7 +981,7 @@ local function validate_helper_options(n, o)
   end
 end
 local movement_helpers = {}
-for _, n in ipairs({"go_to", "travel", "approach", "follow", "reach_npc", "accept", "turn_in", "vendor", "train", "talk", "use_object", "rest", "corpse_run", "spirit_res", "recover", "loot_nearby", "fly"}) do movement_helpers[n] = true end
+for _, n in ipairs({"go_to", "travel", "approach", "follow", "reach_npc", "accept", "turn_in", "vendor", "train", "talk", "use_object", "rest", "corpse_run", "spirit_res", "loot_nearby", "fly"}) do movement_helpers[n] = true end
 for _, n in ipairs({ "go_to", "travel", "approach", "follow", "reach_npc", "accept", "turn_in", "vendor", "train", "talk",
   "use_object", "rest", "release", "corpse_run", "spirit_res", "recover", "loot_nearby", "fly", "cast", "buff", "consume", "make_room" }) do
   local f = A[n]
@@ -832,7 +999,11 @@ for _, n in ipairs({ "go_to", "travel", "approach", "follow", "reach_npc", "acce
       validate_helper_options(n, o)
       if movement_helpers[n] then
         local priority = (n == "recover" or n == "corpse_run" or n == "spirit_res") and "recovery" or "normal"
-        return wrapped("act." .. n, movement_scope(priority, 5, 600, f, o, ...))
+        local r = wrapped("act." .. n, movement_scope(priority, 5, ((n == "corpse_run" or n == "spirit_res") and o and o.timeout_s) or 600, f, o, ...))
+        if (n == "corpse_run" or n == "spirit_res") and (not r.data or not r.data.state) then
+          r.data = {state = r.ok and "done" or "attention", attempts = 0, control = r.data}
+        end
+        return r
       end
       return wrapped("act." .. n, f(o, ...))
     end, ...)
@@ -874,10 +1045,10 @@ for name, d in pairs({
   talk = { "{npc_entry|npc_guid, fn [, x, y, z]} → ActResult", "walk to an NPC and return fn(npc) as ActResult; fn must return a completed action result" },
   use_object = { "{entry [, count = 1, quest_id, x, y, z, radius = 80, max_attempts = 3, timeout_s = 60]} → ActResult<ObjectUse>", "use objects count times, or until observed progress/completion of quest_id; absent quest, missing progress, attempt limit or deadline fails with partial counts; at most 32 attempts" },
   loot_nearby = { "{[dist = 8, make_room = false]} → ActResult<Looted>", "loot at most 32 nearby corpses per call; fail on approach or loot errors with partial items/money. Destruction is opt-in with make_room = true, with one retry per corpse" },
-  rest = { "{[hp = 0.95, mana = 0.9, max_s = 40]} → ActResult<Rested>", "wait for both requested fractions (0..1); no consumable allows passive regeneration. Item-use failures propagate; rest_timeout includes achieved fractions" },
+  rest = { "{[hp = 0.95, mana = 0.9, max_s = 40, safe = false]} → ActResult<Rested>", "wait for both requested fractions (0..1); no consumable allows passive regeneration. Item-use failures propagate; rest_timeout includes achieved fractions. safe=true rechecks local floor/hostile evidence each pass" },
   fly = { "{to = node id or name [, npc_entry or npc_guid]} → ActResult<Flight>", "walk to a flight master nearby, fly to a known destination and wait until you land" },
   release = { "() → ActResult", "release your spirit" },
-  corpse_run = { "{[safe = true]} → ActResult", "as a ghost, walk to your corpse and reclaim it; with hostiles at the corpse it reclaims from the far side of the reclaim circle, 32 yd out (safe = false: on the spot)" },
-  spirit_res = { "() → ActResult", "as a ghost, resurrect at the nearest spirit healer in sight (costs durability)" },
-  recover = { "{[spirit = false, rest = true, safe = true]} → ActResult", "back to life: release, corpse run (reclaiming away from hostiles at the corpse), the spirit healer if that fails or with spirit = true (unless hostiles camp the graveyard: then the corpse run), then rest" },
+  corpse_run = { "{[safe = true, timeout_s = 180, max_attempts = 2]} → ActResult<Recovery>", "bounded ghost travel and reclaim; confirm path endpoint, floor, reclaim distance, line of sight and timer. Default safe=true rejects nearby hostiles or unverified floor evidence. timeout_s >0..600, max_attempts 1..2; preserve failed movement and resurrection steps; no healer fallback; check gear after resurrection; needs_repair for broken main hand" },
+  spirit_res = { "{[timeout_s = 180, max_attempts = 2]} → ActResult<Recovery>", "explicitly authorize spirit-healer resurrection and its durability penalty. Reject hostile or unverified healer sites, propagate movement failures, require observed resurrection, and check gear. At most 2 attempts within timeout_s >0..600; no rest or automatic farming restart" },
+  recover = { "{[spirit = false, allow_spirit_fallback = false, rest = true, safe = true, timeout_s = 180, max_attempts = 2]} → ActResult<Recovery>", "one session recovery attempt: duplicate callers join the first caller's policy and result. Release, reclaim and optionally rest; healer use requires spirit=true or allow_spirit_fallback=true. timeout_s >0..600 and at most 2 total resurrection attempts across methods; fallback reserves the second attempt when possible. Return attention on failure or needs_repair for a broken main hand; never restart another task. Synchronous path query cancellation remains unsupported; exact healer cost is unavailable" },
 }) do doc("act." .. name, d[1], d[2]) end

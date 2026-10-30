@@ -49,6 +49,16 @@ func (e *Engine) RecordObservation(kind string, details types.DiagnosticDetails)
 	e.diag.emit(types.Diagnostic{Kind: kind, Details: details})
 }
 
+// RecordObservationEvent accepts typed session evidence with optional attribution.
+// Session identity, time and sequence are always assigned by the diagnostic stream.
+func (e *Engine) RecordObservationEvent(event types.Diagnostic) { e.diag.emit(event) }
+
+// RecordTaskObservation is called from a registered function with the engine lock held.
+func (e *Engine) RecordTaskObservation(kind string, details types.DiagnosticDetails) {
+	id, name, call := e.CurrentTaskIdentity()
+	e.diag.emit(types.Diagnostic{Kind: kind, TaskID: id, Task: name, Call: call, Details: details})
+}
+
 func (e *Engine) endTaskDiagnostics(t *Task, code string) {
 	for i := len(t.calls) - 1; i >= 0; i-- {
 		e.endDiagnostic(t.calls[i], false, code, 0, 0)

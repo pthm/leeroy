@@ -225,7 +225,7 @@ func (m *movementRequests) cancelTask(taskID int, reason string) {
 		if m.lease == l {
 			m.invalidateLeaseLocked(script.Fail(reason, "owning task became inactive", m.ownerLocked()))
 		}
-		if reason != "task_paused" {
+		if reason == "task_stopped" || reason == "task_finished" || reason == "script_error" || reason == "session_closed" {
 			delete(m.leases, taskID)
 		}
 	}
