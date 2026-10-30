@@ -34,10 +34,11 @@ end)
   sets what the current task says it's doing.
 - `task.stop(id or name)` stops tasks; `task.stop()` stops every task. By name or with no argument it skips the
   task that calls it, so a script can stop its own name (task.keep won't restart it) and carry on until it returns.
-  A stopped task that was waiting for a walk (`move.to`, `act.go_to`) stops walking; anything else it started (an
-  auto-attack, a cast) carries on.
+  Stopping, pausing, failing, or returning from a task cancels all its active and queued `move.to` requests,
+  including walks it started without awaiting. Other actions it started (an auto-attack, a cast) carry on.
 - `task.pause(id)` takes a waiting task off the schedule (false if it isn't waiting) and `task.resume(id)` puts
-  it back on the same wait: a result or an event that came in meanwhile is still delivered.
+  it back on the same wait: a result or an event that came in meanwhile is still delivered. A walk cancelled
+  by pause stays cancelled after resume; its result has `error.code = "task_paused"`.
 - A task that raises an error ends `failed`; the others keep running. Each end is a `task_finished` event.
 - Every evaluation, task step and `on_tick` call has a 3-second execution limit: a loop must `wait`, `await` or
   `events.wait` on every pass to let the rest run, including passes where nothing happens (a check that returns at
