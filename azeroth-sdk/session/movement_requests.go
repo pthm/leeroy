@@ -20,6 +20,7 @@ type movementBackend struct {
 	position func() types.Position
 	moving   func() bool
 	lock     func() string
+	inactive func(int, string)
 }
 type movementRequest struct {
 	lease                     *movementLease
@@ -31,6 +32,10 @@ type movementRequest struct {
 	queued, started, deadline time.Time
 	planning                  bool
 	noPath                    bool
+}
+type movementInactive struct {
+	task   int
+	reason string
 }
 type movementCompletion struct {
 	id     int
@@ -46,6 +51,7 @@ type movementRequests struct {
 	leases      map[int]*movementLease
 	queue       []*movementRequest
 	completions []movementCompletion
+	inactive    []movementInactive
 	wake        chan struct{}
 	done        chan struct{}
 	closed      bool
@@ -59,9 +65,14 @@ func newMovementRequests(reqs *script.Requests, backend movementBackend) *moveme
 
 // Resolve outside mu: request observers and event listeners may inspect ownership.
 func (m *movementRequests) unlock() {
-	completed := m.completions
-	m.completions = nil
+	completed, inactive := m.completions, m.inactive
+	m.completions, m.inactive = nil, nil
 	m.mu.Unlock()
+	if m.backend.inactive != nil {
+		for _, event := range inactive {
+			m.backend.inactive(event.task, event.reason)
+		}
+	}
 	for _, c := range completed {
 		m.reqs.Resolve(c.id, c.result)
 	}
@@ -327,6 +338,11 @@ func (b *Bot) setupMovementRequests() {
 			return types.Position{X: float64(x), Y: float64(y), Z: float64(z)}
 		},
 		moving: b.IsMoving, lock: b.world.MovementLock,
+		inactive: func(task int, reason string) {
+			if b.routes != nil {
+				b.routes.cancelTask(task, reason)
+			}
+		},
 	})
 	b.moves = m
 	e.OnTaskInactive = m.cancelTask

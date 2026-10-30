@@ -29,12 +29,11 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `act.cast(id [, guid]) → ActResult` | face the target and cast if ready (waits for the result in a task) | [ActResult](#actresult) |
 | `act.consume("Food" \| "Drink") → ActResult<Consumed>` | wait up to 30 seconds for the first matching item to be used; no_consumable if absent (sit still after) | [ActResult](#actresult), [Consumed](#consumed) |
 | `act.corpse_run{[safe = true, timeout_s = 180, max_attempts = 2]} → ActResult<Recovery>` | bounded ghost travel and reclaim; confirm path endpoint, floor, reclaim distance, line of sight and timer. Default safe=true rejects nearby hostiles or unverified floor evidence. timeout_s >0..600, max_attempts 1..2; preserve failed movement and resurrection steps; no healer fallback; check gear after resurrection; needs_repair for broken main hand | [ActResult](#actresult), [Recovery](#recovery) |
-| `act.danger(x, y [, r = 25]) → Creature[]` | living hostile creatures within r yards of a point: check a spot before you go there or come back to life there | [Creature](#creature) |
 | `act.dist(x, y [, z]) → yards` | distance from you (2D without z) |  |
 | `act.fail(op, code, message) → ActResult` | a failed result | [ActResult](#actresult) |
 | `act.fly{to = node id or name [, npc_entry or npc_guid]} → ActResult<Flight>` | walk to a flight master nearby, fly to a known destination and wait until you land | [ActResult](#actresult), [Flight](#flight) |
 | `act.follow{name [, distance = 5, until = fn, timeout_s = 600]} → ActResult` | requires until or timeout_s; check until each pass, fail timeout at the deadline (at most 600 seconds), or player_not_visible after 5 seconds of absence | [ActResult](#actresult) |
-| `act.go_to{x, y [, z, tolerance = 4, tries = 3, unstuck = false, on_attacked = nil]} → ActResult` | walk there; tries must be 1..32; when stuck it sidesteps and jumps between tries. unstuck = true adds a last resort (out of combat): the Stuck spell, which hearths you home (error unstuck_home). Pass z indoors and upstairs. Without on_attacked it walks on while mobs hit you and drags them along; with it, it stops whenever something targets you, calls on_attacked(attackers) (your fighting) and then carries on | [ActResult](#actresult) |
+| `act.go_to{x, y [, z, map, tolerance = 4, vertical_tolerance = 3, tries = 3, unstuck = false, on_attacked = nil]} → ActResult` | walk to the requested map and floor; explicit z is never replaced by a floor query. Success requires horizontal and vertical tolerances; wrong_floor/wrong_map/unreachable include observed position and gaps. Without z, select a floor with ground_z or fail. tries is 1..32 for stuck retries; unstuck=true authorizes a last-resort hearth (unstuck_home). on_attacked stops to call your combat handler, then resumes | [ActResult](#actresult) |
 | `act.hp() → 0..1` | your health fraction |  |
 | `act.in_range(id, guid) → bool` | within the spell's range of the unit |  |
 | `act.loot_nearby{[dist = 8, make_room = false]} → ActResult<Looted>` | loot at most 32 nearby corpses per call; fail on approach or loot errors with partial items/money. Destruction is opt-in with make_room = true, with one retry per corpse | [ActResult](#actresult), [Looted](#looted) |
@@ -52,7 +51,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `act.spirit_res{[timeout_s = 180, max_attempts = 2]} → ActResult<Recovery>` | explicitly authorize spirit-healer resurrection and its durability penalty. Reject hostile or unverified healer sites, propagate movement failures, require observed resurrection, and check gear. At most 2 attempts within timeout_s >0..600; no rest or automatic farming restart | [ActResult](#actresult), [Recovery](#recovery) |
 | `act.talk{npc_entry\|npc_guid, fn [, x, y, z]} → ActResult` | walk to an NPC and return fn(npc) as ActResult; fn must return a completed action result | [ActResult](#actresult) |
 | `act.train{npc_entry\|npc_guid, spells [, x, y, z, continue_on_error = false]} → ActResult<TrainErrand>` | learn 1..64 unique requested spells; stop on the first failure unless continue_on_error; return TrainErrand with learned, already_known, failed and remaining IDs | [ActResult](#actresult), [TrainErrand](#trainerrand) |
-| `act.travel{points = {{x, y [, z]}, ...} [, tolerance = 6, unstuck = false, on_attacked = nil]} → ActResult` | go_to each of 1..4096 waypoints (e.g. from azworld route); all waypoint fields are checked before movement starts | [ActResult](#actresult) |
+| `act.travel{points = {{x, y, z}, ...} [, map, tolerance = 4, vertical_tolerance = 3, validate = true, allow_partial = false, unstuck = false, on_attacked = nil]} → ActResult` | validate all 1..64 3D waypoints with world.route before moving, then go_to each while holding movement ownership. Named waypoints accept x,y,z,map. Report first failed waypoint, completed_waypoints and validation evidence. allow_partial=true may walk a known route_unreachable prefix but still returns failure for the requested destination. validate=false permits unverified 2D waypoints; allow_partial then is invalid. Hostile exposure is not yet assessed | [ActResult](#actresult) |
 | `act.turn_in{npc_entry\|npc_guid, quest [, reward = 0, x, y, z]} → ActResult` | walk to the quest ender and turn the quest in | [ActResult](#actresult) |
 | `act.use_object{entry [, count = 1, quest_id, x, y, z, radius = 80, max_attempts = 3, timeout_s = 60]} → ActResult<ObjectUse>` | use objects count times, or until observed progress/completion of quest_id; absent quest, missing progress, attempt limit or deadline fails with partial counts; at most 32 attempts | [ActResult](#actresult), [ObjectUse](#objectuse) |
 | `act.vendor{npc_entry\|npc_guid [, x, y, z, sell_junk = false, repair = false, buy = {{entry, count}, ...}]} → ActResult<VendorErrand>` | perform only requested operations (at least one required, at most 64 purchases); stop on failure and return VendorErrand partial data and steps | [ActResult](#actresult), [VendorErrand](#vendorerrand) |
@@ -338,6 +337,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `world.in_sight(x, y, z) → bool?` | nothing solid (walls, rock, buildings) between your eyes and the point, as the server checks spells; nil without collision data |  |
 | `world.look([radius = 40]) → string` | a top-down text map of what's around you, north up: the ground (higher, lower, no floor), hostile creatures by letter with their aggro range shaded, other creatures, players and lootable corpses, then a line for each: level, distance, direction, o'clock, height above or below you, aggro radius and whether you're inside it, line of sight. wow look prints it |  |
 | `world.path(x, y, z) → Request<PathCheck>` | await a navmesh check from your current 3D position; verified only when both endpoint gaps are <=3 yards. Deadline 15s including queueing, max leg 4096 yards / 1024 tiles, at most 16 pending queries and one active search per session. Identical successful searches are cached (128 entries). Task pause/stop/failure/return and session close cancel pending work. Failures include route_unreachable, route_timeout, route_limit, route_busy and not_available; partial data never authorizes movement. | [Request](#request), [PathCheck](#pathcheck) |
+| `world.route(points [, opts = nil]) → Request<RouteCheck>` | validate 1..64 ordered 3D waypoints from your captured position before walking. points are {x,y,z} tuples or {x=...,y=...,z=...,map=...}; opts accepts only map (default current map), and every point must be on the current map. One 15s deadline covers queueing and all legs; max 4096 yards/1024 tiles per leg and 8192 output points. Shares world.path admission, cancellation and cache. Returns connected navmesh prefix, completed_legs, first blocked_leg and per-leg gaps; partial and timeout results remain failures. Does not assess hostile exposure. | [Request](#request), [RouteCheck](#routecheck) |
 
 ## Types
 
@@ -488,6 +488,41 @@ PathCheck reports a navmesh leg without silently changing the requested floor.
 | `start_gap?` | number | gap from requested start to the first navmesh point |
 | `vertical_gap?` | number | absolute endpoint Z gap |
 | `floor_valid?` | bool | whether both endpoints match requested elevations within 3 yards; absent without a path |
+
+### RouteCheck
+
+RouteCheck certifies connected navmesh legs from the character's captured position.
+
+| Field | Type | |
+|---|---|---|
+| `status` | string | verified, partial, or failed; partial never counts as reaching the requested destination |
+| `reason` | string |  |
+| `map` | number |  |
+| `source` | string | session_navmesh; live hostile exposure is not yet assessed |
+| `from` | Position |  |
+| `destination` | Position |  |
+| `waypoints` | Position[] | connected navmesh prefix, including a partial last leg when known; at most 8192 points |
+| `distance` | number | walk distance of the known prefix, in yards |
+| `completed_legs` | number | number of requested waypoints fully validated |
+| `blocked_leg?` | number | 1-based first failed or unfinished requested waypoint |
+| `legs` | RouteLeg[] | completed checks, including the first failed check when available |
+
+### RouteLeg
+
+RouteLeg is one requested waypoint's navmesh validation, in execution order.
+
+| Field | Type | |
+|---|---|---|
+| `index` | number | 1-based requested waypoint index |
+| `from` | Position |  |
+| `destination` | Position |  |
+| `status` | string |  |
+| `reason` | string |  |
+| `distance` | number |  |
+| `gap?` | number |  |
+| `start_gap?` | number |  |
+| `vertical_gap?` | number |  |
+| `floor_valid?` | bool |  |
 
 ### Resource
 

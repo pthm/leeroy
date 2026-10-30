@@ -124,3 +124,37 @@ func TestMultiRouteArguments(t *testing.T) {
 		t.Fatalf("%+v", got)
 	}
 }
+
+func TestRouteValidationCancelledWithMovementLease(t *testing.T) {
+	for _, code := range []string{"preempted", "lease_timeout"} {
+		t.Run(code, func(t *testing.T) {
+			b := testBot()
+			defer b.lua.Close()
+			n := &cancellableNavigator{blockedMovementNavigator: blockedMovementNavigator{entered: make(chan struct{})}}
+			b.nav = n
+			b.setupActions()
+			seconds := 60.0
+			if code == "lease_timeout" {
+				seconds = 0.02
+			}
+			b.moves.acquire(1, "travel", "", "normal", 5, seconds)
+			id := b.routes.startRoute(1, types.Position{}, []types.Position{{X: 10}, {X: 20}})["id"].(int)
+			<-n.entered
+			// Completion observers can inspect movement ownership without taking a
+			// lock that the invalidation callback still holds.
+			b.lua.Reqs.Observe(id, func(map[string]any) { b.moves.snapshot() })
+			if code == "preempted" {
+				b.moves.acquire(2, "recovery", "", "recovery", 5, 60)
+			} else {
+				time.Sleep(30 * time.Millisecond)
+				b.moves.poll()
+			}
+			routeResult(t, b.routes, id, code)
+			next := b.routes.start(2, 0, navigation.Point3D{}, navigation.Point3D{X: 10})["id"].(int)
+			routeResult(t, b.routes, next, "")
+			if n.calls.Load() != 2 {
+				t.Fatalf("cancelled validator continued: calls=%d", n.calls.Load())
+			}
+		})
+	}
+}

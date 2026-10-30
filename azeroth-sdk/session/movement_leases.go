@@ -70,6 +70,7 @@ func (m *movementRequests) invalidateLeaseLocked(reason *script.Outcome) {
 		return
 	}
 	l.failure = reason
+	m.inactive = append(m.inactive, movementInactive{l.owner.TaskID, reason.Code})
 	m.lease = nil
 	if m.active != nil {
 		m.finishLocked(m.active, reason)

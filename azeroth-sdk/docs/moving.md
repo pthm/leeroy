@@ -38,14 +38,32 @@ Where things are from where you stand, walking and its traps. The rest of the SD
 - Cancellation reaches tile loading, lock waits, sliced polygon search, and smoothing. A cancelled planner
   cannot publish a late movement path. Cancellation is cooperative: a local file read already in the kernel
   or one bounded Detour operation must return first. Floor/LOS helper queries remain synchronous.
-  Multi-leg `world.route`, default travel validation, shared danger estimates and the helper's full 3D
-  arrival contract remain outstanding.
+  Movement-lease preemption or expiry also cancels that task's pending route checks, freeing the search
+  slot for the next owner. Shared danger estimates and route-specific diagnostic events remain outstanding.
+- `await(world.route(points, {map=...}))` checks an ordered route from your captured current position.
+  Supply 1..64 3D waypoints as `{x,y,z}` tuples or `{x=...,y=...,z=...,map=...}` records; options accept
+  only `map`, defaulting to the current map. Every waypoint must be on that map. One 15-second deadline
+  covers all legs, and output is capped at 8192 navmesh points. The result is a `RouteCheck`: connected
+  `waypoints`, total `distance`, `completed_legs`, and `legs` with each endpoint/floor check. Failure names
+  the first `blocked_leg` (1-based). Timeout and cancellation retain any previously completed prefix.
+  Each leg starts at the preceding check's actual endpoint.
+- `act.travel{points=...}` validates the whole route before moving and holds its movement lease throughout.
+  It requires explicit Z values by default. A blocked route fails before walking; `allow_partial=true`
+  permits walking a known `route_unreachable` prefix, but the result still has `ok=false` because the
+  requested destination was not reached. It never authorizes a timeout prefix. Results include
+  `completed_waypoints`, the failed `waypoint`, and `validation` evidence; an authorized prefix walk sets
+  `partial_walked=true`. `validate=false` permits unverified 2D planning and labels `data.status="unverified"`;
+  it cannot be combined with `allow_partial`. A position change during validation returns `route_stale`.
+  These checks establish walkability; hostile exposure is not yet assessed.
 - `units.nearby` gives each living creature `in_sight`, and for the nearest `path_distance` (the walk) and
   `reachable`; `distance` is a straight line. Their shared 60 ms route budget includes waiting and search;
   an expired check stays unknown rather than being cached as unreachable. A mob in a mine below you can be 30 yards away and a 300-yard walk.
-- Indoors and upstairs, pass the point's z to get the right floor: `move.to(x, y, world.ground_z(x, y, z))`.
-  `act.go_to` without a z uses your own height for points within 80 yards, so it stays on your floor in a cave or a
-  building; for anywhere else, pass the z (azworld gives spawn and quest points with theirs).
+- `act.go_to{x=...,y=...,z=...}` preserves the requested elevation. Success requires horizontal tolerance
+  (default 4 yards) and `vertical_tolerance` (default 3 yards) on the requested/current map.
+  `wrong_floor`, `wrong_map`, and `unreachable` include the observed position, destination and gaps.
+  Without Z it selects a floor using your height as a hint for points within 80 yards, or outdoor ground
+  farther away; unknown ground fails rather than certifying arrival. Supply Z for caves, bridges and
+  buildings. `act.travel` uses these same arrival checks for every waypoint.
 - Walking doesn't fight: `move.to`, `act.go_to` and `act.travel` keep walking while something attacks you, and drag
   it into your next fight. Give `act.go_to` and `act.travel` an `on_attacked = function(attackers) ... end` (your
   fighting) and they stop for whoever attacks you on the way, then carry on.
@@ -62,8 +80,8 @@ Where things are from where you stand, walking and its traps. The rest of the SD
 - Pause, stop, failure and normal task return cancel that task's active and queued walks. Session close clears
   all ownership. Cancellation never counts as arrival. Start a task and await a walk if it must finish.
 - Planning waits at most 15 seconds (`route_timeout`), and walking at most 600 seconds (`timeout`). There is
-  one planning worker per session. Cancellation prevents a late plan from starting movement; interruption of
-  the underlying native path query is still pending, so a slow query can delay subsequent planning.
+  one planning worker per session. Cancellation reaches the underlying search and prevents late publication;
+  the next owner can plan after the cancelled computation exits its current bounded step.
 - Movement-producing `act` helpers hold a lease across nested calls, waypoints and callbacks, including
   `on_attacked`. Their default priority is `normal`; `recover`, `corpse_run` and `spirit_res` use `recovery`.
   `move.face`, `move.turn` and `move.jump` refuse another caller's ownership with `movement_busy`.
