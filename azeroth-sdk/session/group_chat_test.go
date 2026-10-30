@@ -16,6 +16,13 @@ func testBot() *Bot {
 	return &Bot{lua: script.NewEngine(func(string, ...any) {}, nil), world: client.NewWorldClient("t", nil, func(string, ...any) {})}
 }
 
+func TestInventoryCapacityCodeIsCanonical(t *testing.T) {
+	code, _ := inventoryError([]byte{50})
+	if code != "bags_full" {
+		t.Fatal(code)
+	}
+}
+
 // SMSG_PARTY_COMMAND_RESULT (WorldSession::SendPartyResult), SMSG_CHANNEL_NOTIFY (Channel::MakeNotifyPacket,
 // ChannelMgr::MakeNotOnPacket), SMSG_CHAT_PLAYER_NOT_FOUND and SMSG_MESSAGECHAT (ChatHandler::BuildChatPacket).
 func TestGroupChatPackets(t *testing.T) {

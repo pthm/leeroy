@@ -143,6 +143,15 @@ type Object struct {
 	Lit    bool   `json:"lit,omitempty" doc:"the server marks it usable for you (it sparkles): a quest you have needs it (GM characters see every chest lit)"`
 }
 
+// ObjectActivation distinguishes a successful opening cast from a non-casting
+// object state transition. Loot and quest progress remain separate observations.
+type ObjectActivation struct {
+	Kind   string    `json:"kind" doc:"cast or state_changed"`
+	Object GUID      `json:"object"`
+	Cast   *CastDone `json:"cast,omitempty"`
+	State  *uint32   `json:"state,omitempty" doc:"observed GAMEOBJECT_BYTES_1 after a state change"`
+}
+
 // PathCheck reports a navmesh leg without silently changing the requested floor.
 type PathCheck struct {
 	Status      string     `json:"status" doc:"verified, partial, or failed; partial is a reachable prefix, not permission to walk it"`

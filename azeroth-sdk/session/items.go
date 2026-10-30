@@ -698,7 +698,7 @@ func (b *Bot) setupItems() {
 		})
 
 	// ---------- objects ----------
-	e.Func("objects.use", "(guid [, spell]) → Request<CastDone>", "use a game object within ~5 yd: doors, quest objects, chests and crates (opened with the Opening spell like the real client; the loot is taken). Plain objects require an observed object-state change; timeout cannot establish use or quest progress",
+	e.Func("objects.use", "(guid [, spell]) → Request<ObjectActivation>", "use a game object within ~5 yd. Chests use Opening; herb, ore and locked nodes select Herb Gathering, Mining or Pick Lock from observed lock metadata. not_available while the object template is loading; unsupported_gathering requires an explicit spell. Plain objects require an observed state change. data.kind distinguishes cast completion from state_changed; neither establishes quest progress",
 		func(guid uint64, spell uint32) map[string]any {
 			args := map[string]any{"object": gs(guid)}
 			o := w.GetObject(guid)
@@ -706,7 +706,21 @@ func (b *Bot) setupItems() {
 				return b.refuse("objects.use", args, "not_found", "no such object nearby")
 			}
 			if spell == 0 && (o.Value(fieldGOBytes1)>>8)&0xFF == goTypeChest {
-				spell = spellOpening
+				ob := b.object(o)
+				creatures.Lock()
+				known := goNames.t[ob.Entry] != nil
+				creatures.Unlock()
+				if !known {
+					return b.refuse("objects.use", args, "not_available", "object lock metadata is loading; inspect the object and retry")
+				}
+				var supported bool
+				spell, supported = openingSpell(ob.Gather)
+				if !supported {
+					return b.refuse("objects.use", args, "unsupported_gathering", "specify the applicable spell explicitly")
+				}
+				if ob.CanUse != nil && !*ob.CanUse {
+					return b.refuse("objects.use", args, "skill_too_low", "the required gathering skill is absent or too low")
+				}
 			}
 			if spell == 0 {
 				before := o.Value(fieldGOBytes1)
@@ -716,7 +730,8 @@ func (b *Bot) setupItems() {
 				return b.request("objects.use", args, 5*time.Second, func() *script.Outcome {
 					current := w.GetObject(guid)
 					if current != nil && current.Value(fieldGOBytes1) != before {
-						return script.Ok(types.CastDone{})
+						state := current.Value(fieldGOBytes1)
+						return script.Ok(types.ObjectActivation{Kind: "state_changed", Object: types.GUID(guid), State: &state})
 					}
 					return nil
 				}, nil)
@@ -731,7 +746,7 @@ func (b *Bot) setupItems() {
 			if err := w.SendPacketRaw(cmsgCastSpellOp, buf.Bytes()); err != nil {
 				return b.refuse("objects.use", args, "failed", err.Error())
 			}
-			return b.request("objects.use", args, 10*time.Second, nil, castMatch(spell))
+			return b.request("objects.use", args, 10*time.Second, nil, objectCastMatch(guid, spell))
 		})
 
 	// ---------- vendor ----------
@@ -918,7 +933,9 @@ func (b *Bot) setupItems() {
 				return r
 			}
 			body := binary.LittleEndian.AppendUint64(nil, trainer)
-			w.SendPacketRaw(0x1B2, binary.LittleEndian.AppendUint32(body, spell)) // CMSG_TRAINER_BUY_SPELL
+			if err := w.SendPacketRaw(0x1B2, binary.LittleEndian.AppendUint32(body, spell)); err != nil {
+				return b.refuse("trainer.learn", map[string]any{"npc_guid": gs(trainer), "spell": spell}, "not_available", "trainer request could not be sent")
+			}
 			return b.request("trainer.learn", map[string]any{"npc_guid": gs(trainer), "spell": spell}, 5*time.Second, nil,
 				func(ev script.Event) *script.Outcome {
 					if d, ok := ev.Data.(types.Learned); ok && d.Spell == spell {
@@ -928,6 +945,19 @@ func (b *Bot) setupItems() {
 				})
 		})
 
+}
+
+func objectCastMatch(guid uint64, spell uint32) func(script.Event) *script.Outcome {
+	match := castMatch(spell)
+	return func(ev script.Event) *script.Outcome {
+		o := match(ev)
+		if o != nil {
+			if cast, ok := o.Data.(types.CastDone); ok {
+				o.Data = types.ObjectActivation{Kind: "cast", Object: types.GUID(guid), Cast: &cast}
+			}
+		}
+		return o
+	}
 }
 
 // compareItem: an item against what you wear in its slot; nil until the items' info has loaded.

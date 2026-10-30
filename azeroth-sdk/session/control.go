@@ -662,6 +662,9 @@ var equipErrors = map[byte]string{1: "You must reach a higher level to use that"
 // subclass, then the required level for CANT_EQUIP_LEVEL_I and PURCHASE_LEVEL_TOO_LOW).
 func inventoryError(data []byte) (string, string) {
 	code := inventoryResultNames[data[0]]
+	if code == "inventory_full" {
+		code = "bags_full"
+	}
 	if code == "" {
 		code = fmt.Sprintf("inventory_%d", data[0])
 	}

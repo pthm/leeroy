@@ -116,3 +116,12 @@ func TestRequestReturnAndPostconditionContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNullableReturnDocumentsAbsence(t *testing.T) {
+	if ValidateDocs([]Doc{{Name: "value", Sig: "() → number?", Desc: "a value"}}) == nil {
+		t.Fatal("ambiguous nil accepted")
+	}
+	if err := ValidateDocs([]Doc{{Name: "value", Sig: "() → number?", Desc: "nil while absent"}}); err != nil {
+		t.Fatal(err)
+	}
+}

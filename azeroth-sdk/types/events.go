@@ -515,7 +515,7 @@ var OpResults = map[string]any{
 	"items.compare": Comparison{}, "world.path": PathCheck{}, "world.route": RouteCheck{}, "world.danger": DangerCheck{}, "trade.offer": Trade{}, "trade.cancel": Trade{}, "trade.start": Trade{}, "trade.open": Trade{}, "trade.accept": Trade{}, "trainer.list": Trainer{}, "items.info": Item{}, "quests.info": QuestInfo{}, "me.achievements": Achievements{}, "vendor.items": []VendorItem{},
 	"gossip.open": GossipWindow{}, "gossip.select": GossipWindow{},
 	"move.to": MoveDone{}, "move.stop": MoveDone{}, "spells.cast": CastDone{}, "spells.cast_at": CastDone{},
-	"items.use": CastDone{}, "objects.use": CastDone{}, "items.loot": Looted{}, "items.equip": Equipped{}, "items.roll": LootRollResult{},
+	"items.use": CastDone{}, "objects.use": ObjectActivation{}, "items.loot": Looted{}, "items.equip": Equipped{}, "items.roll": LootRollResult{},
 	"vendor.buy": ItemReceived{}, "vendor.sell": Sold{}, "vendor.sell_junk": Sold{}, "vendor.repair": Repaired{},
 	"trainer.learn": Learned{}, "quests.turn_in": QuestDone{}, "quests.accept": QuestDone{}, "talents.learn": TalentLearned{},
 	"combat.attack": Attacking{}, "move.unstuck": Teleport{}, "summon.accept": Teleport{}, "flights.map": FlightMap{}, "flights.take": Flight{}, "innkeeper.bind": Home{},

@@ -282,6 +282,9 @@ func (b *Bot) setupCoreAPI() {
 		if err := b.SetTarget(g); err != nil {
 			return b.refuse("combat.target", args, "failed", err.Error())
 		}
+		if w.TargetGUID() == g {
+			return b.done("combat.target", args, nil)
+		}
 		return b.request("combat.target", args, 2*time.Second, func() *script.Outcome {
 			if w.TargetGUID() == g {
 				return script.Ok(nil)

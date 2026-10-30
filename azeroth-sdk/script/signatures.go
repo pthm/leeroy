@@ -162,8 +162,12 @@ func ValidateDocs(docs []Doc) error {
 		if strings.TrimSpace(d.Desc) == "" {
 			return fmt.Errorf("%s: missing description", d.Name)
 		}
-		if _, err := ParseSignature(d.Sig); err != nil {
+		sig, err := ParseSignature(d.Sig)
+		if err != nil {
 			return fmt.Errorf("%s: %w", d.Name, err)
+		}
+		if strings.Contains(sig.Returns, "?") && !strings.Contains(strings.ToLower(d.Desc), "nil") {
+			return fmt.Errorf("%s: nullable return must document its nil condition", d.Name)
 		}
 	}
 	return nil
