@@ -301,11 +301,29 @@ func (b *Bot) setupCombatInfo() {
 			if lock := w.MovementLock(); lock == "in_flight" || lock == "teleporting" {
 				return b.refuse("move.unstuck", nil, lock, "not while "+lock)
 			}
-			b.StopMoving()
+			if b.moves == nil {
+				return b.refuse("move.unstuck", nil, "not_available", "movement controller is unavailable")
+			}
+			task, name, call := e.CurrentTaskIdentity()
+			acquired := b.moves.acquire(task, name, call, "normal", 0, 20)
+			grant := e.Reqs.Result(acquired["id"].(int))
+			if grant == nil || grant["ok"] != true {
+				if grant != nil {
+					err := grant["error"].(map[string]any)
+					return b.refuse("move.unstuck", nil, err["code"].(string), err["message"].(string))
+				}
+				return b.refuse("move.unstuck", nil, "movement_busy", "movement ownership was not granted")
+			}
+			lease := grant["data"].(map[string]any)["lease_id"].(int)
+			b.moves.stop(task)
 			if err := w.CastSpell(spellStuck, 0); err != nil {
+				b.moves.release(task, lease)
 				return b.refuse("move.unstuck", nil, "failed", err.Error())
 			}
-			return b.request("move.unstuck", nil, 20*time.Second, nil, func(ev script.Event) *script.Outcome {
+			handle := b.request("move.unstuck", nil, 20*time.Second, func() *script.Outcome {
+				out := b.moves.steer(task, func() *script.Outcome { return nil })
+				return out
+			}, func(ev script.Event) *script.Outcome {
 				switch d := ev.Data.(type) {
 				case types.Teleport:
 					return script.Ok(d)
@@ -316,6 +334,8 @@ func (b *Bot) setupCombatInfo() {
 				}
 				return nil
 			})
+			e.Reqs.Observe(handle["id"].(int), func(map[string]any) { b.moves.release(task, lease) })
+			return handle
 		})
 }
 

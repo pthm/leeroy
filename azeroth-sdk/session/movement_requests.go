@@ -376,3 +376,21 @@ func (b *Bot) setupMovementRequests() {
 	})
 	e.Func("move.owner", "() → MovementOwner?", "active local movement owner, or nil when idle; queued requests are in me.movement and task.list", func() *types.MovementOwner { o, _ := m.snapshot(); return o })
 }
+
+// invalidateWorld cancels all work tied to the old pose. Failed lease tombstones
+// prevent sleeping callbacks from publishing a new path after the transfer.
+func (m *movementRequests) invalidateWorld(reason string) {
+	m.mu.Lock()
+	defer m.unlock()
+	out := script.Fail(reason, "world position or connection changed; observe state before moving again", nil)
+	for _, r := range m.queue {
+		m.finishLocked(r, out)
+	}
+	m.queue = nil
+	if m.lease != nil {
+		m.invalidateLeaseLocked(out)
+	}
+	if m.active != nil {
+		m.finishLocked(m.active, out)
+	}
+}

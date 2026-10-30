@@ -1135,7 +1135,12 @@ func (b *Bot) wireTeleportHandling() {
 		// cannot keep extrapolating from the pre-teleport pose.
 		if c.To == client.PhaseNearTeleport || c.To == client.PhaseFarTransfer {
 			b.abortMovementForTeleport()
+			b.invalidateWorldWork("teleported")
 			return
+		}
+		if c.To == client.PhaseNone || c.To == client.PhaseLogout || c.To == client.PhaseConnected || c.To == client.PhaseLoading {
+			b.abortMovementForTeleport()
+			b.invalidateWorldWork("world_changed")
 		}
 		// Transfer complete: snap to new pose, clear combat, flag Lua restart.
 		if c.To == client.PhaseInWorld &&
@@ -1964,4 +1969,13 @@ func (b *Bot) addEvent(eventType, format string, args ...interface{}) {
 		Message: msg,
 	})
 	b.mu.Unlock()
+}
+
+func (b *Bot) invalidateWorldWork(reason string) {
+	if b.moves != nil {
+		b.moves.invalidateWorld(reason)
+	}
+	if b.routes != nil {
+		b.routes.cancelTask(0, reason)
+	}
 }

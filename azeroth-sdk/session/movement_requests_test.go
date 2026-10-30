@@ -339,3 +339,34 @@ func TestMovementCompletionObserverCanInspectOwnership(t *testing.T) {
 		t.Fatal("completion not observed")
 	}
 }
+
+func TestMovementWorldInvalidationCancelsQueueAndLatePlan(t *testing.T) {
+	f := newMovementFixture(t, true)
+	a := f.start(1, 100)
+	<-f.entered
+	b := f.start(2, 200)
+	f.control.invalidateWorld("teleported")
+	f.resultCode(t, a, "teleported")
+	f.resultCode(t, b, "teleported")
+	close(f.block)
+	owner, queue := f.control.snapshot()
+	if owner != nil || len(queue) != 0 {
+		t.Fatalf("stale ownership: %+v %+v", owner, queue)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.published) != 0 {
+		t.Fatal("old-world plan published")
+	}
+}
+func TestMovementWorldInvalidationPoisonsSleepingLease(t *testing.T) {
+	f := newMovementFixture(t, false)
+	h := f.control.acquire(1, "owner", "call", "normal", 0, 60)
+	if f.control.reqs.Result(h["id"].(int))["ok"] != true {
+		t.Fatal("acquire failed")
+	}
+	f.control.invalidateWorld("world_changed")
+	h = f.control.acquire(1, "owner", "late", "normal", 0, 60)
+	f.resultCode(t, h["id"].(int), "world_changed")
+	f.walking(t, f.start(2, 200))
+}
