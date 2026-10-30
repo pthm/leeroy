@@ -9,7 +9,7 @@ too. The server saves characters every 15 s (`server/override.yml`), and the jud
 | Command | |
 |---|---|
 | `azbench judge <Char> <goal> [flags]` | score a character live: samples, rates, score, board; exits when the goal is met or time runs out |
-| `azbench report <run dir \| team dir>` | after a run: `report.json` (the report card) and, for a team, `team.json` |
+| `azbench report <run dir \| team dir>` | live, paused or completed run: `report.json` (the report card) and, for a team, `team.json` |
 | `azbench signals <Char>` | every progress signal for a character |
 
 | File | |
@@ -17,6 +17,7 @@ too. The server saves characters every 15 s (`server/override.yml`), and the jud
 | `main.go` | the live judge |
 | `signals.go` | the progress signals |
 | `report.go` | `azbench report` |
+| `diagnostics.go` | saved lifecycle and usage evidence, pause boundaries, compact team diagnostics |
 | `streams.go` | tails the event streams in a run or team dir |
 | `obj.go` | key-ordered JSON objects for samples, the board and the result line |
 | `score.json` | the weights for `score:` goals, and their version (built into the binary: rebuild with `./build.sh`) |
@@ -138,9 +139,34 @@ run it at the end. Per agent:
 | `wakes` | waits, early wakes per hour, what woke them and whether a script restart followed |
 | `restarts` | restart calls, script starts per hour, progress in a script's first minute vs settled |
 | `deaths`, `stalls`, `calls`, `think_s` | |
-| `tokens` | input, output (reasoning included), cache read and write, from the transcript and the runtime's own logs |
-| `cost_usd` | the tokens at the model's list price ([models.dev](https://models.dev), `prices.json`; `azbench prices` refreshes it), the same way for every runtime and plan. Claude Code's cache writes are its 1-hour ones (2x input) from Anthropic, the 5-minute rate through OpenRouter. Null for a model not in the table |
+| `tokens` | input, output (reasoning included), cache read and write, from the saved transcript and `usage.json`; the supervisor snapshots runtime-local usage after each agent attempt |
+| `cost_usd` | the tokens at the model's list price ([models.dev](https://models.dev), `prices.json`; `azbench prices` refreshes it), the same way for every runtime and plan. Claude Code's cache writes are its 1-hour ones (2x input) from Anthropic, the 5-minute rate through OpenRouter. Null when usage or pricing is unavailable |
 | `combat` | `metrics.Combat`: damage dealt and taken, healing, kills, party kills, deaths, XP |
 | `coop` | `metrics.Team`: `assist_share`, `assists`, `useful`, `hits`, `contested_hits` |
 | `time_use` | `metrics.Use` from the position samples: fighting, travelling, idle, dead, with the group (%) |
+| `judge_state`, `score_provisional` | observed judge state; board scores stay provisional until `judge.json` exists. Missing lifecycle evidence produces `unknown`, not a guessed result |
+| `diagnostics` | schema 1: action aggregates, repeated-failure episodes, tool outcomes, bounded evidence and explicit coverage |
 
+Diagnostics read only `<agent>.record.jsonl` and `<agent>/harness.jsonl`. Each finding links to a file and line,
+plus session/sequence when available. Three matching failures within 30 seconds start an episode; success,
+session replacement or judge pause/completion closes it. Targets, tasks and sessions stay separate. Durations
+are inclusive per operation: adding nested helper and raw-action durations would double-count time.
+
+`azbench status` shows up to three fresh active episodes, ranked by recorded action time and episode span.
+This is observed failed-action time, not an estimate of all time lost to a problem. The evidence view keeps
+the last 200 action, status, tool and lifecycle records and reports how many were omitted. Task status is an
+agent claim; it does not prove quest completion or a planning mistake.
+
+Tool diagnostics recognize Claude tool-use/result pairs, Codex command-execution items and OpenCode tool-use
+parts. `tools.observed_timeouts` and `observed_denials` count explicit structured codes, not words in error
+messages or a guessed meaning of an exit status. An unfinished call has an unknown outcome; a missing start
+has an unknown duration. Enabled collection with no observed matching failures produces zero; absent
+collection produces null. A collector cannot reveal causes the runtime does not expose. Quota codes are
+recorded as observed usage-limit events, without asserting that they caused a later process exit.
+
+Coverage lists missing artifacts, malformed/truncated lines, unsupported schemas, duplicate events and
+sequence gaps. Missing movement/recovery/gear metrics appear in `unavailable`. Old runs have unavailable
+diagnostics. Reporting does not query the game server or runtime home directories and never writes judge
+results. Runtime usage snapshots survive restart and moving the run directory. Short pauses are excluded
+from sampled progress attribution using lifecycle boundaries; an interval crossing a pause is omitted
+because its progress cannot be assigned reliably. Judge scores themselves are unchanged.

@@ -1469,6 +1469,10 @@ DiagnosticDetails is an allowlist: arbitrary request arguments, results, error m
 | `component?` | string |  |
 | `runtime?` | string |  |
 | `exit_code?` | number |  |
+| `tool?` | string |  |
+| `command_family?` | string |  |
+| `tool_coverage?` | bool |  |
+| `duration_known?` | bool |  |
 
 ### DiagnosticDestination
 
