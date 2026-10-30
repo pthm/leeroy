@@ -172,6 +172,7 @@ function A.cast(id, guid, o)
       local path=action(function() return world.path(x,y,z) end)
       if not path.ok then return path end
       if not path.data or not path.data.reachable then return A.fail("act.cast","route_unreachable","approach has no verified route") end
+      if type(path.data.distance)~="number" or path.data.distance>max_move then return A.fail("act.cast","move_limit","verified path exceeds max_move_yards or has no measured distance") end
       local moved=action(function() return move.to(x,y,z) end);if not moved.ok then return moved end
       stopped=action(move.stop);if not stopped.ok then return stopped end
       data.corrections[#data.corrections+1]="approach"
@@ -219,11 +220,17 @@ local function walk(o, x, y, z)
     local r = await(req, 0.5)
     if not (r.error and r.error.code == "wait_timeout") then return r end
     if o.observe_danger then
+      -- An opted-in stop policy must not keep walking while a queued or cold
+      -- geometry check is pending. Resume only after a clear observation.
+      if o.stop_on_danger then
+        local stopped=await(move.stop(),2)
+        if not stopped.ok then return stopped end
+      end
       local d = o.observe_danger(me.position())
       if o.stop_on_danger and d.state ~= "clear" then
-        await(move.stop(),2)
         return result("act.travel",false,d,"danger_ahead","travel exposure is hostile or unknown")
       end
+      if o.stop_on_danger then req=move.to(x,y,z) end
     end
     local foes = units.attackers(30)
     if o.on_attacked and #foes > 0 then

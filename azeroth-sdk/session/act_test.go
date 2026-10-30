@@ -114,7 +114,7 @@ const actBase = `
   alive = true
   me.gear = function() return {broken={}} end
   me.money = function() return 100 end
-  world = {ground_z = function(x, y, z) return z or 0 end, path = function() return {ok=true,op="world.path",data={reachable=true,gap=0}} end, in_sight = function() return true end}
+  world = {ground_z = function(x, y, z) return z or 0 end, path = function() return {ok=true,op="world.path",data={reachable=true,gap=0,distance=6}} end, in_sight = function() return true end}
   world.danger = function(x,y,z,r)
     local d={state="clear",hostiles={}}
     if z==nil or world.ground_z(x,y,z)==nil or math.abs(world.ground_z(x,y,z)-z)>3 then d.state="unknown" end

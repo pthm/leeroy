@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"strconv"
 	"sync"
 	"time"
 
@@ -302,11 +303,18 @@ func (t *tradeState) refused(info client.TradeStatusInfo) {
 func guidArg(v any) uint64 {
 	switch x := v.(type) {
 	case float64:
-		return uint64(x)
+		if x > 0 && x < 1<<32 && x == math.Trunc(x) {
+			return uint64(x)
+		}
 	case string:
-		var g uint64
-		fmt.Sscan(x, &g)
-		return g
+		for _, c := range x {
+			if c < '0' || c > '9' {
+				return 0
+			}
+		}
+		if g, err := strconv.ParseUint(x, 10, 64); err == nil && g >= 1<<32 {
+			return g
+		}
 	}
 	return 0
 }

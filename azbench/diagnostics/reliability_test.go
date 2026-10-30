@@ -35,3 +35,21 @@ func TestReliabilityObservedIntervalsAndBoundaries(t *testing.T) {
 		t.Fatal("unknown evidence became zero", s)
 	}
 }
+
+func TestReliabilitySequenceGapIsNotObservedTime(t *testing.T) {
+	yes, no := true, false
+	events := []recorded{}
+	for i, seq := range []uint64{1, 3, 4} {
+		events = append(events, recorded{Diagnostic: types.Diagnostic{Session: "s", Seq: seq, T: int64(i+1) * 1000, Kind: "character_state", Details: types.DiagnosticDetails{SampleAvailable: &yes, Alive: &no, Gear: &types.DiagnosticGear{}}}})
+	}
+	s := Summary{}
+	s.summarizeReliability(events)
+	if s.Reliability.ObservedMS != 1000 || *s.Reliability.DeadMS != 1000 {
+		t.Fatal(s.Reliability)
+	}
+	s = Summary{}
+	s.summarizeReliability([]recorded{{Diagnostic: types.Diagnostic{Kind: "movement_owner"}}})
+	if s.Reliability.RouteTimeouts != nil {
+		t.Fatal("one movement event implied complete instrumentation")
+	}
+}

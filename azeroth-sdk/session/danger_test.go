@@ -55,3 +55,16 @@ func TestTravelDangerPolicy(t *testing.T) {
   r=act.travel{points={{10,0,0}}};assert(r.ok and #r.data.exposure>0 and #moves==1)
  `)
 }
+
+func TestTravelStopsWhileDangerQueryIsPending(t *testing.T) {
+	actWorld(t, actBase+`
+  checks=0;walking=false
+  move.to=function() walking=true;return {id=9000,pending=true} end
+  move.stop=function() walking=false;return {ok=true} end
+  world.danger=function()
+    checks=checks+1
+    if checks>1 then assert(not walking,"walked while checking danger");wait(0.01);return {ok=true,data={state="unknown",hostiles={}}} end
+    return {ok=true,data={state="clear",hostiles={}}}
+  end
+ `, `r=act.travel{points={{10,0,0}},stop_on_danger=true};assert(not r.ok and r.error.code=="danger_ahead" and not walking)`)
+}

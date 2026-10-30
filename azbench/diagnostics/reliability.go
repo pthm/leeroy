@@ -16,8 +16,15 @@ func (s *Summary) summarizeReliability(events []recorded) {
 	var preempt, wait, timeouts, attempts, dead, broken int64
 	instrumented, sampled := false, false
 	previous := map[string]recorded{}
+	sequences := map[string]uint64{}
 	paused := false
 	for _, e := range events {
+		if e.Seq != 0 {
+			if seq := sequences[e.Session]; seq != 0 && e.Seq != seq+1 {
+				delete(previous, e.Session)
+			}
+			sequences[e.Session] = e.Seq
+		}
 		if e.Kind == "runtime_state" {
 			if e.Details.Component == "tooling" && e.Details.State == "instrumented_v1" {
 				instrumented = true
@@ -37,7 +44,6 @@ func (s *Summary) summarizeReliability(events []recorded) {
 			}
 		}
 		if e.Kind == "movement_owner" {
-			instrumented = true
 			if e.Code == "preempted" {
 				preempt++
 			}
