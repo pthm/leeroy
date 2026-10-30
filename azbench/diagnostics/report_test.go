@@ -167,3 +167,26 @@ func TestToolSummaryPreservesUnknowns(t *testing.T) {
 		t.Fatalf("lost coverage gap: %+v", s.Coverage)
 	}
 }
+
+func TestObservedStateAndAgentClaimStaySeparate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "record.jsonl")
+	events := []types.Diagnostic{failure(1, 1000), failure(2, 2000), failure(3, 3000), failure(4, 4000), failure(5, 5000)}
+	for i := range events {
+		events[i].Op = "act.accept"
+		events[i].Details.QuestID = 62
+	}
+	events[1].Kind = "task_status"
+	events[1].Details = types.DiagnosticDetails{Status: "quest accepted", AgentClaim: true}
+	events[2].Kind = "quest_state"
+	events[2].Details = types.DiagnosticDetails{QuestLog: &types.DiagnosticQuestLog{Available: true, Quests: []types.DiagnosticQuest{}}}
+	events[3].Kind = "group_state"
+	events[3].Details = types.DiagnosticDetails{Group: &types.DiagnosticGroup{InGroup: false, Members: []types.GUID{}}}
+	writeEvents(t, path, events)
+	s := Read("a1", path)
+	if len(s.Evidence) != 5 || !s.Evidence[1].Details.AgentClaim || s.Evidence[2].Details.AgentClaim || s.Evidence[2].Details.QuestLog == nil || s.Evidence[3].Details.Group == nil {
+		t.Fatalf("evidence: %+v", s.Evidence)
+	}
+	if len(s.ByOperation) != 1 || s.ByOperation[0].Outcome != "failed" || s.ByOperation[0].Count != 2 || len(s.Episodes) != 0 {
+		t.Fatalf("observation or claim treated as action outcome: %+v", s)
+	}
+}

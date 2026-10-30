@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"os"
+	"reflect"
 	"sync"
 	"time"
 
@@ -133,6 +134,8 @@ func (b *Bot) startRecording() {
 	// party changes: {grp (the server's group id, 0 = none), leader, members (names, including self)}. The server
 	// sends the list at login, before recording starts, so the current state is recorded first.
 	onGroup := func(st client.GroupState) {
+		observed := observedGroup(me, st)
+		b.lua.RecordObservation("group_state", types.DiagnosticDetails{Group: &observed})
 		if !st.InGroup {
 			b.Record("group", map[string]any{"grp": 0, "members": []string{}})
 			return
@@ -149,9 +152,7 @@ func (b *Bot) startRecording() {
 		}
 		b.Record("group", map[string]any{"grp": st.GroupGUID & 0xFFFFFFFF, "leader": leader, "members": members})
 	}
-	if w.InGroup() {
-		onGroup(w.GroupState())
-	}
+	onGroup(w.GroupState())
 	w.AddGroupListHook(onGroup)
 	w.AddPacketHook(func(op uint16, data []byte) {
 		r := bytes.NewReader(data)
@@ -223,6 +224,15 @@ func (b *Bot) startRecording() {
 
 	// position and state once a second, as mod-recorder's "pos"
 	go func() {
+		var previous *types.DiagnosticQuestLog
+		observeQuests := func() {
+			current := observedQuests(w.GetObject(w.CharGUID()))
+			if previous == nil || !reflect.DeepEqual(*previous, current) {
+				b.lua.RecordObservation("quest_state", types.DiagnosticDetails{QuestLog: &current})
+				previous = &current
+			}
+		}
+		observeQuests()
 		t := time.NewTicker(time.Second)
 		defer t.Stop()
 		for {
@@ -231,6 +241,7 @@ func (b *Bot) startRecording() {
 				b.Record("logout", nil)
 				return
 			case <-t.C:
+				observeQuests()
 				x, y, z, o, m := w.Position()
 				hp, hpmax := b.GetHealth()
 				pw, pwmax := b.GetPower()

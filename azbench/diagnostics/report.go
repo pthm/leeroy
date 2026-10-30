@@ -209,7 +209,7 @@ func Read(agent string, paths ...string) Summary {
 			sessions[stream] = true
 		}
 		streams[stream] = append(streams[stream], ev)
-		if ev.Kind == "action_finished" || ev.Kind == "task_status" || ev.Kind == "runtime_state" || ev.Kind == "tool_call" {
+		if ev.Kind == "action_finished" || ev.Kind == "task_status" || ev.Kind == "runtime_state" || ev.Kind == "tool_call" || ev.Kind == "quest_state" || ev.Kind == "group_state" {
 			s.Evidence = append(s.Evidence, Evidence{Ref: ev.ref, T: ev.T, Kind: ev.Kind, Task: ev.Task, Call: ev.Call, ParentCall: ev.ParentCall, Op: ev.Op, Outcome: ev.Outcome, Code: ev.Code, Details: ev.Details})
 			if len(s.Evidence) > 200 {
 				s.Evidence = s.Evidence[1:]

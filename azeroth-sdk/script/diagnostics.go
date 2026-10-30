@@ -43,6 +43,12 @@ func (e *Engine) SetDiagnosticSink(agent string, sink func(types.Diagnostic)) {
 	e.diag.emit(types.Diagnostic{Kind: "runtime_state", Details: types.DiagnosticDetails{Component: "session", State: "start"}})
 }
 
+// RecordObservation records typed session observations using the same identity and sequence as actions.
+// It is a Go-side recorder hook, not an agent API, and must not be called from inside the diagnostic sink.
+func (e *Engine) RecordObservation(kind string, details types.DiagnosticDetails) {
+	e.diag.emit(types.Diagnostic{Kind: kind, Details: details})
+}
+
 func (e *Engine) endTaskDiagnostics(t *Task, code string) {
 	for i := len(t.calls) - 1; i >= 0; i-- {
 		e.endDiagnostic(t.calls[i], false, code, 0, 0)

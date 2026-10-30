@@ -43,6 +43,30 @@ type DiagnosticDetails struct {
 	CommandFamily string                 `json:"command_family,omitempty"`
 	ToolCoverage  bool                   `json:"tool_coverage,omitempty"`
 	DurationKnown *bool                  `json:"duration_known,omitempty"`
+	QuestLog      *DiagnosticQuestLog    `json:"quest_log,omitempty"`
+	Group         *DiagnosticGroup       `json:"group,omitempty"`
+}
+
+// DiagnosticQuestLog is a complete observed client quest log, at most 25 entries. Removal from the log
+// does not establish turn-in: a quest can also be abandoned. Available=false means character fields are absent.
+type DiagnosticQuestLog struct {
+	Available bool              `json:"available"`
+	Quests    []DiagnosticQuest `json:"quests"`
+}
+type DiagnosticQuest struct {
+	ID       uint32    `json:"id"`
+	Complete bool      `json:"complete"`
+	Failed   bool      `json:"failed"`
+	Counters [4]uint32 `json:"counters" doc:"raw objective counters from character fields; inventory objectives require separate item observations"`
+}
+
+// DiagnosticGroup records the server's roster, at most 40 members including self. It does not establish
+// a shared plan, readiness, visibility or fresh positions. Names and chat are deliberately excluded.
+type DiagnosticGroup struct {
+	InGroup bool   `json:"in_group"`
+	ID      GUID   `json:"id"`
+	Leader  GUID   `json:"leader"`
+	Members []GUID `json:"members"`
 }
 
 // DiagnosticDestination preserves omitted altitude/map rather than inventing a zero floor or map.

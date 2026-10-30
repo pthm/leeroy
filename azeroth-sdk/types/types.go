@@ -7,6 +7,7 @@
 package types
 
 import (
+	"bytes"
 	"encoding/json"
 	"strconv"
 )
@@ -23,18 +24,25 @@ func (g GUID) MarshalJSON() ([]byte, error) {
 }
 
 func (g *GUID) UnmarshalJSON(b []byte) error {
+	if bytes.Equal(bytes.TrimSpace(b), []byte("null")) {
+		*g = 0
+		return nil
+	}
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
 		var n uint64
 		if err := json.Unmarshal(b, &n); err != nil {
-			return nil // null
+			return err
 		}
 		*g = GUID(n)
 		return nil
 	}
 	n, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		return err
+	}
 	*g = GUID(n)
-	return err
+	return nil
 }
 
 // ---------- the world ----------
