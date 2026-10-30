@@ -76,8 +76,9 @@ func (b *Bot) spellCheck(id uint32, guid uint64) types.SpellCheck {
 		// DBC nominal ranges omit talents, hitboxes and friendly range variants.
 		// Expose the estimate without claiming exact server range or target eligibility.
 		d.Unknown = append(d.Unknown, "effective_range", "target_eligibility")
-		if nominal > 0 && distance > nominal {
-			return fail("out_of_range")
+		if nominal > 0 {
+			exceeded := distance > nominal
+			d.NominalRangeExceeded = &exceeded
 		}
 		if d.InSight != nil && !*d.InSight {
 			return fail("line_of_sight")

@@ -159,7 +159,7 @@ function A.cast(id, guid, o)
   if not check.usable and not correctable then return finish(A.fail("act.cast",check.reason or "not_available","spell readiness check refused the cast")) end
   local r=movement_scope("normal",0,max_s,function()
     local stopped=action(move.stop);if not stopped.ok then return stopped end
-    if o.approach and (check.reason=="out_of_range" or check.reason=="line_of_sight") then
+    if o.approach and (check.nominal_range_exceeded or check.reason=="out_of_range" or check.reason=="line_of_sight") then
       local u=units.get(guid)
       if not u then return A.fail("act.cast","unit_gone","target is no longer visible") end
       local here=me.position()
