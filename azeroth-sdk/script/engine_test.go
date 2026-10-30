@@ -268,6 +268,19 @@ func TestFuncRequiredArgs(t *testing.T) {
 	}
 }
 
+func TestNPCGUIDArgument(t *testing.T) {
+	e := NewEngine(nolog, nil)
+	e.Func("vendor.buy", "(npc_guid, item_entry) → Request", "", func(g uint64, item uint32) uint64 { return g })
+	for _, arg := range []string{`123`, `nil`, `{guid = "123"}`, `""`} {
+		if _, err := e.Eval(`return vendor.buy(` + arg + `, 9)`); err == nil || !strings.Contains(err.Error(), "npc_guid must be a GUID string") {
+			t.Fatalf("argument %s: %v", arg, err)
+		}
+	}
+	if v, err := e.Eval(`return vendor.buy("123", 9)`); err != nil || v != 123.0 {
+		t.Fatalf("GUID string: %v, %v", v, err)
+	}
+}
+
 // calling something that doesn't exist says what that usually means
 func TestExplainNonFunction(t *testing.T) {
 	e := NewEngine(nolog, nil)

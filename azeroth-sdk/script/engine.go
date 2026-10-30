@@ -402,6 +402,12 @@ func (e *Engine) Func(name, sig, desc string, fn any) {
 		if L.GetTop() < need {
 			L.RaiseError("%s%s: called with %d argument(s), needs %d", name, sig, L.GetTop(), need)
 		}
+		if strings.HasPrefix(sig, "(npc_guid") {
+			g, ok := L.Get(1).(lua.LString)
+			if !ok || len(g) == 0 {
+				L.RaiseError("%s%s: npc_guid must be a GUID string; use act with npc_entry for a template ID", name, sig)
+			}
+		}
 		return callReflect(L, v, 1)
 	})
 }

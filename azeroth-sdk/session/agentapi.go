@@ -347,9 +347,9 @@ func (b *Bot) setupAgentAPI() {
 			}
 			return out
 		})
-	e.Func("death.spirit_res", "(npc) → Request", "as a ghost next to a spirit healer: resurrect there (resurrection sickness from level 11, and your gear loses durability)",
+	e.Func("death.spirit_res", "(npc_guid) → Request", "as a ghost next to a spirit healer: resurrect there (resurrection sickness from level 11, and your gear loses durability)",
 		func(npc uint64) map[string]any {
-			args := map[string]any{"npc": gs(npc)}
+			args := map[string]any{"npc_guid": gs(npc)}
 			if !b.IsGhost() {
 				return b.refuse("death.spirit_res", args, "not_a_ghost", "release first (death.release)")
 			}
@@ -357,7 +357,7 @@ func (b *Bot) setupAgentAPI() {
 				return r
 			}
 			w.SendPacketRaw(cmsgSpiritHealerAct, binary.LittleEndian.AppendUint64(nil, npc))
-			return b.request("death.spirit_res", map[string]any{"npc": gs(npc)}, 5*time.Second, alive, nil)
+			return b.request("death.spirit_res", map[string]any{"npc_guid": gs(npc)}, 5*time.Second, alive, nil)
 		})
 
 	// ---------- quests ----------
@@ -388,8 +388,8 @@ func (b *Bot) setupAgentAPI() {
 			q.Rewards, q.Choices = items(p.rewards[:]), items(p.choices[:])
 			return q
 		})
-	e.Func("quests.accept", "(npc, quest) → Request<QuestDone>", "talk to a quest giver and accept a quest it offers", func(npc uint64, quest uint32) map[string]any {
-		args := map[string]any{"npc": gs(npc), "quest": quest}
+	e.Func("quests.accept", "(npc_guid, quest_id) → Request<QuestDone>", "talk to a quest giver and accept a quest it offers", func(npc uint64, quest uint32) map[string]any {
+		args := map[string]any{"npc_guid": gs(npc), "quest": quest}
 		if r := b.noNPC("quests.accept", args, &npc); r != nil {
 			return r
 		}
@@ -433,9 +433,9 @@ func (b *Bot) setupAgentAPI() {
 			return nil
 		}, nil)
 	})
-	e.Func("quests.turn_in", "(npc, quest [, reward = 0]) → Request<QuestDone>", "hand a complete quest in (reward: the index of the item to choose, 0 = first; quests.info lists the choices)",
+	e.Func("quests.turn_in", "(npc_guid, quest_id [, reward = 0]) → Request<QuestDone>", "hand a complete quest in (reward: the index of the item to choose, 0 = first; quests.info lists the choices)",
 		func(npc uint64, quest, reward uint32) map[string]any {
-			args := map[string]any{"npc": gs(npc), "quest": quest, "reward": reward}
+			args := map[string]any{"npc_guid": gs(npc), "quest": quest, "reward": reward}
 			if r := b.noNPC("quests.turn_in", args, &npc); r != nil {
 				return r
 			}

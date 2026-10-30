@@ -216,9 +216,9 @@ func (b *Bot) setupNPC() {
 			return nil
 		}
 	}
-	e.Func("gossip.open", "(npc) → Request<Gossip?>", "talk to an NPC within ~5 yd: what it says, its dialogue options, and the quests it offers or takes (quests.info for their text). nil when it opened something else instead (a vendor, a trainer, a flight map: use their calls)",
+	e.Func("gossip.open", "(npc_guid) → Request<Gossip?>", "talk to an NPC within ~5 yd: what it says, its dialogue options, and the quests it offers or takes (quests.info for their text). nil when it opened something else instead (a vendor, a trainer, a flight map: use their calls)",
 		func(npc uint64) map[string]any {
-			args := map[string]any{"npc": gs(npc)}
+			args := map[string]any{"npc_guid": gs(npc)}
 			if r := b.noNPC("gossip.open", args, &npc); r != nil {
 				return r
 			}
@@ -252,9 +252,9 @@ func (b *Bot) setupNPC() {
 			return b.refuse("gossip.select", args, "no_such_option", "the open menu has no option with that index")
 		})
 
-	e.Func("trainer.list", "(npc) → Request<Trainer>", "what a trainer within ~5 yd teaches you: every spell for your class with its cost, level and whether you can learn it now (available), later (unavailable) or already know it",
+	e.Func("trainer.list", "(npc_guid) → Request<Trainer>", "what a trainer within ~5 yd teaches you: every spell for your class with its cost, level and whether you can learn it now (available), later (unavailable) or already know it",
 		func(npc uint64) map[string]any {
-			args := map[string]any{"npc": gs(npc)}
+			args := map[string]any{"npc_guid": gs(npc)}
 			if r := b.noNPC("trainer.list", args, &npc); r != nil {
 				return r
 			}

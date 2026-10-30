@@ -6,13 +6,17 @@ Quest givers, vendors, trainers, objects, your bags and gear. The rest of the SD
 
 - NPCs have `roles` (`quest_giver`, `vendor`, `trainer`, `repair`, `flight_master`, `innkeeper`, `spirit_healer`...);
   quest givers have `quest_status` (the marker a client draws). `azworld near x y --kind <role>` finds the nearest.
-- NPC calls need you within ~5 yards. `gossip.open(npc)` returns what an NPC says, its options and its quests;
+- Raw NPC calls take `npc_guid`, the observed GUID string, and need you within ~5 yards.
+  Waiting helpers take exactly one of `npc_entry` (a template ID) or `npc_guid`. `gossip.open(npc)` returns what an NPC says, its options and its quests;
   `gossip.select(index)` picks an option.
-- Vendors: `vendor.items(npc)` (call it twice: the first call asks the vendor), `vendor.buy(npc, entry, count)`,
+- Vendors: `await(vendor.items(npc_guid))` (cached or uncached; typed failure on refusal or timeout), `vendor.buy(npc, entry, count)`,
   `vendor.sell(npc, item)`, `vendor.sell_junk(npc)` (every grey), `vendor.repair(npc)`. `act.vendor{...}` walks
-  there and does all of it.
+  there and performs only the operations requested: `act.vendor{npc_entry = 123, repair = true}`.
+  Selling junk and repairing default to false. A failed step stops the errand; inspect `data.completed`,
+  `data.remaining`, and `steps` before deciding whether to retry.
 - Trainers: `trainer.list(npc)` (what it teaches you, cost, level, available now), `trainer.learn(npc, spell)`. The
-  level-70 "<Class> Trainer" NPCs in Northshire are placeholders that teach nothing.
+  `act.train{npc_entry = 123, spells = {133, 116}}` skips spells already known and stops on failure;
+  `continue_on_error = true` attempts the rest but still reports failure. The level-70 "<Class> Trainer" NPCs in Northshire are placeholders that teach nothing.
 - Quests: `quests.accept(npc, quest)`, `quests.turn_in(npc, quest [, reward index])` (0 = the first choice;
   `quests.info(id)` lists the choices), `quests.log()`, `quests.info(id)` (the quest giver's text), `quests.abandon`.
   `act.accept` and `act.turn_in` walk there first. A kill objective also counts the creatures whose

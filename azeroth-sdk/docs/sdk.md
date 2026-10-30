@@ -213,8 +213,9 @@ local choice = ask("Bags full. Destroy greys or go sell?", {"destroy", "sell"}, 
   `not_known`, `bags_full`, `stuck`, `timeout`...).
 - **One shape per thing:** a creature, item, quest or spell is the same table wherever it appears.
 - **GUIDs are strings** (64-bit numbers don't fit in a Lua number): pass them back unchanged. An `item` argument is
-  an item entry (number) or the GUID of one you carry; `npc` and `guid` are GUIDs, `entry` is a template id.
-  Anywhere a GUID goes you can pass the table itself (a unit, item or object): its `guid` is used.
+  an item entry (number) or the GUID of one you carry; `npc_guid` and `guid` are GUIDs, `npc_entry` and `entry` are template IDs. Raw NPC calls
+  require a GUID string and never reinterpret an entry as a GUID.
+  Other GUID parameters currently also accept a unit, item or object table and use its `guid`.
 - **Options tables:** `act` functions and a few others take one table: `act.go_to{x = 1, y = 2}`.
 - **`act`** covers plumbing, not play: walking with stuck handling, following, NPC errands (accept, turn in, sell,
   repair, train), objects, resting, flying, and recovering from death (`act.recover`). Its source is

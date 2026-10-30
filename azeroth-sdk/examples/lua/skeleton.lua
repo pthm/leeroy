@@ -14,6 +14,9 @@ function step()
   -- An action returns a request; in a task, await waits for its result:
   --   local r = await(spells.cast(id, guid))
   --   if not r.ok then log("cast: " .. r.error.code) end   -- {ok = false, error = {code, message}}
+  -- Helpers already wait and return ActResult; verify it before advancing your own state:
+  --   local r = act.accept{npc_entry = quest_giver_entry, quest = quest_id}
+  --   if r.ok then state.accepted = true else log(r.error.message) end
   wait(G.every)
 end
 

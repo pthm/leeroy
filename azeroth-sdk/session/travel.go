@@ -251,9 +251,9 @@ func (b *Bot) setupTravel() {
 			sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 			return out
 		})
-	e.Func("flights.map", "(npc) → Request<FlightMap>", "talk to a flight master within ~5 yd (role flight_master): discovers its flight point the first time, and lists the known points you can fly to from there, with costs",
+	e.Func("flights.map", "(npc_guid) → Request<FlightMap>", "talk to a flight master within ~5 yd (role flight_master): discovers its flight point the first time, and lists the known points you can fly to from there, with costs",
 		func(npc uint64) map[string]any {
-			args := map[string]any{"npc": gs(npc)}
+			args := map[string]any{"npc_guid": gs(npc)}
 			if u := b.GetUnitInfo(npc); u == nil || u.NPCFlags&0x2000 == 0 {
 				return b.refuse("flights.map", args, "not_a_flight_master", "that's not a flight master in sight")
 			}
@@ -295,9 +295,9 @@ func (b *Bot) setupTravel() {
 				return nil
 			})
 		})
-	e.Func("flights.take", "(npc, node) → Request<Flight>", "fly from this flight master to a known node (by id; via other known nodes if there's no direct path). Resolves when you land; await it with a long timeout (flights take minutes). You can't move while flying",
+	e.Func("flights.take", "(npc_guid, node) → Request<Flight>", "fly from this flight master to a known node (by id; via other known nodes if there's no direct path). Resolves when you land; await it with a long timeout (flights take minutes). You can't move while flying",
 		func(npc uint64, to uint32) map[string]any {
-			args := map[string]any{"npc": gs(npc), "node": to}
+			args := map[string]any{"npc_guid": gs(npc), "node": to}
 			t.mu.Lock()
 			from, ok := t.current[npc]
 			var nodes []uint32
@@ -356,8 +356,8 @@ func (b *Bot) setupTravel() {
 		}
 		return *t.home
 	})
-	e.Func("innkeeper.bind", "(npc) → Request<Home>", "make this inn your home: your hearthstone brings you back here (talk to an innkeeper within ~5 yd)", func(npc uint64) map[string]any {
-		args := map[string]any{"npc": gs(npc)}
+	e.Func("innkeeper.bind", "(npc_guid) → Request<Home>", "make this inn your home: your hearthstone brings you back here (talk to an innkeeper within ~5 yd)", func(npc uint64) map[string]any {
+		args := map[string]any{"npc_guid": gs(npc)}
 		if u := b.GetUnitInfo(npc); u == nil || u.NPCFlags&0x10000 == 0 {
 			return b.refuse("innkeeper.bind", args, "not_an_innkeeper", "that's not an innkeeper in sight")
 		}

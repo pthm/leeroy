@@ -7,9 +7,9 @@
 -- act.must(r) raises the error instead. The helpers at the top don't wait.
 --
 --   task.spawn("quest 62", function()
---     act.must(act.accept{ npc = 240, quest = 62 })
+--     act.must(act.accept{ npc_entry = 240, quest = 62 })
 --     ... your fighting ...
---     act.must(act.turn_in{ npc = 240, quest = 62 })
+--     act.must(act.turn_in{ npc_entry = 240, quest = 62 })
 --   end)
 --
 -- Everything here uses the public API; read session/act.lua to see or copy how it works.
@@ -201,13 +201,20 @@ end
 
 -- ---------- NPCs and objects ----------
 function A.reach_npc(o)
-  local npc = A.npc(o.npc)
+  local function find_npc()
+    if o.npc_guid then
+      local u = units.get(o.npc_guid)
+      return u and u.alive and u or nil
+    end
+    return A.npc(o.npc_entry)
+  end
+  local npc = find_npc()
   if not npc and o.x and A.dist(o.x, o.y) > 8 then
     local r = A.go_to{ x = o.x, y = o.y, z = o.z }
     if not r.ok then return result("act.reach_npc", false, nil, r.error.code, r.error.message) end
-    npc = A.npc(o.npc)
+    npc = find_npc()
   end
-  if not npc then return result("act.reach_npc", false, nil, "npc_not_found", "npc " .. tostring(o.npc) .. " not found nearby (pass its x, y, z from azworld)") end
+  if not npc then return result("act.reach_npc", false, nil, "npc_not_found", "npc " .. tostring(o.npc_guid or o.npc_entry) .. " not found nearby (pass its x, y, z from azworld)") end
   if npc.distance > 4 then
     local r = A.go_to{ x = npc.x, y = npc.y, z = npc.z, tolerance = 3 }
     if not r.ok then return result("act.reach_npc", false, nil, r.error.code, r.error.message) end
@@ -216,8 +223,8 @@ function A.reach_npc(o)
   return result("act.reach_npc", true, units.get(npc.guid) or npc)
 end
 local function at_npc(op, o, fn)
-  local r = A.reach_npc(o)
-  if not r.ok then r.op = op return r end
+  local r = A.reach_npc{npc_entry = o.npc_entry, npc_guid = o.npc_guid, x = o.x, y = o.y, z = o.z}
+  if not r.ok then return wrapped(op, r) end
   local out = fn(r.data)
   return wrapped(op, out)
 end
@@ -235,30 +242,70 @@ local function has_role(npc, ...)
     for _, want in ipairs({ ... }) do if role == want then return true end end
   end
 end
+-- Every requested step is required. Preserve its error and previously completed work.
+local function step(steps, op, r)
+  steps[#steps + 1] = {op = op, ok = r.ok, request_id = r.id, code = r.error and r.error.code}
+end
+local function composite(op, data, steps, failure)
+  return {op = op, ok = failure == nil, data = data, steps = steps, error = failure and failure.error}
+end
 function A.vendor(o)
   return at_npc("act.vendor", o, function(npc)
-    if not has_role(npc, "vendor", "repair") then
-      return A.fail("act.vendor", "wrong_npc", tostring(npc.name) .. " doesn't sell or repair (roles: " .. table.concat(npc.roles or {}, ", ") .. ")")
+    local buy = o.buy or {}
+    if ((o.sell_junk or #buy > 0) and not has_role(npc, "vendor")) or
+       (o.repair and not has_role(npc, "repair")) then
+      return A.fail("act.vendor", "wrong_npc", tostring(npc.name) .. " lacks a requested vendor or repair role")
     end
-    local out = { sold = await(vendor.sell_junk(npc.guid)), bought = {} }
-    vendor.items(npc.guid)
-    wait(1.5)
-    for _, role in ipairs(npc.roles or {}) do if role == "repair" then out.repaired = await(vendor.repair(npc.guid)) end end
-    for _, b in ipairs(o.buy or {}) do out.bought[#out.bought + 1] = await(vendor.buy(npc.guid, b[1], b[2] or 1)) end
-    return A.ok("act.vendor", out)
+    local out, steps = {bought = {}, completed = {}, remaining = {}}, {}
+    local plan = {}
+    if o.sell_junk then plan[#plan + 1] = {op = "vendor.sell_junk"} end
+    if o.repair then plan[#plan + 1] = {op = "vendor.repair"} end
+    if #buy > 0 then plan[#plan + 1] = {op = "vendor.items"} end
+    for _, b in ipairs(buy) do plan[#plan + 1] = {op = "vendor.buy", item_entry = b[1], count = b[2] or 1} end
+    for i, action in ipairs(plan) do
+      local r
+      if action.op == "vendor.buy" then r = await(vendor.buy(npc.guid, action.item_entry, action.count))
+      elseif action.op == "vendor.items" then r = await(vendor.items(npc.guid))
+      elseif action.op == "vendor.sell_junk" then r = await(vendor.sell_junk(npc.guid))
+      else r = await(vendor.repair(npc.guid)) end
+      step(steps, action.op, r)
+      if action.op == "vendor.sell_junk" then out.sold = r.data
+      elseif action.op == "vendor.repair" then out.repaired = r.data
+      elseif action.op == "vendor.buy" and r.ok then out.bought[#out.bought + 1] = r.data end
+      if not r.ok then
+        for j = i, #plan do out.remaining[#out.remaining + 1] = plan[j] end
+        return composite("act.vendor", out, steps, r)
+      end
+      out.completed[#out.completed + 1] = action
+    end
+    return composite("act.vendor", out, steps)
   end)
 end
 function A.train(o)
+  -- Snapshot known spells before any learning; do not claim later successes were known at entry.
+  local known = {}
+  for _, sp in ipairs(o.spells) do known[sp] = spells.known(sp) end
   return at_npc("act.train", o, function(npc)
-    local learned, failed = {}, {}
-    for _, sp in ipairs(o.spells or {}) do
-      local r = await(trainer.learn(npc.guid, sp))
-      if r.ok then learned[#learned + 1] = sp else failed[#failed + 1] = r end
+    if not has_role(npc, "trainer") then return A.fail("act.train", "wrong_npc", "the NPC is not a trainer") end
+    local out, steps, failure = {learned = {}, already_known = {}, failed = {}, remaining = {}}, {}, nil
+    for _, sp in ipairs(o.spells) do
+      if known[sp] then out.already_known[#out.already_known + 1] = sp end
     end
-    return A.ok("act.train", { learned = learned, failed = failed })
+    for _, sp in ipairs(o.spells) do
+      if not known[sp] then
+        if failure and not o.continue_on_error then out.remaining[#out.remaining + 1] = sp
+        else
+          local r = await(trainer.learn(npc.guid, sp))
+          step(steps, "trainer.learn", r)
+          if r.ok then out.learned[#out.learned + 1] = sp
+          else out.failed[#out.failed + 1] = sp; failure = failure or r end
+        end
+      end
+    end
+    return composite("act.train", out, steps, failure)
   end)
 end
-function A.talk(o) return at_npc("act.talk", o, function(npc) return A.ok("act.talk", o.fn and o.fn(npc)) end) end
+function A.talk(o) return at_npc("act.talk", o, function(npc) return o.fn(npc) end) end
 function A.use_object(o)
   local used = 0
   while true do
@@ -305,13 +352,13 @@ function A.loot_nearby(o)
   return result("act.loot_nearby", true, got)
 end
 
--- fly{to = node id or name [, npc = entry]}: walk to the nearest flight master (or that one), open its map, fly
+-- fly{to = node id or name [, npc_entry or npc_guid]}: walk to the nearest flight master (or that one), open its map, fly
 -- to the destination and wait until you land
 function A.fly(o)
   local master
   for _, u in ipairs(units.nearby(80)) do
     for _, role in ipairs(u.roles or {}) do
-      if role == "flight_master" and u.alive and (not o.npc or u.entry == o.npc) then master = master or u end
+      if role == "flight_master" and u.alive and (not o.npc_entry or u.entry == o.npc_entry) and (not o.npc_guid or u.guid == o.npc_guid) then master = master or u end
     end
   end
   if not master then return result("act.fly", false, nil, "no_flight_master", "no flight master within 80 yd (azworld near x y --kind flightmaster)") end
@@ -480,6 +527,67 @@ doc("task.keep", "(name, fn, ...) → id", "run fn as a task and run it again wh
 local takes_options = { go_to = true, travel = true, approach = true, follow = true, reach_npc = true, accept = true,
   turn_in = true, vendor = true, train = true, talk = true, use_object = true, rest = true, corpse_run = true,
   recover = true, loot_nearby = true, fly = true }
+local npc_options = {
+  reach_npc = "npc_entry npc_guid x y z",
+  accept = "npc_entry npc_guid x y z quest",
+  turn_in = "npc_entry npc_guid x y z quest reward",
+  vendor = "npc_entry npc_guid x y z sell_junk repair buy",
+  train = "npc_entry npc_guid x y z spells continue_on_error",
+  talk = "npc_entry npc_guid x y z fn",
+  fly = "npc_entry npc_guid to",
+}
+local function positive_int(v) return type(v) == "number" and v > 0 and v < math.huge and v == math.floor(v) end
+local function validate_npc_options(n, o)
+  local fields = npc_options[n]
+  if not fields then return end
+  local function bad(why) error("act." .. n .. ": " .. why .. "; accepted fields: " .. fields, 3) end
+  if type(o) ~= "table" then bad("an options table is required") end
+  local allowed = {}
+  for field in fields:gmatch("%S+") do allowed[field] = true end
+  for k in pairs(o) do if not allowed[k] then bad("unknown option " .. tostring(k)) end end
+  if (o.npc_entry ~= nil and o.npc_guid ~= nil) or (n ~= "fly" and o.npc_entry == nil and o.npc_guid == nil) then
+    bad("supply exactly one of npc_entry or npc_guid")
+  end
+  if o.npc_entry ~= nil and not positive_int(o.npc_entry) then bad("npc_entry must be a positive integer") end
+  if o.npc_guid ~= nil and (type(o.npc_guid) ~= "string" or o.npc_guid == "") then bad("npc_guid must be a GUID string") end
+  for _, k in ipairs({"sell_junk", "repair", "continue_on_error"}) do
+    if o[k] ~= nil and type(o[k]) ~= "boolean" then bad(k .. " must be boolean") end
+  end
+  for _, k in ipairs({"x", "y", "z"}) do
+    if o[k] ~= nil and (type(o[k]) ~= "number" or o[k] ~= o[k] or math.abs(o[k]) == math.huge) then bad(k .. " must be a finite coordinate") end
+  end
+  if (o.x == nil) ~= (o.y == nil) then bad("coordinates require both x and y") end
+  local function array(v, field, min)
+    if type(v) ~= "table" or #v < min or #v > 64 then bad(field .. " must contain " .. min .. "..64 entries") end
+    local count = 0
+    for k in pairs(v) do
+      if not positive_int(k) or k > #v then bad(field .. " must be a dense array") end
+      count = count + 1
+    end
+    if count ~= #v then bad(field .. " must be a dense array") end
+  end
+  if n == "vendor" then
+    local buy = o.buy or {}
+    array(buy, "buy", 0)
+    if not o.sell_junk and not o.repair and #buy == 0 then bad("request sell_junk, repair, or a purchase") end
+    for _, b in ipairs(buy) do
+      if type(b) ~= "table" or not positive_int(b[1]) or (b[2] ~= nil and not positive_int(b[2])) then
+        bad("buy entries must be {item_entry, count = 1} with positive integers")
+      end
+      for k in pairs(b) do if k ~= 1 and k ~= 2 then bad("buy entries accept only item_entry and count positions") end end
+    end
+  elseif n == "train" then
+    array(o.spells, "spells", 1)
+    local seen = {}
+    for _, sp in ipairs(o.spells) do
+      if not positive_int(sp) or seen[sp] then bad("spells must contain unique positive IDs") end
+      seen[sp] = true
+    end
+  elseif n == "accept" or n == "turn_in" then
+    if not positive_int(o.quest) then bad("quest is required and must be a positive ID") end
+  elseif n == "talk" and type(o.fn) ~= "function" then bad("fn must return a completed action result")
+  elseif n == "fly" and not (positive_int(o.to) or (type(o.to) == "string" and o.to ~= "")) then bad("to must be a node ID or name") end
+end
 for _, n in ipairs({ "go_to", "travel", "approach", "follow", "reach_npc", "accept", "turn_in", "vendor", "train", "talk",
   "use_object", "rest", "release", "corpse_run", "spirit_res", "recover", "loot_nearby", "fly", "cast", "buff" }) do
   local f = A[n]
@@ -490,6 +598,7 @@ for _, n in ipairs({ "go_to", "travel", "approach", "follow", "reach_npc", "acce
     if takes_options[n] and o ~= nil and type(o) ~= "table" then
       error("act." .. n .. " takes an options table, act." .. n .. "{...}, not a " .. type(o) .. ": help(\"act." .. n .. "\") lists its fields", 2)
     end
+    validate_npc_options(n, o)
     return wrapped("act." .. n, f(o, ...))
   end
 end
@@ -516,16 +625,16 @@ for name, d in pairs({
   danger = { "(x, y [, r = 25]) → Creature[]", "living hostile creatures within r yards of a point: check a spot before you go there or come back to life there" },
   approach = { "{unit [, range = 4, timeout = 60]} → ActResult<Creature>", "move within range of a unit and face it" },
   follow = { "{name [, distance = 5, until = fn]} → ActResult", "stay near a player until until() is true" },
-  reach_npc = { "{npc [, x, y, z]} → ActResult<Creature>", "find an NPC by entry (walking to x, y, z first) and stand next to it" },
-  accept = { "{npc, quest [, x, y, z]} → ActResult", "walk to a quest giver and accept the quest" },
-  turn_in = { "{npc, quest [, reward = 0, x, y, z]} → ActResult", "walk to the quest ender and turn the quest in" },
-  vendor = { "{npc [, x, y, z, buy = {{entry, count}, ...}]} → ActResult", "sell greys, repair if it can, buy; data = {sold, repaired, bought}" },
-  train = { "{npc, spells [, x, y, z]} → ActResult", "learn spells at a trainer; data = {learned, failed}" },
-  talk = { "{npc, fn [, x, y, z]} → ActResult", "walk to an NPC and run fn(npc)" },
+  reach_npc = { "{npc_entry|npc_guid [, x, y, z]} → ActResult<Creature>", "find an NPC by exactly one of npc_entry or npc_guid (walking to x, y, z first) and stand next to it" },
+  accept = { "{npc_entry|npc_guid, quest [, x, y, z]} → ActResult", "walk to a quest giver and accept the quest" },
+  turn_in = { "{npc_entry|npc_guid, quest [, reward = 0, x, y, z]} → ActResult", "walk to the quest ender and turn the quest in" },
+  vendor = { "{npc_entry|npc_guid [, x, y, z, sell_junk = false, repair = false, buy = {{entry, count}, ...}]} → ActResult<VendorErrand>", "perform only requested operations (at least one required, at most 64 purchases); stop on failure and return VendorErrand partial data and steps" },
+  train = { "{npc_entry|npc_guid, spells [, x, y, z, continue_on_error = false]} → ActResult<TrainErrand>", "learn 1..64 unique requested spells; stop on the first failure unless continue_on_error; return TrainErrand with learned, already_known, failed and remaining IDs" },
+  talk = { "{npc_entry|npc_guid, fn [, x, y, z]} → ActResult", "walk to an NPC and return fn(npc) as ActResult; fn must return a completed action result" },
   use_object = { "{entry [, count = 1, quest, x, y, z, radius = 80]} → ActResult", "use objects (crates, chests, quest objects) count times or until the quest is complete" },
   loot_nearby = { "{[dist = 8]} → ActResult<Item[]>", "walk to and loot every lootable corpse within dist; with full bags it destroys your cheapest grey for room (error bags_full when there's none)" },
   rest = { "{[hp = 0.95, mana = 0.9, max_s = 40]} → ActResult", "eat/drink if you carry food/water and wait until topped up; fails if attacked" },
-  fly = { "{to = node id or name [, npc = entry]} → ActResult<Flight>", "walk to a flight master nearby, fly to a known destination and wait until you land" },
+  fly = { "{to = node id or name [, npc_entry or npc_guid]} → ActResult<Flight>", "walk to a flight master nearby, fly to a known destination and wait until you land" },
   release = { "() → ActResult", "release your spirit" },
   corpse_run = { "{[safe = true]} → ActResult", "as a ghost, walk to your corpse and reclaim it; with hostiles at the corpse it reclaims from the far side of the reclaim circle, 32 yd out (safe = false: on the spot)" },
   spirit_res = { "() → ActResult", "as a ghost, resurrect at the nearest spirit healer in sight (costs durability)" },

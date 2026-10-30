@@ -132,23 +132,12 @@ func taskLabel(name string) string {
 	return "task " + strconv.Quote(name)
 }
 
-// noNPC resolves an action's npc argument and refuses the call when there's no such NPC in sight (the server would
-// ignore it without a reply). It takes a guid or an entry, as the act helpers do: an entry becomes the nearest
-// living creature with it.
+// noNPC validates an observed NPC GUID. Template entries belong in act's npc_entry selector.
 func (b *Bot) noNPC(op string, args map[string]any, npc *uint64) map[string]any {
 	if b.world.GetObject(*npc) != nil {
 		return nil
 	}
-	if *npc > 0 && *npc < 1<<24 { // creature entries are small; guids never are
-		for _, u := range b.GetNearbyUnits(100) { // nearest first
-			if uint64(u.Entry) == *npc && u.IsAlive {
-				*npc = u.GUID
-				return nil
-			}
-		}
-		return b.refuse(op, args, "npc_not_found", fmt.Sprintf("no creature with entry %d within 100 yd", *npc))
-	}
-	return b.refuse(op, args, "npc_not_found", "no such NPC in sight (out of range, or gone)")
+	return b.refuse(op, args, "npc_not_found", "no such NPC in sight (out of range, or gone); use act with npc_entry to find a template")
 }
 
 // npc roles (UNIT_NPC_FLAGS) an action needs: a trainer that isn't one, or a vendor that isn't, says nothing at all

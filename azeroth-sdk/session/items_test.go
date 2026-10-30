@@ -12,6 +12,45 @@ import (
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
+func TestVendorPartialOutcomes(t *testing.T) {
+	failed := []script.Outcome{*script.Fail("cannot_sell", "refused", nil)}
+	if r := saleOutcome(2, 0, 10, 10, failed); r != nil {
+		t.Fatalf("resolved before both stacks answered: %+v", r)
+	}
+	if r := saleOutcome(2, 1, 10, 10, failed); r != nil {
+		t.Fatalf("resolved before money update: %+v", r)
+	}
+	r := saleOutcome(2, 1, 10, 17, failed)
+	if r.OK || r.Code != "cannot_sell" || r.Data.(types.Sold) != (types.Sold{Money: 7, Count: 1, Failed: 1}) {
+		t.Fatalf("partial sale: %+v", r)
+	}
+	if r := saleOutcome(1, 0, 10, 10, failed); r.OK || r.Data.(types.Sold).Failed != 1 {
+		t.Fatalf("total refusal: %+v", r)
+	}
+	if r := saleOutcome(2, 2, 10, 17, nil); !r.OK || r.Data.(types.Sold).Count != 2 {
+		t.Fatalf("complete sale: %+v", r)
+	}
+	for _, remaining := range []int{0, 1, 2} {
+		r := repairOutcome(2, remaining, 100, 90)
+		if r.OK != (remaining == 0) || r.Data.(types.Repaired).StillDamaged != remaining {
+			t.Fatalf("repair with %d remaining: %+v", remaining, r)
+		}
+	}
+}
+
+func TestVendorListLoadingAndEmpty(t *testing.T) {
+	s := &itemState{vendors: map[uint64][]vendorItem{}}
+	if r, _ := s.vendorList(nil, 42); r != nil {
+		t.Fatal("an unseen vendor list is still loading")
+	}
+	packet := append(binary.LittleEndian.AppendUint64(nil, 42), 0)
+	s.onPacket(smsgListInventory, packet)
+	r, limited := s.vendorList(nil, 42)
+	if r == nil || !r.OK || limited || len(r.Data.([]types.VendorItem)) != 0 {
+		t.Fatalf("confirmed empty list: %+v", r)
+	}
+}
+
 // SMSG_ITEM_QUERY_SINGLE_RESPONSE as WorldSession::HandleItemQuerySingleOpcode writes it.
 func TestParseItemQuery(t *testing.T) {
 	le := binary.LittleEndian

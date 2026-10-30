@@ -361,6 +361,23 @@ type itemState struct {
 	vendors map[uint64][]vendorItem
 }
 
+// vendorList distinguishes a confirmed empty list from a list that has not arrived.
+func (s *itemState) vendorList(w *client.WorldClient, guid uint64) (*script.Outcome, bool) {
+	s.mu.Lock()
+	list, ok := s.vendors[guid]
+	list = slices.Clone(list)
+	s.mu.Unlock()
+	if !ok {
+		return nil, false
+	}
+	out, limited := []types.VendorItem{}, false
+	for _, v := range list {
+		limited = limited || v.Stock >= 0
+		out = append(out, types.VendorItem{Item: itemTemplate(w, v.Entry), VendorSlot: v.Slot, Price: v.Price, BuyCount: v.Count, Stock: v.Stock})
+	}
+	return script.Ok(out), limited
+}
+
 func (s *itemState) onPacket(op uint16, data []byte) {
 	switch op {
 	case smsgItemQuery:
@@ -682,25 +699,31 @@ func (b *Bot) setupItems() {
 		})
 
 	// ---------- vendor ----------
-	e.Func("vendor.items", "(npc) → VendorItem[]?", "what a vendor sells; nil the first time (it asks the vendor: call again a moment later)", func(vendor uint64) any {
-		s.mu.Lock()
-		list, ok := s.vendors[vendor]
-		s.mu.Unlock()
-		if !ok || slices.ContainsFunc(list, func(v vendorItem) bool { return v.Stock >= 0 }) {
-			w.SendPacketRaw(cmsgListInventory, binary.LittleEndian.AppendUint64(nil, vendor)) // limited stock is only recounted on a list request
+	e.Func("vendor.items", "(npc_guid) → Request<VendorItem[]>", "what a nearby vendor sells; cached lists resolve immediately (limited stock refreshes in the background). Fails with npc_not_found, wrong_npc, vendor refusal or timeout after 5 seconds; an empty list is a successful lookup", func(vendor uint64) map[string]any {
+		args := map[string]any{"npc_guid": gs(vendor)}
+		if r := b.noNPC("vendor.items", args, &vendor); r != nil {
+			return r
 		}
-		if !ok {
-			return nil
+		if r := b.noRole("vendor.items", args, vendor, roleVendor, "a vendor"); r != nil {
+			return r
 		}
-		out := []types.VendorItem{}
-		for _, v := range list {
-			out = append(out, types.VendorItem{Item: itemTemplate(w, v.Entry), VendorSlot: v.Slot, Price: v.Price, BuyCount: v.Count, Stock: v.Stock})
+		cached, limited := s.vendorList(w, vendor)
+		if cached == nil || limited {
+			if err := w.SendPacketRaw(cmsgListInventory, binary.LittleEndian.AppendUint64(nil, vendor)); err != nil {
+				return b.refuse("vendor.items", args, "not_available", err.Error())
+			}
 		}
-		return out
+		if cached != nil {
+			return b.done("vendor.items", args, cached.Data)
+		}
+		return b.request("vendor.items", args, 5*time.Second, func() *script.Outcome {
+			o, _ := s.vendorList(w, vendor)
+			return o
+		}, func(ev script.Event) *script.Outcome { return failOn(ev, "vendor.items") })
 	})
-	e.Func("vendor.buy", "(npc, entry [, count = 1]) → Request<ItemReceived>", "buy from a vendor within ~5 yd (count in purchases of buy_count each). Call vendor.items first",
+	e.Func("vendor.buy", "(npc_guid, item_entry [, count = 1]) → Request<ItemReceived>", "buy from a vendor within ~5 yd (count in purchases of buy_count each). Call vendor.items first",
 		func(vendor uint64, entry, count uint32) map[string]any {
-			args := map[string]any{"npc": gs(vendor), "item": entry, "count": max(count, 1)}
+			args := map[string]any{"npc_guid": gs(vendor), "item": entry, "count": max(count, 1)}
 			if r := b.noNPC("vendor.buy", args, &vendor); r != nil {
 				return r
 			}
@@ -751,8 +774,8 @@ func (b *Bot) setupItems() {
 			return nil
 		}
 	}
-	e.Func("vendor.sell", "(npc, item [, count = all]) → Request<Sold>", "sell an item you carry (entry or guid) to a vendor within ~5 yd", func(vendor, item uint64, count uint32) map[string]any {
-		args := map[string]any{"npc": gs(vendor), "item": gs(item)}
+	e.Func("vendor.sell", "(npc_guid, item [, count = all]) → Request<Sold>", "sell an item you carry (entry or guid) to a vendor within ~5 yd", func(vendor, item uint64, count uint32) map[string]any {
+		args := map[string]any{"npc_guid": gs(vendor), "item": gs(item)}
 		if r := b.noNPC("vendor.sell", args, &vendor); r != nil {
 			return r
 		}
@@ -773,8 +796,8 @@ func (b *Bot) setupItems() {
 		sell(vendor, *it, count)
 		return b.request("vendor.sell", args, 3*time.Second, moneyUp(before), func(ev script.Event) *script.Outcome { return failOn(ev, "vendor.sell") })
 	})
-	e.Func("vendor.sell_junk", "(npc) → Request<Sold>", "sell every grey (poor) item you carry. Items whose info hasn't loaded are skipped", func(vendor uint64) map[string]any {
-		args := map[string]any{"npc": gs(vendor)}
+	e.Func("vendor.sell_junk", "(npc_guid) → Request<Sold>", "sell every grey (poor) item you carry. Items whose info hasn't loaded are skipped", func(vendor uint64) map[string]any {
+		args := map[string]any{"npc_guid": gs(vendor)}
 		if r := b.noNPC("vendor.sell_junk", args, &vendor); r != nil {
 			return r
 		}
@@ -803,15 +826,7 @@ func (b *Bot) setupItems() {
 			}
 			mu.Lock()
 			defer mu.Unlock()
-			switch {
-			case gone+len(failed) < len(sold):
-				return nil
-			case gone == 0:
-				return &failed[len(failed)-1]
-			case w.Money() <= before: // the money update can trail the item's removal
-				return nil
-			}
-			return script.Ok(types.Sold{Money: w.Money() - before, Count: gone, Failed: len(failed)})
+			return saleOutcome(len(sold), gone, before, w.Money(), failed)
 		}, func(ev script.Event) *script.Outcome {
 			if o := failOn(ev, "vendor.sell"); o != nil {
 				mu.Lock()
@@ -821,9 +836,9 @@ func (b *Bot) setupItems() {
 			return nil
 		})
 	})
-	e.Func("vendor.repair", "(npc) → Request<Repaired>", "repair everything you wear and carry at an NPC that repairs (role repair: armorers, weaponsmiths) within ~5 yd",
+	e.Func("vendor.repair", "(npc_guid) → Request<Repaired>", "repair everything you wear and carry at an NPC that repairs (role repair: armorers, weaponsmiths) within ~5 yd",
 		func(npc uint64) map[string]any {
-			args := map[string]any{"npc": gs(npc)}
+			args := map[string]any{"npc_guid": gs(npc)}
 			if r := b.noNPC("vendor.repair", args, &npc); r != nil {
 				return r
 			}
@@ -853,25 +868,22 @@ func (b *Bot) setupItems() {
 					return nil
 				}
 				after := damaged()
-				if after < before {
-					return script.Ok(types.Repaired{Fixed: before - after, Cost: int64(money) - int64(w.Money()), StillDamaged: after})
-				}
-				return script.Fail("not_repaired", fmt.Sprintf("%d item(s) still damaged: stand within ~5 yd of an NPC that repairs, with enough money (you have %dc)", after, w.Money()), nil)
+				return repairOutcome(before, after, money, w.Money())
 			}, nil)
 		})
 
 	// ---------- trainer ----------
-	e.Func("trainer.learn", "(npc, spell) → Request<Learned>", "learn a spell from a trainer within ~5 yd (costs money; trainer.list shows what it teaches you and what you can learn now)",
+	e.Func("trainer.learn", "(npc_guid, spell_id) → Request<Learned>", "learn a spell from a trainer within ~5 yd (costs money; trainer.list shows what it teaches you and what you can learn now)",
 		func(trainer uint64, spell uint32) map[string]any {
-			if r := b.noNPC("trainer.learn", map[string]any{"npc": gs(trainer), "spell": spell}, &trainer); r != nil {
+			if r := b.noNPC("trainer.learn", map[string]any{"npc_guid": gs(trainer), "spell": spell}, &trainer); r != nil {
 				return r
 			}
-			if r := b.noRole("trainer.learn", map[string]any{"npc": gs(trainer), "spell": spell}, trainer, roleTrainer, "a trainer"); r != nil {
+			if r := b.noRole("trainer.learn", map[string]any{"npc_guid": gs(trainer), "spell": spell}, trainer, roleTrainer, "a trainer"); r != nil {
 				return r
 			}
 			body := binary.LittleEndian.AppendUint64(nil, trainer)
 			w.SendPacketRaw(0x1B2, binary.LittleEndian.AppendUint32(body, spell)) // CMSG_TRAINER_BUY_SPELL
-			return b.request("trainer.learn", map[string]any{"npc": gs(trainer), "spell": spell}, 5*time.Second, nil,
+			return b.request("trainer.learn", map[string]any{"npc_guid": gs(trainer), "spell": spell}, 5*time.Second, nil,
 				func(ev script.Event) *script.Outcome {
 					if d, ok := ev.Data.(types.Learned); ok && d.Spell == spell {
 						return script.Ok(d)
@@ -1001,4 +1013,27 @@ func freeSlots(w *client.WorldClient) int {
 		}
 	}
 	return n
+}
+
+// Wait for every stack and its money update. Any refused stack makes the aggregate fail.
+func saleOutcome(total, gone int, before, after uint32, failed []script.Outcome) *script.Outcome {
+	if gone+len(failed) < total || (gone > 0 && after <= before) {
+		return nil
+	}
+	data := types.Sold{Money: after - before, Count: gone, Failed: len(failed)}
+	if after < before {
+		data.Money = 0
+	}
+	if len(failed) > 0 {
+		return script.Fail(failed[0].Code, failed[0].Message, data)
+	}
+	return script.Ok(data)
+}
+
+func repairOutcome(before, after int, moneyBefore, moneyAfter uint32) *script.Outcome {
+	data := types.Repaired{Fixed: max(before-after, 0), Cost: int64(moneyBefore) - int64(moneyAfter), StillDamaged: after}
+	if after == 0 {
+		return script.Ok(data)
+	}
+	return script.Fail("not_repaired", fmt.Sprintf("%d item(s) still damaged: stand within ~5 yd of an NPC that repairs, with enough money (you have %dc)", after, moneyAfter), data)
 }
