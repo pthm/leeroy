@@ -47,6 +47,10 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   `waypoints`, total `distance`, `completed_legs`, and `legs` with each endpoint/floor check. Failure names
   the first `blocked_leg` (1-based). Timeout and cancellation retain any previously completed prefix.
   Each leg starts at the preceding check's actual endpoint.
+- `azworld route` supplies an unverified terrain proposal. Its explicit form is
+  `azworld route x1 y1 z1 x2 y2 z2 map --level N`; it preserves both requested elevations.
+  Feed its `waypoints` and `map` to the session validator or `act.travel`. A terrain proposal is not
+  evidence that the character can walk through a building, bridge or cave; see azworld.md for its limits.
 - `act.travel{points=...}` validates the whole route before moving and holds its movement lease throughout.
   It requires explicit Z values by default. A blocked route fails before walking; `allow_partial=true`
   permits walking a known `route_unreachable` prefix, but the result still has `ok=false` because the
