@@ -915,39 +915,6 @@ func (b *Bot) moveToPointContext(ctx context.Context, x, y, z float32, valid fun
 	}
 	b.movementMu.Unlock()
 
-	// Before any movement decisions, snap both current position and target to real
-	// ground height using a small Z offset. Querying GetHeight from slightly above
-	// the expected ground is required to get accurate terrain height.
-	if b.nav != nil {
-		// Snap current position to ground if needed (small corrections only; avoid jumping levels).
-		probeZ := pz + 5.0
-		if gh, _, ok := movement.GroundHeightContext(ctx, b.nav, mapID, px, py, probeZ); ok {
-			delta := gh - pz
-			if delta > 1.0 {
-				// would snap up significantly (possible upper floor) - keep current Z
-			} else if math.Abs(float64(delta)) > 0.5 {
-				pz = gh
-			} else {
-				pz = gh
-			}
-		}
-		targetProbe := z + 5.0
-		if gh, _, ok := movement.GroundHeightContext(ctx, b.nav, mapID, x, y, targetProbe); ok {
-			delta := gh - z
-			if math.Abs(float64(delta)) > 2.0 {
-				// large difference - trust the provided target Z (e.g. from random generator or mob)
-				gh = z
-			} else if math.Abs(float64(delta)) > 0.5 {
-				z = gh
-			} else {
-				z = gh
-			}
-		}
-	}
-
-	// (A clamp here kept the target within 5 yd of the current height, for the removed AI's mob pursuit. It
-	// sent every trip to a higher floor, such as Stormwind from Goldshire, to the terrain under it.)
-
 	current := navigation.Point3D{X: px, Y: py, Z: pz}
 
 	// If we have nav, compute a proper path (real pathfinding as required for movement).
@@ -958,8 +925,17 @@ func (b *Bot) moveToPointContext(ctx context.Context, x, y, z float32, valid fun
 		if err != nil {
 			b.log("pathfinding error: %v", err) // e.g. mmaps version mismatch; was silent
 		}
-		if err == nil && result != nil && result.Found && len(result.Points) > 1 {
-			pts = simplifyAndDensifyPath(result.Points, 3.0, 1.0)
+		if err == nil && result != nil && result.Found && !result.Partial && len(result.Points) > 1 {
+			if preparer, ok := b.nav.(interface {
+				PreparePathContext(context.Context, uint32, *navigation.PathResult) (*navigation.PathResult, error)
+			}); ok {
+				result, err = preparer.PreparePathContext(ctx, mapID, result)
+				if err != nil {
+					b.log("path preparation: %v", err)
+					return true
+				}
+			}
+			pts = append([]navigation.Point3D(nil), result.Points...)
 			// The navmesh path is used as is: it already excludes slopes over the walkable angle and
 			// obstacles. (A "crazy path" check here used to swap long paths for a straight line, which
 			// walked bots up cliffs and through buildings.)
@@ -972,26 +948,8 @@ func (b *Bot) moveToPointContext(ctx context.Context, x, y, z float32, valid fun
 		return true
 	}
 	if len(pts) == 0 {
-		// No navmesh path: only short hops (melee positioning) go straight; anything longer would climb
-		// unwalkable slopes, so don't move and let move_to report false.
-		// 3D: a target straight overhead is not a short hop (it let bots step through floors)
-		if b.nav != nil && current.DistanceTo(navigation.Point3D{X: x, Y: y, Z: z}) > 5 {
-			return
-		}
-		pts = simplifyAndDensifyPath([]navigation.Point3D{current, {X: x, Y: y, Z: z}}, 3.0, 1.0)
-	}
-
-	// Ensure first point is exactly current for smooth handoff
-	if len(pts) > 0 {
-		pts[0] = current
-	}
-
-	if b.nav != nil {
-		snapPathToGroundContext(ctx, b.nav, mapID, pts)
-		if len(pts) > 0 {
-			pts[0] = current
-		}
-	}
+		return true
+	} // an unchecked short hop is not a walkable path
 
 	// Hand off to the (now only) movement implementation.
 	// The controller handles time-based following, 500ms HBs, and explicit turns at direction changes.
@@ -1032,80 +990,6 @@ func movementGroundHeightWithSource(nav navigation.Navigator, mapID uint32, x, y
 		}
 	}
 	return 0, false, false
-}
-
-func snapPathToGround(nav navigation.Navigator, mapID uint32, pts []navigation.Point3D) {
-	snapPathToGroundContext(context.Background(), nav, mapID, pts)
-}
-func snapPathToGroundContext(ctx context.Context, nav navigation.Navigator, mapID uint32, pts []navigation.Point3D) {
-	if nav == nil {
-		return
-	}
-	for i := range pts {
-		if ctx.Err() != nil {
-			return
-		}
-		origZ := pts[i].Z
-		gh, _, ok := movement.GroundHeightContext(ctx, nav, mapID, pts[i].X, pts[i].Y, origZ)
-		if !ok || math.IsNaN(float64(gh)) || math.IsInf(float64(gh), 0) {
-			continue
-		}
-		pts[i].Z = movement.FloorAwareContext(ctx, nav, mapID, pts[i].X, pts[i].Y, origZ, gh)
-	}
-}
-
-// simplifyAndDensifyPath reduces zig-zags (simplify collinear) and adds intermediate points
-// for smoother following on uneven terrain like Durotar hills. This helps make path following
-// look less "crazy" when navmesh produces sparse or jagged paths.
-func simplifyAndDensifyPath(pts []navigation.Point3D, maxStep, collinearTol float32) []navigation.Point3D {
-	if len(pts) < 2 {
-		return pts
-	}
-	// densify first (use 2D horizontal distance for step size; Z will be ground-snapped live)
-	dense := []navigation.Point3D{pts[0]}
-	for i := 1; i < len(pts); i++ {
-		p0 := pts[i-1]
-		p1 := pts[i]
-		d := p0.DistanceTo2D(p1)
-		if d > maxStep && d > 0.001 {
-			n := int(d / maxStep)
-			for k := 1; k <= n; k++ {
-				t := float32(k) / float32(n+1)
-				dense = append(dense, navigation.Point3D{
-					X: p0.X + (p1.X-p0.X)*t,
-					Y: p0.Y + (p1.Y-p0.Y)*t,
-					Z: p0.Z + (p1.Z-p0.Z)*t, // interp; snapPathToGround corrects to terrain
-				})
-			}
-		}
-		dense = append(dense, p1)
-	}
-	if len(dense) <= 2 {
-		return dense
-	}
-	// simplify collinear-ish points (keep changes in direction or steep Z)
-	simp := []navigation.Point3D{dense[0]}
-	for i := 1; i < len(dense)-1; i++ {
-		a := simp[len(simp)-1]
-		b := dense[i]
-		c := dense[i+1]
-		abx := b.X - a.X
-		aby := b.Y - a.Y
-		abz := b.Z - a.Z
-		bcx := c.X - b.X
-		bcy := c.Y - b.Y
-		bcz := c.Z - b.Z
-		// 3D cross product mag
-		crx := aby*bcz - abz*bcy
-		cry := abz*bcx - abx*bcz
-		crz := abx*bcy - aby*bcx
-		cross := float32(math.Sqrt(float64(crx*crx + cry*cry + crz*crz)))
-		if cross > collinearTol || math.Abs(float64(abz)) > 1.5 || math.Abs(float64(bcz)) > 1.5 {
-			simp = append(simp, b)
-		}
-	}
-	simp = append(simp, dense[len(dense)-1])
-	return simp
 }
 
 // stopCurrentMove aborts any in-progress path without necessarily sending a stop packet.

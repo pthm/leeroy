@@ -209,3 +209,14 @@ func (r *PathResult) Clone() *PathResult {
 	q.surface = r.surface.Clone()
 	return &q
 }
+
+// PreparePathContext validates the final geometry before handing it to movement.
+func (n *embeddedNavigator) PreparePathContext(ctx context.Context, m uint32, r *PathResult) (*PathResult, error) {
+	if r == nil || !r.Found || r.Partial || r.surface == nil {
+		return nil, fmt.Errorf("route_unreachable: complete surface path required")
+	}
+	if err := n.svc.ValidateSurfaceContext(ctx, m, r.surface); err != nil {
+		return nil, err
+	}
+	return r.Clone(), nil
+}

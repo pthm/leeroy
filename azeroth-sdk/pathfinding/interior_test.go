@@ -121,7 +121,10 @@ func TestInteriorRealRoutes(t *testing.T) {
 			if err != nil || r == nil || r.Type&(PathfindNopath|PathfindNotUsingPath) != 0 || len(r.Points) < 2 {
 				t.Fatalf("route: %+v %v", r, err)
 			}
-			t.Logf("type=%x requested=%+v -> %+v points=%+v", r.Type, tc.a, tc.b, r.Points)
+			t.Logf("type=%x requested=%+v -> %+v points=%d", r.Type, tc.a, tc.b, len(r.Points))
+			if err := svc.ValidateSurfaceContext(context.Background(), 0, r); err != nil {
+				t.Fatal(err)
+			}
 			for _, p := range r.Points {
 				if math.IsNaN(float64(p.Z)) || math.IsInf(float64(p.Z), 0) {
 					t.Fatal(p)
@@ -153,5 +156,30 @@ func TestPointQueryLoadsOnlyIntersectingTiles(t *testing.T) {
 	}
 	if len(md.loadedTiles) != 4 {
 		t.Fatal("cancelled query loaded tiles")
+	}
+}
+
+func TestSurfaceValidationRejectsCornerCutAndWrongFloor(t *testing.T) {
+	pf := interiorFinder(t, floorCell{10, 10, 0}, floorCell{20, 10, 0}, floorCell{20, 20, 0}, floorCell{10, 10, 3})
+	r, err := pf.FindPath(Point3D{12, 12, 0}, Point3D{28, 28, 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = pf.validateSurface(context.Background(), r); err != nil {
+		t.Fatal(err)
+	}
+	cut := r.Clone()
+	cut.Points = []Point3D{r.Points[0], r.Points[len(r.Points)-1]}
+	cut.PointPolys = []detour.DtPolyRef{r.PointPolys[0], r.PointPolys[len(r.PointPolys)-1]}
+	cut.Transitions = []bool{false, false}
+	// Shift the end so the direct chord passes through the missing quadrant.
+	cut.Points[1] = Point3D{28, 22, 0}
+	if err = pf.validateSurface(context.Background(), cut); err == nil {
+		t.Fatal("corner cut accepted")
+	}
+	wrong := r.Clone()
+	wrong.Points[1].Z += 3
+	if err = pf.validateSurface(context.Background(), wrong); err == nil {
+		t.Fatal("wrong floor accepted")
 	}
 }

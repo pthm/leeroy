@@ -15,10 +15,7 @@ import (
 
 const (
 	maxPathLength      = 1024 // was 74 (the server's creature limit): ~300yd, so longer trips fell back to a straight line
-	maxPointPathLength = 2048
-	smoothPathStepSize = float32(4.0)
-	smoothPathSlop     = float32(0.3)
-	vertexSize         = 3
+	maxPointPathLength = 8192
 	invalidPolyRef     = detour.DtPolyRef(0)
 
 	GROUND_HEIGHT_TOLERANCE = 0.05
@@ -352,57 +349,28 @@ func (pf *PathFinder) FindPathContext(ctx context.Context, start, dest Point3D) 
 		pathType |= PathfindFarFromPolyEnd
 	}
 
-	// Build smooth point path.
-	smoothPath := make([]float32, maxPointPathLength*vertexSize)
-	var smoothPathSize int
-	smoothRefs := make([]detour.DtPolyRef, maxPointPathLength)
-	transitions := make([]bool, maxPointPathLength)
-
-	status := pf.findSmoothPath(ctx, startPoint[:], endPoint[:], polyPath, uint32(polyPathSize), smoothPath, &smoothPathSize, uint32(maxPointPathLength), smoothRefs, transitions)
-
-	if err := ctx.Err(); err != nil {
+	// Keep every polygon crossing. Sampling each polygon's own surface avoids
+	// both cutting corners between steering steps and selecting an overlapping floor.
+	points, pointRefs, transitions, truncated, err := pf.surfacePath(ctx, closestStart[:], endPoint[:], polyPath[:polyPathSize])
+	if err != nil {
 		return nil, err
 	}
-	// Special case: start and end on same poly, only 1 point returned.
-	if polyPathSize == 1 && smoothPathSize == 1 {
-		copy(smoothPath[1*vertexSize:], endPoint[:])
-		smoothPathSize = 2
-		smoothRefs[1] = endPoly
-	} else if smoothPathSize < 2 || detour.DtStatusFailed(status) {
-		return &PathResult{
-			Type:   pathType | PathfindNopath,
-			Points: []Point3D{start, dest},
-		}, nil
-	} else if smoothPathSize >= int(maxPointPathLength) {
+	if truncated {
 		pathType |= PathfindShort
 	}
-
-	// Convert recast coords back to game coords.
-	points := make([]Point3D, smoothPathSize)
-	for i := 0; i < smoothPathSize; i++ {
-		points[i] = Point3D{
-			X: smoothPath[i*vertexSize+2],
-			Y: smoothPath[i*vertexSize],
-			Z: smoothPath[i*vertexSize+1],
-		}
+	if len(points) < 2 {
+		return &PathResult{Type: PathfindNopath}, nil
 	}
-
-	// Set final Z for each point by querying the navmesh poly height at the *final smoothed (x,y)*.
-	// This replicates using the surface the path actually follows on the mesh.
-	// (AC additionally runs NormalizePath/UpdateAllowedPositionZ which may adjust further using maps/vmaps;
-	// when aux data has full fidelity the getMapHeight path above would be used instead.)
-	for i := range points {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		if r, ok := pf.getNearestPolyHeightLocked(points[i].X, points[i].Y, points[i].Z+0.5, 20); ok {
-			points[i].Z = r
-		}
+	if projectionTooFar(start, Point3D{closestStart[2], closestStart[0], closestStart[1]}) {
+		pathType |= PathfindIncomplete | PathfindFarFromPolyStart
+	}
+	if projectionTooFar(dest, Point3D{closestEnd[2], closestEnd[0], closestEnd[1]}) {
+		pathType |= PathfindIncomplete | PathfindFarFromPolyEnd
 	}
 
 	return &PathResult{
 		Type: pathType, Points: points,
-		Corridor: slices.Clone(polyPath[:polyPathSize]), PointPolys: smoothRefs[:smoothPathSize], Transitions: transitions[:smoothPathSize],
+		Corridor: slices.Clone(polyPath[:polyPathSize]), PointPolys: pointRefs, Transitions: transitions,
 		RequestedStart: start, RequestedEnd: dest,
 		ProjectedStart: Point3D{closestStart[2], closestStart[0], closestStart[1]},
 		ProjectedEnd:   Point3D{closestEnd[2], closestEnd[0], closestEnd[1]},
@@ -487,257 +455,11 @@ func (pf *PathFinder) getPolyByLocation(point []float32, distance *float32, clos
 	return invalidPolyRef
 }
 
-func (pf *PathFinder) findSmoothPath(ctx context.Context, startPos, endPos []float32, polyPath []detour.DtPolyRef, polyPathSize uint32,
-	smoothPath []float32, smoothPathSize *int, maxSmoothPathSize uint32, refs []detour.DtPolyRef, transitions []bool) detour.DtStatus {
-	*smoothPathSize = 0
-	nsmoothPath := uint32(0)
-
-	polys := make([]detour.DtPolyRef, maxPathLength)
-	copy(polys, polyPath[:polyPathSize])
-	npolys := polyPathSize
-
-	var iterPos, targetPos [3]float32
-
-	if polyPathSize > 1 {
-		if detour.DtStatusFailed(pf.query.ClosestPointOnPolyBoundary(polys[0], startPos, iterPos[:])) {
-			return detour.DT_FAILURE
-		}
-		if detour.DtStatusFailed(pf.query.ClosestPointOnPolyBoundary(polys[npolys-1], endPos, targetPos[:])) {
-			return detour.DT_FAILURE
-		}
-	} else {
-		copy(iterPos[:], startPos)
-		copy(targetPos[:], endPos)
-	}
-
-	// Store first point as-is (from boundary or start). AC stores iterPos directly here; +0.5 is added only to subsequent steering points.
-	dtVcopy(smoothPath[nsmoothPath*vertexSize:], iterPos[:])
-	refs[nsmoothPath] = polys[0]
-	nsmoothPath++
-
-	for npolys > 0 && nsmoothPath < maxSmoothPathSize {
-		if ctx.Err() != nil {
-			return detour.DT_FAILURE
-		}
-		var steerPos [3]float32
-		var steerPosFlag detour.DtStraightPathFlags
-		var steerPosRef detour.DtPolyRef
-
-		if !pf.getSteerTarget(iterPos[:], targetPos[:], smoothPathSlop, polys, npolys, steerPos[:], &steerPosFlag, &steerPosRef) {
-			break
-		}
-
-		endOfPath := (steerPosFlag & detour.DT_STRAIGHTPATH_END) != 0
-		offMeshConnection := (steerPosFlag & detour.DT_STRAIGHTPATH_OFFMESH_CONNECTION) != 0
-
-		// Find movement delta.
-		delta := [3]float32{
-			steerPos[0] - iterPos[0],
-			steerPos[1] - iterPos[1],
-			steerPos[2] - iterPos[2],
-		}
-		lenVal := float32(math.Sqrt(float64(delta[0]*delta[0] + delta[1]*delta[1] + delta[2]*delta[2])))
-		if (endOfPath || offMeshConnection) && lenVal < smoothPathStepSize {
-			lenVal = 1.0
-		} else {
-			lenVal = smoothPathStepSize / lenVal
-		}
-
-		moveTgt := [3]float32{
-			iterPos[0] + delta[0]*lenVal,
-			iterPos[1] + delta[1]*lenVal,
-			iterPos[2] + delta[2]*lenVal,
-		}
-
-		// Move.
-		var result [3]float32
-		const maxVisitPoly = 16
-		visited := make([]detour.DtPolyRef, maxVisitPoly)
-		var nvisited int
-
-		var bHit bool
-		if detour.DtStatusFailed(pf.query.MoveAlongSurface(polys[0], iterPos[:], moveTgt[:], pf.filter, result[:], visited, &nvisited, maxVisitPoly, &bHit)) {
-			return detour.DT_FAILURE
-		}
-
-		npolys = pf.fixupCorridor(polys, npolys, maxPathLength, visited, uint32(nvisited))
-
-		// Get the real surface height. AC writes it in place, so a failed lookup keeps MoveAlongSurface's height.
-		var h float32
-		if detour.DtStatusSucceed(pf.query.GetPolyHeight(polys[0], result[:], &h)) {
-			result[1] = h
-		}
-		result[1] += 0.5 // temp lift matches AC FindSmoothPath for steering iterations (Normalize fixes later)
-		copy(iterPos[:], result[:])
-
-		// Record: we still record the lifted for consistency during generation; normalize step after will fix to map/vmap Z.
-		record := [3]float32{iterPos[0], iterPos[1], iterPos[2]}
-
-		// Handle end of path.
-		if endOfPath && inRangeYZX(iterPos[:], steerPos[:], smoothPathSlop, 1.0) {
-			copy(iterPos[:], targetPos[:])
-			if nsmoothPath < maxSmoothPathSize {
-				// record the target as-is (AC copies targetPos directly; NormalizePath fixes Z later)
-				dtVcopy(smoothPath[nsmoothPath*vertexSize:], iterPos[:])
-				refs[nsmoothPath] = polys[npolys-1]
-				nsmoothPath++
-			}
-			break
-		} else if offMeshConnection && inRangeYZX(iterPos[:], steerPos[:], smoothPathSlop, 1.0) {
-			// Handle off-mesh connection.
-			prevRef := invalidPolyRef
-			polyRef := polys[0]
-			var npos uint32
-			for npos < npolys && polyRef != steerPosRef {
-				prevRef = polyRef
-				polyRef = polys[npos]
-				npos++
-			}
-			for i := npos; i < npolys; i++ {
-				polys[i-npos] = polys[i]
-			}
-			npolys -= npos
-
-			var connStartPos, connEndPos [3]float32
-			if detour.DtStatusSucceed(pf.navMesh.GetOffMeshConnectionPolyEndPoints(prevRef, polyRef, connStartPos[:], connEndPos[:])) {
-				if nsmoothPath < maxSmoothPathSize {
-					dtVcopy(smoothPath[nsmoothPath*vertexSize:], connStartPos[:])
-					refs[nsmoothPath] = prevRef
-					nsmoothPath++
-				}
-				copy(iterPos[:], connEndPos[:])
-				var polyH float32
-				if detour.DtStatusFailed(pf.query.GetPolyHeight(polys[0], iterPos[:], &polyH)) {
-					return detour.DT_FAILURE
-				}
-				iterPos[1] = polyH + 0.5 // match AC temp lift
-				record = iterPos
-				transitions[nsmoothPath] = true
-				// record version (lifted)
-				if nsmoothPath < maxSmoothPathSize {
-					smoothPath[nsmoothPath*vertexSize+1] = iterPos[1]
-				}
-			}
-		}
-
-		if nsmoothPath < maxSmoothPathSize {
-			dtVcopy(smoothPath[nsmoothPath*vertexSize:], record[:])
-			refs[nsmoothPath] = polys[0]
-			nsmoothPath++
-		}
-	}
-
-	*smoothPathSize = int(nsmoothPath)
-
-	if nsmoothPath < uint32(maxPointPathLength) {
-		return detour.DT_SUCCESS
-	}
-	return detour.DT_FAILURE
-}
-
-func (pf *PathFinder) getSteerTarget(startPos, endPos []float32, minTargetDist float32, path []detour.DtPolyRef, pathSize uint32,
-	steerPos []float32, steerPosFlag *detour.DtStraightPathFlags, steerPosRef *detour.DtPolyRef) bool {
-
-	const maxSteerPoints = 3
-	steerPath := make([]float32, maxSteerPoints*vertexSize)
-	steerPathFlags := make([]detour.DtStraightPathFlags, maxSteerPoints)
-	steerPathPolys := make([]detour.DtPolyRef, maxSteerPoints)
-	var nsteerPath int
-
-	status := pf.query.FindStraightPath(startPos, endPos, path, int(pathSize),
-		steerPath, steerPathFlags, steerPathPolys, &nsteerPath, maxSteerPoints, 0)
-
-	if nsteerPath == 0 || detour.DtStatusFailed(status) {
-		return false
-	}
-
-	// Find vertex far enough to steer to. (AC does first beyond slop)
-	ns := 0
-	for ns < nsteerPath {
-		if (steerPathFlags[ns]&detour.DT_STRAIGHTPATH_OFFMESH_CONNECTION) != 0 ||
-			!inRangeYZX(steerPath[ns*vertexSize:], startPos, minTargetDist, 1000.0) {
-			break
-		}
-		ns++
-	}
-	if ns >= nsteerPath {
-		return false
-	}
-
-	dtVcopy(steerPos, steerPath[ns*vertexSize:])
-	steerPos[1] = startPos[1] // keep Z value
-	*steerPosFlag = steerPathFlags[ns]
-	*steerPosRef = steerPathPolys[ns]
-	return true
-}
-
-func (pf *PathFinder) fixupCorridor(path []detour.DtPolyRef, npath, maxPath uint32, visited []detour.DtPolyRef, nvisited uint32) uint32 {
-	furthestPath := int32(-1)
-	furthestVisited := int32(-1)
-
-	for i := int32(npath) - 1; i >= 0; i-- {
-		found := false
-		for j := int32(nvisited) - 1; j >= 0; j-- {
-			if path[i] == visited[j] {
-				furthestPath = i
-				furthestVisited = j
-				found = true
-			}
-		}
-		if found {
-			break
-		}
-	}
-
-	if furthestPath == -1 || furthestVisited == -1 {
-		return npath
-	}
-
-	req := uint32(int32(nvisited) - furthestVisited)
-	var orig uint32
-	if uint32(furthestPath+1) < npath {
-		orig = uint32(furthestPath + 1)
-	} else {
-		orig = npath
-	}
-	var size uint32
-	if npath > orig {
-		size = npath - orig
-	}
-	if req+size > maxPath {
-		size = maxPath - req
-	}
-
-	if size > 0 {
-		copy(path[req:req+size], path[orig:orig+size])
-	}
-
-	for i := uint32(0); i < req; i++ {
-		path[i] = visited[nvisited-1-i]
-	}
-
-	return req + size
-}
-
-// Utility functions matching detour naming conventions.
-func dtVcopy(dst, src []float32) {
-	dst[0] = src[0]
-	dst[1] = src[1]
-	dst[2] = src[2]
-}
-
 func dtVdist(v1, v2 []float32) float32 {
 	dx := v2[0] - v1[0]
 	dy := v2[1] - v1[1]
 	dz := v2[2] - v1[2]
 	return float32(math.Sqrt(float64(dx*dx + dy*dy + dz*dz)))
-}
-
-func inRangeYZX(v1, v2 []float32, r, h float32) bool {
-	dx := v2[0] - v1[0]
-	dy := v2[1] - v1[1]
-	dz := v2[2] - v1[2]
-	return (dx*dx+dz*dz) < r*r && math.Abs(float64(dy)) < float64(h)
 }
 
 // PathFindingService is a thread-safe service that manages a pool of PathFinder instances.
