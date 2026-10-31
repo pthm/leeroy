@@ -202,6 +202,14 @@ func (m *MovementController) setPath(path []navigation.Point3D, startTime time.T
 	p0 := m.path[0]
 	m.curX, m.curY, m.curZ = p0.X, p0.Y, p0.Z
 	m.curO = initialO
+	if prepared {
+		for i, d := range m.segLens {
+			if d > 1e-6 {
+				m.curO = float32(math.Atan2(float64(m.path[i+1].Y-m.path[i].Y), float64(m.path[i+1].X-m.path[i].X)))
+				break
+			}
+		}
+	}
 	m.clampCurrentZToGround()
 
 	if wasMoving {
@@ -212,6 +220,9 @@ func (m *MovementController) setPath(path []navigation.Point3D, startTime time.T
 		if len(m.path) >= 2 {
 			p1 := m.path[1]
 			targetO := float32(math.Atan2(float64(p1.Y-p0.Y), float64(p1.X-p0.X)))
+			if prepared {
+				targetO = m.curO
+			}
 			if angleDelta(targetO, m.curO) > repathFacingMinRad || angleDelta(targetO, m.lastSentO) > repathFacingMinRad {
 				m.curO = targetO
 				m.sender.SetFacingMoving(startTime, m.curX, m.curY, m.curZ, m.curO)
@@ -271,6 +282,11 @@ func (m *MovementController) Update(now time.Time) {
 		return
 	}
 
+	// Preserve checked corners even when one tick crosses several samples.
+	// The packet stream must not replace them with a chord between heartbeats.
+	if m.prepared {
+		m.sendPreparedVertices(targetDist)
+	}
 	// Advance pose along path
 	m.advanceAlongPath(targetDist)
 	m.clampCurrentZToGround()
@@ -409,10 +425,50 @@ func (m *MovementController) recordSentPose(now time.Time) {
 	m.haveLastSent = true
 }
 
+// sendPreparedVertices emits changes in direction/grade at the checked vertex,
+// with its time along the route. Collinear samples need no extra packet. Tolerance
+// is one milliyard, matching float32 world-coordinate precision.
+func (m *MovementController) sendPreparedVertices(target float32) {
+	for i := 1; i < len(m.path)-1; i++ {
+		distance := m.cumLens[i]
+		if distance <= m.travelDist || distance > target {
+			continue
+		}
+		// Coalesce zero-horizontal-length portal samples at the same distance.
+		end := i
+		for end+1 < len(m.path)-1 && m.cumLens[end+1] == distance {
+			end++
+		}
+		prev := i - 1
+		for prev > 0 && m.cumLens[prev] == distance {
+			prev--
+		}
+		a, b, c := m.path[prev], m.path[end], m.path[end+1]
+		incoming, outgoing := a.DistanceTo2D(b), b.DistanceTo2D(c)
+		i = end
+		if incoming < 1e-6 || outgoing < 1e-6 {
+			continue
+		}
+		fraction := incoming / (incoming + outgoing)
+		projected := navigation.Point3D{X: a.X + fraction*(c.X-a.X), Y: a.Y + fraction*(c.Y-a.Y), Z: a.Z + fraction*(c.Z-a.Z)}
+		if b.DistanceTo(projected) <= 0.001 {
+			continue
+		}
+		at := m.startTime.Add(time.Duration(float64(distance/m.speed) * float64(time.Second)))
+		m.curX, m.curY, m.curZ = b.X, b.Y, b.Z
+		m.curO = float32(math.Atan2(float64(c.Y-b.Y), float64(c.X-b.X)))
+		m.segmentIndex = end
+		m.clampCurrentZToGround()
+		m.sender.SetFacingMoving(at, m.curX, m.curY, m.curZ, m.curO)
+		m.lastHBTime, m.lastFacingTime = at, at
+		m.recordSentPose(at)
+	}
+}
+
 // maybeScheduleTurnAtWaypoint looks ahead at the next waypoint and if the incoming
 // and outgoing directions differ significantly, we emulate a player stopping to turn.
 func (m *MovementController) maybeScheduleTurnAtWaypoint(now time.Time, targetDist float32) {
-	if len(m.path) < 3 {
+	if m.prepared || len(m.path) < 3 {
 		return
 	}
 	// Find current segment we are on or just finishing

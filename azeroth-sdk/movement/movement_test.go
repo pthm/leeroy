@@ -1013,3 +1013,40 @@ func TestPreparedSwimmingModesAvoidSpatialQueries(t *testing.T) {
 		t.Fatal(changes)
 	}
 }
+
+func TestPreparedPacketsRetainCornersAcrossCoarseTicks(t *testing.T) {
+	sender := &fakeSender{}
+	cfg := DefaultMovementConfig()
+	cfg.HeartbeatInterval = time.Second
+	cfg.WaypointRadius = 2
+	m := NewMovementController(sender, 10, nil, cfg)
+	start := time.Now()
+	path := []navigation.Point3D{{}, {X: 5}, {X: 5, Y: 5}, {X: 10, Y: 5}}
+	m.SetPreparedPath(path, start, math.Pi, 0)
+	if sender.pkts[0].o != 0 {
+		t.Fatal("start did not face the checked segment")
+	}
+	m.Update(start.Add(450 * time.Millisecond))
+	for _, p := range sender.pkts {
+		if p.x < 5 && math.Abs(float64(p.o)) > .001 {
+			t.Fatal("turned before checked corner", p)
+		}
+	}
+	m.Update(start.Add(1200 * time.Millisecond))
+	found := 0
+	for _, p := range sender.pkts {
+		if p.typ == "SET_FACING" && p.x == 5 && (p.y == 0 || p.y == 5) {
+			found++
+		}
+	}
+	if found != 2 {
+		t.Fatalf("skipped corners: %+v", sender.pkts)
+	}
+	// Every packet-to-packet segment stays on the L-shaped checked route.
+	for i := 1; i < len(sender.pkts); i++ {
+		a, b := sender.pkts[i-1], sender.pkts[i]
+		if math.Abs(float64(a.x-b.x)) > .001 && math.Abs(float64(a.y-b.y)) > .001 {
+			t.Fatalf("unchecked chord: %+v -> %+v", a, b)
+		}
+	}
+}
