@@ -246,6 +246,7 @@ local function walk(o, x, y, z)
   return await(req, 1)
 end
 
+local go_to_impl -- the unvalidated go_to, for the leg after a portal
 function A.go_to(o)
   local tol, ztol = o.tolerance or 4, o.vertical_tolerance or 3
   local initial = me.position()
@@ -273,6 +274,22 @@ function A.go_to(o)
     r = walk(o, o.x, o.y, z)
     d = evidence()
     if (d.position.map or 0) ~= map then return fail("wrong_map", "map changed during travel") end
+    -- a destination past a same-map teleport (Stormwind's Wizard's Sanctum): walk into it, then the rest of the way
+    if not r.ok and r.error.code == "route_unreachable" and not o.portal_taken then
+      local v = world._via_portal(o.x, o.y, z)
+      if v then
+        move._expect_transfer(120) -- the teleport must not end the caller's movement lease
+        local w = walk(o, v.enter.x, v.enter.y, v.enter.z)
+        if not w.ok and w.error.code ~= "teleported" then return fail(w.error.code, w.error.message) end
+        local deadline = now() + 10000
+        while A.dist(v.exit.x, v.exit.y, v.exit.z) > 10 and now() < deadline do wait(0.5) end
+        if A.dist(v.exit.x, v.exit.y, v.exit.z) > 10 then return fail("unreachable", "walked into the "..v.name.." but it didn't teleport") end
+        local rest = {}
+        for k, val in pairs(o) do rest[k] = val end
+        rest.portal_taken, rest.z = true, z
+        return go_to_impl(rest)
+      end
+    end
     -- Control and query failures cannot be masked by a coincidentally nearby position.
     if not r.ok and r.error.code ~= "stuck" then return fail(r.error.code, r.error.message) end
     if d.distance <= tol and d.vertical_gap > ztol then return fail("wrong_floor", "walk ended at the right x,y on another floor") end
@@ -287,7 +304,7 @@ function A.go_to(o)
   end
   return fail(r.error.code, r.error.message)
 end
-local go_to_impl = A.go_to
+go_to_impl = A.go_to
 local function travel_go_to(observe, stop, o)
   o.observe_danger,o.stop_on_danger=observe,stop
   return go_to_impl(o)

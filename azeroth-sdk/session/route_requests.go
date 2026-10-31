@@ -197,7 +197,7 @@ func checkRoute(data types.PathCheck, from, to navigation.Point3D, res *navigati
 		prev = p
 		data.Waypoints = append(data.Waypoints, routePosition(p, data.Map))
 	}
-	if res.Partial || gap > 3 || !floor {
+	if res.Partial || math.Hypot(float64(end.X-to.X), float64(end.Y-to.Y)) > 3 || !floor {
 		data.Status, data.Reason = "partial", "route_unreachable"
 		return script.Fail("route_unreachable", endsShort(end, to), data)
 	}
@@ -237,6 +237,22 @@ func (b *Bot) setupRoutes() {
 		return b.findPath(ctx, m, from, to)
 	}}
 	b.routes = r
+	e.InternalFunc("world._via_portal", "(x, y, z) → table?", func(x, y, z float64) map[string]any {
+		if b.nav == nil {
+			return nil
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		px, py, pz, _, m := b.world.Position()
+		v, ok := b.viaPortal(ctx, m, navigation.Point3D{X: px, Y: py, Z: pz}, navigation.Point3D{X: float32(x), Y: float32(y), Z: float32(z)})
+		if !ok {
+			return nil
+		}
+		pt := func(p navigation.Point3D) map[string]any {
+			return map[string]any{"x": round1(p.X), "y": round1(p.Y), "z": round1(p.Z)}
+		}
+		return map[string]any{"name": v.Name, "enter": pt(v.Enter), "exit": pt(v.Exit)}
+	})
 	e.InternalFunc("world._cancel", "(request_id) → bool", func(id int) bool {
 		task, _, _ := e.CurrentTaskIdentity()
 		return r.cancelOwned(task, id)

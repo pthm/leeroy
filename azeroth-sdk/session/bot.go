@@ -955,8 +955,13 @@ func (b *Bot) prepareMoveContext(ctx context.Context, x, y, z float32, valid fun
 				if dist3(result.Points[0], current) > 3 {
 					return fmt.Errorf("%s", startsOff(result.Points[0], current))
 				}
-				if result.Partial || dist3(result.Points[len(result.Points)-1], to) > 3 {
-					return fmt.Errorf("%s", endsShort(result.Points[len(result.Points)-1], to))
+				if e := result.Points[len(result.Points)-1]; result.Partial || math.Hypot(float64(e.X-to.X), float64(e.Y-to.Y)) > 3 {
+					msg := endsShort(e, to)
+					if v, ok := b.viaPortal(ctx, mapID, current, to); ok {
+						msg += fmt.Sprintf("; it's reachable through the %s: walk into (%.1f, %.1f, %.1f) and it puts you at (%.1f, %.1f, %.1f) (act.go_to takes it)",
+							v.Name, v.Enter.X, v.Enter.Y, v.Enter.Z, v.Exit.X, v.Exit.Y, v.Exit.Z)
+					}
+					return fmt.Errorf("%s", msg)
 				}
 			}
 		}

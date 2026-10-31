@@ -193,6 +193,17 @@ func (s *PathFindingService) prepareCandidate(ctx context.Context, m uint32, r *
 				}
 			}
 		}
+		if modes[i]&8 != 0 && (math.IsInf(float64(water), 0) || math.IsNaN(float64(water))) {
+			// the navmesh's water with none in the terrain: liquid inside a building (Stormwind's canals), which the
+			// collision data doesn't carry. Its water polygons lie on the surface.
+			// ponytail: navmesh surface as the water level; read the vmaps' WMO liquid if this proves too coarse
+			if ray := s.vmapMgr.TraceMovementContext(ctx, m, Point3D{p.X, p.Y, p.Z + MaxProjectionVertical}, Point3D{p.X, p.Y, p.Z - 1.6}); ray.State == "clear" {
+				out.Points[i].Z = p.Z - 1.4
+				out.Swimming[i] = true
+				supported[i] = true
+				continue
+			}
+		}
 		if modes[i]&8 != 0 && !math.IsInf(float64(water), 0) && water-ground > 1.6 {
 			out.Points[i].Z = water - 1.4
 			out.Swimming[i] = true

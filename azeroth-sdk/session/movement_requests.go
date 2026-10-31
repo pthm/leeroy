@@ -286,7 +286,7 @@ func (m *movementRequests) poll() {
 			res := types.MoveDone{Distance: math.Round(d*10) / 10, NoPath: r.noPath}
 			p := m.backend.position()
 			vertical := math.Abs(p.Z - r.owner.Destination.Z)
-			if math.Sqrt(d*d-vertical*vertical) < 2.5 && vertical <= float64(pathfinding.MaxEndpointVertical) {
+			if math.Sqrt(d*d-vertical*vertical) < float64(pathfinding.MaxProjectionHorizontal)+0.5 && vertical <= float64(pathfinding.MaxEndpointVertical) {
 				m.finishLocked(r, script.Ok(res))
 			} else if !m.backend.moving() && now.Sub(r.started) > time.Second {
 				m.finishLocked(r, script.Fail("stuck", "movement stopped short of the destination", res))
@@ -470,6 +470,16 @@ func (m *movementRequests) expectRecoveryTransfer(task int, timeout time.Duratio
 		m.expectedTransferUntil = m.now().Add(timeout)
 	}
 	return m.transferSerial
+}
+
+// expectTransfer: as expectRecoveryTransfer for a lease of any priority the task holds (walking into a portal)
+func (m *movementRequests) expectTransfer(task int, timeout time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.lease != nil && m.lease.owner.TaskID == task {
+		m.expectedTransferLease = m.lease
+		m.expectedTransferUntil = m.now().Add(timeout)
+	}
 }
 func (m *movementRequests) transferredSince(serial uint64) bool {
 	m.mu.Lock()

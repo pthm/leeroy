@@ -20,6 +20,17 @@ func TestGoToFloorPostconditions(t *testing.T) {
 			`r=act.go_to{x=100,y=0,z=0};assert(not r.ok and r.error.code=="unreachable" and r.data.distance==100)`},
 		{"control failure at destination", `move.to=function() pos={x=10,y=0,z=0};return {ok=false,error={code="preempted",message="recovery"}} end`,
 			`r=act.go_to{x=10,y=0,z=0};assert(not r.ok and r.error.code=="preempted")`},
+		{"through a same-map portal", `move._expect_transfer=function(s) expected=s end
+		  world._via_portal=function() return {name="Tower Portal",enter={x=5,y=0,z=50},exit={x=40,y=0,z=0}} end
+		  move.to=function(x,y,z) moves[#moves+1]={x=x,y=y,z=z}
+		   if x==5 then pos={x=40,y=0,z=0};return {ok=false,error={code="teleported",message="moved"}} end
+		   if pos.x==40 then pos={x=x,y=y,z=z};return {ok=true} end
+		   return {ok=false,error={code="route_unreachable",message="short"}} end`,
+			`r=act.go_to{x=50,y=0,z=0};assert(r.ok and expected and #moves==3 and moves[2].x==5 and pos.x==50)`},
+		{"portal that doesn't teleport", fastClock + `move._expect_transfer=function() end
+		  world._via_portal=function() return {name="Tower Portal",enter={x=5,y=0,z=50},exit={x=40,y=0,z=0}} end
+		  move.to=function(x,y,z) if x==5 then pos={x=5,y=0,z=50};return {ok=true} end return {ok=false,error={code="route_unreachable",message="short"}} end`,
+			`r=act.go_to{x=50,y=0,z=0};assert(not r.ok and r.error.code=="unreachable")`},
 		{"unverified fallback", `move.to=function() pos={x=10,y=0,z=0};return {ok=true,data={no_path=true}} end`,
 			`r=act.go_to{x=10,y=0,z=0};assert(not r.ok and r.error.code=="route_unreachable")`},
 	} {

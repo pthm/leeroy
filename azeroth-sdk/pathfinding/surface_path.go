@@ -7,7 +7,9 @@ import (
 	"math"
 )
 
-const MaxProjectionHorizontal = float32(0.75)
+// MaxProjectionHorizontal: a requested start or destination this far beside the navmesh is still reached from its
+// nearest point: a vendor behind a counter, a trainer by a wall (Stormwind's)
+const MaxProjectionHorizontal = float32(3.0)
 const MaxProjectionVertical = float32(1.5)
 
 // Bound support sampling as well as path interpolation near steps and ledges.

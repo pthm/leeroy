@@ -398,6 +398,15 @@ func (pf *PathFinder) FindPathContext(ctx context.Context, start, dest Point3D) 
 		pathType |= PathfindIncomplete | PathfindFarFromPolyEnd
 	}
 
+	// a destination the navmesh can't quite reach (behind a counter, on a ledge) is reached from the nearest point
+	// when that's within the endpoint tolerances: close enough to talk to, loot or fight. A destination polygon the
+	// search couldn't reach is another floor unless it's under 2 yd up or down (storeys are further apart).
+	reached := polyPath[polyPathSize-1] == endPoly
+	if e := points[len(points)-1]; pathType&(PathfindShort|PathfindFarFromPolyStart) == 0 &&
+		pathType&(PathfindIncomplete|PathfindFarFromPolyEnd) != 0 && !projectionTooFar(dest, e) && (reached || abs32(e.Z-dest.Z) < 2) {
+		pathType &^= PathfindIncomplete | PathfindFarFromPolyEnd
+		pathType |= PathfindNormal
+	}
 	return &PathResult{
 		Type: pathType, Points: points,
 		Corridor: slices.Clone(polyPath[:polyPathSize]), PointPolys: pointRefs, Transitions: transitions,

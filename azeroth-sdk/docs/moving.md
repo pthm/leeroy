@@ -37,8 +37,16 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   Missing navigation data returns `not_available`. Unknown gaps and floors are omitted.
 - Detour polygon references are retained through the funnel, caches and preparation. Samples follow
   the selected polygon's detail surface, including every portal crossing. A requested start or destination
-  must project onto the navmesh within 0.75 yards horizontally and 3 yards vertically (a creature's spawn
-  height, a pose on stairs where the detail mesh floats); arrival uses the same 3 yards. Support is sampled at most every 0.25 yards;
+  must project onto the navmesh within 3 yards horizontally and 3 vertically (a creature's spawn height, a
+  pose on stairs where the detail mesh floats, a vendor behind a counter); a destination the navmesh can't
+  quite reach is reached from the nearest point within those bounds, unless that point is on another floor
+  (2 yards or more up or down). Arrival is within 3.5 yards beside and 3 above or below.
+- Water inside buildings (Stormwind's canals) is swum at the navmesh's water surface: the collision data has
+  no liquid, the navmesh does.
+- Same-map teleports (the Wizard's Sanctum in Stormwind, Darnassus and Rut'theran, Ebon Hold): move.to
+  doesn't cross them, but its route_unreachable names the portal to walk into and where it puts you, and
+  act.go_to takes it: walks into the trigger, is teleported, and walks the rest. Walking into a trigger by
+  accident teleports you too (move.to then ends `teleported`). Support is sampled at most every 0.25 yards;
   physical heights come from nearby terrain and movement-mask WMO/M2 rays. Overhead terrain does
   not replace a cave floor. Final body segments use continuous capsule sweeps against indexed triangles.
   The default standing profile is radius 0.3, height 2.03128, step 1.4 yards and maximum slope 60 degrees:
