@@ -231,7 +231,7 @@ Update `azeroth-sdk/docs/sdk.md` to introduce raw requests and waiting helper re
 
 ## Verification and rollout
 
-Implementation started on 2026-10-30. The stack now contains:
+Implementation started on 2026-10-30. The following is a historical change ledger: its boundary column records what remained **at that change**, not the current backlog. The current completion status follows the ledger.
 
 | Change | Implemented and unit tested | Remaining boundary |
 |---|---|---|
@@ -318,7 +318,37 @@ confirm both CLI forms and exact requested Z preservation. A non-moving GM probe
 waypoints to `world.route` and receives a verified two-leg route. This does not certify indoor/bridge/cave
 coverage, live danger estimates, or a hard deadline for stalled kernel operations.
 
-The next boundaries remain: shared safety queries and live hostile exposure; remaining movement producers/diagnostics and recovery gameplay acceptance; casting readiness/corrections; complete return-shape/postcondition and dynamic union/callback validation; other ambiguous nullable snapshots; profession workflow acceptance; recovery aggregates and continuous gear/dead-time diagnostics; cross-runtime permission smoke tests; scenario preflight; and matched fresh-start benchmark runs. Unknown run state is permitted when saved artifacts cannot establish any of the specified lifecycle states. Tool timeout/denial totals describe observed structured codes only. The rollout below remains the target order for the outstanding work.
+### Current implementation and acceptance status (2026-10-30)
+
+The implementation boundaries listed above are now covered by the additional stack below. Unit tests, the complete Go suite, focused race tests, real-map pathfinding tests, and the live acceptance suites pass. A fresh matched 120-minute Hogger run is in progress; benchmark interpretation remains pending its saved report. See [acceptance evidence](acceptance/README.md) for commands, artifact locations, runtime versions, limitations, and the final comparison.
+
+| Changes | Completed behavior and evidence |
+|---|---|
+| `zmzvnzuq`, `xpooluol`, `vtwywymo` | Shared awaitable 3D danger queries; bounded floor/LOS work; exposure before and during travel; explicit `stop_on_danger`; verified walked-distance budgets. Live bridge, road, stairs, both cave floors, wrong floor, and hostile exposure pass. |
+| `syozyvzl`, `nwtqzrlo`, `zqopxnvk` | Unstuck uses movement ownership; transfers cancel old movement/query work; owner and route evidence survives; dead/broken-weapon duration uses observed samples and excludes lifecycle/sequence gaps. |
+| `svlmxlxs`, `rzpwrqxp`, `utumznzv` | Typed readiness and bounded cast corrections; nominal range stays advisory; cast sequence IDs correlate spell, item and object outcomes. Same-spell overlap cannot share one outcome. Live moving/facing/cooldown/lost-target/LOS/moving-target cases pass. |
+| `pttyxkwm`, `tumowspp`, `ppvtosvy` | Registry/result/postcondition and nullable-contract validation; awaitable corpse/item comparison; explicit unconfirmed packet-only outcomes; trade/NPC/item state checks; gathering chooses its actual skill spell; state-only object activation is discriminated; `bags_full` normalization. Live errands, full bags, crafting, gathering and skills pass. |
+| `kstyxvpp`, `lqlvmpku`, `uvuykknz`, `nzxrnouk` | Safety work shares the recovery/rest deadline and cancels pending queries; one authorized graveyard transfer preserves its recovery lease; new deaths invalidate old corpse observations; healer visibility gets a bounded load window. Live reclaim, camped-corpse refusal, healer durability, broken-weapon attention, rest timeout and competing-task preemption pass. |
+| `upozuvmu`, `myplmzlr`, `muqynook`, `ovxkonly`, `xovowyop` | Shared command inventory, 25-second wait cap, runtime-specific completion instructions, OpenCode exit/error evidence and early credential checks. All 15 command families pass on Claude, Codex and OpenCode. The installed Claude uses background completion notifications; it does not expose `TaskOutput`. |
+| `wqvvmqsy`, `tumowspp` | Saved read-only scenario preflight with floor, quest, target and resource evidence. Unknown database/collision/configuration evidence remains unknown. Live fresh-character skill goal, pause/resume, session restart and saved report pass; the observed skill rank matches the saved server rank. |
+| `mproprxv`, `pplwrlpk` | Reproducible non-scored GM acceptance and fresh benchmark fixtures; SDK guide, skeleton and generated API reference describe the new contracts. |
+
+Live testing found and fixed integration defects that mocks alone did not expose: generic opening spells failed on herb nodes, full bags had an inconsistent error name, release invalidated its own lease, a recent previous corpse could survive into the next death, and the healer object could arrive after the graveyard teleport. These are SDK fixes. The server's 120-second reclaim delay and invisible GM target fixtures were test setup issues; their failed attempts remain in the saved evidence.
+
+Explicit limits remain part of the contracts, not silent success paths:
+
+- Healer durability loss is disclosed, but its exact server-configured cost is unavailable (`cost_known=false`). The SDK does not invent a price or automatically authorize it.
+- Spatial cancellation is cooperative through search, cache locks, model traversal and bounded file reads. An operating-system filesystem call already in progress cannot be forcibly interrupted; tests verify cooperative deadlines, not a hard real-time kernel guarantee.
+- Spell range, target eligibility and danger use available observations and identify unknown evidence; the server remains authoritative. Cast sequence IDs are reserved through the request deadline plus a 30-second late-reply quarantine; exhaustion returns `cast_busy`.
+- A corpse release authorizes one transfer for its current recovery lease. It still invalidates active paths and queued movement; disconnects, expiry, a replacement lease and later unrelated teleports do not inherit that authorization.
+- Old runs have no new reliability instrumentation. Their missing counters remain null. The old Hogger snapshot was configured for 120 minutes but saved about 88 minutes of play; comparisons use the common observed sample horizon and disclose their differing full-run coverage.
+- The original ten-model mage matrix includes OpenRouter models. This session has no OpenRouter credentials, so an exact replay of that matrix cannot run. OpenCode itself is verified through its already-authenticated OpenAI provider; models are not silently substituted in a benchmark.
+
+Unknown run state is permitted when saved artifacts cannot establish a specified lifecycle state. Tool timeout/denial totals describe observed structured codes only. A runtime JSON error is retained even if its process exits zero; generic error prose does not establish a permission denial, timeout, quota condition or game failure.
+
+### Rollout sequence
+
+The sequence below describes the implementation and acceptance order; it is not a list of still-unimplemented features.
 
 Implement in this order so later work has trustworthy contracts and evidence:
 

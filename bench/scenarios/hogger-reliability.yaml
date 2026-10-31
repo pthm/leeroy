@@ -11,6 +11,6 @@ require_fresh: true
 runtime: claude
 models: {claude: claude-opus-5-5}
 agents:
-  - {name: a54, char: Newwulfric, class: paladin, spec: protpaladin}
-  - {name: a55, char: Newrowena, class: priest, spec: holy}
-  - {name: a56, char: Newtamsin, class: mage, spec: frost}
+  - {name: a57, char: Fixwulfric, class: paladin, spec: protpaladin}
+  - {name: a58, char: Fixrowena, class: priest, spec: holy}
+  - {name: a59, char: Fixtamsin, class: mage, spec: frost}
