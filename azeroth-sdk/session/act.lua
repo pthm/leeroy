@@ -646,7 +646,12 @@ function A.fly(o)
 end
 
 -- ---------- recovery ----------
-local recovery_danger
+local function danger_request(p, seconds)
+  local request=world.danger(p.x,p.y,p.z,27)
+  local r=await(request,seconds)
+  if r.error and r.error.code=="wait_timeout" and request.id then world._cancel(request.id) end
+  return r
+end
 function A.rest(o)
   o = o or {}
   local deadline, attempted, steps = now() + (o.max_s or 40) * 1000, {}, {}
@@ -659,7 +664,12 @@ function A.rest(o)
   while A.hp() < (o.hp or 0.95) or A.mana() < (o.mana or 0.9) do
     if not me.alive() or me.ghost() then return finish(A.fail("act.rest", "not_alive", "cannot rest while dead")) end
     if o.safe then local control=move._check(); if not control.ok then return finish(control) end end
-    if o.safe and recovery_danger(me.position()).state ~= "clear" then return finish(A.fail("act.rest", "unsafe_recovery", "resting location became hostile or unverified")) end
+    if now() >= deadline then return finish(A.fail("act.rest", "rest_timeout", "requested health and mana thresholds were not reached")) end
+    if o.safe then
+      local d=danger_request(me.position(),math.min(15,(deadline-now())/1000))
+      if now()>=deadline or (d.error and d.error.code=="wait_timeout") then return finish(A.fail("act.rest","rest_timeout","rest deadline expired during safety observation")) end
+      if not d.ok or not d.data or d.data.state~="clear" then return finish(A.fail("act.rest","unsafe_recovery","resting location became hostile or unverified")) end
+    end
     if me.in_combat() then return finish(A.fail("act.rest", "attacked", "attacked while resting")) end
     if now() >= deadline then return finish(A.fail("act.rest", "rest_timeout", "requested health and mana thresholds were not reached")) end
     for _, need in ipairs({{kind = "Food", low = A.hp() < (o.hp or 0.95)}, {kind = "Drink", low = A.mana() < (o.mana or 0.9)}}) do
@@ -668,6 +678,7 @@ function A.rest(o)
         attempted[need.kind] = true
         local r = consume(need.kind, math.min(30, math.max(0, (deadline - now()) / 1000)))
         step(steps, "act.consume", r)
+        if now()>=deadline then return finish(A.fail("act.rest","rest_timeout","rest deadline expired during consumption")) end
         if not r.ok and r.error.code ~= "no_consumable" then return finish(r) end
       end
     end
@@ -722,8 +733,10 @@ local function recovery_context(o, id)
   end
   function c:action(op, fn, seconds)
     local r = self:guard(); if r then return r end
-    r = await(fn(), math.max(0.001, math.min(seconds or 10, (self.deadline-now())/1000)))
-    self.data.steps[#self.data.steps+1] = {op = op, ok = r.ok, request_id = r.id, error = r.error}
+    local req=fn()
+    r = await(req, math.max(0.001, math.min(seconds or 10, (self.deadline-now())/1000)))
+    if r.error and r.error.code=="wait_timeout" and req.id and (op=="world.path" or op=="world.danger") then world._cancel(req.id) end
+    step(self.data.steps,op,r)
     local ended = self:guard(); if ended then return ended end
     if not r.ok then
       local failed = self:fail(r.error.code, r.error.message, r)
@@ -731,6 +744,11 @@ local function recovery_context(o, id)
       return failed
     end
     return r
+  end
+  function c:danger(p)
+    local r=self:action("world.danger",function() return world.danger(p.x,p.y,p.z,27) end,15)
+    if not r.ok then return nil,r end
+    return r.data
   end
   function c:finish(r)
     self.data.alive = me.alive() and not me.ghost()
@@ -744,9 +762,6 @@ local function recovery_context(o, id)
   return c
 end
 
-recovery_danger = function(p)
-  return A.danger{x=p.x,y=p.y,z=p.z,radius=27}
-end
 local function recovery_move(c, p, tolerance)
   local ended = c:guard(); if ended then return ended end
   if p.map and me.position().map and p.map ~= me.position().map then return c:fail("unreachable", "recovery point is on another map") end
@@ -773,12 +788,15 @@ local function corpse_recovery(c, o, attempt_limit)
     local r = recovery_move(c, corpse, 4); if not r.ok then return r end
   end
   local target = {x = corpse.x, y = corpse.y, z = corpse.z, map = corpse.map}
-  if o.safe ~= false and recovery_danger(target).state ~= "clear" then
+  local danger,danger_error
+  if o.safe~=false then danger,danger_error=c:danger(target);if danger_error then return danger_error end end
+  if danger and danger.state ~= "clear" then
     local best, margin
     for k=0,11 do
       local a = k*math.pi/6
       local p = {x=corpse.x+32*math.cos(a), y=corpse.y+32*math.sin(a), z=corpse.z, map=corpse.map}
-      if recovery_danger(p).state == "clear" then
+      local d,err=c:danger(p);if err then return err end
+      if d.state == "clear" then
         local nearest = math.huge
         for _, u in ipairs(units.nearby(80)) do
           if u.alive and u.reaction == "hostile" then nearest = math.min(nearest, math.sqrt((u.x-p.x)^2+(u.y-p.y)^2)) end
@@ -803,7 +821,10 @@ local function corpse_recovery(c, o, attempt_limit)
       return c:fail("wrong_floor", "not within reclaim range on the corpse floor")
     end
     if world.in_sight(current.x,current.y,current.z) ~= true then return c:fail("unsafe_recovery", "line of sight to the corpse is blocked or unknown") end
-    if o.safe ~= false and recovery_danger(here).state ~= "clear" then return c:fail("unsafe_recovery", "reclaim location is hostile or unverified") end
+    if o.safe~=false then
+      local d,err=c:danger(here);if err then return err end
+      if d.state~="clear" then return c:fail("unsafe_recovery","reclaim location is hostile or unverified") end
+    end
     if current.reclaim_in > 0 then
       c:state("reclaim_wait"); ended = c:sleep(current.reclaim_in); if ended then return ended end
     else
@@ -829,14 +850,16 @@ local function spirit_recovery(c)
   end
   if not healer then return c:fail("not_found", "no spirit healer is visible") end
   c.data.spirit_option = {npc_guid=healer.guid, durability_loss=true, cost_known=false}
-  if recovery_danger(healer).state ~= "clear" then return c:fail("unsafe_recovery", "spirit healer location is hostile or unverified") end
+  local d,err=c:danger(healer);if err then return err end
+  if d.state ~= "clear" then return c:fail("unsafe_recovery", "spirit healer location is hostile or unverified") end
   if healer.distance > 4 then
     local r = recovery_move(c,healer,4); if not r.ok then return r end
   end
   while c.data.attempts < c.limit do
     if me.alive() and not me.ghost() then return A.ok("act.spirit_res") end
     local ended = c:guard(); if ended then return ended end
-    if recovery_danger(me.position()).state ~= "clear" then return c:fail("unsafe_recovery", "spirit healer location is hostile or unverified") end
+    local d,err=c:danger(me.position());if err then return err end
+    if d.state ~= "clear" then return c:fail("unsafe_recovery", "spirit healer location is hostile or unverified") end
     if world.in_sight(healer.x,healer.y,healer.z) ~= true then return c:fail("unsafe_recovery", "spirit healer line of sight is blocked or unknown") end
     c.data.attempts = c.data.attempts + 1; c:state("spirit_healer")
     local r = c:action("death.spirit_res",function() return death.spirit_res(healer.guid) end,5)
@@ -864,7 +887,8 @@ local function recovery_postconditions(c,o)
   if not me.alive() or me.ghost() then return c:fail("not_alive", "character died again; recovery will not repeat the death cycle") end
   local snapshot_error = recovery_snapshot(c); if snapshot_error then return snapshot_error end
   if o.rest ~= false then
-    if recovery_danger(me.position()).state ~= "clear" then return c:fail("unsafe_recovery", "cannot rest at a hostile or unverified location") end
+    local d,err=c:danger(me.position());if err then return err end
+    if d.state ~= "clear" then return c:fail("unsafe_recovery", "cannot rest at a hostile or unverified location") end
     c:state("resting")
     local r = A.rest{safe=true,max_s=math.min(40,math.max(0.001,(c.deadline-now())/1000))}
     if not r.ok then return c:fail(r.error.code,r.error.message,r) end

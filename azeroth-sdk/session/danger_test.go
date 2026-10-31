@@ -68,3 +68,25 @@ func TestTravelStopsWhileDangerQueryIsPending(t *testing.T) {
   end
  `, `r=act.travel{points={{10,0,0}},stop_on_danger=true};assert(not r.ok and r.error.code=="danger_ahead" and not walking)`)
 }
+
+func TestRestCancelsPendingDangerAtItsDeadline(t *testing.T) {
+	actWorld(t, actBase+`
+  me.health=function() return {current=1,max=100} end
+  world.danger=function() return {id=9999,pending=true} end
+  world._cancel=function(id) cancelled=id end
+ `, `r=act.rest{safe=true,max_s=0.02};assert(not r.ok and r.error.code=="rest_timeout" and cancelled==9999)`)
+}
+
+func TestRecoveryDoesNotSearchMoreSafetyPointsAfterDeadline(t *testing.T) {
+	actWorld(t, recoveryWorld+`
+  clock=0;now=function() return clock end
+  checks=0;world.danger=function() checks=checks+1;clock=clock+1000;return {ok=true,data={state="unknown",hostiles={}}} end
+ `, `r=act.corpse_run{timeout_s=0.5};assert(not r.ok and r.error.code=="recovery_timeout" and checks==1 and reclaims==0)`)
+}
+
+func TestStandaloneCorpseRunCancelsPendingSafetyQuery(t *testing.T) {
+	actWorld(t, recoveryWorld+`
+  world.danger=function() return {id=9999,pending=true} end
+  world._cancel=function(id) cancelled=id end
+ `, `r=act.corpse_run{timeout_s=0.02};assert(not r.ok and r.error.code=="recovery_timeout" and cancelled==9999 and reclaims==0)`)
+}

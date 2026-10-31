@@ -228,7 +228,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 |---|---|---|
 | `objects.find(entry [, dist = 80]) → Object?` | the nearest game object with that entry; nil if none | [Object](#object) |
 | `objects.nearby([dist = 30]) → Object[]` | game objects within dist yards (chests, doors, quest objects, herbs...), nearest first | [Object](#object) |
-| `objects.use(guid [, spell]) → Request<CastDone>` | use a game object within ~5 yd: doors, quest objects, chests and crates (opened with the Opening spell like the real client; the loot is taken). Plain objects require an observed object-state change; timeout cannot establish use or quest progress. Completion: matching opening cast completion or an observed game-object state change; quest progress is checked separately by act.use_object. | [Request](#request), [CastDone](#castdone) |
+| `objects.use(guid [, spell]) → Request<ObjectActivation>` | use a game object within ~5 yd. Chests use Opening; herb, ore and locked nodes select Herb Gathering, Mining or Pick Lock from observed lock metadata. not_available while the object template is loading; unsupported_gathering requires an explicit spell. Plain objects require an observed state change. data.kind distinguishes cast completion from state_changed; neither establishes quest progress. Completion: matching opening cast completion or an observed game-object state change; quest progress is checked separately by act.use_object. | [Request](#request), [ObjectActivation](#objectactivation) |
 
 ### quests
 
@@ -482,6 +482,7 @@ SpellCheck reports local readiness; the server remains authoritative.
 | `cooldown_ms?` | number |  |
 | `power_needed?` | number |  |
 | `range_yards?` | number | nominal DBC estimate; modifiers and hitboxes may differ |
+| `nominal_range_exceeded?` | bool | distance exceeds the DBC estimate; does not prove effective server range is exceeded |
 | `distance_yards?` | number |  |
 | `in_sight?` | bool |  |
 | `facing?` | bool |  |
@@ -1785,6 +1786,17 @@ Home is where your hearthstone takes you (set by binding at an innkeeper).
 | `to` | Position |  |
 | `far` | bool | to another map (a loading screen) |
 
+### ObjectActivation
+
+ObjectActivation distinguishes a successful opening cast from a non-casting object state transition. Loot and quest progress remain separate observations.
+
+| Field | Type | |
+|---|---|---|
+| `kind` | string | cast or state_changed |
+| `object` | GUID |  |
+| `cast?` | CastDone |  |
+| `state?` | number | observed GAMEOBJECT_BYTES_1 after a state change |
+
 ### QuestDone
 
 | Field | Type | |
@@ -2225,7 +2237,7 @@ The `data` of an ok result, per op.
 | `move.stop` | MoveDone |
 | `move.to` | MoveDone |
 | `move.unstuck` | Teleport |
-| `objects.use` | CastDone |
+| `objects.use` | ObjectActivation |
 | `quests.accept` | QuestDone |
 | `quests.info` | QuestInfo |
 | `quests.turn_in` | QuestDone |

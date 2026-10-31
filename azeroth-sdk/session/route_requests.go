@@ -135,6 +135,22 @@ func (r *routeRequests) cancelTask(task int, reason string) {
 		r.finish(j, nil)
 	}
 }
+
+func (r *routeRequests) cancelOwned(task, id int) bool {
+	r.mu.Lock()
+	j := r.jobs[id]
+	if j == nil || j.task != task {
+		r.mu.Unlock()
+		return false
+	}
+	if !j.done {
+		j.reason = "cancelled"
+		j.cancel()
+	}
+	r.mu.Unlock()
+	r.finish(j, nil)
+	return true
+}
 func (r *routeRequests) close() {
 	r.mu.Lock()
 	r.closed = true
@@ -186,6 +202,10 @@ func (b *Bot) setupRoutes() {
 		return b.findPath(ctx, m, from, to)
 	}}
 	b.routes = r
+	e.InternalFunc("world._cancel", "(request_id) → bool", func(id int) bool {
+		task, _, _ := e.CurrentTaskIdentity()
+		return r.cancelOwned(task, id)
+	})
 	b.registerRouteValidator(r)
 	b.registerDanger(r)
 	inactive, closeSession := e.OnTaskInactive, e.OnClose

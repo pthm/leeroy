@@ -55,6 +55,32 @@ func newRouteFixture(t *testing.T) *routeRequests {
 	t.Cleanup(r.close)
 	return r
 }
+
+func TestCancelOwnedQueryCancelsBackendAndRefusesForeignTask(t *testing.T) {
+	r := newRouteFixture(t)
+	started, exited := make(chan struct{}), make(chan struct{})
+	r.find = func(ctx context.Context, _ uint32, _, _ navigation.Point3D) (*navigation.PathResult, error) {
+		close(started)
+		<-ctx.Done()
+		close(exited)
+		return nil, ctx.Err()
+	}
+	h := r.start(7, 0, navigation.Point3D{}, navigation.Point3D{X: 1})
+	<-started
+	id := h["id"].(int)
+	if r.cancelOwned(8, id) {
+		t.Fatal("foreign query cancelled")
+	}
+	if !r.cancelOwned(7, id) {
+		t.Fatal("owned query not cancelled")
+	}
+	select {
+	case <-exited:
+	case <-time.After(time.Second):
+		t.Fatal("backend survived cancellation")
+	}
+	routeResult(t, r, id, "cancelled")
+}
 func routeResult(t *testing.T, r *routeRequests, id int, code string) {
 	t.Helper()
 	waitMovement(t, func() bool { return r.reqs.Result(id)["pending"] != true })

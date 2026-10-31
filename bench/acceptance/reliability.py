@@ -84,6 +84,7 @@ class Probe:
         self.task('return await(combat.target(me.guid()))')
         self.gm(".revive")
         self.gm(".cheat god on")
+        self.gm(".gear repair")
         self.gm(".gm on")
         p = self.initial[1]
         self.go((p["x"], p["y"], p["z"], p["map"]))
@@ -190,11 +191,65 @@ def professions(p):
     p.check("gathering",gathering)
 
 
+def recovery(p):
+    def kill_at(point):
+        p.go(point)
+        p.gm(".gm off")
+        p.gm(".cheat god off")
+        p.task('local r=await(combat.target(me.guid()));assert(r.ok);return r')
+        p.gm(".die")
+        p.until("return me.alive()",lambda alive:not alive)
+    def normal():
+        kill_at((-8949,-132,83,0))
+        return p.task('local r=act.recover{rest=false,timeout_s=100};assert(r.ok and r.data.alive,r.error and r.error.code);return r',110)
+    p.check("death_and_reclaim",normal)
+    if not p.call("return me.alive()"):
+        p.gm(".revive")
+        p.until("return me.alive()")
+    def refused_reclaim():
+        return p.task('local r=await(death.reclaim());assert(not r.ok and r.error.code=="not_a_ghost");return r')
+    p.check("failed_reclaim",refused_reclaim)
+    def camped():
+        point=(-9843.54,127.525,5.3698,0)
+        kill_at(point)
+        p.task('local r=await(death.release());assert(r.ok);return r')
+        p.go(point)
+        return p.task('local r=act.corpse_run{timeout_s=35};assert(not r.ok and r.error.code=="unsafe_recovery",r.error and r.error.code);assert(not me.alive());return r',45)
+    p.check("camped_corpse_refusal",camped)
+    p.gm(".revive")
+    p.until("return me.alive()")
+    def healer_and_broken_weapon():
+        p.gm(".gear repair")
+        results=[]
+        for _ in range(5):
+            kill_at((-9466,74,57,0))
+            r=p.task('local r=act.recover{spirit=true,rest=false,timeout_s=45};assert(me.alive() and (r.ok or r.error.code=="needs_repair"),r.error and r.error.code);return r',55)
+            results.append(r)
+            if not r["ok"]:
+                assert r["error"]["code"]=="needs_repair"
+                assert r["data"]["gear"]["weapon"]["broken"]
+                return results
+        raise AssertionError("weapon did not break within five authorized healer cycles")
+    p.check("healer_and_broken_weapon",healer_and_broken_weapon)
+    p.gm(".revive")
+    p.until("return me.alive()")
+    p.gm(".gear repair")
+    p.gm(".gm on")
+    def rest_timeout():
+        p.task('return await(combat.target(me.guid()))')
+        p.gm(".cheat god off")
+        p.gm(".damage 50")
+        p.until('local h=me.health();return h.current<h.max')
+        return p.task('local r=act.rest{hp=1,max_s=0.05};assert(not r.ok and r.error.code=="rest_timeout",r.error and r.error.code);return r')
+    p.check("rest_timeout",rest_timeout)
+    p.gm(".cheat god on")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8112)
     ap.add_argument("--artifacts", required=True)
-    ap.add_argument("--suite", choices=("all","contracts","routes","errands","professions"), default="all")
+    ap.add_argument("--suite", choices=("all","contracts","routes","errands","professions","recovery"), default="all")
     args = ap.parse_args()
     p = Probe(args.port, args.artifacts)
     try:
@@ -204,6 +259,7 @@ def main():
         if args.suite in ("all", "routes"): routes(p)
         if args.suite in ("all", "errands"): errands(p)
         if args.suite in ("all", "professions"): professions(p)
+        if args.suite in ("all", "recovery"): recovery(p)
     finally:
         p.finish()
     raise SystemExit(any(r["status"] == "failed" for r in p.records))
