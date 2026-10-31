@@ -609,6 +609,9 @@ func (b *Bot) stateEvents() {
 	combat, alive := b.InCombat(), b.IsAlive() && !b.IsGhost()
 	groupCombat := combat || b.partyInCombat()
 	if b.wasAlive != nil {
+		if alive != *b.wasAlive && b.agent != nil {
+			b.agent.invalidateCorpse()
+		}
 		b.fightTransitions(groupCombat && !b.wasGroupCombat, !groupCombat && b.wasGroupCombat, !alive && *b.wasAlive && !b.IsGhost())
 		if combat != b.wasCombat {
 			b.emit(map[bool]string{true: "combat_start", false: "combat_end"}[combat], types.None{})

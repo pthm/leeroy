@@ -201,7 +201,10 @@ def recovery(p):
         p.until("return me.alive()",lambda alive:not alive)
     def normal():
         kill_at((-8949,-132,83,0))
-        return p.task('local r=act.recover{rest=false,timeout_s=100};assert(r.ok and r.data.alive,r.error and r.error.code);return r',110)
+        # Repeated fixture deaths can impose the server's 120-second reclaim delay.
+        r=p.task('return act.recover{rest=false,timeout_s=180}',190)
+        assert r["ok"] and r["data"]["alive"],json.dumps(r)
+        return r
     p.check("death_and_reclaim",normal)
     if not p.call("return me.alive()"):
         p.gm(".revive")
@@ -214,7 +217,10 @@ def recovery(p):
         kill_at(point)
         p.task('local r=await(death.release());assert(r.ok);return r')
         p.go(point)
-        return p.task('local r=act.corpse_run{timeout_s=35};assert(not r.ok and r.error.code=="unsafe_recovery",r.error and r.error.code);assert(not me.alive());return r',45)
+        r=p.task('return act.corpse_run{timeout_s=35}',45)
+        assert not r["ok"] and r["error"]["code"]=="unsafe_recovery",json.dumps(r)
+        assert not p.call("return me.alive()")
+        return r
     p.check("camped_corpse_refusal",camped)
     p.gm(".revive")
     p.until("return me.alive()")

@@ -433,6 +433,13 @@ func (m *movementRequests) transferredSince(serial uint64) bool {
 	defer m.mu.Unlock()
 	return m.transferSerial != serial
 }
+func (m *movementRequests) cancelExpectedTransfer(task int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.expectedTransferLease != nil && m.expectedTransferLease.owner.TaskID == task {
+		m.expectedTransferLease = nil
+	}
+}
 
 func (m *movementRequests) ownerEventLocked(owner types.MovementOwner, state, code string, wait int64) {
 	m.events = append(m.events, types.Diagnostic{Kind: "movement_owner", TaskID: owner.TaskID, Task: owner.Task, Call: owner.Call, Request: owner.RequestID, Code: code, DurationMS: max(0, wait), Details: types.DiagnosticDetails{State: state, Movement: &owner}})

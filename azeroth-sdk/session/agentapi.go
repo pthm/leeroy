@@ -305,8 +305,10 @@ func (b *Bot) setupAgentAPI() {
 			return b.refuse("death.release", nil, "not_dead", "you're alive")
 		}
 		task, _, _ := e.CurrentTaskIdentity()
+		s.invalidateCorpse()
 		serial := b.moves.expectRecoveryTransfer(task, 10*time.Second)
 		if err := w.RepopRequest(); err != nil {
+			b.moves.cancelExpectedTransfer(task)
 			return b.refuse("death.release", nil, "not_available", "release request could not be sent")
 		}
 		return b.request("death.release", nil, 10*time.Second, func() *script.Outcome {
@@ -442,6 +444,13 @@ func (b *Bot) setupAgentAPI() {
 					return failOn(ev, "quests")
 				})
 		})
+}
+
+// A fresh death/release cannot reuse a recently cached previous corpse.
+func (s *agentState) invalidateCorpse() {
+	s.mu.Lock()
+	s.corpse, s.corpseKnown, s.corpseAt = nil, false, time.Time{}
+	s.mu.Unlock()
 }
 
 // questInvalid: QuestFailedReason (QuestDef.h), SMSG_QUESTGIVER_QUEST_INVALID
