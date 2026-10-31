@@ -91,3 +91,63 @@ Sample size is one three-agent run per condition. The shared world contains pers
 ## Contract limits
 
 Healer cost is explicitly unknown beyond the observed durability consequence. Spatial cancellation is cooperative, including bounded reads and cancellable lock/search traversal; an in-progress kernel filesystem call is not a hard real-time operation. Local danger, line of sight and nominal range are evidence, not guarantees of server acceptance. Cast sequence IDs have a bounded late-reply quarantine. Party strategy, readiness, wipe budgets and quest progression remain agent-authored.
+
+
+## Static navigation clearance follow-up
+
+Validated in the main workspace on 2026-10-30, after the reliability baseline above.
+Detour remains the planner. The new stack retains polygon surfaces and partial flags,
+prepares floor support and indexed WMO/M2 body clearance outside movement locks,
+tries bounded alternatives, and propagates explicit blocked/unknown evidence.
+The API contract and limits are documented in `azeroth-sdk/docs/moving.md`.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Complete repository and SDK suite with extracted map data | Pass on final controller | `bench/runs/20261030-navigation-clearance3/nav-final-tests.log` |
+| Prepared corner packets and session race checks | Pass | `bench/runs/20261030-navigation-clearance3/nav-corner-race-tests.log`; final `TestPrepared` movement race run also passed |
+| Synthetic race suite for those four packages | Pass | `bench/runs/20261030-navigation-clearance2/nav-synthetic-race-tests.log` |
+| Real interior surfaces and prepared paths under race detection | Pass | `bench/runs/20261030-navigation-clearance2/nav-interior-race-tests.log` |
+| Non-scored Devgm clearance suite | 5/5 pass on final controller | `bench/runs/20261030-navigation-clearance3/summary.json` and `replies.jsonl` |
+
+The live suite traversed the bridge (10.510 s), road (4.949 s), upper cave (3.247 s)
+and lower cave (3.863 s). The lower cave required a validated alternative around
+`Caveminecar01.m2`. The fifth check (0.671 s) confirmed that both `world.path` and
+`move.to` refuse the known Goldshire inn obstruction with `route_blocked`, retaining
+collision evidence and leaving the character in place. Timings include fixture setup
+and polling and are not planner benchmarks. The fixture restores the GM's initial position.
+The final controller emits packet direction/grade changes at checked vertices, including
+when one tick crosses multiple corners, and does not steer early using the legacy look-ahead.
+The earlier successful clearance run is retained in `20261030-navigation-clearance2`.
+
+The inn is an unresolved bake/collision mismatch, **not a successful stair traversal**.
+The baked corridor crosses `Goldshireinn.wmo` near (-9461.437, 9.849, 56.983).
+Three portal alternatives and six local waypoint alternatives do not establish a clear
+route. The old `routes` suite still expects the inn to be traversable; its historical
+result above predates body clearance. Regenerating/correcting the mesh or finding a
+validated entrance route remains follow-up work. This stack intentionally reports the
+obstruction instead of certifying that corridor. Dynamic doors/lifts and actor-specific
+mount/shape dimensions remain outside the fixed standing-profile checks.
+
+The initial broad real-data race run had no race report but failed three per-test timing
+budgets: `TestMovementCollisionRealInteriorRoutes/bridge` (5 s),
+`TestFindPath_Map571_Northrend` (10 s), and `TestFindPath_ZMatchesACReference` (10 s).
+Its output is retained as `nav-race-tests.log`; ordinary real-data validation and the
+focused real-interior race run passed. These timing failures were not counted as passes.
+The first live attempt could not reach the GM session after its launch command exited;
+its reply is retained in `bench/runs/20261030-navigation-clearance/`. Running launch and
+validation within one command kept the session alive for the successful suite.
+
+Reproduce the focused acceptance after rebuilding the binaries:
+
+```sh
+go run ./azbench apidoc
+go run ./azbench gm && python3 bench/acceptance/reliability.py --suite clearance --artifacts bench/runs/NEW-CLEARANCE-DIRECTORY
+AC_DATA_DIR=/Users/pthm/wowbench/data go test ./azeroth-sdk/pathfinding ./azeroth-sdk/navigation ./azeroth-sdk/movement ./azeroth-sdk/session -count=1 -timeout=120s
+go test -race ./azeroth-sdk/pathfinding ./azeroth-sdk/navigation ./azeroth-sdk/movement ./azeroth-sdk/session -count=1 -timeout=120s
+AC_DATA_DIR=/Users/pthm/wowbench/data go test -race ./azeroth-sdk/pathfinding -run 'TestPreparedReal|TestInteriorReal' -count=1 -v -timeout=120s
+```
+
+Collision fixture SHA-256 values for this extracted dataset:
+
+- `data/vmaps/Goldshireinn.wmo.vmo`: `8199eac584cba1411bdc31c2d422bed1e9759904f9bcc057a1418d9ab013a5c6`
+- `data/vmaps/Caveminecar01.m2.vmo`: `a20da8cdbb7f25da775093d2382c45995e6db2d06dcb386f791754f4152bbff5`

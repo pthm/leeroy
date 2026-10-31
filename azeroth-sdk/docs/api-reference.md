@@ -217,7 +217,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `move.jump() → Request` | jump; movement_busy if another task owns movement. Completion: the local movement packet was accepted by the client; landing is not established. | [Request](#request) |
 | `move.owner() → MovementOwner?` | active local movement owner, or nil when idle; queued requests are in me.movement and task.list | [MovementOwner](#movementowner) |
 | `move.stop() → Request<MoveDone>` | stop this task's active movement; its walk fails cancelled. Refuses another caller's movement with movement_busy. Completion: the calling owner's local movement is stopped. | [Request](#request), [MoveDone](#movedone) |
-| `move.to(x, y, z) → Request<MoveDone>` | walk along the navmesh; same-task replacement returns replaced_by_owner; other callers queue FIFO for at most 5 seconds then movement_busy. Planning waits at most 15 seconds; walking at most 600 seconds. Task pause/termination cancels its moves. Completion: the local movement controller reached the requested point within its documented tolerance. | [Request](#request), [MoveDone](#movedone) |
+| `move.to(x, y, z) → Request<MoveDone>` | walk a supported route with static body clearance; blocked geometry returns route_blocked, missing collision evidence returns collision_unavailable and a changed starting pose returns route_stale. Arrival requires <2.5 yards total and <=1.5 yards vertical gap; same-task replacement returns replaced_by_owner; other callers queue FIFO for at most 5 seconds then movement_busy. Planning waits at most 15 seconds; walking at most 600 seconds. Task pause/termination cancels its moves. Completion: the local movement controller reached the requested point within its documented tolerance. | [Request](#request), [MoveDone](#movedone) |
 | `move.turn(o) → Request` | face an angle (radians, as me.position().o); movement_busy if another task owns movement. Completion: local facing is set to the requested angle. | [Request](#request) |
 | `move.unstuck() → Request<Teleport>` | the failsafe when you're truly stuck: what the real client's "Character stuck" does: a 10 s cast that hearths you home (me.home()). Not in combat or on a flight; shares the hearthstone's cooldown. Completion: a teleport event was observed while the owned stuck request was pending. | [Request](#request), [Teleport](#teleport) |
 | `move.with_control{fn [, priority = normal, queue_timeout_s = 5, max_s = 600]} → ActResult` | run fn() under a movement lease; fn must return a completed action result. Priorities recovery > urgent > normal; queue_timeout_s is 0..60, max_s is >0..600. Nested scopes share the outer deadline; higher nested priority promotes the lease. Preemption/expiry cancels movement and makes the scope fail even if fn later returns success; it does not interrupt arbitrary callback code | [ActResult](#actresult) |
@@ -338,7 +338,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `world.ground_z(x, y [, z]) → number?` | the height to stand at (x, y) on your map, for move.to; nil when the floor cannot be confirmed within the 60 ms spatial budget. With z (an NPC's spawn z from azworld) it finds the floor nearest that height: upstairs rooms, buildings, Stormwind's streets. Without it, the outdoor terrain (under any building) |  |
 | `world.in_sight(x, y, z) → bool?` | nothing solid (walls, rock, buildings) between your eyes and the point, as the server checks spells; nil when collision evidence is unavailable or its 60 ms budget expires |  |
 | `world.look([radius = 40]) → string` | a top-down text map of what's around you, north up: the ground (higher, lower, no floor), hostile creatures by letter with their aggro range shaded, other creatures, players and lootable corpses, then a line for each: level, distance, direction, o'clock, height above or below you, aggro radius and whether you're inside it, line of sight. wow look prints it |  |
-| `world.path(x, y, z) → Request<PathCheck>` | await a navmesh check from your current 3D position; verified only when both endpoint gaps are <=3 yards. Deadline 15s including queueing, max leg 4096 yards / 1024 tiles, at most 16 pending queries and one active search per session. Identical successful searches are cached (128 entries). Task pause/stop/failure/return and session close cancel pending work. Failures include route_unreachable, route_timeout, route_limit, route_busy and not_available; partial data never authorizes movement.. Completion: both requested 3D endpoints connect on the navmesh; partial paths fail. | [Request](#request), [PathCheck](#pathcheck) |
+| `world.path(x, y, z) → Request<PathCheck>` | await a supported navmesh route with static body clearance from your current 3D position; collision evidence includes state, segment, model and bounded replan outcome. Dynamic doors and lifts are outside this check. Deadline 15s including queueing, max leg 4096 yards / 1024 tiles, at most 16 pending queries and one active search per session. Identical successful searches are cached (128 entries). Task pause/stop/failure/return and session close cancel pending work. Failures include route_blocked, collision_unavailable, route_unreachable, route_timeout, route_limit, route_busy and not_available; partial data never authorizes movement. Completion: a complete supported navmesh route connects the requested floors with clear static body clearance; partial or unknown routes fail. | [Request](#request), [PathCheck](#pathcheck) |
 | `world.route(points [, opts = nil]) → Request<RouteCheck>` | validate 1..64 ordered 3D waypoints from your captured position before walking. points are {x,y,z} tuples or {x=...,y=...,z=...,map=...}; opts accepts only map (default current map), and every point must be on the current map. One 15s deadline covers queueing and all legs; max 4096 yards/1024 tiles per leg and 8192 output points. Shares world.path admission, cancellation and cache. Returns connected navmesh prefix, completed_legs, first blocked_leg and per-leg gaps; partial and timeout results remain failures. Does not assess hostile exposure.. Completion: every requested leg connects within one shared deadline. | [Request](#request), [RouteCheck](#routecheck) |
 
 ## Types
@@ -505,8 +505,9 @@ PathCheck reports a navmesh leg without silently changing the requested floor.
 
 | Field | Type | |
 |---|---|---|
+| `collision?` | CollisionEvidence |  |
 | `status` | string | verified, partial, or failed; partial is a reachable prefix, not permission to walk it |
-| `reachable` | bool | true only with a navmesh path starting and ending within 3 yards of the requested 3D points |
+| `reachable` | bool | true only for a complete supported navmesh route with clear static body clearance |
 | `reason` | string | verified or the failure code; unknown checks never imply unreachable |
 | `map` | number |  |
 | `from` | Position |  |
@@ -518,6 +519,21 @@ PathCheck reports a navmesh leg without silently changing the requested floor.
 | `start_gap?` | number | gap from requested start to the first navmesh point |
 | `vertical_gap?` | number | absolute endpoint Z gap |
 | `floor_valid?` | bool | whether both endpoints match requested elevations within 3 yards; absent without a path |
+
+### CollisionEvidence
+
+CollisionEvidence describes static geometry checks, not dynamic door state.
+
+| Field | Type | |
+|---|---|---|
+| `state` | string | clear, blocked, or unknown for static movement geometry |
+| `reason?` | string |  |
+| `segment?` | number | 1-based blocked movement segment |
+| `position` | Position |  |
+| `normal` | Position |  |
+| `model?` | string |  |
+| `replanned` | bool |  |
+| `scope` | string | static; doors, lifts and other dynamic objects require separate state |
 
 ### RouteCheck
 
@@ -543,6 +559,7 @@ RouteLeg is one requested waypoint's navmesh validation, in execution order.
 
 | Field | Type | |
 |---|---|---|
+| `collision?` | CollisionEvidence |  |
 | `index` | number | 1-based requested waypoint index |
 | `from` | Position |  |
 | `destination` | Position |  |
@@ -1642,6 +1659,7 @@ DiagnosticRoute omits the potentially large waypoint arrays while retaining the 
 
 | Field | Type | |
 |---|---|---|
+| `collision?` | CollisionEvidence |  |
 | `source` | string |  |
 | `status` | string |  |
 | `from` | Position |  |

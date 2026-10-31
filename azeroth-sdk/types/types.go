@@ -168,7 +168,7 @@ type CollisionEvidence struct {
 type PathCheck struct {
 	Collision   *CollisionEvidence `json:"collision,omitempty"`
 	Status      string             `json:"status" doc:"verified, partial, or failed; partial is a reachable prefix, not permission to walk it"`
-	Reachable   bool               `json:"reachable" doc:"true only with a navmesh path starting and ending within 3 yards of the requested 3D points"`
+	Reachable   bool               `json:"reachable" doc:"true only for a complete supported navmesh route with clear static body clearance"`
 	Reason      string             `json:"reason" doc:"verified or the failure code; unknown checks never imply unreachable"`
 	Map         uint32             `json:"map"`
 	From        Position           `json:"from"`

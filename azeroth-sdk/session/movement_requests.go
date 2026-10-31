@@ -417,7 +417,7 @@ func (b *Bot) setupMovementRequests() {
 		}
 		return result
 	}
-	e.Func("move.to", "(x, y, z) → Request<MoveDone>", "walk along the navmesh; same-task replacement returns replaced_by_owner; other callers queue FIFO for at most 5 seconds then movement_busy. Planning waits at most 15 seconds; walking at most 600 seconds. Task pause/termination cancels its moves", func(x, y, z float32) map[string]any {
+	e.Func("move.to", "(x, y, z) → Request<MoveDone>", "walk a supported route with static body clearance; blocked geometry returns route_blocked, missing collision evidence returns collision_unavailable and a changed starting pose returns route_stale. Arrival requires <2.5 yards total and <=1.5 yards vertical gap; same-task replacement returns replaced_by_owner; other callers queue FIFO for at most 5 seconds then movement_busy. Planning waits at most 15 seconds; walking at most 600 seconds. Task pause/termination cancels its moves", func(x, y, z float32) map[string]any {
 		id, name, call := e.CurrentTaskIdentity()
 		_, _, _, _, mapID := b.world.Position()
 		return m.start(id, name, call, types.Position{X: float64(x), Y: float64(y), Z: float64(z), Map: mapID})

@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -459,5 +460,32 @@ func TestMovementPreparationFailureCannotBecomeNearbySuccess(t *testing.T) {
 				t.Fatal("published failed path")
 			}
 		})
+	}
+}
+
+func TestMovementRealBackendRejectsChangedPose(t *testing.T) {
+	b := testBot()
+	defer b.lua.Close()
+	n := &blockedMovementNavigator{entered: make(chan struct{}), release: make(chan struct{})}
+	b.nav = n
+	done := make(chan error, 1)
+	go func() { done <- b.prepareMoveContext(context.Background(), 100, 0, 0, nil) }()
+	<-n.entered
+	b.world.UpdatePosition(0, 0, 3, 0)
+	close(n.release)
+	select {
+	case err := <-done:
+		if !errors.Is(err, errRouteStale) {
+			t.Fatalf("changed pose: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("planner did not finish")
+	}
+	if b.IsMoving() {
+		t.Fatal("stale path reached controller")
+	}
+	_, _, z, _, _ := b.world.Position()
+	if z != 3 {
+		t.Fatal("stale plan rewrote current floor")
 	}
 }

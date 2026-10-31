@@ -3,7 +3,7 @@ package types
 // ActionPostconditions is checked against the live registry and included in help.
 // An unconfirmed transport operation is an explicit failure, never inferred success.
 var ActionPostconditions = map[string]string{
-	"world.path":        "both requested 3D endpoints connect on the navmesh; partial paths fail",
+	"world.path":        "a complete supported navmesh route connects the requested floors with clear static body clearance; partial or unknown routes fail",
 	"world.route":       "every requested leg connects within one shared deadline",
 	"world.danger":      "a bounded observed-state assessment completed; inspect data.state, including unknown",
 	"move.to":           "the local movement controller reached the requested point within its documented tolerance",

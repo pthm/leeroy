@@ -114,6 +114,33 @@ def routes(p):
     p.check("danger_remote_unknown", lambda: p.task('local q=me.position();local r=act.danger{x=q.x+500,y=q.y,z=q.z};assert(r.state=="unknown");return r'))
 
 
+def clearance(p):
+    """Static clearance acceptance, including the known inn bake mismatch."""
+    for name, start, dest in [
+        ("bridge_clearance", (-8930, 545, 94.715, 0), (-8880, 590, 93.402, 0)),
+        ("road_clearance", (-9466, 74, 57, 0), (-9496, 73, 57, 0)),
+        ("cave_upper_clearance", (-9797, 132, 25, 0), (-9807, 117, 24, 0)),
+        ("cave_lower_repair", (-9824, 122, 4, 0), (-9843.54, 127.525, 5.3698, 0)),
+    ]:
+        def route(start=start, dest=dest, name=name):
+            p.go(start)
+            x, y, z, _ = dest
+            return p.task(f'local check=await(world.path({x},{y},{z}));assert(check.ok,check.error and check.error.code);'
+                          'assert(check.data.collision.state=="clear" and check.data.collision.scope=="static");'
+                          + ('assert(check.data.collision.replanned);' if name == "cave_lower_repair" else '')
+                          + f'local r=act.travel{{points={{{{{x},{y},{z}}}}}}};assert(r.ok,r.error and r.error.code);return {{check=check,travel=r,position=me.position()}}', 90)
+        p.check(name, route)
+    def inn_blocked():
+        p.go((-9460, 8, 57, 0))
+        return p.task('local before=me.position();local q=await(world.path(-9472,34,64));'
+                      'assert(not q.ok and q.error.code=="route_blocked");'
+                      'assert(q.data.collision.model=="Goldshireinn.wmo");'
+                      'local r=await(move.to(-9472,34,64));assert(not r.ok and r.error.code=="route_blocked");'
+                      'local after=me.position();assert(math.abs(after.x-before.x)<0.05 and math.abs(after.y-before.y)<0.05);'
+                      'return {check=q,move=r,before=before,after=after}')
+    p.check("inn_collision_mismatch_refused", inn_blocked)
+
+
 def contracts(p):
     p.check("corpse_absent", lambda: p.task('local r=await(death.corpse());assert(not r.ok and r.error.code=="not_found");return r'))
     p.check("item_compare", lambda: p.task('local r=await(items.compare(117));assert(r.ok);return r'))
@@ -332,7 +359,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8112)
     ap.add_argument("--artifacts", required=True)
-    ap.add_argument("--suite", choices=("all","contracts","routes","errands","professions","recovery","casting","coordination"), default="all")
+    ap.add_argument("--suite", choices=("all","contracts","routes","clearance","errands","professions","recovery","casting","coordination"), default="all")
     args = ap.parse_args()
     p = Probe(args.port, args.artifacts)
     try:
@@ -340,6 +367,7 @@ def main():
         p.gm(".cheat god on")
         if args.suite in ("all", "contracts"): contracts(p)
         if args.suite in ("all", "routes"): routes(p)
+        if args.suite == "clearance": clearance(p)
         if args.suite in ("all", "errands"): errands(p)
         if args.suite in ("all", "professions"): professions(p)
         if args.suite in ("all", "recovery"): recovery(p)

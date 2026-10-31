@@ -231,7 +231,7 @@ func (b *Bot) setupRoutes() {
 		}
 		r.close()
 	}
-	e.Func("world.path", "(x, y, z) → Request<PathCheck>", "await a navmesh check from your current 3D position; verified only when both endpoint gaps are <=3 yards. Deadline 15s including queueing, max leg 4096 yards / 1024 tiles, at most 16 pending queries and one active search per session. Identical successful searches are cached (128 entries). Task pause/stop/failure/return and session close cancel pending work. Failures include route_unreachable, route_timeout, route_limit, route_busy and not_available; partial data never authorizes movement.",
+	e.Func("world.path", "(x, y, z) → Request<PathCheck>", "await a supported navmesh route with static body clearance from your current 3D position; collision evidence includes state, segment, model and bounded replan outcome. Dynamic doors and lifts are outside this check. Deadline 15s including queueing, max leg 4096 yards / 1024 tiles, at most 16 pending queries and one active search per session. Identical successful searches are cached (128 entries). Task pause/stop/failure/return and session close cancel pending work. Failures include route_blocked, collision_unavailable, route_unreachable, route_timeout, route_limit, route_busy and not_available; partial data never authorizes movement",
 		func(x, y, z float32) any {
 			px, py, pz, _, m := b.world.Position()
 			task, _, _ := e.CurrentTaskIdentity()

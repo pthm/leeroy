@@ -20,26 +20,45 @@ Where things are from where you stand, walking and its traps. The rest of the SD
 
 ## Moving
 
-- With a navigator, `move.to` permits a direct-line fallback only for a short hop of at most 5 yards; longer
-  missing paths do not move. With no navigator it can walk directly. `data.no_path` records a failed navmesh
-  lookup, and a walk that stops short returns `stuck`.
+- `move.to` requires a complete navmesh route with physical support and static body clearance.
+  Missing routes return `route_unreachable`; blocked geometry returns `route_blocked`; missing collision
+  evidence returns `collision_unavailable`. A changed starting pose during planning returns `route_stale`.
+  A walk that stops short returns `stuck`. Arrival requires less than 2.5 yards total gap and at most
+  1.5 yards vertical gap. A nearby destination is subject to the same checks.
   Inside a task, `local r = await(world.path(x, y, z))` checks a single leg without moving. A successful
   `r.data` is a `PathCheck`: `status="verified"`, `reachable=true`, map, 3D waypoints, walking distance,
-  start/endpoint gaps, vertical gap and floor validity. Both 3D endpoint gaps must be at most 3 yards.
-  A disconnected endpoint returns `route_unreachable`, with a reachable prefix when available
-  (`status="partial"`); the caller chooses whether to use it. Missing navigation data returns
-  `not_available`. Unknown gaps and floors are omitted, never certified.
+  endpoint gaps, floor validity, and `collision` evidence. Evidence includes `state`, `reason`, blocked
+  `segment`, `position`, `normal`, `model`, and whether a bounded replan succeeded (`replanned`).
+  Its `scope="static"`: moving doors, lifts and other dynamic objects are outside this check.
+  A disconnected or truncated route returns `route_unreachable`, with a prefix when available
+  (`status="partial"`). A prefix still needs its own successful validation before movement.
+  Missing navigation data returns `not_available`. Unknown gaps and floors are omitted.
+- Detour polygon references are retained through the funnel, caches and preparation. Samples follow
+  the selected polygon's detail surface, including every portal crossing. Projection is bounded to
+  0.75 yards horizontally and 1.5 yards vertically. Support is sampled at most every 0.25 yards;
+  physical heights come from nearby terrain and movement-mask WMO/M2 rays. Overhead terrain does
+  not replace a cave floor. Final body segments use continuous capsule sweeps against indexed triangles.
+  The default standing profile is radius 0.3, height 2.03128, step 0.6 yards and maximum slope 50 degrees.
+  This is a fixed walking profile; mount/shape-specific dimensions and dynamic collision are not modeled.
+  Off-mesh actions require separate handling and are refused by walking preparation.
+- A blocked path gets at most three alternative portal placements and six local waypoint attempts,
+  sharing the caller's deadline. Every alternative passes the complete support and clearance checks.
+  Unresolved obstacles remain `route_blocked`; missing coverage remains unknown. Prepared movement
+  preserves the checked points and precomputed swimming modes without querying heights during ticks.
+  Direction/grade changes are sent at checked vertices, even across coarse ticks; collinear samples
+  need no additional packet.
+  Support sampling is discrete, so sub-sample ground gaps are not a continuous terrain-contact guarantee.
 - Route checks have a 15-second wall deadline including queueing (`route_timeout`). Legs are limited to
   4096 yards in 3D and a 1024-tile search rectangle (`route_limit`). A session admits at most 16 pending
   checks (`route_busy`) and runs one search at a time, shared with movement and nearby-unit reachability.
-  Up to 128 exact map/start/destination searches are cached; failures and cancelled searches are not cached.
+  Up to 128 exact map/start/destination searches are cached; partial routes, failures and cancelled searches are not cached. Nearby-unit reachability also requires exact endpoint matches for cache reuse; unknown collision coverage is not cached as unreachable.
   Awaiting with a shorter timeout only stops the wait. Task pause/stop/failure/return or session close
   cancels owned checks; recovery expiry does too.
-- Cancellation reaches tile loading, lock waits, sliced polygon search, and smoothing. A cancelled planner
+- Cancellation reaches tile loading, lock waits, sliced polygon search, surface sampling, collision traversal and bounded repair. A cancelled planner
   cannot publish a late movement path. Cancellation is cooperative: a local file read already in the kernel
   or one bounded Detour operation must return first. Floor/LOS helper queries remain synchronous but have a cooperative 60 ms spatial budget; expiry is unknown.
   Movement-lease preemption or expiry also cancels that task's pending route checks, freeing the search
-  slot for the next owner. Route outcomes retain status, source, endpoints, gap and floor evidence in diagnostics.
+  slot for the next owner. Route outcomes retain status, source, endpoints, gap, floor and collision evidence in diagnostics.
 - `await(world.route(points, {map=...}))` checks an ordered route from your captured current position.
   Supply 1..64 3D waypoints as `{x,y,z}` tuples or `{x=...,y=...,z=...,map=...}` records; options accept
   only `map`, defaulting to the current map. Every waypoint must be on that map. One 15-second deadline
