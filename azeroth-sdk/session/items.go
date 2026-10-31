@@ -485,8 +485,12 @@ func (b *Bot) setupItems() {
 			if it.UseSpell == 0 {
 				return b.refuse("items.use", args, "no_use_effect", it.Name+" has no use effect")
 			}
+			count, ok := b.castSequences.reserve(time.Now(), castTimeout(it.UseSpell))
+			if !ok {
+				return b.refuse("items.use", args, "cast_busy", "cast correlation slots are exhausted; wait before retrying")
+			}
 			var buf bytes.Buffer
-			buf.Write([]byte{it.Bag, it.BagSlot, 1})
+			buf.Write([]byte{it.Bag, it.BagSlot, count})
 			binary.Write(&buf, binary.LittleEndian, it.UseSpell)
 			binary.Write(&buf, binary.LittleEndian, uint64(it.GUID))
 			binary.Write(&buf, binary.LittleEndian, uint32(0)) // glyph index
@@ -496,7 +500,7 @@ func (b *Bot) setupItems() {
 			if err := w.SendPacketRaw(cmsgUseItem, buf.Bytes()); err != nil {
 				return b.refuse("items.use", args, "failed", err.Error())
 			}
-			return b.request("items.use", args, castTimeout(it.UseSpell), nil, castMatch(it.UseSpell)) // a Hearthstone takes 10 s
+			return b.request("items.use", args, castTimeout(it.UseSpell), nil, castMatch(it.UseSpell, count)) // a Hearthstone takes 10 s
 		})
 	e.Func("items.equip", "(item [, slot]) → Request<Equipped>", "wear an item you carry (entry or guid) in its slot, or in the slot you name: main_hand, off_hand (a second one-hander, with Dual Wield), finger1, finger2, trinket1, trinket2",
 		func(item uint64, slot string) map[string]any {
@@ -736,8 +740,12 @@ func (b *Bot) setupItems() {
 					return nil
 				}, nil)
 			}
+			count, ok := b.castSequences.reserve(time.Now(), 10*time.Second)
+			if !ok {
+				return b.refuse("objects.use", args, "cast_busy", "cast correlation slots are exhausted; wait before retrying")
+			}
 			var buf bytes.Buffer
-			buf.WriteByte(0)
+			buf.WriteByte(count)
 			binary.Write(&buf, binary.LittleEndian, spell)
 			buf.WriteByte(0)
 			binary.Write(&buf, binary.LittleEndian, uint32(0x800)) // TARGET_FLAG_GAMEOBJECT
@@ -746,7 +754,7 @@ func (b *Bot) setupItems() {
 			if err := w.SendPacketRaw(cmsgCastSpellOp, buf.Bytes()); err != nil {
 				return b.refuse("objects.use", args, "failed", err.Error())
 			}
-			return b.request("objects.use", args, 10*time.Second, nil, objectCastMatch(guid, spell))
+			return b.request("objects.use", args, 10*time.Second, nil, objectCastMatch(guid, spell, count))
 		})
 
 	// ---------- vendor ----------
@@ -947,8 +955,8 @@ func (b *Bot) setupItems() {
 
 }
 
-func objectCastMatch(guid uint64, spell uint32) func(script.Event) *script.Outcome {
-	match := castMatch(spell)
+func objectCastMatch(guid uint64, spell uint32, count uint8) func(script.Event) *script.Outcome {
+	match := castMatch(spell, count)
 	return func(ev script.Event) *script.Outcome {
 		o := match(ev)
 		if o != nil {

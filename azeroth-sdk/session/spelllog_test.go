@@ -30,12 +30,12 @@ func TestSpellGo(t *testing.T) {
 	p = append(le.AppendUint64(p, wolf+9), 7)  // immune
 	p = le.AppendUint32(p, 2)                  // target mask (m_targets.Write)
 	g := parseSpellGo(p)
-	if g.caster != me || g.spell != 133 || len(g.hits) != 1 || g.hits[0] != wolf || len(g.misses) != 3 ||
+	if g.count != 1 || g.caster != me || g.spell != 133 || len(g.hits) != 1 || g.hits[0] != wolf || len(g.misses) != 3 ||
 		g.misses[0] != (spellMiss{bear, 2}) || g.misses[1] != (spellMiss{imp, 11}) || g.misses[2] != (spellMiss{wolf + 9, 7}) {
 		t.Fatalf("spell go: %+v", g)
 	}
 
-	match := castMatch(133)
+	match := castMatch(133, 0)
 	miss := types.Cast{Spell: 133, Misses: []types.SpellMiss{{Outcome: "resist"}}}
 	if o := match(script.Event{Type: "cast_done", Data: miss}); o == nil || o.OK || o.Code != "resist" {
 		t.Fatalf("all missed: %+v", o)

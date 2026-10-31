@@ -56,6 +56,7 @@ type spellMiss struct {
 }
 
 type spellGo struct {
+	count  uint8
 	caster uint64
 	spell  uint32
 	hits   []uint64
@@ -68,7 +69,7 @@ func parseSpellGo(data []byte) (g spellGo) {
 	r := bytes.NewReader(data)
 	readPackedGUID(r)
 	g.caster = readPackedGUID(r)
-	r.ReadByte()
+	g.count, _ = r.ReadByte()
 	var v [3]uint32 // spell, flags, time
 	binary.Read(r, binary.LittleEndian, &v)
 	g.spell = v[0]

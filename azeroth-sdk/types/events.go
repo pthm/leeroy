@@ -59,6 +59,7 @@ type LevelUp struct {
 }
 
 type Cast struct {
+	Count       uint8       `json:"count" doc:"protocol cast sequence; zero may be an unsolicited/server cast"`
 	Spell       uint32      `json:"spell"`
 	Name        string      `json:"name"`
 	CastMS      uint32      `json:"cast_ms,omitempty" doc:"cast_start: how long it takes"`

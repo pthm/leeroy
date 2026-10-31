@@ -15,7 +15,7 @@ func TestObjectOpeningSpellMatchesLock(t *testing.T) {
 	if _, ok := openingSpell("fishing"); ok {
 		t.Fatal("fishing pool treated as ordinary chest")
 	}
-	match := objectCastMatch(42, 2366)
+	match := objectCastMatch(42, 2366, 0)
 	if match(script.Event{Type: "cast_done", Data: types.Cast{Spell: 133}}) != nil {
 		t.Fatal("unrelated cast matched")
 	}

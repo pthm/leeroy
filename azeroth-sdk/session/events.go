@@ -269,7 +269,7 @@ func (b *Bot) watchEvents() {
 		b.emit("party_changed", types.PartyChanged{InGroup: st.InGroup, Members: members})
 	})
 	var zone, area uint32
-	failedAt := map[uint32]time.Time{} // spell -> its last SMSG_CAST_FAILED (packet hooks run on one goroutine)
+	failedAt := map[uint64]time.Time{} // spell -> its last SMSG_CAST_FAILED (packet hooks run on one goroutine)
 	w.AddPacketHook(func(op uint16, data []byte) {
 		r := bytes.NewReader(data)
 		u32 := func() (v uint32) { binary.Read(r, binary.LittleEndian, &v); return }
@@ -530,13 +530,13 @@ func (b *Bot) watchEvents() {
 			if readPackedGUID(r) != me {
 				return
 			}
-			r.ReadByte()
+			count, _ := r.ReadByte()
 			spell := u32()
 			u32()
-			b.emit("cast_start", types.Cast{Spell: spell, Name: spellName(spell), CastMS: u32()})
+			b.emit("cast_start", types.Cast{Count: count, Spell: spell, Name: spellName(spell), CastMS: u32()})
 		case smsgSpellGo: // misses here aren't in SMSG_SPELLLOGMISS (that only has the ones found on impact)
 			g := parseSpellGo(data)
-			c := types.Cast{Spell: g.spell, Name: spellName(g.spell), Hits: len(g.hits)}
+			c := types.Cast{Count: g.count, Spell: g.spell, Name: spellName(g.spell), Hits: len(g.hits)}
 			for _, m := range g.misses {
 				b.attackOutcome(g.caster, m.guid, types.Damage{Spell: g.spell, Outcome: missReasons[m.reason]}, hit)
 				if g.caster == me {
@@ -550,27 +550,27 @@ func (b *Bot) watchEvents() {
 			if readPackedGUID(r) != me {
 				return
 			}
-			r.ReadByte()
+			count, _ := r.ReadByte()
 			spell := u32()
 			code, _ := r.ReadByte()
-			if failedAt[spell].After(time.Now().Add(-time.Second)) { // SMSG_CAST_FAILED just said why (Spell::cancel, Spell::cast send both)
-				delete(failedAt, spell)
+			if failedAt[uint64(spell)<<8|uint64(count)].After(time.Now().Add(-time.Second)) { // SMSG_CAST_FAILED just said why (Spell::cancel, Spell::cast send both)
+				delete(failedAt, uint64(spell)<<8|uint64(count))
 				return
 			}
-			c := types.Cast{Spell: spell, Name: spellName(spell), Code: castResultNames[code], Interrupted: true}
+			c := types.Cast{Count: count, Spell: spell, Name: spellName(spell), Code: castResultNames[code], Interrupted: true}
 			if code == 0 { // the cast bar ended without the spell, and no reason
 				c.Code = "cancelled"
 			}
 			b.emit("cast_failed", c)
 		case smsgCastFailed: // cast count, spell, reason
-			r.ReadByte()
+			count, _ := r.ReadByte()
 			spell := u32()
 			code, _ := r.ReadByte()
 			if code == 0 || (code == 27 && !w.KnowsSpell(spell)) { // success; dont_report on a spell you don't have (mount forms tried on death): a client shows nothing
 				return
 			}
-			failedAt[spell] = time.Now()
-			c := types.Cast{Spell: spell, Name: spellName(spell), Code: castResultNames[code],
+			failedAt[uint64(spell)<<8|uint64(count)] = time.Now()
+			c := types.Cast{Count: count, Spell: spell, Name: spellName(spell), Code: castResultNames[code],
 				Detail: castFailDetail(code, r, func(e uint32) string {
 					if n := itemTemplate(w, e).Name; n != "" {
 						return n
@@ -648,18 +648,23 @@ func (b *Bot) setupActions() {
 			if !b.world.KnowsSpell(spell) { // the server silently ignores these
 				return b.refuse("spells.cast", args, "not_known", "you don't know this spell (train it, or check the rank id)")
 			}
-			if err := b.CastSpell(spell, target); err != nil {
+			count, ok := b.castSequences.reserve(time.Now(), castTimeout(spell))
+			if !ok {
+				return b.refuse("spells.cast", args, "cast_busy", "cast correlation slots are exhausted; wait before retrying")
+			}
+			b.agent.castSent(spell)
+			if err := b.world.CastSpellCount(spell, target, count); err != nil {
 				return b.refuse("spells.cast", args, "failed", err.Error())
 			}
-			return b.request("spells.cast", args, castTimeout(spell), nil, castMatch(spell))
+			return b.request("spells.cast", args, castTimeout(spell), nil, castMatch(spell, count))
 		})
 }
 
 // castMatch resolves a request on the spell's cast_done / cast_failed.
-func castMatch(spell uint32) func(script.Event) *script.Outcome {
+func castMatch(spell uint32, count uint8) func(script.Event) *script.Outcome {
 	return func(ev script.Event) *script.Outcome {
 		c, ok := ev.Data.(types.Cast)
-		if !ok || c.Spell != spell {
+		if !ok || c.Spell != spell || c.Count != count {
 			return nil
 		}
 		switch ev.Type {

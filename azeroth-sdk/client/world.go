@@ -2464,8 +2464,13 @@ func (w *WorldClient) SetTarget(targetGUID uint64) error {
 
 // CastSpell sends CMSG_CAST_SPELL for the given spell targeting a unit
 func (w *WorldClient) CastSpell(spellID uint32, targetGUID uint64) error {
+	return w.CastSpellCount(spellID, targetGUID, 0)
+}
+
+// CastSpellCount supplies the protocol correlation byte echoed by cast outcomes.
+func (w *WorldClient) CastSpellCount(spellID uint32, targetGUID uint64, count uint8) error {
 	buf := new(bytes.Buffer)
-	buf.WriteByte(0) // castCount
+	buf.WriteByte(count) // castCount
 	binary.Write(buf, binary.LittleEndian, spellID)
 	buf.WriteByte(0) // castFlags
 
@@ -2511,8 +2516,13 @@ func (w *WorldClient) SelfAuras() []uint32 {
 // CastSpellAtPosition sends a spell targeted at a world position (ground-targeted AoE).
 // 3.3.5a target flags: TARGET_FLAG_DEST_LOCATION = 0x40 (0x20 is SOURCE_LOCATION).
 func (w *WorldClient) CastSpellAtPosition(spellID uint32, x, y, z float32) error {
+	return w.CastSpellAtPositionCount(spellID, x, y, z, 0)
+}
+
+// CastSpellAtPositionCount supplies the protocol correlation byte.
+func (w *WorldClient) CastSpellAtPositionCount(spellID uint32, x, y, z float32, count uint8) error {
 	buf := new(bytes.Buffer)
-	buf.WriteByte(0) // castCount
+	buf.WriteByte(count) // castCount
 	binary.Write(buf, binary.LittleEndian, spellID)
 	buf.WriteByte(0)                                     // castFlags
 	binary.Write(buf, binary.LittleEndian, uint32(0x40)) // TARGET_FLAG_DEST_LOCATION

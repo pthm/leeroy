@@ -370,10 +370,15 @@ func (b *Bot) setupCoreAPI() {
 		if !w.KnowsSpell(id) {
 			return b.refuse("spells.cast_at", args, "not_known", "you don't know this spell (train it, or check the rank id)")
 		}
-		if err := w.CastSpellAtPosition(id, x, y, z); err != nil {
+		count, ok := b.castSequences.reserve(time.Now(), castTimeout(id))
+		if !ok {
+			return b.refuse("spells.cast_at", args, "cast_busy", "cast correlation slots are exhausted; wait before retrying")
+		}
+		b.agent.castSent(id)
+		if err := w.CastSpellAtPositionCount(id, x, y, z, count); err != nil {
 			return b.refuse("spells.cast_at", args, "failed", err.Error())
 		}
-		return b.request("spells.cast_at", args, castTimeout(id), nil, castMatch(id))
+		return b.request("spells.cast_at", args, castTimeout(id), nil, castMatch(id, count))
 	})
 
 	// ---------- chat ----------

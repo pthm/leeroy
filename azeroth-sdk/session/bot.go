@@ -55,6 +55,7 @@ type BotEvent struct {
 
 // Bot implements the WoW client bot logic with behavior tree AI.
 type Bot struct {
+	castSequences    castSequences
 	rec              *Recorder                    // optional event log (-record)
 	lastAttackReject atomic.Pointer[attackReject] // for bot.last_attack_error() // last move_to found no navmesh path (move_to returns false)
 	id               string
