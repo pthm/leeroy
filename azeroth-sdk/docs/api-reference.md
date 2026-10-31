@@ -659,6 +659,9 @@ Item is an item template and, for one you carry, where it is and its state. The 
 | `stats?` | {[string]: number} | e.g. {strength = 3, stamina = 2} |
 | `use_spell?` | number | what items.use casts (food, drink, potions, quest items) |
 | `starts_quest?` | number |  |
+| `description?` | string | its flavour text (items.info only) |
+| `effects?` | string[] | what its spells do, as its tooltip says: "Use: ...", "Equip: ...", "Chance on hit: ...", "Teaches: ..." (items.info only) |
+| `readable?` | bool | it has text to read (a letter, a book): azworld item <entry> shows it (items.info only) |
 | `max_stack` | number |  |
 | `buy_price` | number |  |
 | `sell_price` | number | copper per item; 0 = vendors won't buy it |
@@ -714,6 +717,8 @@ Everything in [Item](#item), plus:
 | `cost` | number | what a cast costs you now, in power_type (most mana costs are a share of your base mana) |
 | `power_type` | string |  |
 | `known` | bool |  |
+| `description?` | string | what it does, with its numbers filled in as the client's tooltip shows them (base values: your spell power and talents aren't added) |
+| `aura?` | string | what its buff or debuff says while it's on a unit |
 
 ### Quest
 
@@ -767,6 +772,8 @@ Everything in [Item](#item), plus:
 | `spell` | number | the spell of your current (or first) rank: spells.info / azworld spell |
 | `requires?` | string |  |
 | `available` | bool | you can learn the next rank now |
+| `now?` | string | what your ranks give, as its tooltip says |
+| `next?` | string | what the next rank gives |
 
 ### Group
 

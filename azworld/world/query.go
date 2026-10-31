@@ -6,10 +6,12 @@ package world
 
 import (
 	"fmt"
+	"github.com/pthm/leeroy/azeroth-sdk/spelltext"
 	"io"
 	"math"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 const limit = "15"
@@ -219,6 +221,32 @@ var commands = []command{
 		craftedBy := q("SELECT id spell, name, `rank` FROM wowbench.spell WHERE create_item = " + ids + " LIMIT " + limit)
 		containers := q("SELECT i.entry, i.name, l.Chance chance FROM item_loot_template l JOIN item_template i ON i.entry = l.Entry\n" +
 			"          WHERE l.Item = " + ids + " LIMIT " + limit)
+		// what its tooltip says: flavour text, its spells' lines, and the pages it holds (letters, books)
+		var effects []string
+		for i := 1; i <= 5; i++ {
+			sp, trig := it.n(fmt.Sprintf("spellid_%d", i)), it.n(fmt.Sprintf("spelltrigger_%d", i))
+			prefix := map[float64]string{0: "Use: ", 1: "Equip: ", 2: "Chance on hit: ", 5: "Use: ", 6: "Teaches: "}[trig]
+			if sp <= 0 || prefix == "" {
+				continue
+			}
+			text := ""
+			if b := spellBook(); b != nil {
+				text = b.Description(uint32(sp))
+			}
+			if r := q1("SELECT name FROM wowbench.spell WHERE id = " + jsStr(sp)); r != nil && (trig == 6 || text == "") {
+				text = strings.TrimSpace(jsStr(r.get("name")) + ". " + text)
+			}
+			effects = append(effects, prefix+text)
+		}
+		var pages []string
+		for page, n := it.n("PageText"), 0; page > 0 && n < 20; n++ {
+			r := q1("SELECT Text, NextPageID FROM page_text WHERE ID = " + jsStr(page))
+			if r == nil {
+				break
+			}
+			pages = append(pages, jsStr(r.get("Text")))
+			page = r.n("NextPageID")
+		}
 		var damage any
 		if truthy(it.get("dmg_max1")) {
 			damage = newObj("min", it.get("dmg_min1"), "max", it.get("dmg_max1"), "speed_ms", it.get("delay"))
@@ -228,6 +256,7 @@ var commands = []command{
 			"subclass", it.get("subclass"), "stackable", it.get("stackable"), "buy_price", it.get("BuyPrice"), "sell_price", it.get("SellPrice"),
 			"armor", or(it.get("armor")), "damage", damage, "stats", stats, "allowable_class", it.get("AllowableClass"),
 			"allowable_race", it.get("AllowableRace"), "quest_item", it.get("class") == 12.0,
+			"description", or(it.get("description")), "effects", effects, "text", pages,
 			"sources", newObj("drops_total", dropsTotal, "drops", drops, "shared_drop", shared, "objects", objects, "vendors", vendors,
 				"reward_of", rewardOf, "crafted_by", craftedBy, "containers", containers), "needed_by", neededBy)
 	}},
@@ -377,6 +406,9 @@ var commands = []command{
 		taught := withSpawns(q(`SELECT c.entry, c.name, c.subname, ts.MoneyCost cost, ts.ReqLevel level FROM trainer_spell ts
             JOIN creature_default_trainer d ON d.TrainerId = ts.TrainerId JOIN creature_template c ON c.entry = d.CreatureId
             WHERE ts.SpellId = `+ids+` LIMIT `+limit), "creature_spawn", 1)
+		if b := spellBook(); b != nil { // the description with its numbers filled in, and what its aura says
+			sp = sp.set("description", b.Description(uint32(id))).set("aura", b.Tooltip(uint32(id)))
+		}
 		return sp.set("power_type", pv).set("cost_note", note).set("create_item", created).set("taught_by", taught)
 	}},
 
@@ -709,3 +741,11 @@ func Run(argv []string, w io.Writer) (code int) {
 	fmt.Fprintln(w)
 	return code
 }
+
+var spellBook = sync.OnceValue(func() *spelltext.Book {
+	b, err := spelltext.Load(DataDir())
+	if err != nil {
+		return nil
+	}
+	return b
+})

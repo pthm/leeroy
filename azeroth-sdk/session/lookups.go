@@ -32,7 +32,14 @@ func (b *Bot) itemLookup(entry uint32) map[string]any {
 		if p == nil {
 			return script.Fail("not_found", "the server has no item with this entry", nil)
 		}
-		return script.Ok(itemTemplate(b.world, entry))
+		it := itemTemplate(b.world, entry)
+		it.Description, it.Readable = p.desc, p.pageText != 0
+		for _, sp := range p.spells {
+			if e := itemEffect(sp[0], sp[1]); e != "" {
+				it.Effects = append(it.Effects, e)
+			}
+		}
+		return script.Ok(it)
 	}, func() error {
 		return b.world.SendPacketRaw(cmsgItemQuery, binary.LittleEndian.AppendUint32(nil, entry))
 	})

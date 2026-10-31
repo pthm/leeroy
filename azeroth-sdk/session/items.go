@@ -62,6 +62,9 @@ type itemProto struct {
 	Slot       string           `json:"slot,omitempty"`  // where it's worn ("" = not equippable)
 	allowClass int32            // class bitmask, -1 = any
 	useCD      cdRule           // UseSpell's cooldown
+	desc       string           // flavour text
+	spells     [][2]uint32      // spell, trigger (0 use, 1 equip, 2 chance on hit, 5 use, 6 learn)
+	pageText   uint32           // text to read (letters, books)
 }
 
 var statNames = map[uint32]string{0: "mana", 1: "health", 3: "agility", 4: "strength", 5: "intellect", 6: "spirit", 7: "stamina",
@@ -202,6 +205,9 @@ func parseItemQuery(data []byte) {
 	r.Seek(8, io.SeekCurrent) // ammo type, ranged range
 	for i := 0; i < 5; i++ {
 		id, trigger := u32(), u32()
+		if id != 0 {
+			p.spells = append(p.spells, [2]uint32{id, trigger})
+		}
 		u32() // charges
 		c := cdRule{rec: int32(u32()), cat: u32(), catrec: int32(u32())}
 		if trigger == 0 && id != 0 && p.UseSpell == 0 { // ITEM_SPELLTRIGGER_ON_USE
@@ -211,8 +217,9 @@ func parseItemQuery(data []byte) {
 		}
 	}
 	u32() // bonding
-	str()
-	r.Seek(12, io.SeekCurrent) // page text, language, page material
+	p.desc = str()
+	p.pageText = u32()
+	r.Seek(8, io.SeekCurrent) // language, page material
 	p.StartQuest = u32()
 	p.Slot = invSlots[p.InvType].name
 	if malformed {

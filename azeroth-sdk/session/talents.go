@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/pthm/leeroy/azeroth-sdk/script"
+	"github.com/pthm/leeroy/azeroth-sdk/spelltext"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 	"os"
 	"path/filepath"
@@ -145,6 +146,12 @@ func (b *Bot) setupTalents() {
 					}
 				}
 				tl.Available = ok
+				if r > 0 {
+					tl.Now = spellText(func(b *spelltext.Book) string { return b.Description(t.ranks[r-1]) })
+				}
+				if r < len(t.ranks) {
+					tl.Next = spellText(func(b *spelltext.Book) string { return b.Description(t.ranks[r]) })
+				}
 				tree.Talents = append(tree.Talents, tl)
 			}
 			out.Trees = append(out.Trees, tree)

@@ -294,6 +294,9 @@ type Item struct {
 	Stats         map[string]int32 `json:"stats,omitempty" doc:"e.g. {strength = 3, stamina = 2}"`
 	UseSpell      uint32           `json:"use_spell,omitempty" doc:"what items.use casts (food, drink, potions, quest items)"`
 	StartsQuest   uint32           `json:"starts_quest,omitempty"`
+	Description   string           `json:"description,omitempty" doc:"its flavour text (items.info only)"`
+	Effects       []string         `json:"effects,omitempty" doc:"what its spells do, as its tooltip says: \"Use: ...\", \"Equip: ...\", \"Chance on hit: ...\", \"Teaches: ...\" (items.info only)"`
+	Readable      bool             `json:"readable,omitempty" doc:"it has text to read (a letter, a book): azworld item <entry> shows it (items.info only)"`
 	MaxStack      int32            `json:"max_stack"`
 	BuyPrice      uint32           `json:"buy_price"`
 	SellPrice     uint32           `json:"sell_price" doc:"copper per item; 0 = vendors won't buy it"`
@@ -402,6 +405,8 @@ type Spell struct {
 	Cost               uint32  `json:"cost" doc:"what a cast costs you now, in power_type (most mana costs are a share of your base mana)"`
 	PowerType          string  `json:"power_type"`
 	Known              bool    `json:"known"`
+	Description        string  `json:"description,omitempty" doc:"what it does, with its numbers filled in as the client's tooltip shows them (base values: your spell power and talents aren't added)"`
+	Aura               string  `json:"aura,omitempty" doc:"what its buff or debuff says while it's on a unit"`
 }
 
 type Objective struct {
@@ -451,6 +456,8 @@ type Talent struct {
 	Spell     uint32 `json:"spell" doc:"the spell of your current (or first) rank: spells.info / azworld spell"`
 	Requires  string `json:"requires,omitempty"`
 	Available bool   `json:"available" doc:"you can learn the next rank now"`
+	Now       string `json:"now,omitempty" doc:"what your ranks give, as its tooltip says"`
+	Next      string `json:"next,omitempty" doc:"what the next rank gives"`
 }
 
 type TalentTree struct {

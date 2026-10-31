@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/pthm/leeroy/azeroth-sdk/client"
+	"github.com/pthm/leeroy/azeroth-sdk/spelltext"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
@@ -214,7 +216,24 @@ func spellOf(w *client.WorldClient, id uint32) *types.Spell {
 	}
 	return &types.Spell{ID: id, Name: sp.Name, Rank: sp.Rank, Level: sp.Level, CastMS: sp.CastMS, CooldownMS: sp.Cooldown,
 		CategoryCooldownMS: sp.CategoryCooldown, GCDMS: sp.GCD, Range: sp.Range, Cost: spellCost(sp, baseMana(w)),
-		PowerType: name(powerNames, uint8(sp.PowerType)), Known: w.KnowsSpell(id)}
+		PowerType: name(powerNames, uint8(sp.PowerType)), Known: w.KnowsSpell(id),
+		Description: spellText(func(b *spelltext.Book) string { return b.Description(id) }),
+		Aura:        spellText(func(b *spelltext.Book) string { return b.Tooltip(id) })}
+}
+
+var spellBook = sync.OnceValue(func() *spelltext.Book {
+	b, err := spelltext.Load(spellsDir)
+	if err != nil {
+		return nil // no Spell.dbc: no descriptions
+	}
+	return b
+})
+
+func spellText(f func(*spelltext.Book) string) string {
+	if b := spellBook(); b != nil {
+		return f(b)
+	}
+	return ""
 }
 
 // unitFieldBaseMana: UNIT_FIELD_BASE_MANA (OBJECT_END + 0x0072), your mana without intellect
@@ -434,4 +453,20 @@ func questTitle(w *client.WorldClient, id uint32) string {
 		return p.title
 	}
 	return ""
+}
+
+// itemEffect: an item spell as its tooltip line ("Use: Restores 61 health over 18 sec.")
+func itemEffect(spell, trigger uint32) string {
+	prefix := map[uint32]string{0: "Use: ", 1: "Equip: ", 2: "Chance on hit: ", 5: "Use: ", 6: "Teaches: "}[trigger]
+	if prefix == "" {
+		return ""
+	}
+	text := spellText(func(b *spelltext.Book) string { return b.Description(spell) })
+	if trigger == 6 {
+		text = spellName(spell) + ". " + text
+	}
+	if strings.TrimSpace(text) == "" {
+		text = spellName(spell)
+	}
+	return prefix + text
 }
