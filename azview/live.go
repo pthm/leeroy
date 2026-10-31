@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -24,6 +25,12 @@ import (
 
 	"github.com/pthm/leeroy/azworld/world"
 )
+
+// sent is an event as streamed: its time and its JSON
+type sent struct {
+	t float64
+	b []byte
+}
 
 func runLive(args []string) {
 	var files []string
@@ -74,8 +81,8 @@ func runLive(args []string) {
 	// ---------- tail the logs ----------
 	var (
 		mu      sync.Mutex
-		events  []ev // everything since start, in arrival order
-		clients = map[chan ev]bool{}
+		events  []sent // everything since start, in arrival order, encoded: kept as maps, a long run's took 1.4 GB
+		clients = map[chan sent]bool{}
 		items   = map[int]any{}
 		offsets = map[string]int64{}
 		partial = map[string]string{}
@@ -92,38 +99,44 @@ func runLive(args []string) {
 				from = 0
 				offsets[f] = 0
 			}
-			if size <= from {
-				continue
-			}
 			fd, err := os.Open(f)
 			if err != nil {
 				continue
 			}
-			buf := make([]byte, size-from)
-			n, _ := fd.ReadAt(buf, from)
-			fd.Close()
-			offsets[f] = from + int64(n)
-			text := partial[f] + string(buf[:n])
-			cut := strings.LastIndex(text, "\n") + 1
-			partial[f] = text[cut:]
-			lines := text[:cut]
-			var got []ev
-			if name, ok := transcriptOf[f]; ok {
-				got = TranscriptEvents(lines, name)
-			} else if f == serverLog && len(runChars) > 0 {
-				got = ServerChat(lines, runChars)
-			} else {
-				for _, e := range ParseLines(lines) {
-					if len(runChars) == 0 || keep(e) {
-						got = append(got, e)
+			// in chunks: a long run's files are hundreds of megabytes, read whole they made a 2 GB heap
+			for ; from < size; from = offsets[f] {
+				buf := make([]byte, min(size-from, 16<<20))
+				n, _ := fd.ReadAt(buf, from)
+				if n == 0 {
+					break
+				}
+				offsets[f] = from + int64(n)
+				text := partial[f] + string(buf[:n])
+				cut := strings.LastIndex(text, "\n") + 1
+				partial[f] = text[cut:]
+				lines := text[:cut]
+				var got []ev
+				if name, ok := transcriptOf[f]; ok {
+					got = TranscriptEvents(lines, name)
+				} else if f == serverLog && len(runChars) > 0 {
+					got = ServerChat(lines, runChars)
+				} else {
+					for _, e := range ParseLines(lines) {
+						if len(runChars) == 0 || keep(e) {
+							got = append(got, e)
+						}
+					}
+				}
+				for _, e := range got {
+					if S(e, "ev") == "" {
+						continue // the SDK's action and diagnostic records: two thirds of a record file, nothing the viewer shows
+					}
+					if N(e, "t") >= start && (len(chars) == 0 || slices.Contains(chars, S(e, "n"))) {
+						fresh = append(fresh, e)
 					}
 				}
 			}
-			for _, e := range got {
-				if N(e, "t") >= start && (len(chars) == 0 || slices.Contains(chars, S(e, "n"))) {
-					fresh = append(fresh, e)
-				}
-			}
+			fd.Close()
 		}
 		SortByTime(fresh)
 		NameUnits(fresh)
@@ -144,10 +157,12 @@ func runLive(args []string) {
 			if info, ok := items[int(N(e, "item"))]; ok && S(e, "ev") == "loot" {
 				e["itemInfo"] = info
 			}
-			events = append(events, e)
+			b, _ := json.Marshal(e)
+			out := sent{N(e, "t"), b}
+			events = append(events, out)
 			for c := range clients {
 				select {
-				case c <- e:
+				case c <- out:
 				default: // a client that can't keep up is dropped
 					delete(clients, c)
 					close(c)
@@ -156,6 +171,7 @@ func runLive(args []string) {
 		}
 	}
 	poll()
+	debug.FreeOSMemory() // the startup read's garbage
 	go func() {
 		for range time.Tick(500 * time.Millisecond) {
 			poll()
@@ -164,29 +180,33 @@ func runLive(args []string) {
 
 	// ---------- viewer data ----------
 	zones := map[string]string{}
-	for _, m := range []uint32{0, 1} {
-		for id, name := range world.Areas(m).Names {
-			zones[strconv.Itoa(id)] = name
-		}
+	for _, r := range world.MustRows(world.Bench(), "SELECT id, name FROM area") {
+		zones[r[0]] = r[1]
+	}
+	// map names for the picker: continents by name, anything else by its top-level zone (the newest, for the
+	// Deadmines' map that's also "The Great Sea")
+	maps := map[string]string{"0": "Eastern Kingdoms", "1": "Kalimdor", "530": "Outland", "571": "Northrend"}
+	for _, r := range world.MustRows(world.Bench(), "SELECT map, name FROM area WHERE zone = 0 AND map NOT IN (0, 1, 530, 571) ORDER BY id") {
+		maps[r[0]] = r[1]
 	}
 	labels := append(world.Labels(0, nil), world.Labels(1, nil)...)
 	meta := AgentMeta(transcripts)
-	tileVersion := 1 // tiles changed from the terrain render to the minimap: busts browser caches
+	tileVersion := 1 // tiles changed from the terrain render to the minimap, then instance floor plans: busts browser caches
 	if world.HasClientData() {
-		tileVersion = 2
+		tileVersion = 3
 	}
 	page := func() (string, error) {
 		now := float64(time.Now().UnixMilli())
 		mu.Lock()
 		first := now
 		if len(events) > 0 {
-			first = N(events[0], "t")
+			first = events[0].t
 		}
 		mu.Unlock()
 		// the clock starts at the oldest event we have (not --since), so the timeline isn't mostly empty
 		return Page("live", "", map[string]any{"live": true, "title": "live", "start": first, "duration": now - first,
 			"chars": chars, "players": []any{}, "events": []any{}, "zones": zones, "items": map[string]any{}, "agents": meta,
-			"tileVersion": tileVersion, "labels": labels,
+			"tileVersion": tileVersion, "labels": labels, "maps": maps,
 			"map": map[string]any{"id": 0, "xMax": world.GridSize * 32, "yMax": world.GridSize * 32, "res": 2}}) // origin at the grid corner, 2 yd/px
 	}
 
@@ -199,8 +219,12 @@ func runLive(args []string) {
 		if t, ok := tiles[key]; ok {
 			return t
 		}
-		// the client's minimap for that square if it was extracted (roads, buildings, water); else the terrain render
+		// the client's minimap for that square if it was extracted (roads, buildings, water); an instance's floor plan
+		// from its navmesh (its own minimap is the rock above it); else the terrain render
 		t := world.MinimapTile(m, gx, gy)
+		if t == nil && !world.Continent(m) {
+			t = world.FloorTile(m, gx, gy, 0.5)
+		}
 		if t == nil {
 			S := world.GridSize
 			xMax, yMax := S*float64(32-gx), S*float64(32-gy)
@@ -231,6 +255,17 @@ func runLive(args []string) {
 			w.Write(tile(uint32(m), gx, gy))
 			return
 		}
+		if r.URL.Path == "/creatures" { // ?ids=1,2,3: creature names for the units around players
+			var ids []int
+			for _, v := range strings.Split(r.URL.Query().Get("ids"), ",") {
+				if id, err := strconv.Atoi(v); err == nil && len(ids) < 500 {
+					ids = append(ids, id)
+				}
+			}
+			w.Header().Set("content-type", "application/json")
+			json.NewEncoder(w).Encode(world.CreatureNames(ids))
+			return
+		}
 		if r.URL.Path == "/stream" {
 			since := start
 			if v := r.URL.Query().Get("since"); v != "" {
@@ -242,14 +277,13 @@ func runLive(args []string) {
 			fl, _ := w.(http.Flusher)
 			w.Header().Set("content-type", "text/event-stream")
 			w.Header().Set("cache-control", "no-cache")
-			send := func(e ev) bool {
-				b, _ := json.Marshal(e)
-				if _, err := fmt.Fprintf(w, "data: %s\n\n", b); err != nil {
+			send := func(e sent) bool {
+				if _, err := fmt.Fprintf(w, "data: %s\n\n", e.b); err != nil {
 					return false
 				}
 				return true
 			}
-			c := make(chan ev, 4096)
+			c := make(chan sent, 4096)
 			mu.Lock()
 			backlog := slices.Clone(events)
 			clients[c] = true
@@ -263,7 +297,7 @@ func runLive(args []string) {
 				mu.Unlock()
 			}()
 			for _, e := range backlog {
-				if N(e, "t") >= since && !send(e) {
+				if e.t >= since && !send(e) {
 					return
 				}
 			}

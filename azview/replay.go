@@ -275,10 +275,21 @@ func runReplay(args []string) {
 		}
 	}
 
+	var unitIDs []int // creatures in the "units" samples, for their names
+	for _, e := range events {
+		rows, _ := e["u"].([]any)
+		for _, r := range rows {
+			if r, ok := r.([]any); ok && len(r) > 0 {
+				if id := int(r[0].(float64)); !slices.Contains(unitIDs, id) {
+					unitIDs = append(unitIDs, id)
+				}
+			}
+		}
+	}
 	data := map[string]any{"title": title, "start": t0, "duration": t1 - t0,
 		"map":     map[string]any{"id": mapID, "xMax": xMax, "yMax": yMax, "res": res, "w": img.W, "h": img.H},
 		"players": players, "events": events, "labels": labels, "zones": zones, "items": world.ItemNames(lootIDs),
-		"agents": AgentMeta(transcripts)}
+		"agents": AgentMeta(transcripts), "creatures": world.CreatureNames(unitIDs)}
 	html, err := Page(title, "data:image/png;base64,"+base64.StdEncoding.EncodeToString(img.PNG), data)
 	if err != nil {
 		fail("%v", err)

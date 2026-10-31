@@ -58,6 +58,7 @@ viewers fill it in from `acore_world.creature_template`.
 | `level` | `from`, `to` | yes | `to` only |
 | `xp` | `amount`, `src`, `victim` | yes | `amount` only |
 | `money` | `delta` (copper) | yes | no |
+| `units` | `m` map, `u`: the creatures within 60 yd, each `[entry, level, x, y, health %, state]` (state 0 hostile, 1 neutral, 2 friendly, +4 dead) | no | every 2 s |
 | `quest` (completed) | `id`, `title` | yes | `id`, `xp`, `money` |
 | `achievement` | `id`, `title`, `points` | yes | `id` only |
 | `loot` | `item` (entry), `count` | yes | yes |

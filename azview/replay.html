@@ -51,7 +51,7 @@ aside { display: grid; grid-template-rows: auto 1fr; min-height: 0; border-left:
 #chart { width: 100%; height: 220px; display: block; }
 #live[aria-pressed="true"] { color: var(--death); border-color: var(--death); }
 footer { display: grid; grid-template-columns: auto auto auto auto 1fr; align-items: center; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--panel); }
-footer button, footer select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+footer button, footer select, header select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
 #clock { font-variant-numeric: tabular-nums; min-width: 110px; }
 .tlwrap { grid-column: -2; }
 #timeline { width: 100%; height: 38px; cursor: pointer; display: block; }
@@ -71,6 +71,7 @@ footer button, footer select { font: inherit; color: var(--ink); background: var
 <body>
 <header>
   <h1 id="title">__TITLE__</h1>
+  <select id="mapsel" aria-label="Map" hidden></select>
   <div class="chips" id="chips"></div>
   <div class="legend"><span style="--c:var(--death)">death</span><span style="--c:var(--ach)">achievement</span><span style="--c:var(--level)">level</span><span style="--c:var(--quest)">quest</span><span style="--c:var(--chat)">chat</span></div>
 </header>
@@ -125,6 +126,30 @@ const SCORES = {}; // name -> score events in time order
 const addScore = (e) => (SCORES[e.n] ??= []).push(e);
 D.events.filter((e) => e.ev === "score").forEach(addScore);
 const scores = (n) => SCORES[n] ?? [];
+// creatures around each player ("units" samples every 2 s): name -> [{t, m, u: [[entry, level, x, y, hp %, state]]}]
+const UNITS = {}, NAMES = D.creatures ?? {};
+let wanted = new Set();
+function addUnits(e) {
+  (UNITS[e.n] ??= []).push({ t: e.t, m: e.m, u: e.u ?? [] });
+  for (const r of e.u ?? []) if (!(r[0] in NAMES)) wanted.add(r[0]);
+}
+if (LIVE) setInterval(() => { // names for new creature entries, in batches
+  if (!wanted.size) return;
+  const ids = [...wanted].slice(0, 200); ids.forEach((id) => { NAMES[id] = ""; wanted.delete(id); });
+  fetch(`creatures?ids=${ids.join(",")}`).then((r) => r.json()).then((m) => { Object.assign(NAMES, m); dirty = true; }).catch(() => {});
+}, 1000);
+D.events = D.events.filter((e) => e.ev !== "units" || (addUnits(e), false));
+// events by what reads them, so drawing never walks every event (a long run has hundreds of thousands)
+const MARK_KINDS = ["death", "achievement", "level", "quest"];
+const MARKS = [], GROUP_EVENTS = [], TICKS = [], BY_TAB = { events: [], chat: [], combat: [], agent: [] };
+function index(e) {
+  if (MARK_KINDS.includes(e.ev)) MARKS.push(e);
+  if (e.ev === "group") GROUP_EVENTS.push(e);
+  if (e.ev in TICK) TICKS.push(e);
+  for (const [tab, kinds] of Object.entries(KINDS)) if (kinds.includes(e.ev)) BY_TAB[tab].push(e);
+}
+// the index of the first event after t in a list sorted by time
+const upto = (a, t) => { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m].t <= t) lo = m + 1; else hi = m; } return lo; };
 const scoreAt = (n, t) => { const a = scores(n); let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m].t <= t) lo = m + 1; else hi = m; } return a[lo - 1] ?? null; };
 // Groups at time t, from each player's latest position sample (group id) and the latest "group" event (leader).
 function groupsAt(t) {
@@ -136,7 +161,7 @@ function groupsAt(t) {
     if (!byId.has(g)) byId.set(g, { id: g, members: [], leader: "" });
     byId.get(g).members.push({ p, pp });
   }
-  for (const e of D.events) { if (e.t > t) break; if (e.ev === "group" && byId.has(e.grp) && e.leader) byId.get(e.grp).leader = e.leader; }
+  for (const e of GROUP_EVENTS) { if (e.t > t) break; if (byId.has(e.grp) && e.leader) byId.get(e.grp).leader = e.leader; }
   return { groups: [...byId.values()].sort((a, b) => b.members.length - a.members.length), solo };
 }
 let metric = "score";
@@ -174,7 +199,7 @@ function fitBox(xMin, xMax, yMin, yMax) {
 }
 function fit() {
   if (!LIVE) return fitBox(M.xMax - M.h * M.res, M.xMax, M.yMax - M.w * M.res, M.yMax);
-  const pts = P.flatMap((p) => p.track.filter((r) => r[15] === M.id).slice(-60));
+  const pts = P.flatMap((p) => p.track.slice(-600).filter((r) => r[15] === M.id).slice(-60));
   if (!pts.length) return sizeCanvas();
   const xs = pts.map((r) => r[1]), ys = pts.map((r) => r[2]);
   fitBox(Math.min(...xs) - 300, Math.max(...xs) + 300, Math.min(...ys) - 300, Math.max(...ys) + 300);
@@ -212,6 +237,22 @@ function drawMap() {
     cx.lineWidth = 3; cx.strokeStyle = "#000a"; cx.fillStyle = l.zone ? "#fff" : "#fffd";
     cx.strokeText(l.name, sx, sy); cx.fillText(l.name, sx, sy);
   }
+  // creatures around the players: hostile red, neutral yellow, friendly green, dead grey; named when zoomed in
+  const UNIT_COLOR = ["#e04040", "#e8c040", "#40c050"], drawn = new Set();
+  cx.font = "11px system-ui"; cx.textAlign = "left";
+  for (const p of P) {
+    const a = UNITS[p.name]; if (!a) continue;
+    const s = a[upto(a, t) - 1]; if (!s || t - s.t > 5000 || s.m !== M.id) continue;
+    for (const [entry, lvl, x, y, hp, state] of s.u) {
+      const key = `${entry}/${Math.round(x)}/${Math.round(y)}`; if (drawn.has(key)) continue; drawn.add(key);
+      const [sx, sy] = scr(x, y), dead = state & 4;
+      cx.beginPath(); cx.arc(sx, sy, dead ? 2.5 : 3.5, 0, 7);
+      cx.fillStyle = dead ? "#777a" : UNIT_COLOR[state & 3] ?? "#aaa"; cx.fill();
+      cx.lineWidth = 1; cx.strokeStyle = "#000a"; cx.stroke();
+      if (view.s >= 4 && !dead) { const label = `${NAMES[entry] || entry} ${lvl}${hp < 100 ? ` ${hp}%` : ""}`;
+        cx.lineWidth = 3; cx.strokeStyle = "#000a"; cx.fillStyle = "#ddd"; cx.strokeText(label, sx + 6, sy + 4); cx.fillText(label, sx + 6, sy + 4); }
+    }
+  }
   // route of the selected player only (travelled solid, ahead faint); everyone else is just a marker
   for (const p of P) {
     if (p.name !== sel || !p.track.length) continue;
@@ -239,8 +280,9 @@ function drawMap() {
     cx.setLineDash([]);
   }
   // event markers up to now
-  for (const e of D.events) {
-    if (e.t > t || !["death", "achievement", "level", "quest"].includes(e.ev) || (sel && e.n !== sel)) continue;
+  for (const e of MARKS) {
+    if (e.t > t) break;
+    if (sel && e.n !== sel) continue;
     const p = P.find((q) => q.name === e.n); const pp = p && at(p, e.t); if (!pp || pp.r[15] !== M.id) continue;
     const [sx, sy] = scr(pp.x, pp.y);
     cx.fillStyle = css({ death: "--death", achievement: "--ach", level: "--level", quest: "--quest" }[e.ev]);
@@ -297,8 +339,8 @@ function drawTimeline() {
   const W = r.width, X = (ms) => (ms / D.duration) * W;
   tx.fillStyle = css("--line"); tx.fillRect(0, 26, W, 6);
   tx.fillStyle = css("--accent"); tx.fillRect(0, 26, X(t), 6);
-  for (const e of D.events) {
-    const c = TICK[e.ev]; if (!c) continue;
+  for (const e of TICKS) {
+    const c = TICK[e.ev];
     tx.fillStyle = css(c); const h = e.ev === "chat" ? 6 : 14;
     tx.fillRect(Math.round(X(e.t)), 24 - h, e.ev === "chat" ? 1 : 2, h);
   }
@@ -311,7 +353,6 @@ tl.addEventListener("pointermove", (e) => seeking && seekFrom(e));
 tl.addEventListener("pointerup", () => (seeking = false));
 
 // ---------- side panes ----------
-const evIdx = (t) => { let lo = 0, hi = D.events.length; while (lo < hi) { const m = (lo + hi) >> 1; if (D.events[m].t <= t) lo = m + 1; else hi = m; } return lo; };
 const who = (n) => `<span class="who" style="color:${color[n] ?? "inherit"}">${esc(n)}</span>`;
 // who plays a character: runtime and model (bench meta.json), e.g. "claude · opus-5-5"
 const agentBadge = (n) => { const a = D.agents?.[n]; if (!a) return "";
@@ -391,8 +432,8 @@ function renderPane() {
         <td class="num">${s ? `L${s.level}` : ""}</td><td class="num"><b>${s ? s[metric] : "–"}</b></td></tr>`).join("")}</table>
       <p class="muted">score = (overall rate + best 15-minute rate) / 2, in progress points per hour; progress = XP earned (judge v6: XP/hour; gear and money are not scored; older runs scored differently).</p>`;
   } else {
-    const end = evIdx(t), kinds = tab === "agent" ? KINDS.agent.filter((k) => agentShow[k]) : KINDS[tab], rows = [];
-    for (let i = end - 1; i >= 0 && rows.length < 200; i--) if (kinds.includes(D.events[i].ev)) rows.push(D.events[i]);
+    const list = BY_TAB[tab], end = upto(list, t), rows = [];
+    for (let i = end - 1; i >= 0 && rows.length < 200; i--) if (tab !== "agent" || agentShow[list[i].ev]) rows.push(list[i]);
     const bar = tab === "agent" ? `<div class="filters muted">Show ${Object.entries(AGENT_KINDS).map(([k, label]) =>
       `<label><input type="checkbox" data-agent-kind="${k}"${agentShow[k] ? " checked" : ""}> ${label}</label>`).join(" ")}</div>` : "";
     html = bar + (rows.reverse().map((e) => `<div class="row" data-t="${e.t}"><span class="t">${fmt(e.t)}</span><span>${line(e)}</span></div>`).join("")
@@ -442,12 +483,41 @@ try { const saved = localStorage.getItem("replay-tab"); if (saved) document.quer
 function renderChips() {
   $("chips").innerHTML = P.map((p) => `<button class="chip" aria-pressed="${sel === p.name}" data-n="${esc(p.name)}"><span class="dot" style="background:${p.color}"></span>${esc(p.name)} <span class="muted">${esc(p.cls)}${p.nth > 1 || P.some((q) => q !== p && q.cls === p.cls) ? " #" + p.nth : ""}</span>${agentBadge(p.name)}</button>`).join("");
 }
-$("chips").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; sel = follow = sel === c.dataset.n ? null : c.dataset.n; if (follow) view.s = Math.max(view.s, 2.5); renderChips(); drawMap(); });
+$("chips").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; sel = follow = sel === c.dataset.n ? null : c.dataset.n; if (follow) { view.s = Math.max(view.s, 2.5); mapMode = "auto"; updateMaps(); } renderChips(); drawMap(); });
 
 // ---------- playback ----------
 let liveFollow = LIVE; // live mode keeps the playhead at the newest data until you seek back
+let dirty = true, lastRender = 0; // live: new data marks the view dirty; it's redrawn at most 5 times a second
+// ---------- map picker (live) ----------
+// Auto shows the map the followed player is on, else the one most players are on; picking a map holds it.
+let mapMode = "auto", mapOptions = "";
+const SEEN_MAPS = new Set(); // every map anyone has been on
+const mapName = (m) => D.maps?.[m] ?? `map ${m}`;
+function mapsAt(t) {
+  const n = new Map();
+  for (const p of P) { const pp = at(p, t); if (pp) n.set(pp.r[15], (n.get(pp.r[15]) ?? 0) + 1); }
+  return n;
+}
+function showMap(m) { if (m === undefined || m === M.id) return; M.id = m; fit(); }
+function updateMaps() {
+  if (!LIVE) return;
+  const n = mapsAt(t);
+  if (mapMode === "auto") {
+    const f = follow && at(P.find((p) => p.name === follow), t);
+    let best = f ? f.r[15] : undefined;
+    if (best === undefined) for (const [m, c] of n) if (best === undefined || c > n.get(best) || (c === n.get(best) && m === M.id)) best = m;
+    showMap(best);
+  }
+  const seen = new Set([M.id, ...SEEN_MAPS]);
+  const opts = `<option value="auto"${mapMode === "auto" ? " selected" : ""}>Auto: ${esc(mapName(M.id))}</option>` +
+    [...seen].sort((a, b) => a - b).map((m) => `<option value="${m}"${mapMode === String(m) ? " selected" : ""}>${esc(mapName(m))}${n.get(m) ? ` (${n.get(m)})` : ""}</option>`).join("");
+  if (opts !== mapOptions) { mapOptions = opts; $("mapsel").innerHTML = opts; }
+}
+$("mapsel").addEventListener("change", (e) => { mapMode = e.target.value; if (mapMode !== "auto") showMap(Number(mapMode)); updateMaps(); render(); });
 function setT(v) { t = Math.max(0, Math.min(D.duration, v)); liveFollow = LIVE && t >= D.duration - 1500; render(); }
 function render() {
+  dirty = false; lastRender = performance.now();
+  updateMaps();
   $("clock").textContent = `${fmt(t)} / ${fmt(D.duration)}`;
   if (LIVE) $("live").setAttribute("aria-pressed", liveFollow);
   drawMap(); drawTimeline(); renderPane();
@@ -460,9 +530,10 @@ addEventListener("keydown", (e) => {
   if (e.code === "ArrowRight") setT(t + (e.shiftKey ? 60000 : 10000));
   if (e.code === "ArrowLeft") setT(t - (e.shiftKey ? 60000 : 10000));
 });
+D.events.forEach(index);
 let last = performance.now();
 function frame(now) {
-  if (liveFollow) { t = D.duration; render(); }
+  if (liveFollow) { if (dirty && now - lastRender > 200) { t = D.duration; render(); } }
   else if (playing) { t += (now - last) * speed; if (t >= D.duration) { t = D.duration; playing = false; $("play").textContent = "▶"; liveFollow = LIVE; } render(); }
   last = now; requestAnimationFrame(frame);
 }
@@ -482,18 +553,22 @@ else {
     if (D.chars.length && !D.chars.includes(e.n)) return;
     if (e.ev === "pos") {
       const p = player(e.n);
+      SEEN_MAPS.add(e.m);
       p.track.push([rel, e.x, e.y, e.hp, e.hpmax, e.pw, e.pwmax, e.pt, e.lvl, e.xp, e.money, e.alive, e.ghost, e.combat, e.zone, e.m, e.grp ?? 0]);
-      if (!fitted || (follow === e.n && e.m !== M.id)) { M.id = e.m; }
-      if (!fitted) { fitted = true; fit(); }
+      if (!fitted) { fitted = true; M.id = e.m; fit(); }
+    } else if (e.ev === "units") {
+      addUnits({ ...e, t: rel });
     } else {
       if (e.ev === "login") { const p = player(e.n); p.cls = CLASSES[e.cls] ?? ""; styleByClass(); renderChips(); }
       D.events.push({ ...e, t: rel });
+      index(D.events.at(-1));
       if (e.ev === "score") addScore(D.events.at(-1));
     }
     D.duration = Math.max(D.duration, rel);
+    dirty = true;
   };
-  setInterval(() => { D.duration = Math.max(D.duration, Date.now() - D.start); }, 1000);
-  $("live").hidden = false;
+  setInterval(() => { D.duration = Math.max(D.duration, Date.now() - D.start); dirty = true; }, 1000);
+  $("live").hidden = false; $("mapsel").hidden = false;
   $("live").addEventListener("click", () => { liveFollow = true; playing = false; $("play").textContent = "▶"; render(); });
   fit(); renderChips(); render(); requestAnimationFrame(frame);
 }
