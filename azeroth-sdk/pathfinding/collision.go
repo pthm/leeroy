@@ -10,8 +10,13 @@ import (
 // region for traversable steps; support and step checks must accompany sweeps.
 type BodyProfile struct{ Radius, Height, StepHeight, MaxSlope float32 }
 
+// WalkingBody climbs what the server's navmesh climbs, as far as a capsule this tall allows. The navmesh is built
+// with a 1.6 yd climb (walkableClimb 6 cells of 0.2667) and 60 degree slopes (mmaps-config.yaml), so a stricter body
+// refused routes the navmesh had just produced: the Northshire Abbey stairs (1.05 yd steps), the courtyard fountain's
+// rim. The step can't reach 1.6 yd: Height must exceed StepHeight plus the capsule's diameter, so 1.4 is the most a
+// 2.03 yd character takes; obstacles between that and the navmesh's climb are jumped (prepare.go).
 func WalkingBody() BodyProfile {
-	return BodyProfile{Radius: 0.3, Height: 2.03128, StepHeight: 0.6, MaxSlope: 50}
+	return BodyProfile{Radius: 0.3, Height: 2.03128, StepHeight: 1.4, MaxSlope: 60}
 }
 func (p BodyProfile) valid() bool {
 	return p.Radius > 0 && p.Height > p.StepHeight+2*p.Radius && p.Height < 20 && p.StepHeight >= 0 && p.MaxSlope > 0 && p.MaxSlope < 90

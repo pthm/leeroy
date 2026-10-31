@@ -177,6 +177,13 @@ func TestPreparedRealInteriorRoutes(t *testing.T) {
 		{"inn", Point3D{-9460, 8, 57}, Point3D{-9472, 34, 64}},
 		{"upper", Point3D{-9797, 132, 25}, Point3D{-9807, 117, 24}},
 		{"lower", Point3D{-9824, 122, 4}, Point3D{-9843.54, 127.525, 5.3698}},
+		// Northshire routes the deadmines run's agents were refused (2026-10-30)
+		{"mine mouth", Point3D{-8700, -125, 87}, Point3D{-8655, -127, 89.7}},           // hillside above Md_Goldmine.wmo's floor
+		{"mine road", Point3D{-8785, -162, 82}, Point3D{-8671, -118, 92.2}},            // a tree canopy at ground level
+		{"abbey stairs", Point3D{-8912.28, -214.13, 81.96}, Point3D{-8910, -230, 82}},  // 1.05 yd steps in Nsabbey.wmo
+		{"abbey fountain", Point3D{-8911.7, -111.1, 82}, Point3D{-8785, -162, 82}},     // past Waterbasin.m2's rim
+		{"abbey to vineyard", Point3D{-8946, -131.5, 83.67}, Point3D{-8850, -224, 82}}, // navmesh 1.55 yd over the terrain
+		{"road to goldshire", Point3D{-9054.7, -459.4, 72.57}, Point3D{-9460, 32, 57}}, // the same, several times
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -199,8 +206,9 @@ func TestPreparedRealInteriorRoutes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("prepare: %+v %v", r, err)
 			}
-			if tc.name == "lower" && !r.Replanned {
-				t.Fatal("mine cart was not avoided")
+			if tc.name == "lower" && r.Replanned {
+				// the navmesh runs over the mine cart (about 1 yd up): follow it rather than steer round
+				t.Fatal("left the navmesh to avoid the mine cart")
 			}
 
 			t.Logf("%d points, repaired=%v, triangles=%d, preparation=%s", len(r.Points), r.Replanned, r.Collision.Triangles, time.Since(start))

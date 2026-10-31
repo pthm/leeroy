@@ -38,7 +38,8 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   0.75 yards horizontally and 1.5 yards vertically. Support is sampled at most every 0.25 yards;
   physical heights come from nearby terrain and movement-mask WMO/M2 rays. Overhead terrain does
   not replace a cave floor. Final body segments use continuous capsule sweeps against indexed triangles.
-  The default standing profile is radius 0.3, height 2.03128, step 0.6 yards and maximum slope 50 degrees.
+  The default standing profile is radius 0.3, height 2.03128, step 1.4 yards and maximum slope 60 degrees:
+  it climbs what the server's navmesh climbs (1.6 yards, 60 degrees) as far as a body that tall allows.
   This is a fixed walking profile; mount/shape-specific dimensions and dynamic collision are not modeled.
   Off-mesh actions require separate handling and are refused by walking preparation.
 - A blocked path gets at most three alternative portal placements and six local waypoint attempts,

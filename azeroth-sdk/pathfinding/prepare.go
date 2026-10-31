@@ -164,7 +164,7 @@ func (s *PathFindingService) prepareCandidate(ctx context.Context, m uint32, r *
 			out.Swimming[i] = true
 			continue
 		}
-		ray := s.vmapMgr.TraceMovementContext(ctx, m, Point3D{p.X, p.Y, p.Z + MaxProjectionVertical}, Point3D{p.X, p.Y, p.Z - MaxProjectionVertical})
+		ray := s.vmapMgr.TraceMovementContext(ctx, m, Point3D{p.X, p.Y, p.Z + MaxProjectionVertical}, Point3D{p.X, p.Y, p.Z - MaxSupportBelow})
 		if ray.State == "unknown" {
 			ray.Segment = i
 			return fail(ray)
@@ -174,7 +174,7 @@ func (s *PathFindingService) prepareCandidate(ctx context.Context, m uint32, r *
 		if ray.State == "blocked" && (math.IsInf(float64(ground), 0) || math.Abs(float64(ray.Position.Z-p.Z)) < math.Abs(float64(ground-p.Z))) {
 			ground = ray.Position.Z
 		}
-		if math.IsInf(float64(ground), 0) || math.IsNaN(float64(ground)) || math.Abs(float64(ground-p.Z)) > float64(MaxProjectionVertical) {
+		if math.IsInf(float64(ground), 0) || math.IsNaN(float64(ground)) || ground > p.Z+MaxProjectionVertical || ground < p.Z-MaxSupportBelow {
 			return fail(CollisionCheck{State: "blocked", Reason: "unsupported_floor", Segment: i, Position: p})
 		}
 		out.Points[i].Z = ground + 0.02

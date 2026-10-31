@@ -13,8 +13,15 @@ const MaxProjectionVertical = float32(1.5)
 // Bound support sampling as well as path interpolation near steps and ledges.
 const surfaceSampleSpacing = 0.25
 
+// MaxSupportBelow: real ground may lie this far below the navmesh. Its detail mesh floats up to about its climb
+// height over the terrain near fences and on slopes with nothing in between (Northshire's vineyards, the road to
+// Goldshire), where characters stand on the ground.
+const MaxSupportBelow = float32(2.0)
+
+// projectionTooFar: requested point a is too far from its navmesh projection b to be the same floor. a may be up to
+// MaxSupportBelow under it (standing on the ground beneath a floating navmesh), MaxProjectionVertical over it.
 func projectionTooFar(a, b Point3D) bool {
-	return math.Hypot(float64(a.X-b.X), float64(a.Y-b.Y)) > float64(MaxProjectionHorizontal) || math.Abs(float64(a.Z-b.Z)) > float64(MaxProjectionVertical)
+	return math.Hypot(float64(a.X-b.X), float64(a.Y-b.Y)) > float64(MaxProjectionHorizontal) || a.Z > b.Z+MaxProjectionVertical || a.Z < b.Z-MaxSupportBelow
 }
 
 // surfacePath uses the funnel with ALL_CROSSINGS, retaining corners and each
