@@ -41,6 +41,11 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   The default standing profile is radius 0.3, height 2.03128, step 1.4 yards and maximum slope 60 degrees:
   it climbs what the server's navmesh climbs (1.6 yards, 60 degrees) as far as a body that tall allows.
   This is a fixed walking profile; mount/shape-specific dimensions and dynamic collision are not modeled.
+- Routes jump what the navmesh climbs but a step can't (a 1.5 yard fence rail): when walking and the bounded
+  repairs below fail, preparation looks for a jump from up to 4 yards back, on the client's own jump (1.64 yards
+  up at its peak, about 6 yards at a run), with the whole body swept along the arc and a landing a body can stand
+  on beside the route. Walking routes are preferred to jumping ones. The jump goes out as the client sends one
+  (MSG_MOVE_JUMP, falling heartbeats, MSG_MOVE_FALL_LAND); a new move or a stop in mid-air waits for the landing.
   Off-mesh actions require separate handling and are refused by walking preparation.
 - A blocked path gets at most three alternative portal placements and six local waypoint attempts,
   sharing the caller's deadline. Every alternative passes the complete support and clearance checks.

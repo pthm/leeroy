@@ -323,6 +323,24 @@ func TestMovementWalkingDeadlineAndVerticalGap(t *testing.T) {
 	}
 }
 
+// The walking deadline follows the route, not the straight line: 16 yd to the abbey's back stairs is 120 yd round.
+func TestMovementWalkingDeadlineFollowsTheRoute(t *testing.T) {
+	f := newMovementFixture(t, false)
+	f.control.mu.Lock()
+	f.control.backend.remaining = func() float64 { return 120 }
+	f.control.mu.Unlock()
+	id := f.start(1, 16)
+	f.walking(t, id)
+	f.clock.Add(int64(30 * time.Second)) // the straight line's deadline (16/5*1.5+10 = 14.8 s) is long gone
+	f.control.poll()
+	if r := f.control.reqs.Result(id); r["pending"] != true {
+		t.Fatalf("timed out on the straight line: %v", r)
+	}
+	f.clock.Add(int64(18 * time.Second)) // the route's: 120/5*1.5+10 = 46 s
+	f.control.poll()
+	f.resultCode(t, id, "timeout")
+}
+
 func TestMovementCompletionObserverCanInspectOwnership(t *testing.T) {
 	f := newMovementFixture(t, false)
 	id := f.start(1, 100)

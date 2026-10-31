@@ -20,14 +20,15 @@ import (
 var errRouteStale = errors.New("position changed while preparing route")
 
 type movementBackend struct {
-	plan     func(context.Context, types.Position, func() bool) bool
-	prepare  func(context.Context, types.Position, func() bool) error
-	stop     func()
-	position func() types.Position
-	moving   func() bool
-	lock     func() string
-	inactive func(int, string)
-	observe  func(types.Diagnostic)
+	plan      func(context.Context, types.Position, func() bool) bool
+	prepare   func(context.Context, types.Position, func() bool) error
+	stop      func()
+	position  func() types.Position
+	moving    func() bool
+	remaining func() float64 // yards of the route left to walk; 0 if unknown
+	lock      func() string
+	inactive  func(int, string)
+	observe   func(types.Diagnostic)
 }
 type movementRequest struct {
 	lease                     *movementLease
@@ -238,7 +239,12 @@ func (m *movementRequests) worker() {
 		} else if m.active == r && !r.cancelled.Load() {
 			r.noPath = noPath
 			r.started = m.now()
-			r.deadline = r.started.Add(time.Duration(math.Min(m.distance(r)/5*1.5+10, 600) * float64(time.Second)))
+			// the route can be far longer than the straight line (round the abbey to reach its back stairs)
+			d := m.distance(r)
+			if m.backend.remaining != nil {
+				d = math.Max(d, m.backend.remaining())
+			}
+			r.deadline = r.started.Add(time.Duration(math.Min(d/5*1.5+10, 600) * float64(time.Second)))
 			r.owner.Phase = "walking"
 		}
 		m.unlock()
@@ -391,7 +397,7 @@ func (b *Bot) setupMovementRequests() {
 			x, y, z, _ := b.GetPosition()
 			return types.Position{X: float64(x), Y: float64(y), Z: float64(z)}
 		},
-		moving: b.IsMoving, lock: b.world.MovementLock,
+		moving: b.IsMoving, lock: b.world.MovementLock, remaining: b.routeRemaining,
 		observe: e.RecordObservationEvent,
 		inactive: func(task int, reason string) {
 			if b.routes != nil {

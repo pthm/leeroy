@@ -961,6 +961,11 @@ func (b *Bot) prepareMoveContext(ctx context.Context, x, y, z float32, valid fun
 	// Hand off to the (now only) movement implementation.
 	// The controller handles time-based following, 500ms HBs, and explicit turns at direction changes.
 	b.movementMu.Lock()
+	for b.moveController != nil && b.moveController.Airborne() && ctx.Err() == nil { // a jump lands first (< 1 s); the start is then stale
+		b.movementMu.Unlock()
+		time.Sleep(50 * time.Millisecond)
+		b.movementMu.Lock()
+	}
 	if ctx.Err() != nil || (valid != nil && !valid()) {
 		b.movementMu.Unlock()
 		if ctx.Err() != nil {
@@ -1177,6 +1182,16 @@ func (b *Bot) wireServerRelocateHandling() {
 			prevSpell(spellID, success, failReason)
 		}
 	}
+}
+
+// routeRemaining: yards of the walking route left (the movement deadline's measure)
+func (b *Bot) routeRemaining() float64 {
+	b.movementMu.Lock()
+	defer b.movementMu.Unlock()
+	if b.moveController == nil {
+		return 0
+	}
+	return float64(b.moveController.Remaining())
 }
 
 func (b *Bot) updateMovement() {

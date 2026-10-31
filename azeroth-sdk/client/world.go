@@ -2109,6 +2109,31 @@ func (w *WorldClient) sendMovementHeartbeatWithJumpLocked(fallTime uint32, zspee
 }
 
 func (w *WorldClient) sendMovementHeartbeatWithJumpLockedAt(ts uint32, fallTime uint32, zspeed, sinAngle, cosAngle, xyspeed float32) error {
+	return w.sendFallingLockedAt(MsgMoveHeartbeat, ts, fallTime, zspeed, sinAngle, cosAngle, xyspeed)
+}
+
+// RouteJumpAtTime sends MSG_MOVE_JUMP from a pose while running forward: a jump planned along a route, whose arc
+// the movement controller flies itself (no fall is simulated here). zspeed is down-positive, so a jump's is
+// -JumpVelocity.
+func (w *WorldClient) RouteJumpAtTime(x, y, z, o float32, at time.Time, sinAngle, cosAngle, xyspeed float32) error {
+	w.moveMu.Lock()
+	defer w.moveMu.Unlock()
+	w.setPositionLocked(x, y, z, o)
+	return w.sendFallingLockedAt(MsgMoveJump, movementMSTime(at), 0, -jumpVelocity, sinAngle, cosAngle, xyspeed)
+}
+
+// RouteFallLandAtTime sends MSG_MOVE_FALL_LAND at the end of a route's jump, still running forward.
+func (w *WorldClient) RouteFallLandAtTime(x, y, z, o float32, at time.Time) error {
+	w.moveMu.Lock()
+	defer w.moveMu.Unlock()
+	w.setPositionLocked(x, y, z, o)
+	return w.sendMovementLockedAt(MsgMoveFallLand, MoveFlagForward, movementMSTime(at))
+}
+
+// JumpVelocity is the client's jump: this many yd/s up at take-off, under Gravity (yd/s^2).
+const JumpVelocity, Gravity = jumpVelocity, gravity
+
+func (w *WorldClient) sendFallingLockedAt(opcode uint16, ts uint32, fallTime uint32, zspeed, sinAngle, cosAngle, xyspeed float32) error {
 	flags := MoveFlagForward | MoveFlagFalling
 	w.currentMoveFlags = flags
 	w.transport = selfTransport{} // no ONTRANSPORT: the server drops us off it
@@ -2131,7 +2156,7 @@ func (w *WorldClient) sendMovementHeartbeatWithJumpLockedAt(ts uint32, fallTime 
 	binary.Write(buf, binary.LittleEndian, sinAngle)
 	binary.Write(buf, binary.LittleEndian, cosAngle)
 	binary.Write(buf, binary.LittleEndian, xyspeed)
-	return w.sendPacket(MsgMoveHeartbeat, buf.Bytes())
+	return w.sendPacket(opcode, buf.Bytes())
 }
 
 func (w *WorldClient) sendForceSpeedAck(ackOpcode uint16, counter uint32, speed float32) {

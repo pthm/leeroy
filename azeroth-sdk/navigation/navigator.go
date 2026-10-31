@@ -39,11 +39,15 @@ type PathResult struct {
 	Found     bool
 	Partial   bool // a known prefix, never completion of the requested destination
 	Swimming  []bool
+	Jumps     []Jump // jumps along Points, in order
 	Collision *pathfinding.CollisionCheck
 	Replanned bool
 	Points    []Point3D
 	surface   *pathfinding.PathResult // Detour references stay inside navigation
 }
+
+// Jump is a jump along a prepared route (pathfinding.Jump): take off at Points[Start], land at Points[End].
+type Jump = pathfinding.Jump
 
 // Navigator is the interface for pathfinding.
 type Navigator interface {
@@ -242,6 +246,7 @@ func (r *PathResult) Clone() *PathResult {
 	q.Points = slices.Clone(r.Points)
 	q.surface = r.surface.Clone()
 	q.Swimming = slices.Clone(r.Swimming)
+	q.Jumps = slices.Clone(r.Jumps)
 	if r.Collision != nil {
 		c := *r.Collision
 		q.Collision = &c
@@ -264,6 +269,7 @@ func (n *embeddedNavigator) PreparePathContext(ctx context.Context, m uint32, r 
 	out.Replanned = p.Replanned || r.Replanned
 	out.surface = p.Surface.Clone()
 	out.Swimming = slices.Clone(p.Swimming)
+	out.Jumps = slices.Clone(p.Jumps)
 	out.Points = make([]Point3D, len(p.Points))
 	for i, v := range p.Points {
 		out.Points[i] = Point3D{v.X, v.Y, v.Z}

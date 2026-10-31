@@ -7,6 +7,7 @@ import (
 
 	"github.com/pthm/leeroy/azeroth-sdk/client"
 	"github.com/pthm/leeroy/azeroth-sdk/navigation"
+	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
 )
 
 // MovementSender is the interface used by MovementController to emit movement packets.
@@ -22,6 +23,9 @@ type MovementSender interface {
 	// and the extra jump info (used for the initial move in the observed manual log).
 	SendMovementHeartbeatWithJump(at time.Time, x, y, z, o float32, fallTime uint32, zspeed, sinAngle, cosAngle, xyspeed float32)
 	SendFallLand(at time.Time, x, y, z, o float32)
+	// SendRouteJump sends MSG_MOVE_JUMP running forward from a pose: a route's planned jump, at xyspeed along
+	// (cos, sin).
+	SendRouteJump(at time.Time, x, y, z, o float32, sinAngle, cosAngle, xyspeed float32)
 }
 
 // MovementConfig tunes the client-like movement behavior.
@@ -116,6 +120,13 @@ type MovementController struct {
 	WaterFunc    func(x, y float32) (float32, bool)
 	OnSwimChange func(swimming bool)
 	swimming     bool
+
+	// a prepared route's jumps: the next one to take, the one in the air (-1: on the ground), when it took off,
+	// and a Stop that waits for the landing (nothing stops in mid-air)
+	jumps         []navigation.Jump
+	nextJump, air int
+	airSince      time.Time
+	stopOnLanding bool
 }
 
 // swimDepth: water deeper than this over the ground means swimming; swimZBelowSurface keeps the body
@@ -135,6 +146,7 @@ func NewMovementController(sender MovementSender, speed float32, nav navigation.
 		nav:    nav,
 		cfg:    cfg,
 		speed:  speed,
+		air:    -1,
 	}
 }
 
@@ -160,11 +172,16 @@ func (m *MovementController) SetPreparedPath(path []navigation.Point3D, startTim
 func (m *MovementController) SetPreparedRoute(r *navigation.PathResult, at time.Time, o float32, mapID uint32) {
 	m.swimSamples = append([]bool(nil), r.Swimming...)
 	m.setPath(r.Points, at, o, mapID, true)
+	m.jumps = append([]navigation.Jump(nil), r.Jumps...)
 }
+
+// Airborne: in the air on a route's jump; a new path or a stop has to wait for the landing.
+func (m *MovementController) Airborne() bool { return m.air >= 0 && m.isMoving }
 func (m *MovementController) setPath(path []navigation.Point3D, startTime time.Time, initialO float32, mapID uint32, prepared bool) {
 	if len(path) == 0 {
 		return
 	}
+	m.jumps, m.nextJump, m.air, m.stopOnLanding = nil, 0, -1, false
 	wasMoving := m.isMoving && m.turnPhase == 0 && len(m.path) >= 2
 	m.path = make([]navigation.Point3D, len(path))
 	copy(m.path, path)
@@ -256,7 +273,7 @@ func (m *MovementController) Update(now time.Time) {
 	}
 
 	// Follow the server's current speed; rebase startTime so the distance already covered is kept.
-	if m.SpeedFunc != nil {
+	if m.SpeedFunc != nil && m.air < 0 { // a jump flies at the speed it took off with
 		s := m.SpeedFunc(m.swimming)
 		if s <= 0 { // rooted or stunned: hold position (the world client already acked the root)
 			m.startTime = now.Add(-time.Duration((m.travelDist / m.speed) * float32(time.Second)))
@@ -280,6 +297,13 @@ func (m *MovementController) Update(now time.Time) {
 		m.handleTurnPhase(now)
 		// During turn we still may want to emit stationary HB rarely; skip normal HB for now.
 		return
+	}
+
+	if m.prepared && len(m.jumps) > 0 {
+		var flying bool
+		if targetDist, flying = m.flyJumps(now, targetDist); flying || !m.isMoving {
+			return
+		}
 	}
 
 	// Preserve checked corners even when one tick crosses several samples.
@@ -322,6 +346,71 @@ func (m *MovementController) Update(now time.Time) {
 		if m.cfg.StopAtEnd {
 			m.sender.MoveStop(now, m.curX, m.curY, m.curZ, m.curO)
 			m.recordSentPose(now)
+		}
+	}
+}
+
+// flyJumps takes off and lands the route's jumps the travel up to target passes, each packet at its own time along
+// the route: MSG_MOVE_JUMP at the take-off point, falling heartbeats with the time in the air every heartbeat
+// interval, MSG_MOVE_FALL_LAND at the landing, as the client does (client/selfmove.go). The arc flies at the jump's
+// planned speed, so its points are where the body is. Returns the travel target (rebased while the speed changes)
+// and whether we're still in the air.
+func (m *MovementController) flyJumps(now time.Time, target float32) (float32, bool) {
+	timeAt := func(d float32) time.Time {
+		return m.startTime.Add(time.Duration(float64(d/m.speed) * float64(time.Second)))
+	}
+	for {
+		if m.air < 0 {
+			if m.nextJump >= len(m.jumps) || m.cumLens[m.jumps[m.nextJump].Start] > target {
+				return target, false
+			}
+			j := m.jumps[m.nextJump]
+			takeoff := m.cumLens[j.Start]
+			at := timeAt(takeoff)
+			m.sendPreparedVertices(takeoff)
+			m.advanceAlongPath(takeoff)
+			a, b := m.path[j.Start], m.path[j.End]
+			m.curX, m.curY, m.curZ = a.X, a.Y, a.Z
+			m.curO = float32(math.Atan2(float64(b.Y-a.Y), float64(b.X-a.X)))
+			sin, cos := math.Sincos(float64(m.curO))
+			m.sender.SendRouteJump(at, m.curX, m.curY, m.curZ, m.curO, float32(sin), float32(cos), j.Speed)
+			m.air, m.airSince = m.nextJump, at
+			m.lastHBTime, m.lastFacingTime = at, at
+			m.recordSentPose(at)
+			m.speed = j.Speed
+			m.startTime = at.Add(-time.Duration(float64(takeoff/m.speed) * float64(time.Second)))
+			target = m.speed * float32(now.Sub(m.startTime).Seconds())
+		}
+		j := m.jumps[m.air]
+		land := m.cumLens[j.End]
+		if target < land {
+			m.advanceAlongPath(target)
+			if now.Sub(m.lastHBTime) >= m.cfg.HeartbeatInterval {
+				sin, cos := math.Sincos(float64(m.curO))
+				m.sender.SendMovementHeartbeatWithJump(now, m.curX, m.curY, m.curZ, m.curO, uint32(now.Sub(m.airSince).Milliseconds()),
+					-pathfinding.JumpVelocity, float32(sin), float32(cos), j.Speed)
+				m.lastHBTime = now
+				m.recordSentPose(now)
+			}
+			return target, true
+		}
+		at := timeAt(land)
+		m.advanceAlongPath(land)
+		p := m.path[j.End]
+		m.curX, m.curY, m.curZ = p.X, p.Y, p.Z
+		m.sender.SendFallLand(at, m.curX, m.curY, m.curZ, m.curO)
+		m.lastHBTime, m.lastSentZ = at, m.curZ
+		m.recordSentPose(at)
+		m.air = -1
+		m.nextJump++
+		if m.stopOnLanding || land >= m.totalDist-0.05 {
+			m.stopOnLanding = false
+			m.isMoving = false
+			if m.cfg.StopAtEnd || land < m.totalDist-0.05 {
+				m.sender.MoveStop(at, m.curX, m.curY, m.curZ, m.curO)
+				m.recordSentPose(at)
+			}
+			return target, false
 		}
 	}
 }
@@ -610,9 +699,13 @@ func (m *MovementController) handleTurnPhase(now time.Time) {
 	}
 }
 
-// Stop forces a stop.
+// Stop forces a stop; in the air, on landing.
 func (m *MovementController) Stop(now time.Time) {
 	if !m.isMoving {
+		return
+	}
+	if m.air >= 0 {
+		m.stopOnLanding = true
 		return
 	}
 	m.isMoving = false
@@ -628,6 +721,14 @@ func (m *MovementController) CurrentPosition() (x, y, z, o float32) {
 
 // IsMoving reports if still following path.
 func (m *MovementController) IsMoving() bool { return m.isMoving }
+
+// Remaining is how far (2D) the installed path has left, 0 when it's done.
+func (m *MovementController) Remaining() float32 {
+	if !m.isMoving {
+		return 0
+	}
+	return max(m.totalDist-m.travelDist, 0)
+}
 
 // TravelDist returns how far along the path (2D) we have simulated.
 func (m *MovementController) TravelDist() float32 { return m.travelDist }
@@ -654,6 +755,7 @@ func (m *MovementController) InitPositionFromWorld(x, y, z, o float32) {
 // Used when the server already relocated the player (teleport/summon): stopping
 // at the pre-teleport pose would fight the server position.
 func (m *MovementController) AbortSilent() {
+	m.jumps, m.nextJump, m.air, m.stopOnLanding = nil, 0, -1, false
 	m.path = nil
 	m.segLens = nil
 	m.cumLens = nil
@@ -770,9 +872,11 @@ func (s *worldMovementSender) SendMovementHeartbeatWithJump(at time.Time, x, y, 
 }
 
 func (s *worldMovementSender) SendFallLand(at time.Time, x, y, z, o float32) {
-	// Fall land is a specific opcode; send via generic if available or heartbeat as approximation for now.
-	// For fidelity we can expose from world if needed. Use stationary HB with position.
-	_ = s.w.SendHeartbeatAtTime(x, y, z, o, at)
+	_ = s.w.RouteFallLandAtTime(x, y, z, o, at)
+}
+
+func (s *worldMovementSender) SendRouteJump(at time.Time, x, y, z, o float32, sinAngle, cosAngle, xyspeed float32) {
+	_ = s.w.RouteJumpAtTime(x, y, z, o, at, sinAngle, cosAngle, xyspeed)
 }
 
 // ============================================================

@@ -13,7 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pthm/leeroy/azeroth-sdk/client"
 	"github.com/pthm/leeroy/azeroth-sdk/navigation"
+	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
 )
 
 // recordedPacket is what our fake sender captures during simulated ticks.
@@ -60,6 +62,10 @@ func (f *fakeSender) SendMovementHeartbeatWithJump(at time.Time, x, y, z, o floa
 }
 func (f *fakeSender) SendFallLand(at time.Time, x, y, z, o float32) {
 	f.record(at, "FALL_LAND", x, y, z, o)
+}
+
+func (f *fakeSender) SendRouteJump(at time.Time, x, y, z, o float32, sinAngle, cosAngle, xyspeed float32) {
+	f.record(at, "JUMP", x, y, z, o)
 }
 
 func (f *fakeSender) setNow(t time.Time) { f.now = t }
@@ -1048,5 +1054,99 @@ func TestPreparedPacketsRetainCornersAcrossCoarseTicks(t *testing.T) {
 		if math.Abs(float64(a.x-b.x)) > .001 && math.Abs(float64(a.y-b.y)) > .001 {
 			t.Fatalf("unchecked chord: %+v -> %+v", a, b)
 		}
+	}
+}
+
+// jumpRoute: 3 yd of walking east, a jump flown as the planner samples it (feet on the client's parabola at 7 yd/s,
+// landing 5.75 yd on at take-off height), then 3 yd more
+func jumpRoute() *navigation.PathResult {
+	r := &navigation.PathResult{Found: true}
+	for x := float32(0); x < 3; x += 0.25 {
+		r.Points = append(r.Points, navigation.Point3D{X: x})
+	}
+	start := len(r.Points) - 1
+	t0 := r.Points[start].X
+	for d := float32(0.25); d <= 5.75; d += 0.25 {
+		sec := d / pathfinding.JumpRunSpeed
+		r.Points = append(r.Points, navigation.Point3D{X: t0 + d, Z: max(pathfinding.JumpVelocity*sec-pathfinding.Gravity*sec*sec/2, 0)})
+	}
+	end := len(r.Points) - 1
+	for x := r.Points[end].X + 0.25; x < r.Points[end].X+3; x += 0.25 {
+		r.Points = append(r.Points, navigation.Point3D{X: x})
+	}
+	r.Swimming = make([]bool, len(r.Points))
+	r.Jumps = []navigation.Jump{{Start: start, End: end, Speed: pathfinding.JumpRunSpeed}}
+	return r
+}
+
+// A route's jump goes out as the client sends one: MSG_MOVE_JUMP at the take-off point and time, only falling
+// heartbeats in the air, MSG_MOVE_FALL_LAND at the landing and time, then walking on. A stop in mid-air waits.
+func TestPreparedRouteJumps(t *testing.T) {
+	if pathfinding.JumpVelocity != client.JumpVelocity || pathfinding.Gravity != client.Gravity || pathfinding.JumpRunSpeed != client.BaseSpeedRun {
+		t.Fatal("pathfinding plans jumps with other physics than the client flies")
+	}
+	r := jumpRoute()
+	j := r.Jumps[0]
+	t0 := time.Unix(1000, 0)
+	at := func(x float32) time.Time { return t0.Add(time.Duration(float64(x/7) * float64(time.Second))) }
+
+	f := &fakeSender{}
+	m := NewMovementController(f, 7, nil, DefaultMovementConfig())
+	m.SetPreparedRoute(r, t0, 0, 0)
+	for now := t0; m.IsMoving(); now = now.Add(100 * time.Millisecond) {
+		m.Update(now)
+		if now.Sub(t0) > 5*time.Second {
+			t.Fatal("never arrived")
+		}
+	}
+	var seq []string
+	jumpAt, landAt := -1, -1
+	for i, p := range f.pkts {
+		seq = append(seq, p.typ)
+		switch p.typ {
+		case "JUMP":
+			jumpAt = i
+		case "FALL_LAND":
+			landAt = i
+		}
+	}
+	if jumpAt < 0 || landAt < jumpAt || f.pkts[len(f.pkts)-1].typ != "STOP" {
+		t.Fatalf("packets %v", seq)
+	}
+	takeoff, landing := r.Points[j.Start], r.Points[j.End]
+	if p := f.pkts[jumpAt]; p.x != takeoff.X || p.z != takeoff.Z || !p.at.Equal(at(takeoff.X)) {
+		t.Errorf("jump %+v, want at %v from x %.2f", p, at(takeoff.X).Sub(t0), takeoff.X)
+	}
+	if p := f.pkts[landAt]; p.x != landing.X || p.z != landing.Z || !p.at.Equal(at(landing.X)) {
+		t.Errorf("landing %+v, want at %v on x %.2f", p, at(landing.X).Sub(t0), landing.X)
+	}
+	air := f.pkts[landAt].at.Sub(f.pkts[jumpAt].at)
+	if want := time.Duration(2 * pathfinding.JumpVelocity / pathfinding.Gravity * float32(time.Second)); air < want-30*time.Millisecond || air > want+40*time.Millisecond {
+		t.Errorf("in the air %v, the client's jump lasts %v", air, want)
+	}
+	for _, p := range f.pkts[jumpAt+1 : landAt] {
+		if p.typ != "HB_MOVE_JUMP" {
+			t.Errorf("%s in mid-air: %v", p.typ, seq[jumpAt:landAt+1])
+		}
+	}
+	if landAt-jumpAt < 2 {
+		t.Errorf("no falling heartbeat in %v of air", air)
+	}
+
+	// a stop in mid-air comes at the landing
+	f = &fakeSender{}
+	m = NewMovementController(f, 7, nil, DefaultMovementConfig())
+	m.SetPreparedRoute(r, t0, 0, 0)
+	mid := at(takeoff.X).Add(300 * time.Millisecond)
+	m.Update(mid)
+	if !m.Airborne() {
+		t.Fatal("not in the air 0.3 s after take-off")
+	}
+	m.Stop(mid)
+	for now := mid; m.IsMoving(); now = now.Add(100 * time.Millisecond) {
+		m.Update(now)
+	}
+	if n := len(f.pkts); n < 2 || f.pkts[n-2].typ != "FALL_LAND" || f.pkts[n-1].typ != "STOP" || f.pkts[n-1].x != landing.X {
+		t.Errorf("stop in mid-air: %+v", f.pkts[max(len(f.pkts)-3, 0):])
 	}
 }

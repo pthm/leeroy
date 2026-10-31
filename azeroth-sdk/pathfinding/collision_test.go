@@ -194,14 +194,9 @@ func TestPreparedRealInteriorRoutes(t *testing.T) {
 			}
 			start := time.Now()
 			r, err := s.PrepareWalkingContext(ctx, 0, raw, WalkingBody())
-			if tc.name == "inn" {
-				// The shipped navmesh crosses the inn entrance wall. Keep this
-				// mismatch explicit until the baked corridor or geometry is fixed.
-				if err == nil || r == nil || r.Collision.State != "blocked" || r.Collision.Reason != "body_obstructed" || r.Collision.Model != "Goldshireinn.wmo" {
-					t.Fatalf("expected known inn obstruction: %+v %v", r, err)
-				}
-				t.Logf("known mesh/collision mismatch: %+v", r.Collision)
-				return
+			if tc.name == "inn" && err == nil {
+				// the shipped navmesh crosses collision at the inn's entrance that a body can't walk through; jumps take it
+				t.Logf("inn: %d jumps", len(r.Jumps))
 			}
 			if err != nil {
 				t.Fatalf("prepare: %+v %v", r, err)
@@ -227,5 +222,52 @@ func TestMovementRayKeepsSharedTriangleEdges(t *testing.T) {
 		if hit.State != "blocked" || math.Abs(float64(hit.Position.Z)) > .001 {
 			t.Fatalf("seam %g: %+v", v, hit)
 		}
+	}
+}
+
+// Northshire's vineyard fences (Elwynnwoodfence01.m2, 1.53 yd) are climbed by the navmesh but not by a step: routes
+// the deadmines run's agents were refused cross them with a jump on the client's parabola, landing on ground (not on
+// the rail). Routes a step or a detour walks have no jump.
+func TestPreparedRealJumps(t *testing.T) {
+	s := NewPathFindingServiceFromDataDir(requireACData(t))
+	for _, tc := range []struct {
+		name  string
+		a, b  Point3D
+		jumps bool
+	}{
+		{"vineyard fence", Point3D{-9056.294, -400.1895, 73.01769}, Point3D{-9075, -378, 73.77846}, true},
+		{"vineyard fence east", Point3D{-9007.553, -332.25662, 74.74897}, Point3D{-9026.81, -331.989, 73.7}, true},
+		{"vineyard to abbey", Point3D{-9113.123, -338.90445, 73.33916}, Point3D{-8948, -132, 84}, true},
+		{"fence downhill", Point3D{-9398.846, 100.93745, 58.88109}, Point3D{-9758, 192, 51.2}, true}, // lands below take-off
+		{"abbey stairs", Point3D{-8912.28, -214.13, 81.96}, Point3D{-8910, -230, 82}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			raw, err := s.FindPathContext(ctx, 0, tc.a, tc.b)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := s.PrepareWalkingContext(ctx, 0, raw, WalkingBody())
+			if err != nil {
+				t.Fatalf("prepare: %+v %v", r.Collision, err)
+			}
+			if (len(r.Jumps) > 0) != tc.jumps {
+				t.Fatalf("%d jumps", len(r.Jumps))
+			}
+			for _, j := range r.Jumps {
+				a, b := r.Points[j.Start], r.Points[j.End]
+				for k := j.Start + 1; k < j.End; k++ { // the feet on the parabola
+					d := dist2D(a, r.Points[k]) / j.Speed
+					if want := a.Z + JumpVelocity*d - Gravity*d*d/2; abs32(r.Points[k].Z-want) > 0.01 {
+						t.Fatalf("arc[%d] z %.2f, the client's jump is at %.2f", k, r.Points[k].Z, want)
+					}
+				}
+				if !s.footing(ctx, 0, Point3D{b.X, b.Y, b.Z - 0.02}, WalkingBody().Radius) {
+					t.Errorf("landed where a body can't stand: %+v", b)
+				}
+				t.Logf("jump %.1f yd from %.1f %.1f %.2f to %.1f %.1f %.2f", dist2D(a, b), a.X, a.Y, a.Z, b.X, b.Y, b.Z)
+			}
+		})
 	}
 }
