@@ -159,6 +159,11 @@ func (pf *PathFinder) validateSurface(ctx context.Context, r *PathResult) error 
 		for _, t := range []float32{0, 0.5, 1} {
 			v := []float32{a.Y + t*(p.Y-a.Y), a.Z + t*(p.Z-a.Z), a.X + t*(p.X-a.X)}
 			h, known := pf.surfaceHeight(r.PointPolys[i-1], v)
+			if (!known || math.Abs(float64(h-v[1])) > 0.4) && ref != r.PointPolys[i-1] {
+				// a segment from a pose near a polygon's edge (the route's start) crosses into the next polygon
+				// before its end: the other end's polygon carries it (adjacency was checked above)
+				h, known = pf.surfaceHeight(ref, v)
+			}
 			if !known || math.Abs(float64(h-v[1])) > 0.4 {
 				return fmt.Errorf("floor discontinuity at segment %d (t=%g known=%v height=%g sample=%v from=%+v to=%+v)", i, t, known, h, v, a, p)
 			}

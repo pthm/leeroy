@@ -271,3 +271,36 @@ func TestPreparedRealJumps(t *testing.T) {
 		})
 	}
 }
+
+// Where the collision data refuses what the navmesh walks for a short stretch, the navmesh wins: Goldshire inn's
+// 1.2 yd strip across its front (1.82 yd up from the main room), a character left hovering beside its bar. A start on a
+// polygon's edge (the inn's doorstep) passes the surface check.
+func TestPreparedRealNavmeshWins(t *testing.T) {
+	s := NewPathFindingServiceFromDataDir(requireACData(t))
+	for _, tc := range []struct {
+		name string
+		a, b Point3D
+		wins bool
+	}{
+		{"inn main room out", Point3D{-9466, 24.9, 56.4}, Point3D{-9462, 33, 57}, false}, // round the strip
+		{"inn bar edge out", Point3D{-9461.119, 18.562378, 57.265217}, Point3D{-9460.3, 31.9, 57}, true},
+		{"inn doorstep in", Point3D{-9464.262, 32.798706, 56.98606}, Point3D{-9462.7, 16.2, 57}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			raw, err := s.FindPathContext(ctx, 0, tc.a, tc.b)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := s.PrepareWalkingContext(ctx, 0, raw, WalkingBody())
+			if err != nil {
+				t.Fatalf("prepare: %+v %v", r.Collision, err)
+			}
+			if (r.NavmeshWins > 0) != tc.wins {
+				t.Fatalf("navmesh won %d stretches, %d jumps", r.NavmeshWins, len(r.Jumps))
+			}
+			t.Logf("navmesh won %d, %d jumps, %d points", r.NavmeshWins, len(r.Jumps), len(r.Points))
+		})
+	}
+}

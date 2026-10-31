@@ -46,6 +46,9 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   up at its peak, about 6 yards at a run), with the whole body swept along the arc and a landing a body can stand
   on beside the route. Walking routes are preferred to jumping ones. The jump goes out as the client sends one
   (MSG_MOVE_JUMP, falling heartbeats, MSG_MOVE_FALL_LAND); a new move or a stop in mid-air waits for the landing.
+- Where the collision data still refuses a stretch of at most 2 yards the navmesh walks (Goldshire inn's front, a
+  pose left beside an obstacle), the route follows the navmesh: it is the server's own map of where characters go.
+  Longer disagreements remain `route_blocked`.
   Off-mesh actions require separate handling and are refused by walking preparation.
 - A blocked path gets at most three alternative portal placements and six local waypoint attempts,
   sharing the caller's deadline. Every alternative passes the complete support and clearance checks.

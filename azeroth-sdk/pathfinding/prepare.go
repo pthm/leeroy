@@ -8,12 +8,15 @@ import (
 )
 
 type PreparedPath struct {
-	Points    []Point3D
-	Swimming  []bool
-	Jumps     []Jump // in order along Points
-	Surface   *PathResult
-	Collision CollisionCheck
-	Replanned bool
+	Points   []Point3D
+	Swimming []bool
+	Jumps    []Jump // in order along Points
+	// NavmeshWins counts the stretches (each at most navmeshWins yards) where the route follows the navmesh
+	// through what the collision data refused
+	NavmeshWins int
+	Surface     *PathResult
+	Collision   CollisionCheck
+	Replanned   bool
 }
 type TraversalError struct{ Check CollisionCheck }
 
@@ -21,10 +24,14 @@ func (e *TraversalError) Error() string {
 	return fmt.Sprintf("%s at segment %d: %s", e.Check.State, e.Check.Segment, e.Check.Reason)
 }
 
+// navmeshWins is the longest stretch (2D) a route follows the navmesh against the collision data.
+const navmeshWins = float32(2.0)
+
 // PrepareWalkingContext validates static support and body clearance. At most
 // three alternative portal placements and six local waypoints are tried under
-// the caller's deadline, then the route with jumps over what stopped it. An
-// unresolved obstruction remains a failed route.
+// the caller's deadline, then the route with jumps over what stopped it, then
+// the navmesh over stretches of up to navmeshWins yards the collision data
+// refuses. A longer obstruction remains a failed route.
 func (s *PathFindingService) PrepareWalkingContext(ctx context.Context, m uint32, r *PathResult, body BodyProfile) (*PreparedPath, error) {
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeout)
 	defer cancel()
@@ -40,7 +47,7 @@ func (s *PathFindingService) PrepareWalkingContext(ctx context.Context, m uint32
 	if err := s.ValidateSurfaceContext(ctx, m, r); err != nil {
 		return nil, err
 	}
-	out, err := s.prepareCandidate(ctx, m, r, body, false)
+	out, err := s.prepareCandidate(ctx, m, r, body, false, false)
 	if err == nil {
 		return out, nil
 	}
@@ -61,7 +68,7 @@ func (s *PathFindingService) PrepareWalkingContext(ctx context.Context, m uint32
 			continue
 		}
 		corridors = append(corridors, candidate)
-		prepared, e := s.prepareCandidate(ctx, m, candidate, body, false)
+		prepared, e := s.prepareCandidate(ctx, m, candidate, body, false, false)
 		if e == nil {
 			prepared.Replanned = true
 			return prepared, nil
@@ -104,7 +111,7 @@ func (s *PathFindingService) PrepareWalkingContext(ctx context.Context, m uint32
 				if e = s.ValidateSurfaceContext(ctx, m, candidate); e != nil {
 					continue
 				}
-				prepared, e := s.prepareCandidate(ctx, m, candidate, body, false)
+				prepared, e := s.prepareCandidate(ctx, m, candidate, body, false, false)
 				if e == nil {
 					prepared.Replanned = true
 					return prepared, nil
@@ -117,7 +124,7 @@ func (s *PathFindingService) PrepareWalkingContext(ctx context.Context, m uint32
 	}
 	// Walking round it failed: jump what the navmesh climbs but a step can't, on the corridor or its alternatives.
 	for i, c := range corridors {
-		jumped, e := s.prepareCandidate(ctx, m, c, body, true)
+		jumped, e := s.prepareCandidate(ctx, m, c, body, true, false)
 		if e == nil {
 			jumped.Replanned = i > 0
 			return jumped, nil
@@ -126,9 +133,20 @@ func (s *PathFindingService) PrepareWalkingContext(ctx context.Context, m uint32
 			return nil, ctx.Err()
 		}
 	}
+	// Still blocked: the navmesh is the best evidence of where a character can go, and the collision data disagrees
+	// with it in places (a 1.2 yd strip across Goldshire inn's front that the navmesh climbs from the main room, the
+	// navmesh over a tree's roots). Short stretches of disagreement follow the navmesh.
+	if trusted, e := s.prepareCandidate(ctx, m, r, body, true, true); e == nil {
+		return trusted, nil
+	} else if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	return first, firstErr
 }
-func (s *PathFindingService) prepareCandidate(ctx context.Context, m uint32, r *PathResult, body BodyProfile, jumps bool) (*PreparedPath, error) {
+
+// prepareCandidate checks one corridor: walking, then with jumps, then with the navmesh winning stretches of up to
+// navmeshWins yards where the collision data refuses it (trust).
+func (s *PathFindingService) prepareCandidate(ctx context.Context, m uint32, r *PathResult, body BodyProfile, jumps, trust bool) (*PreparedPath, error) {
 	out := &PreparedPath{Surface: r, Points: append([]Point3D(nil), r.Points...), Swimming: make([]bool, len(r.Points)), Collision: CollisionCheck{State: "clear"}}
 	fail := func(c CollisionCheck) (*PreparedPath, error) { out.Collision = c; return out, &TraversalError{c} }
 	if s.vmapMgr == nil {
@@ -213,6 +231,7 @@ func (s *PathFindingService) prepareCandidate(ctx context.Context, m uint32, r *
 	srcSwim := append([]bool{out.Swimming[0]}, out.Swimming...)
 	srcOK := append([]bool{true}, supported...)
 	walked, swim := []Point3D{src[0]}, []bool{srcSwim[0]}
+	overridden := float32(0) // yards of the current stretch the navmesh won
 	for i := 1; i < len(src); i++ {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -221,10 +240,11 @@ func (s *PathFindingService) prepareCandidate(ctx context.Context, m uint32, r *
 		if c.State == "clear" {
 			walked, swim = append(walked, src[i]), append(swim, srcSwim[i])
 			out.Collision.Triangles += c.Triangles
+			overridden = 0
 			continue
 		}
 		// What the navmesh climbs but a step can't (a fence rail, 1.53 yd), the client jumps.
-		if c.State == "blocked" && jumps {
+		if c.State == "blocked" && jumps && overridden == 0 {
 			floor := 0
 			if n := len(out.Jumps); n > 0 {
 				floor = out.Jumps[n-1].End
@@ -241,6 +261,16 @@ func (s *PathFindingService) prepareCandidate(ctx context.Context, m uint32, r *
 			}
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
+			}
+		}
+		if c.State == "blocked" && trust {
+			if d := dist2D(walked[len(walked)-1], src[i]); overridden+d <= navmeshWins {
+				if overridden == 0 {
+					out.NavmeshWins++
+				}
+				overridden += d
+				walked, swim = append(walked, src[i]), append(swim, srcSwim[i])
+				continue
 			}
 		}
 		c.Segment = i
