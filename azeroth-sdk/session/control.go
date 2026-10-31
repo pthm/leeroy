@@ -215,6 +215,7 @@ func (b *Bot) setupControl() {
 	b.setupAuras()
 	b.setupCombatInfo()
 	b.watchAreaTriggers()
+	b.setupLOSSpot()
 	b.watchEvents()
 	b.setupWatch()
 	b.setupGroupReport()

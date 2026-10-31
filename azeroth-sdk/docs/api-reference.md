@@ -26,7 +26,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `act.accept{npc_entry\|npc_guid, quest [, x, y, z]} → ActResult` | walk to a quest giver and accept the quest | [ActResult](#actresult) |
 | `act.approach{unit [, range = 4, timeout = 60]} → ActResult<Creature>` | move within range and verify facing; reuse a pending walk until the target moves; bounded by timeout | [ActResult](#actresult), [Creature](#creature) |
 | `act.buff(id [, guid]) → ActResult` | cast it unless the aura is already active (ok with data.status = already_active then) | [ActResult](#actresult) |
-| `act.cast(id [, guid, options]) → ActResult` | spells.check, stop only owned movement, face and await a server outcome; one facing retry. options: approach=false, max_move_yards=10 (max40), max_time_s=30 (max60). Optional approach requires a verified path. data preserves check, attempts, corrections and server action | [ActResult](#actresult) |
+| `act.cast(id [, guid, options]) → ActResult` | spells.check, stop only owned movement, face and await a server outcome; one facing retry. options: approach=false, max_move_yards=10 (max40), max_time_s=30 (max60). approach=true walks, when out of range or out of sight, to world.los_spot: the shortest walk to a spot in range with a clear, wide view (round a corridor bend, not up to the target), within max_move_yards. data preserves check, attempts, corrections and server action | [ActResult](#actresult) |
 | `act.consume("Food" \| "Drink") → ActResult<Consumed>` | wait up to 30 seconds for the first matching item to be used; no_consumable if absent (sit still after) | [ActResult](#actresult), [Consumed](#consumed) |
 | `act.corpse_run{[safe = true, timeout_s = 180, max_attempts = 2]} → ActResult<Recovery>` | bounded ghost travel and reclaim; confirm path endpoint, floor, reclaim distance, line of sight and timer. Default safe=true rejects nearby hostiles or unverified floor evidence. timeout_s >0..600, max_attempts 1..2; preserve failed movement and resurrection steps; no healer fallback; check gear after resurrection; needs_repair for broken main hand | [ActResult](#actresult), [Recovery](#recovery) |
 | `act.danger{x, y, z [, radius = 25]} → DangerCheck` | wait inside a task for local reachable-floor and point-to-point LOS evidence; radius 1..40. Unknown includes missing collision/navmesh or incomplete observation. Clear is an observation, not a safety guarantee | [DangerCheck](#dangercheck) |
@@ -338,6 +338,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `world.ground_z(x, y [, z]) → number?` | the height to stand at (x, y) on your map, for move.to; nil when the floor cannot be confirmed within the 60 ms spatial budget. With z (an NPC's spawn z from azworld) it finds the floor nearest that height: upstairs rooms, buildings, Stormwind's streets. Without it, the outdoor terrain (under any building) |  |
 | `world.in_sight(x, y, z) → bool?` | nothing solid (walls, rock, buildings) between your eyes and the point, as the server checks spells; nil when collision evidence is unavailable or its 60 ms budget expires |  |
 | `world.look([radius = 40]) → string` | a top-down text map of what's around you, north up: the ground (higher, lower, no floor), hostile creatures by letter with their aggro range shaded, other creatures, players and lootable corpses, then a line for each: level, distance, direction, o'clock, height above or below you, aggro radius and whether you're inside it, line of sight. wow look prints it |  |
+| `world.los_spot(x, y, z [, range = 30, max_walk = 60]) → Request<LOSSpot>` | where to stand to cast at something you can't see: the shortest walk to a spot within range yards of the point that sees it and most of the 4 yards round it (view, 0..1: a sliver of a view past a corner is lost when the target steps aside), with 2 yards of range to spare when it can; walk there with move.to. route_unreachable if there's none within max_walk yards of walking. Completion: a walkable spot within range of the point and in its line of sight was found; route_unreachable when there's none within max_walk. | [Request](#request), [LOSSpot](#losspot) |
 | `world.path(x, y, z) → Request<PathCheck>` | await a supported navmesh route with static body clearance from your current 3D position; collision evidence includes state, segment, model and bounded replan outcome. Dynamic doors and lifts are outside this check. Deadline 15s including queueing, max leg 4096 yards / 1024 tiles, at most 16 pending queries and one active search per session. Identical successful searches are cached (128 entries). Task pause/stop/failure/return and session close cancel pending work. Failures include route_blocked, collision_unavailable, route_unreachable, route_timeout, route_limit, route_busy and not_available; partial data never authorizes movement. Completion: a complete supported navmesh route connects the requested floors with clear static body clearance; partial or unknown routes fail. | [Request](#request), [PathCheck](#pathcheck) |
 | `world.route(points [, opts = nil]) → Request<RouteCheck>` | validate 1..64 ordered 3D waypoints from your captured position before walking. points are {x,y,z} tuples or {x=...,y=...,z=...,map=...}; opts accepts only map (default current map), and every point must be on the current map. One 15s deadline covers queueing and all legs; max 4096 yards/1024 tiles per leg and 8192 output points. Shares world.path admission, cancellation and cache. Returns connected navmesh prefix, completed_legs, first blocked_leg and per-leg gaps; partial and timeout results remain failures. Does not assess hostile exposure.. Completion: every requested leg connects within one shared deadline. | [Request](#request), [RouteCheck](#routecheck) |
 
@@ -1848,6 +1849,17 @@ ObjectActivation distinguishes a successful opening cast from a non-casting obje
 | `spell` | number |  |
 | `name` | string |  |
 
+### LOSSpot
+
+| Field | Type | |
+|---|---|---|
+| `x` | number |  |
+| `y` | number |  |
+| `z` | number |  |
+| `walk` | number | yards of walking to get there (0: where you stand already will do) |
+| `distance` | number | yards from there to the point |
+| `view` | number | how much of the point and the 4 yards round it you'd see, 0..1: under 0.75 it's a narrow view, lost if the target moves |
+
 ### AchievementEarned
 
 | Field | Type | |
@@ -2287,5 +2299,6 @@ The `data` of an ok result, per op.
 | `vendor.sell` | Sold |
 | `vendor.sell_junk` | Sold |
 | `world.danger` | DangerCheck |
+| `world.los_spot` | LOSSpot |
 | `world.path` | PathCheck |
 | `world.route` | RouteCheck |

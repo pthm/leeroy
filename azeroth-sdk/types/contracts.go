@@ -3,6 +3,7 @@ package types
 // ActionPostconditions is checked against the live registry and included in help.
 // An unconfirmed transport operation is an explicit failure, never inferred success.
 var ActionPostconditions = map[string]string{
+	"world.los_spot":    "a walkable spot within range of the point and in its line of sight was found; route_unreachable when there's none within max_walk",
 	"world.path":        "a complete supported navmesh route connects the requested floors with clear static body clearance; partial or unknown routes fail",
 	"world.route":       "every requested leg connects within one shared deadline",
 	"world.danger":      "a bounded observed-state assessment completed; inspect data.state, including unknown",

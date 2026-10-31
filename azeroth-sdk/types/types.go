@@ -910,3 +910,12 @@ type SpellCheck struct {
 	TargetValid          *bool    `json:"target_valid,omitempty" doc:"target is observed; not a promise of spell eligibility"`
 	Unknown              []string `json:"unknown" doc:"checks for which evidence is unavailable; usable does not promise server acceptance"`
 }
+
+type LOSSpot struct {
+	X        float64 `json:"x"`
+	Y        float64 `json:"y"`
+	Z        float64 `json:"z"`
+	Walk     float64 `json:"walk" doc:"yards of walking to get there (0: where you stand already will do)"`
+	Distance float64 `json:"distance" doc:"yards from there to the point"`
+	View     float64 `json:"view" doc:"how much of the point and the 4 yards round it you'd see, 0..1: under 0.75 it's a narrow view, lost if the target moves"`
+}

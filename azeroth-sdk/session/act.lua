@@ -162,17 +162,10 @@ function A.cast(id, guid, o)
     if o.approach and (check.nominal_range_exceeded or check.reason=="out_of_range" or check.reason=="line_of_sight") then
       local u=units.get(guid)
       if not u then return A.fail("act.cast","unit_gone","target is no longer visible") end
-      local here=me.position()
-      local distance=A.dist(u.x,u.y,u.z)
-      local travel=math.max(0,distance-math.max(1,(check.range_yards or 5)-1))
-      if check.reason=="line_of_sight" then travel=distance end
-      if travel>max_move then return A.fail("act.cast","move_limit","approach would exceed max_move_yards") end
-      local fraction=distance>0 and travel/distance or 0
-      local x,y,z=here.x+(u.x-here.x)*fraction,here.y+(u.y-here.y)*fraction,here.z+(u.z-here.z)*fraction
-      local path=action(function() return world.path(x,y,z) end)
-      if not path.ok then return path end
-      if not path.data or not path.data.reachable then return A.fail("act.cast","route_unreachable","approach has no verified route") end
-      if type(path.data.distance)~="number" or path.data.distance>max_move then return A.fail("act.cast","move_limit","verified path exceeds max_move_yards or has no measured distance") end
+      -- where to stand: in range with a clear view (round a bend, not up to the target), via world.los_spot
+      local spot=action(function() return world.los_spot(u.x,u.y,u.z,math.max(1,(check.range_yards or 5)-1),max_move) end)
+      if not spot.ok then return spot.error and spot.error.code=="route_unreachable" and A.fail("act.cast","move_limit","no spot in range and in sight within max_move_yards") or spot end
+      local x,y,z=spot.data.x,spot.data.y,spot.data.z
       local moved=action(function() return move.to(x,y,z) end);if not moved.ok then return moved end
       stopped=action(move.stop);if not stopped.ok then return stopped end
       data.corrections[#data.corrections+1]="approach"
@@ -1231,7 +1224,7 @@ for name, d in pairs({
   player = { "(name) → Player?", "an observed player by name, or nil when not visible (including distant group members)" },
   consume = { "(\"Food\" | \"Drink\") → ActResult<Consumed>", "wait up to 30 seconds for the first matching item to be used; no_consumable if absent (sit still after)" },
   make_room = { "{} → ActResult<Consumed>", "destroy the cheapest loaded poor-quality item that is not a possible usable gear upgrade; wait up to 5 seconds for confirmation, or no_disposable_item; options may be omitted" },
-  cast = { "(id [, guid, options]) → ActResult", "spells.check, stop only owned movement, face and await a server outcome; one facing retry. options: approach=false, max_move_yards=10 (max40), max_time_s=30 (max60). Optional approach requires a verified path. data preserves check, attempts, corrections and server action" },
+  cast = { "(id [, guid, options]) → ActResult", "spells.check, stop only owned movement, face and await a server outcome; one facing retry. options: approach=false, max_move_yards=10 (max40), max_time_s=30 (max60). approach=true walks, when out of range or out of sight, to world.los_spot: the shortest walk to a spot in range with a clear, wide view (round a corridor bend, not up to the target), within max_move_yards. data preserves check, attempts, corrections and server action" },
   buff = { "(id [, guid]) → ActResult", "cast it unless the aura is already active (ok with data.status = already_active then)" },
   go_to = { "{x, y [, z, map, tolerance = 4, vertical_tolerance = 3, tries = 3, unstuck = false, on_attacked = nil]} → ActResult", "walk to the requested map and floor; explicit z is never replaced by a floor query. Success requires horizontal and vertical tolerances; wrong_floor/wrong_map/unreachable include observed position and gaps. Without z, select a floor with ground_z or fail. tries is 1..32 for stuck retries; unstuck=true authorizes a last-resort hearth (unstuck_home). on_attacked stops to call your combat handler, then resumes" },
   travel = { "{points = {{x, y, z}, ...} [, map, tolerance = 4, vertical_tolerance = 3, validate = true, allow_partial = false, stop_on_danger = false, unstuck = false, on_attacked = nil]} → ActResult", "validate all 1..64 3D waypoints with world.route before moving, then go_to each while holding movement ownership. Named waypoints accept x,y,z,map. Report first failed waypoint, completed_waypoints and validation evidence. allow_partial=true may walk a known route_unreachable prefix but still returns failure for the requested destination. validate=false permits unverified 2D waypoints; allow_partial then is invalid. Exposure is checked before each leg and during movement; the latest 64 observations are retained. stop_on_danger=true stops on hostile or unknown evidence" },
