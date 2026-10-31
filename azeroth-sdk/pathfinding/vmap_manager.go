@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -396,11 +397,14 @@ func (s *ModelSpawn) readFrom(r io.Reader) error {
 	if err := binary.Read(r, binary.LittleEndian, &nameLen); err != nil {
 		return err
 	}
+	if nameLen > 4096 {
+		return fmt.Errorf("vmap model name too long")
+	}
 	nameBytes := make([]byte, nameLen)
 	if _, err := io.ReadFull(r, nameBytes); err != nil {
 		return err
 	}
-	s.name = string(nameBytes)
+	s.name = strings.TrimRight(string(nameBytes), "\x00")
 	return nil
 }
 
@@ -1084,10 +1088,10 @@ func (s *StaticMapTree) loadMapTileContext(ctx context.Context, tileX, tileY uin
 		if err := binary.Read(br, binary.LittleEndian, &ref); err != nil {
 			return err
 		}
-		// Only keep spawns that can contribute to height (have explicit bounds).
-		// This keeps treeValues small, reduces snapshot allocs in getHeight, and
-		// avoids tracking thousands of tiny doodads.
-		if (spawn.Flags & 0x4) != 0 {
+		// Movement collision also needs M2 instances without explicit bounds.
+		// The map BIH supplies their broad-phase bounds; height queries keep their
+		// existing bounded-instance filter.
+		{
 			inst := &ModelInstance{spawn: spawn}
 			inst.initTransform()
 			if err := lockContext(ctx, s.dataMu.TryLock); err != nil {
@@ -1224,7 +1228,11 @@ func (s *StaticMapTree) modelForInstanceContext(ctx context.Context, mi *ModelIn
 
 	model := &WorldModel{}
 	if err := model.readFileContext(ctx, modelFile); err != nil {
-		return nil, false
+		// Some extracted datasets retain an assembled VMAP under the spawn's
+		// original name. Accept it only through the same format/bounds checks.
+		if !errors.Is(err, os.ErrNotExist) || model.readFileContext(ctx, strings.TrimSuffix(modelFile, ".vmo")) != nil {
+			return nil, false
+		}
 	}
 
 	s.addModelToCacheLocked(modelFile, model)
