@@ -2,10 +2,13 @@ package session
 
 import (
 	"encoding/binary"
+	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/pthm/leeroy/azeroth-sdk/client"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
 // SMSG_QUESTGIVER_REQUEST_ITEMS as PlayerMenu::SendQuestGiverRequestItems writes it.
@@ -73,5 +76,53 @@ func TestTradeRefusals(t *testing.T) {
 	ts.refused(status(client.TradeStatusTradeCanceled))
 	if ts.state != "cancelled" || ts.err[1] != "the trade was cancelled" {
 		t.Fatalf("cancelled: %+v", ts)
+	}
+}
+
+// The server never echoes your own money or item offer (TradeData::Update(true) goes to the trader only), so
+// trade.offer resolves on silence; a refusal still fails it. An offer change un-accepts both sides, and the server
+// tells both: our pending accept fails as unaccepted, unless the change raced it. No accept without a trade.
+func TestTradeOfferAndAccept(t *testing.T) {
+	le := binary.LittleEndian
+	status := func(st uint32, rest ...byte) client.TradeStatusInfo {
+		info, err := client.ParseTradeStatus(append(le.AppendUint32(nil, st), rest...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return info
+	}
+	b := testBot()
+	ts := &tradeState{state: "open", stepAt: time.Now()}
+	ts.mine = types.TradeSide{Money: 100}
+	if o := b.offerDone(ts, ts.stepAt); o != nil {
+		t.Fatalf("resolved before the server could refuse: %+v", o)
+	}
+	if o := b.offerDone(ts, ts.stepAt.Add(-600*time.Millisecond)); o == nil || !o.OK {
+		t.Fatalf("no echo comes: the offer stands after half a second, got %+v", o)
+	}
+	b.tradeStatus(ts, status(client.TradeStatusCloseWindow, append(le.AppendUint32(nil, 29), 0, 0, 0, 0, 0)...)) // NOT_ENOUGH_MONEY
+	if o := b.offerDone(ts, ts.stepAt); o == nil || o.OK || o.Code != "not_enough_money" {
+		t.Fatalf("refused offer: %+v", o)
+	}
+
+	ts = &tradeState{state: "open", accepting: true, stepAt: time.Now()}
+	b.tradeStatus(ts, status(client.TradeStatusBackToTrade)) // the change our accept raced
+	if ts.err[0] != "" || !ts.accepting {
+		t.Fatalf("raced change undid a fresh accept: %+v", ts)
+	}
+	ts.stepAt = time.Now().Add(-time.Second)
+	b.tradeStatus(ts, status(client.TradeStatusBackToTrade))
+	if ts.err[0] != "unaccepted" || ts.accepting {
+		t.Fatalf("an offer changed after our accept: %+v", ts)
+	}
+
+	b.setupTrade()
+	v, err := b.lua.Eval(`return trade.accept().id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := strconv.Atoi(fmt.Sprint(v))
+	if r := b.lua.Reqs.Result(id); r["ok"] != false || r["error"].(map[string]any)["code"] != "not_open" {
+		t.Fatalf("accept with no trade: %v", r)
 	}
 }

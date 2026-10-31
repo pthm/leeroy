@@ -291,9 +291,9 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | | Returns |
 |---|---|---|
-| `trade.accept() → Request<Trade>` | accept the trade: ok when it completes (both sides accepted; any change un-accepts both), else why not (not_enough_money, inventory_full, too_far, cancelled, ...). Completion: the server reported the trade completed. | [Request](#request), [Trade](#trade) |
+| `trade.accept() → Request<Trade>` | accept the open trade: ok when it completes (both sides accepted), else why not (unaccepted: an offer changed, which un-accepts both; not_enough_money, inventory_full, too_far, cancelled, not_open, ...). Completion: the server reported the trade completed. | [Request](#request), [Trade](#trade) |
 | `trade.cancel() → Request<Trade>` | close the trade, or refuse a request. Completion: the server reported the trade cancelled or closed. | [Request](#request), [Trade](#trade) |
-| `trade.offer{[items = {}, money = 0]} → Request<Trade>` | set your side of the open trade (up to 6 items; replaces what you offered). Soulbound items can't be traded. Completion: a fresh server offer snapshot matches the requested item entries, counts and money. | [Request](#request), [Trade](#trade) |
+| `trade.offer{[items = {}, money = 0]} → Request<Trade>` | set your side of the open trade (up to 6 items; replaces what you offered). Soulbound items can't be traded. Ok half a second after sending unless the server refuses (not_enough_money, untradeable): it never confirms your own offer, only shows it to the other side. Completion: a fresh server offer snapshot matches the requested item entries, counts and money. | [Request](#request), [Trade](#trade) |
 | `trade.open() → Request<Trade>` | open the window for someone's trade request (a trade event with state requested). Completion: the server opened the trade window. | [Request](#request), [Trade](#trade) |
 | `trade.start(player) → Request<Trade>` | ask a player within ~10 yd (name or guid) to trade: ok once they open the window (trade.open on their side). Completion: the server opened the trade window. | [Request](#request), [Trade](#trade) |
 | `trade.status() → Trade` | the trade window: state, who with, both sides' offers | [Trade](#trade) |

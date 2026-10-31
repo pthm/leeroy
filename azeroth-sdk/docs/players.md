@@ -22,3 +22,8 @@ Groups, chat, trades and the players around you. The rest of the SDK is in sdk.m
 - `units.players(dist)`, `units.inspect(guid)`: who's around, their level, class and gear.
 - Trading: `trade.start(name)`, both sides `trade.offer{items = {...}, money = copper}`, both `trade.accept()`.
   A refused trade fails the call with the reason (`too_far`, `busy`, `not_enough_money`...), also in `Trade.error`.
+  The other side opens with `trade.open()` on a `trade` event with state `requested`; every change to the other
+  side's offer is a `trade` event too. The server never confirms your own offer, only shows it to the other side:
+  `trade.offer` is ok half a second after sending unless refused (`untradeable`, `not_enough_money`), and
+  `trade.status().mine` is what you offered. Any change to either offer un-accepts both: a pending `trade.accept`
+  then fails `unaccepted`, so look at the trade and accept again. Accept after the offers settle.

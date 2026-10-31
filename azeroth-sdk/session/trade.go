@@ -27,10 +27,18 @@ type tradeState struct {
 	mineRevision uint64
 	updated      int64
 	stepAt       time.Time // when trade.offer or trade.accept last sent
+	accepting    bool      // our trade.accept is waiting for the trade to complete
 }
 
 // snapshot is the trade as types.Trade (t.mu held).
 func (b *Bot) tradeSnapshot(t *tradeState) types.Trade {
+	for _, side := range []*types.TradeSide{&t.mine, &t.theirs} { // their items' templates may have come since
+		for i := range side.Items {
+			if side.Items[i].Name == "" {
+				fillTemplate(b.world, &side.Items[i])
+			}
+		}
+	}
 	tr := types.Trade{State: t.state, Mine: t.mine, Theirs: t.theirs, TheyAccepted: t.theyAccepted, Error: t.err[1]}
 	if t.with != 0 {
 		tr.With = b.unitName(t.with)
@@ -41,36 +49,7 @@ func (b *Bot) tradeSnapshot(t *tradeState) types.Trade {
 func (b *Bot) setupTrade() {
 	t := &tradeState{state: "none"}
 	w := b.world
-	w.AddTradeStatusHook(func(info client.TradeStatusInfo) {
-		t.mu.Lock()
-		defer t.mu.Unlock()
-		t.updated = time.Now().UnixMilli()
-		switch info.Status {
-		case client.TradeStatusBeginTrade: // someone opened a trade with you
-			t.state, t.with, t.mine, t.theirs, t.theyAccepted, t.err = "requested", info.TraderGUID, types.TradeSide{}, types.TradeSide{}, false, [2]string{}
-			go func(g uint64) {
-				for i := 0; b.unitName(g) == "" && i < 10; i++ { // the name query may still be on its way
-					time.Sleep(200 * time.Millisecond)
-				}
-				t.mu.Lock()
-				tr := b.tradeSnapshot(t)
-				t.mu.Unlock()
-				b.emit("trade", tr)
-			}(info.TraderGUID)
-			return
-		case client.TradeStatusOpenWindow:
-			t.state = "open"
-		case client.TradeStatusTradeAccept:
-			t.theyAccepted = true
-		case client.TradeStatusBackToTrade:
-			t.theyAccepted = false
-		case client.TradeStatusTradeComplete:
-			t.state = "complete"
-		default:
-			t.refused(info)
-		}
-		b.emit("trade", b.tradeSnapshot(t))
-	})
+	w.AddTradeStatusHook(func(info client.TradeStatusInfo) { b.tradeStatus(t, info) })
 	w.AddPacketHook(func(op uint16, data []byte) {
 		if op != client.SmsgTradeStatusExt {
 			return
@@ -99,11 +78,15 @@ func (b *Bot) setupTrade() {
 		t.mu.Lock()
 		if theirs != 0 {
 			t.theirs = offer
-		} else {
+		} else { // only for a spell (enchanting) offer: the server never echoes your money or items
 			t.mine = offer
 			t.mineRevision++
 		}
+		tr := b.tradeSnapshot(t)
 		t.mu.Unlock()
+		if theirs != 0 {
+			b.emit("trade", tr)
+		}
 	})
 	e := b.lua
 	// a request that resolves when the trade reaches one of the ok states, or fails on an ending state
@@ -138,6 +121,7 @@ func (b *Bot) setupTrade() {
 		}
 		t.mu.Lock()
 		t.state, t.with, t.mine, t.theirs, t.theyAccepted, t.err = "waiting", g, types.TradeSide{}, types.TradeSide{}, false, [2]string{}
+		t.accepting = false
 		t.mu.Unlock()
 		if err := w.InitiateTrade(g); err != nil {
 			return b.refuse("trade.start", args, "failed", err.Error())
@@ -151,7 +135,7 @@ func (b *Bot) setupTrade() {
 		}
 		return until("trade.open", nil, 5*time.Second, "open")
 	})
-	e.Func("trade.offer", "{[items = {}, money = 0]} → Request<Trade>", "set your side of the open trade (up to 6 items; replaces what you offered). Soulbound items can't be traded",
+	e.Func("trade.offer", "{[items = {}, money = 0]} → Request<Trade>", "set your side of the open trade (up to 6 items; replaces what you offered). Soulbound items can't be traded. Ok half a second after sending unless the server refuses (not_enough_money, untradeable): it never confirms your own offer, only shows it to the other side",
 		func(o map[string]any) map[string]any {
 			items, ok := o["items"].([]any)
 			if o["items"] != nil && !ok {
@@ -183,7 +167,6 @@ func (b *Bot) setupTrade() {
 				expected = append(expected, *it)
 			}
 			t.mu.Lock()
-			revision := t.mineRevision
 			state := t.state
 			t.mu.Unlock()
 			if state != "open" {
@@ -212,28 +195,30 @@ func (b *Bot) setupTrade() {
 			if err := w.SetTradeGold(uint32(money)); err != nil {
 				return b.refuse("trade.offer", nil, "failed", err.Error())
 			}
-			return b.request("trade.offer", nil, 5*time.Second, func() *script.Outcome {
-				t.mu.Lock()
-				defer t.mu.Unlock()
-				if t.err[0] != "" {
-					return script.Fail(t.err[0], t.err[1], nil)
-				}
-				if t.mineRevision <= revision || t.mine.Money != uint32(money) || len(t.mine.Items) != len(expected) {
-					return nil
-				}
-				for i, it := range expected {
-					if t.mine.Items[i].Entry != it.Entry || t.mine.Items[i].Count != it.Count {
-						return nil
-					}
-				}
-				return script.Ok(b.tradeSnapshot(t))
-			}, nil)
+			// The server shows your offer to the other side only (TradeData::Update(true)), as the real client tracks
+			// its own: so do we, and take silence as accepted. Refusals come straight back: CLOSE_WINDOW with
+			// NOT_ENOUGH_MONEY, TRADE_CANCELED for an untradeable item (refused).
+			t.mu.Lock()
+			t.mine = types.TradeSide{Money: uint32(money), Items: expected}
+			t.mineRevision++
+			sent := t.stepAt
+			t.mu.Unlock()
+			return b.request("trade.offer", nil, 5*time.Second, func() *script.Outcome { return b.offerDone(t, sent) }, nil)
 		})
-	e.Func("trade.accept", "() → Request<Trade>", "accept the trade: ok when it completes (both sides accepted; any change un-accepts both), else why not (not_enough_money, inventory_full, too_far, cancelled, ...)", func() map[string]any {
+	e.Func("trade.accept", "() → Request<Trade>", "accept the open trade: ok when it completes (both sides accepted), else why not (unaccepted: an offer changed, which un-accepts both; not_enough_money, inventory_full, too_far, cancelled, not_open, ...)", func() map[string]any {
+		t.mu.Lock()
+		state := t.state
+		t.mu.Unlock()
+		if state != "open" {
+			return b.refuse("trade.accept", nil, "not_open", "no trade window is open")
+		}
 		clearErr()
 		if err := w.AcceptTrade(); err != nil {
 			return b.refuse("trade.accept", nil, "failed", err.Error())
 		}
+		t.mu.Lock()
+		t.accepting = true
+		t.mu.Unlock()
 		return until("trade.accept", nil, 60*time.Second, "complete")
 	})
 	e.Func("trade.cancel", "() → Request<Trade>", "close the trade, or refuse a request", func() map[string]any {
@@ -258,6 +243,67 @@ func (b *Bot) setupTrade() {
 		defer t.mu.Unlock()
 		return b.tradeSnapshot(t)
 	})
+}
+
+// tradeStatus follows SMSG_TRADE_STATUS: the window opening, either side accepting or un-accepting, the trade
+// completing, or why it ended or a step was refused.
+func (b *Bot) tradeStatus(t *tradeState, info client.TradeStatusInfo) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.updated = time.Now().UnixMilli()
+	switch info.Status {
+	case client.TradeStatusBeginTrade: // someone opened a trade with you
+		t.state, t.with, t.mine, t.theirs, t.theyAccepted, t.err = "requested", info.TraderGUID, types.TradeSide{}, types.TradeSide{}, false, [2]string{}
+		t.accepting = false
+		go func(g uint64) {
+			for i := 0; b.unitName(g) == "" && i < 10; i++ { // the name query may still be on its way
+				time.Sleep(200 * time.Millisecond)
+			}
+			t.mu.Lock()
+			tr := b.tradeSnapshot(t)
+			t.mu.Unlock()
+			b.emit("trade", tr)
+		}(info.TraderGUID)
+		return
+	case client.TradeStatusOpenWindow:
+		t.state = "open"
+	case client.TradeStatusTradeAccept:
+		t.theyAccepted = true
+	case client.TradeStatusBackToTrade:
+		// any change to either offer un-accepts both, and the server tells both (TradeData::SetMoney, SetItem):
+		// a pending accept of ours is undone too. One straight after our accept is the change it raced.
+		// ponytail: 250 ms of grace, ample on a local server; a slow link would need the accept's own echo
+		t.theyAccepted = false
+		if t.accepting && time.Since(t.stepAt) > 250*time.Millisecond {
+			t.accepting = false
+			t.err = [2]string{"unaccepted", "an offer changed, which un-accepts both sides: check the trade and accept again"}
+		}
+	case client.TradeStatusTradeComplete:
+		t.state = "complete"
+	default:
+		t.refused(info)
+	}
+	if t.state != "open" {
+		t.accepting = false
+	}
+	b.emit("trade", b.tradeSnapshot(t))
+}
+
+// offerDone is trade.offer's completion, sent at sent: failed if the server refused it or the window closed, else ok
+// after half a second (the server never confirms your own offer).
+func (b *Bot) offerDone(t *tradeState, sent time.Time) *script.Outcome {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.err[0] != "" {
+		return script.Fail(t.err[0], t.err[1], nil)
+	}
+	if t.state != "open" {
+		return script.Fail(t.state, "the trade window closed", nil)
+	}
+	if time.Since(sent) < 500*time.Millisecond {
+		return nil
+	}
+	return script.Ok(b.tradeSnapshot(t))
 }
 
 // tradeEnds: TradeStatus codes that refuse or end a trade (WorldSession::HandleInitiateTradeOpcode, Player::TradeCancel)
