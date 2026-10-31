@@ -122,3 +122,28 @@ func TestInteriorRealRoutes(t *testing.T) {
 		})
 	}
 }
+
+func TestPointQueryLoadsOnlyIntersectingTiles(t *testing.T) {
+	pf := interiorFinder(t, floorCell{10, 10, 0})
+	if err := pf.ensureTilesForPointContext(context.Background(), Point3D{15, 15, 0}, 5); err != nil {
+		t.Fatal(err)
+	}
+	md := pf.mmapMgr.meshes[0]
+	if len(md.loadedTiles) != 1 {
+		t.Fatalf("point loaded %d tiles", len(md.loadedTiles))
+	}
+	if err := pf.ensureTilesForPointContext(context.Background(), Point3D{0, 0, 0}, 5); err != nil {
+		t.Fatal(err)
+	}
+	if len(md.loadedTiles) != 4 {
+		t.Fatalf("boundary footprint: %d tiles", len(md.loadedTiles))
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := pf.ensureTilesForPointContext(ctx, Point3D{2000, 2000, 0}, 5); err != context.Canceled {
+		t.Fatal(err)
+	}
+	if len(md.loadedTiles) != 4 {
+		t.Fatal("cancelled query loaded tiles")
+	}
+}

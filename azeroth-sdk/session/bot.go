@@ -921,7 +921,7 @@ func (b *Bot) moveToPointContext(ctx context.Context, x, y, z float32, valid fun
 	if b.nav != nil {
 		// Snap current position to ground if needed (small corrections only; avoid jumping levels).
 		probeZ := pz + 5.0
-		if gh, ok := movementGroundHeight(b.nav, mapID, px, py, probeZ); ok {
+		if gh, _, ok := movement.GroundHeightContext(ctx, b.nav, mapID, px, py, probeZ); ok {
 			delta := gh - pz
 			if delta > 1.0 {
 				// would snap up significantly (possible upper floor) - keep current Z
@@ -932,7 +932,7 @@ func (b *Bot) moveToPointContext(ctx context.Context, x, y, z float32, valid fun
 			}
 		}
 		targetProbe := z + 5.0
-		if gh, ok := movementGroundHeight(b.nav, mapID, x, y, targetProbe); ok {
+		if gh, _, ok := movement.GroundHeightContext(ctx, b.nav, mapID, x, y, targetProbe); ok {
 			delta := gh - z
 			if math.Abs(float64(delta)) > 2.0 {
 				// large difference - trust the provided target Z (e.g. from random generator or mob)
@@ -1002,7 +1002,7 @@ func (b *Bot) moveToPointContext(ctx context.Context, x, y, z float32, valid fun
 	}
 	b.ensureMovementControllerLocked()
 	if b.moveController != nil {
-		b.moveController.SetPath(pts, time.Now(), po, mapID)
+		b.moveController.SetPreparedPath(pts, time.Now(), po, mapID)
 		b.isMoving = true
 		b.lastMoveCommandPos = requestedDest
 		b.lastMoveCommandTime = now
@@ -1046,11 +1046,11 @@ func snapPathToGroundContext(ctx context.Context, nav navigation.Navigator, mapI
 			return
 		}
 		origZ := pts[i].Z
-		gh, _, ok := movementGroundHeightWithSource(nav, mapID, pts[i].X, pts[i].Y, origZ)
+		gh, _, ok := movement.GroundHeightContext(ctx, nav, mapID, pts[i].X, pts[i].Y, origZ)
 		if !ok || math.IsNaN(float64(gh)) || math.IsInf(float64(gh), 0) {
 			continue
 		}
-		pts[i].Z = movement.FloorAware(nav, mapID, pts[i].X, pts[i].Y, origZ, gh)
+		pts[i].Z = movement.FloorAwareContext(ctx, nav, mapID, pts[i].X, pts[i].Y, origZ, gh)
 	}
 }
 

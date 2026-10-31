@@ -947,3 +947,50 @@ func TestAbortAndSnap_ClearsPathWithoutPackets(t *testing.T) {
 		t.Fatalf("pose drifted after Update: (%v,%v,%v)", x2, y2, z2)
 	}
 }
+
+func TestPreparedPathNeverQueriesOrChangesFloors(t *testing.T) {
+	nav := fakeHeightNavigator{height: func(uint32, float32, float32, float32) (float32, bool) {
+		t.Fatal("prepared movement queried height")
+		return 0, false
+	}, terrain: func(uint32, float32, float32) (float32, bool) {
+		t.Fatal("prepared movement queried terrain")
+		return 0, false
+	}}
+	sender := &fakeSender{}
+	m := NewMovementController(sender, 7, nav, DefaultMovementConfig())
+	now := time.Now()
+	path := []navigation.Point3D{{X: 0, Z: 3}, {X: 7, Z: 3}, {X: 14, Z: 4}}
+	m.SetPreparedPath(path, now, 0, 0)
+	path[0].Z = 99 // ownership must not leak to the caller
+	m.Update(now.Add(time.Second))
+	_, _, z, _ := m.CurrentPosition()
+	if z != 3 {
+		t.Fatal(z)
+	}
+	m.Update(now.Add(2 * time.Second))
+	_, _, z, _ = m.CurrentPosition()
+	if z != 4 {
+		t.Fatal(z)
+	}
+}
+
+type cancelledHeightNavigator struct {
+	fakeHeightNavigator
+	cancel context.CancelFunc
+}
+
+func (n cancelledHeightNavigator) GetHeightContext(ctx context.Context, _ uint32, _, _, _ float32) (float32, bool) {
+	n.cancel()
+	return 0, false
+}
+func TestGroundHeightCancellationDoesNotFallBack(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	nav := cancelledHeightNavigator{fakeHeightNavigator: fakeHeightNavigator{terrain: func(uint32, float32, float32) (float32, bool) {
+		t.Fatal("fallback after cancellation")
+		return 0, false
+	}}, cancel: cancel}
+	if _, _, ok := GroundHeightContext(ctx, nav, 0, 0, 0, 0); ok {
+		t.Fatal("cancelled height accepted")
+	}
+}

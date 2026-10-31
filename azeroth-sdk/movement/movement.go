@@ -1,6 +1,7 @@
 package movement
 
 import (
+	"context"
 	"math"
 	"time"
 
@@ -62,6 +63,7 @@ type MovementController struct {
 	speed  float32
 
 	// Path data (2D horizontal parameterization for speed)
+	prepared  bool // geometry is final; following it must not query or change floors
 	path      []navigation.Point3D
 	segLens   []float32 // 2D length of each segment i -> i+1
 	cumLens   []float32 // cumulative 2D length up to start of segment i
@@ -142,6 +144,14 @@ func (m *MovementController) SetNavigator(nav navigation.Navigator) {
 // The caller is responsible for providing a path that starts near current position.
 // mapID is used (when > 0 and nav is available) to snap Z to real ground height on elevation.
 func (m *MovementController) SetPath(path []navigation.Point3D, startTime time.Time, initialO float32, mapID uint32) {
+	m.setPath(path, startTime, initialO, mapID, false)
+}
+
+// SetPreparedPath installs final navigation geometry without I/O or height changes.
+func (m *MovementController) SetPreparedPath(path []navigation.Point3D, startTime time.Time, initialO float32, mapID uint32) {
+	m.setPath(path, startTime, initialO, mapID, true)
+}
+func (m *MovementController) setPath(path []navigation.Point3D, startTime time.Time, initialO float32, mapID uint32, prepared bool) {
 	if len(path) == 0 {
 		return
 	}
@@ -149,7 +159,8 @@ func (m *MovementController) SetPath(path []navigation.Point3D, startTime time.T
 	m.path = make([]navigation.Point3D, len(path))
 	copy(m.path, path)
 	m.mapID = mapID
-	if m.nav != nil {
+	m.prepared = prepared
+	if m.nav != nil && !prepared {
 		snapPathToGround(m.nav, mapID, m.path)
 	}
 
@@ -599,6 +610,9 @@ func (m *MovementController) AbortAndSnap(x, y, z, o float32) {
 }
 
 func (m *MovementController) clampCurrentZToGround() {
+	if m.prepared {
+		return
+	}
 	if m.nav == nil {
 		return
 	}
@@ -704,6 +718,12 @@ func movementGroundHeightWithSource(nav navigation.Navigator, mapID uint32, x, y
 // Stormwind, and on the hill above mines. The navmesh floor comes from the server's own geometry.
 // ponytail: 2.5 yd separates surfaces from terrain noise; stairs near ground level snap to terrain.
 func FloorAware(nav navigation.Navigator, mapID uint32, x, y, hintZ, ground float32) float32 {
+	return FloorAwareContext(context.Background(), nav, mapID, x, y, hintZ, ground)
+}
+func FloorAwareContext(ctx context.Context, nav navigation.Navigator, mapID uint32, x, y, hintZ, ground float32) float32 {
+	if ctx.Err() != nil {
+		return ground
+	}
 	fn, ok := nav.(interface {
 		FloorHeight(mapID uint32, x, y, hint float32) (float32, bool)
 		GetTerrainHeight(mapID uint32, x, y float32) (float32, bool)
@@ -711,13 +731,20 @@ func FloorAware(nav navigation.Navigator, mapID uint32, x, y, hintZ, ground floa
 	if !ok {
 		return ground
 	}
-	floor, ok := fn.FloorHeight(mapID, x, y, hintZ)
+	var floor float32
+	if n, yes := nav.(interface {
+		FloorHeightContext(context.Context, uint32, float32, float32, float32) (float32, bool)
+	}); yes {
+		floor, ok = n.FloorHeightContext(ctx, mapID, x, y, hintZ)
+	} else {
+		floor, ok = fn.FloorHeight(mapID, x, y, hintZ)
+	}
 	if !ok {
 		return ground
 	}
 	// two different surfaces (an upper floor or bridge above the terrain, or a cave/mine floor under it): take the one
 	// nearest the height we're at. Snapping to the terrain lifted characters in mines onto the hill above.
-	if terrain, ok := fn.GetTerrainHeight(mapID, x, y); ok && abs32(floor-terrain) > 2.5 && abs32(floor-hintZ) < abs32(ground-hintZ) {
+	if terrain, ok := terrainHeightContext(ctx, nav, mapID, x, y); ok && abs32(floor-terrain) > 2.5 && abs32(floor-hintZ) < abs32(ground-hintZ) {
 		return floor
 	}
 	return ground
@@ -879,4 +906,39 @@ func abs32(v float32) float32 {
 		return -v
 	}
 	return v
+}
+
+// GroundHeightContext preserves cancellation across terrain and model queries.
+func GroundHeightContext(ctx context.Context, nav navigation.Navigator, m uint32, x, y, z float32) (float32, bool, bool) {
+	if ctx.Err() != nil {
+		return 0, false, false
+	}
+	var h float32
+	var ok bool
+	if n, yes := nav.(interface {
+		GetHeightContext(context.Context, uint32, float32, float32, float32) (float32, bool)
+	}); yes {
+		h, ok = n.GetHeightContext(ctx, m, x, y, z)
+	} else {
+		h, ok = nav.GetHeight(m, x, y, z)
+	}
+	if ctx.Err() != nil {
+		return 0, false, false
+	}
+	if ok {
+		return h, false, true
+	}
+	h, ok = terrainHeightContext(ctx, nav, m, x, y)
+	return h, true, ok && ctx.Err() == nil
+}
+func terrainHeightContext(ctx context.Context, nav navigation.Navigator, m uint32, x, y float32) (float32, bool) {
+	if ctx.Err() != nil {
+		return 0, false
+	}
+	if n, ok := nav.(interface {
+		GetTerrainHeightContext(context.Context, uint32, float32, float32) (float32, bool)
+	}); ok {
+		return n.GetTerrainHeightContext(ctx, m, x, y)
+	}
+	return nav.GetTerrainHeight(m, x, y)
 }

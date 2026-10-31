@@ -173,6 +173,27 @@ func (pf *PathFinder) ensureTilesForPoint(p Point3D) error {
 	return pf.mmapMgr.EnsureTileLoaded(pf.mapID, int32(gx), int32(gy))
 }
 
+// ensureTilesForPointContext loads only tiles intersecting a point query's
+// horizontal footprint. A point lookup must not load the route's ten-grid margin.
+func (pf *PathFinder) ensureTilesForPointContext(ctx context.Context, p Point3D, extent float32) error {
+	if err := validateLeg(p, p); err != nil {
+		return err
+	}
+	minX, minY := gameToGridCoords(p.X+extent, p.Y+extent)
+	maxX, maxY := gameToGridCoords(p.X-extent, p.Y-extent)
+	for x := minX; x <= maxX; x++ {
+		for y := minY; y <= maxY; y++ {
+			if x < 0 || y < 0 || x > 63 || y > 63 {
+				continue
+			}
+			if err := pf.mmapMgr.EnsureTileLoadedContext(ctx, pf.mapID, int32(x), int32(y)); err != nil {
+				return err
+			}
+		}
+	}
+	return ctx.Err()
+}
+
 // ensureTilesForPath loads all tiles that might be needed for a path from start to dest.
 func (pf *PathFinder) ensureTilesForPath(ctx context.Context, start, dest Point3D) error {
 	sgx, sgy := gameToGridCoords(start.X, start.Y)
@@ -968,7 +989,7 @@ func (pf *PathFinder) FloorHeight(x, y, hint float32) (float32, bool) {
 	return pf.floorHeightContext(context.Background(), x, y, hint)
 }
 func (pf *PathFinder) floorHeightContext(ctx context.Context, x, y, hint float32) (float32, bool) {
-	if err := pf.ensureTilesForPath(ctx, Point3D{X: x, Y: y, Z: hint}, Point3D{X: x, Y: y, Z: hint}); err != nil {
+	if err := pf.ensureTilesForPointContext(ctx, Point3D{X: x, Y: y, Z: hint}, 1.5); err != nil {
 		return 0, false
 	}
 	if pf.meshMu != nil && lockContext(ctx, pf.meshMu.TryRLock) != nil {
@@ -1037,7 +1058,7 @@ func (s *PathFindingService) InLineOfSight(mapID uint32, x1, y1, z1, x2, y2, z2 
 
 func (pf *PathFinder) getHeightContext(ctx context.Context, x, y, z float32) (float32, bool) {
 	point := Point3D{X: x, Y: y, Z: z}
-	if pf.ensureTilesForPath(ctx, point, point) != nil {
+	if pf.ensureTilesForPointContext(ctx, point, 5) != nil {
 		return 0, false
 	}
 	if pf.meshMu != nil && lockContext(ctx, pf.meshMu.TryRLock) != nil {

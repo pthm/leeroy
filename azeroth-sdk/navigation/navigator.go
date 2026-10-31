@@ -184,3 +184,14 @@ func NewRemoteNavigator(address string) (Navigator, error) {
 func (n *embeddedNavigator) InLineOfSightContext(ctx context.Context, m uint32, a, b Point3D) (bool, bool) {
 	return n.svc.InLineOfSightContext(ctx, m, a.X, a.Y, a.Z, b.X, b.Y, b.Z)
 }
+
+// Context variants share the caller's whole-operation budget during preparation.
+func (n *embeddedNavigator) GetHeightContext(ctx context.Context, m uint32, x, y, z float32) (float32, bool) {
+	return n.svc.GetHeightContext(ctx, m, x, y, z)
+}
+func (n *embeddedNavigator) FloorHeightContext(ctx context.Context, m uint32, x, y, z float32) (float32, bool) {
+	return n.svc.FloorHeightContext(ctx, m, x, y, z)
+}
+func (n *embeddedNavigator) GetTerrainHeightContext(ctx context.Context, m uint32, x, y float32) (float32, bool) {
+	return n.svc.GetTerrainHeightContext(ctx, m, x, y)
+}
