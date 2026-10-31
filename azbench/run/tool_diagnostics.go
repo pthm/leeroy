@@ -122,6 +122,10 @@ func (d *toolDiagnostics) observe(m map[string]any) {
 		d.emit(types.Diagnostic{Kind: "runtime_state", Code: code, Details: types.DiagnosticDetails{Component: "agent", State: "usage_limit", Runtime: d.runtime}})
 	}
 	switch stringValue(m["type"]) {
+	case "error":
+		// Some runtimes emit a structured error and still exit zero. Preserve
+		// that evidence independently of the process exit, without parsing prose.
+		d.emit(types.Diagnostic{Kind: "runtime_state", Code: "runtime_error", Details: types.DiagnosticDetails{Component: "agent", State: "error", Runtime: d.runtime, Status: toolName(stringValue(object(m["error"])["name"]))}})
 	case "system":
 		if m["subtype"] == "task_notification" {
 			id := stringValue(m["tool_use_id"])

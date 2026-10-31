@@ -66,12 +66,12 @@ func TestToolDiagnosticsIncompleteEvidence(t *testing.T) {
 	}
 	// Runtime error prose cannot establish quota exhaustion or an exit cause.
 	decodeToolLine([]byte(`{"type":"error","message":"usage limit exceeded"}`), d.observe)
-	if len(events) != 2 {
+	if len(events) != 3 || events[2].Code != "runtime_error" || events[2].Details.State != "error" {
 		t.Fatal("classified prose")
 	}
 	decodeToolLine([]byte(`{"type":"error","error":{"code":"usage_limit_exceeded"}}`), d.observe)
 	d.finish(3000)
-	if len(events) != 3 || events[2].Details.State != "usage_limit" {
+	if len(events) != 5 || events[3].Details.State != "usage_limit" || events[4].Code != "runtime_error" {
 		t.Fatalf("quota evidence: %+v", events)
 	}
 }
@@ -128,5 +128,18 @@ func TestClaudeBackgroundLaunchWaitsForCompletionNotification(t *testing.T) {
 				t.Fatalf("%+v", out[0])
 			}
 		})
+	}
+}
+
+func TestRuntimeErrorIsRecordedEvenWithoutFailedToolOrExit(t *testing.T) {
+	var out []types.Diagnostic
+	d := newToolDiagnostics("opencode", func(v types.Diagnostic) { out = append(out, v) })
+	decodeToolLine([]byte(`{"type":"error","error":{"name":"UnknownError","data":{"message":"private failure details"}}}`), d.observe)
+	if len(out) != 1 || out[0].Code != "runtime_error" || out[0].Details.State != "error" || out[0].Details.Status != "UnknownError" {
+		t.Fatalf("%+v", out)
+	}
+	encoded, _ := json.Marshal(out)
+	if strings.Contains(string(encoded), "private") {
+		t.Fatal("copied error prose into diagnostics")
 	}
 }

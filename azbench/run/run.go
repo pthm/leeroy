@@ -120,8 +120,8 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 				return fmt.Errorf("%s: workspace %s exists: this scenario is for fresh agents", p.a.Name, p.ws)
 			}
 		}
-		if p.a.Provider == "openrouter" && os.Getenv("OPENROUTER_API_KEY") == "" {
-			return fmt.Errorf("%s: provider openrouter needs OPENROUTER_API_KEY", p.a.Name)
+		if err := validateAgentCredentials(p.a); err != nil {
+			return err
 		}
 	}
 	if err := grantReader(); err != nil {

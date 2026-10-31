@@ -54,6 +54,9 @@ func TestRuntimePermissionsLive(t *testing.T) {
 			if runtime == "opencode" && a.Model == "" {
 				t.Fatal("set WOWBENCH_SMOKE_MODEL_OPENCODE to an available provider/model")
 			}
+			if err := validateAgentCredentials(a); err != nil {
+				t.Fatal(err)
+			}
 			p := &player{r: &Runner{repo: repo, dir: dir}, ws: ws, dir: dir, port: 8112, a: a}
 			prompt := "Run these permission smoke commands exactly, one separate shell tool call each. Do not change files or call other commands. Finish only after all calls return; if a tool yields a session/task handle, poll it with the runtime polling tool. Report failures accurately. These are local tool tests, not gameplay.\n" + strings.Join(commands, "\n")
 			if runtime == "claude" {

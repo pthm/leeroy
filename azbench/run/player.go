@@ -242,7 +242,7 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 		args = append(args, "Edit(./**)", "--disallowedTools", "Edit(~/.claude/**)", "Read(~/.claude/**)")
 		cmd = exec.Command("claude", args...)
 	case "opencode":
-		args := []string{"run", "--pure", "--format", "json", "-m", a.Model, "--dir", p.ws}
+		args := []string{"run", "--pure", "--format", "json", "--print-logs", "--log-level", "ERROR", "-m", a.Model, "--dir", p.ws}
 		if resume != "" {
 			args = append(args, "--session", resume)
 		}
@@ -297,6 +297,15 @@ func opencodeConfig(repo, ws string) string {
 		"bash": bash, "external_directory": ext, "edit": map[string]string{"*": "deny", rel + "/**": "allow"},
 		"webfetch": "deny", "websearch": "deny", "codesearch": "deny", "doom_loop": "allow"}})
 	return string(b)
+}
+
+// OpenCode also encodes its provider in the model path. Check that form before
+// creating accounts or starting sessions, just as for the explicit provider field.
+func validateAgentCredentials(a config.Agent) error {
+	if (a.Provider == "openrouter" || (a.Runtime == "opencode" && strings.HasPrefix(a.Model, "openrouter/"))) && os.Getenv("OPENROUTER_API_KEY") == "" {
+		return fmt.Errorf("%s: provider openrouter needs OPENROUTER_API_KEY; configure it or select an authenticated provider/model", a.Name)
+	}
+	return nil
 }
 
 // startAgent runs the agent until end, appending its output to agent.jsonl. Codex's JSONL events have no

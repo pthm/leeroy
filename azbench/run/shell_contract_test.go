@@ -49,3 +49,22 @@ func TestRuntimeCommandsAndGeneratedContract(t *testing.T) {
 		})
 	}
 }
+
+func TestProviderCredentialCheckIncludesOpenCodeModelPrefix(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "")
+	for _, a := range []config.Agent{
+		{Runtime: "claude", Provider: "openrouter"},
+		{Runtime: "opencode", Model: "openrouter/openai/gpt-6.1-sol"},
+	} {
+		if validateAgentCredentials(a) == nil {
+			t.Fatal("missing key accepted", a)
+		}
+	}
+	if err := validateAgentCredentials(config.Agent{Runtime: "opencode", Model: "openai/gpt-6.1-sol"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OPENROUTER_API_KEY", "test-placeholder")
+	if err := validateAgentCredentials(config.Agent{Runtime: "opencode", Model: "openrouter/openai/gpt-6.1-sol"}); err != nil {
+		t.Fatal(err)
+	}
+}
