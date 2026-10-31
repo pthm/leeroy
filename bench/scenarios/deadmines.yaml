@@ -1,0 +1,17 @@
+name: deadmines
+description: >
+  Five brand-new level-1 Humans in Northshire, a dungeon party (a tank, a healer, three DPS), on Codex with
+  GPT-6.1 Sol, with one goal: clear the Deadmines (achievement 628, earned when Edwin VanCleef dies). Levelling and
+  gear on the way are up to them. No real time limit: a week on the clock, and each agent stops when it has the
+  achievement.
+goal: achievement:628
+minutes: 10080
+require_fresh: true
+runtime: codex
+models: {codex: gpt-6.1-sol}
+agents:
+  - {name: a44, char: Aldous, class: warrior, spec: protwarrior}
+  - {name: a45, char: Isolde, class: priest, spec: holy}
+  - {name: a46, char: Merrin, class: rogue, spec: combat}
+  - {name: a47, char: Thessaly, class: mage, spec: frost}
+  - {name: a48, char: Corbin, class: paladin, spec: ret}

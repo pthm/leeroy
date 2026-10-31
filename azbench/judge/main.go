@@ -5,6 +5,7 @@
 //
 //	| money:<copper> | quests:<n> (quests turned in) | quest:<id> (that quest turned in)
 //	| skill:<id>:<n> (that skill line at n or more, e.g. skill:164:75 = Blacksmithing 75)
+//	| achievement:<id> (that achievement earned, e.g. 628 = Deadmines: Edwin VanCleef killed)
 //	| achpoints:<n> (achievement points earned since the judge started; needs bin/azworld setup.
 //	  Use a large n to score "as many as possible" by the value at timeout)
 //	| score:<n> (composite: weighted change in every signal since the judge started; weights in score.json,
@@ -51,9 +52,9 @@ type failure string
 
 func fail(f string, a ...any) { panic(failure(fmt.Sprintf(f, a...))) }
 
-const usage = "usage: judge <character> <level|item|quality|money|quests|quest|achpoints|score>:<n> | skill:<id>:<n> [--timeout 4h] [--every 15s] [--samples f] [--resume f] [--record f] [--board dir] [--events f] [--role r] [--runtime r]\n       judge signals <character>"
+const usage = "usage: judge <character> <level|item|quality|money|quests|quest|achievement|achpoints|score>:<n> | skill:<id>:<n> [--timeout 4h] [--every 15s] [--samples f] [--resume f] [--record f] [--board dir] [--events f] [--role r] [--runtime r]\n       judge signals <character>"
 
-var goalRe = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achpoints|score):\d+|skill:\d+:\d+)$`)
+var goalRe = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|score):\d+|skill:\d+:\d+)$`)
 
 func dur(s string) time.Duration {
 	m := regexp.MustCompile(`^(\d+)(s|m|h)$`).FindStringSubmatch(s)
@@ -175,14 +176,15 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
   WHERE ci.guid = (SELECT guid FROM characters WHERE name = '` + char + `')`
 	g := "(SELECT guid FROM characters WHERE name = '" + char + "')"
 	query := map[string]string{
-		"level":     "SELECT level FROM characters WHERE name = '" + char + "'",
-		"money":     "SELECT money FROM characters WHERE name = '" + char + "'",
-		"item":      "SELECT COUNT(*) " + owned + " AND it.entry = " + n,
-		"quality":   "SELECT COUNT(*) " + owned + " AND it.Quality >= " + n,
-		"quests":    "SELECT COUNT(*) FROM character_queststatus_rewarded WHERE guid = " + g,
-		"quest":     "SELECT COUNT(*) FROM character_queststatus_rewarded WHERE quest = " + n + " AND guid = " + g,
-		"skill":     "SELECT COALESCE(MAX(value), 0) FROM character_skills WHERE skill = " + n + " AND guid = " + g,
-		"achpoints": "SELECT COALESCE(SUM(a.points), 0) FROM character_achievement ca JOIN wowbench.achievement a ON a.id = ca.achievement\n    WHERE ca.guid = " + g,
+		"level":       "SELECT level FROM characters WHERE name = '" + char + "'",
+		"money":       "SELECT money FROM characters WHERE name = '" + char + "'",
+		"item":        "SELECT COUNT(*) " + owned + " AND it.entry = " + n,
+		"quality":     "SELECT COUNT(*) " + owned + " AND it.Quality >= " + n,
+		"quests":      "SELECT COUNT(*) FROM character_queststatus_rewarded WHERE guid = " + g,
+		"quest":       "SELECT COUNT(*) FROM character_queststatus_rewarded WHERE quest = " + n + " AND guid = " + g,
+		"skill":       "SELECT COALESCE(MAX(value), 0) FROM character_skills WHERE skill = " + n + " AND guid = " + g,
+		"achievement": "SELECT COUNT(*) FROM character_achievement WHERE achievement = " + n + " AND guid = " + g,
+		"achpoints":   "SELECT COALESCE(SUM(a.points), 0) FROM character_achievement ca JOIN wowbench.achievement a ON a.id = ca.achievement\n    WHERE ca.guid = " + g,
 	}[kind]
 
 	// --resume <samples.jsonl>: continue a paused run from its samples: same baseline, same curve, and the clock
@@ -231,7 +233,7 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 	}
 	need, _ := strconv.ParseFloat(n, 64)
 	switch kind {
-	case "item", "quality", "quest":
+	case "item", "quality", "quest", "achievement":
 		need = 1
 	case "skill":
 		need, _ = strconv.ParseFloat(parts[2], 64)

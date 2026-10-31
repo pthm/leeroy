@@ -6,17 +6,21 @@ the same moment once all sessions are up, so times are comparable. A solo run is
 ```sh
 bin/azbench run bench/scenarios/fresh-split.yaml               # run it
 bin/azbench run bench/scenarios/fresh-split.yaml --dry-run     # the players and the first prompt, nothing started
-bin/azbench run bench/scenarios/hogger-from-1.yaml --minutes 60
+bin/azbench run bench/scenarios/hogger-trio.yaml --minutes 60
 ```
 
 | Scenario | Minutes | What it sets up |
 |---|---|---|
 | `smoke.yaml` | 2 | two characters with no agent (`runtime: none`): checks the harness end to end without spending model time |
-| `hogger-from-1.yaml` | 120 | a01-a10 from level 1 in Northshire, with "Wanted: Hogger" (quest 176) as a suggested target |
-| `goldshire-rerun.yaml` | 120 | the same characters again (gear and libraries kept, fresh conversations), moved to Goldshire, revived and repaired |
-| `stormwind-roles.yaml` | 60 | the same characters, each with a spec (two tanks, two healers, six DPS), talents reset, in Stormwind's Trade District, with `stormwind-roles.notice.md` |
-| `fresh-split.yaml` | 120 | ten new agents a11-a20 from level 1: five on Claude Code, five on Codex, each side one of each class with mirrored specs. Refuses to start if any of their workspaces exists |
+| `smoke-openrouter.yaml` | 5 | Claude Code and opencode on cheap models through OpenRouter: checks both paths for a few cents |
+| `fresh-claude.yaml` | 60 | five new Claude Code agents a21-a25 from level 1, one of each class (a tank, a healer, three DPS) |
+| `fresh-codex.yaml` | 60 | the same five classes and specs on Codex, a26-a30 |
+| `fresh-split.yaml` | 120 | ten new agents a11-a20 from level 1: five on Claude Code, five on Codex, each side one of each class with mirrored specs |
 | `models-frost.yaml` | 60 | ten new Frost Mages a31-a40, one per model, all on opencode through OpenRouter: Claude Opus, Sonnet and Haiku, three sizes of GPT and of Gemini, and DeepSeek |
+| `hogger-trio.yaml` | 120 | three new level-5 Claude Code agents a41-a43 in Goldshire (Protection Paladin, Holy Priest, Frost Mage) with one goal: "Wanted: Hogger" (quest 176) |
+| `deadmines.yaml` | 10080 | five new level-1 Codex (GPT-6.1 Sol) agents a44-a48 in Northshire, a dungeon party, with one goal: clear the Deadmines (`achievement:628`). A week on the clock; each stops when it has the achievement |
+
+All but the smoke tests set `require_fresh`: they refuse to start if any agent's workspace exists.
 
 ## Fields
 
@@ -26,7 +30,7 @@ Unknown fields are errors, so a typo doesn't silently change a run.
 |---|---|
 | `name` | the run directory is `runs/<time>-<name>/`; default the file name |
 | `description` | for people |
-| `goal` | a judge goal: `score:100000` (XP per hour; "as much as possible"), `level:10`, `quest:176`, `quests:5`, `skill:164:75`, `money:<copper>`, `item:<entry>`, `quality:<0-5>`, `achpoints:<n>` ([judge](../../azbench/judge/README.md)) |
+| `goal` | a judge goal: `score:100000` (XP per hour; "as much as possible"), `level:10`, `quest:176`, `achievement:628`, `quests:5`, `skill:164:75`, `money:<copper>`, `item:<entry>`, `quality:<0-5>`, `achpoints:<n>` ([judge](../../azbench/judge/README.md)) |
 | `minutes` | the run's length; default 60 |
 | `start` | where every character starts: a name from [`places.yaml`](../places.yaml), `"x y z map zone"`, or `{x, y, z, map, zone}`. Omitted: where they are (new characters: their race's start) |
 | `level`, `money` | set before the run (money in copper) |

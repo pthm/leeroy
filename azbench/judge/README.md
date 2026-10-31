@@ -40,10 +40,11 @@ bin/azbench judge Agentone level:10 --timeout 4h
 | `skill:<id>:<n>` | that skill line's level (e.g. 164 Blacksmithing, 186 Mining); met at n |
 | `item:<entry>` | 1 once the character owns that item |
 | `quality:<0-5>` | 1 once it owns any item of that quality or better (3 = rare) |
+| `achievement:<id>` | 1 once the character has earned that achievement (e.g. 628 Deadmines: Edwin VanCleef killed) |
 | `achpoints:<n>` | achievement points earned since the judge started (needs the `wowbench` schema from `bin/azworld setup`) |
 | `score:<n>` | weighted change in the signals since the judge started (weights in `score.json`) |
 
-The goal is met when the value reaches n (1 for `quest`, `item`, `quality`). For "as much as possible", pass a large
+The goal is met when the value reaches n (1 for `quest`, `achievement`, `item`, `quality`). For "as much as possible", pass a large
 n and read the value at timeout.
 
 | Flag | |

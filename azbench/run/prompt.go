@@ -35,6 +35,12 @@ func goalText(goal string, mins int) string {
 		return "own any item of quality " + n + " or better (3 = rare)"
 	case "score":
 		return fmt.Sprintf("progress as much as you can in %d minutes. You choose your own adventure: where to go, what to\nfight, which quests to take, who to play with", mins)
+	case "achievement":
+		name, desc := "achievement "+n, ""
+		if r, err := world.Rows(world.World(), "SELECT name, description FROM wowbench.achievement WHERE id = ?", n); err == nil && len(r) > 0 {
+			name, desc = r[0][0], " ("+strings.TrimSuffix(r[0][1], ".")+")"
+		}
+		return fmt.Sprintf("earn the achievement %s%s, achievement %s", name, desc, n)
 	case "achpoints":
 		return "earn as many achievement points as you can"
 	case "skill":

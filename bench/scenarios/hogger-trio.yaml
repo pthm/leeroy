@@ -4,7 +4,7 @@ description: >
   Frost Mage), on Claude Code, with one goal: complete "Wanted: Hogger" (quest 176). Hogger is an elite level-11
   gnoll whose claw only drops when he dies, so the three have to work it out together. Scored on time to the goal.
 goal: quest:176
-minutes: 60
+minutes: 120
 start: goldshire
 level: 5
 require_fresh: true
