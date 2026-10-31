@@ -169,7 +169,9 @@ func (s *PathFindingService) prepareCandidate(ctx context.Context, m uint32, r *
 			ray.Segment = i
 			return fail(ray)
 		}
-		if ray.State == "blocked" && ray.Position.Z > ground {
+		// the collision floor nearest the surface point wins: terrain within reach above it is the hillside a cave
+		// or building is cut into, not the floor (Echo Ridge Mine's mouth)
+		if ray.State == "blocked" && (math.IsInf(float64(ground), 0) || math.Abs(float64(ray.Position.Z-p.Z)) < math.Abs(float64(ground-p.Z))) {
 			ground = ray.Position.Z
 		}
 		if math.IsInf(float64(ground), 0) || math.IsNaN(float64(ground)) || math.Abs(float64(ground-p.Z)) > float64(MaxProjectionVertical) {
