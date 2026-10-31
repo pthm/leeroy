@@ -239,7 +239,7 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 		for _, c := range agentCommands {
 			args = append(args, "Bash("+c+":*)")
 		}
-		args = append(args, "TaskOutput", "Edit(./**)", "--disallowedTools", "Edit(~/.claude/**)", "Read(~/.claude/**)")
+		args = append(args, "Edit(./**)", "--disallowedTools", "Edit(~/.claude/**)", "Read(~/.claude/**)")
 		cmd = exec.Command("claude", args...)
 	case "opencode":
 		args := []string{"run", "--pure", "--format", "json", "-m", a.Model, "--dir", p.ws}

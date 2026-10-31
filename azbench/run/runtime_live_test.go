@@ -57,7 +57,7 @@ func TestRuntimePermissionsLive(t *testing.T) {
 			p := &player{r: &Runner{repo: repo, dir: dir}, ws: ws, dir: dir, port: 8112, a: a}
 			prompt := "Run these permission smoke commands exactly, one separate shell tool call each. Do not change files or call other commands. Finish only after all calls return; if a tool yields a session/task handle, poll it with the runtime polling tool. Report failures accurately. These are local tool tests, not gameplay.\n" + strings.Join(commands, "\n")
 			if runtime == "claude" {
-				prompt += "\nFor sleep 12, set Bash run_in_background=true, then use TaskOutput with block=true to wait for completion."
+				prompt += "\nFor sleep 12, set Bash run_in_background=true, then wait for the runtime's completion notification. TaskOutput is not installed; do not search for it."
 			}
 			if runtime == "codex" {
 				prompt += "\nFor sleep 12, set exec_command yield_time_ms=1000, then use write_stdin to wait for completion."
@@ -95,7 +95,7 @@ func TestRuntimePermissionsLive(t *testing.T) {
 			seen := map[string]bool{}
 			polled := false
 			diag := newToolDiagnostics(runtime, func(d types.Diagnostic) {
-				if d.Op == "TaskOutput" && d.Outcome == "succeeded" {
+				if d.Details.CommandFamily == "sleep" && d.Outcome == "succeeded" && d.DurationMS >= 11000 {
 					polled = true
 				}
 				if d.Kind == "tool_call" && d.Outcome == "succeeded" {
@@ -121,7 +121,7 @@ func TestRuntimePermissionsLive(t *testing.T) {
 				}
 			}
 			if runtime == "claude" && !polled {
-				t.Error("no successful TaskOutput completion evidence")
+				t.Error("no completed background sleep evidence with its actual duration")
 			}
 			summary, _ := json.MarshalIndent(seen, "", "  ")
 			os.WriteFile(filepath.Join(dir, "commands.json"), summary, 0644)

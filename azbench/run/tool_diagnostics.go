@@ -14,6 +14,7 @@ import (
 type pendingTool struct {
 	start        int64
 	tool, family string
+	background   bool
 }
 type toolDiagnostics struct {
 	runtime string
@@ -74,7 +75,7 @@ func (d *toolDiagnostics) begin(id, tool, command string, at int64) {
 		d.emit(types.Diagnostic{Kind: "runtime_state", Code: "diagnostic_overflow", Details: types.DiagnosticDetails{Component: "agent", State: "coverage_gap", Runtime: d.runtime}})
 		return
 	}
-	d.pending[id] = pendingTool{at, toolName(tool), commandFamily(command)}
+	d.pending[id] = pendingTool{start: at, tool: toolName(tool), family: commandFamily(command)}
 }
 func (d *toolDiagnostics) end(id string, at int64, failed bool, exit *int, code string, known bool) {
 	p, ok := d.pending[id]
@@ -121,6 +122,14 @@ func (d *toolDiagnostics) observe(m map[string]any) {
 		d.emit(types.Diagnostic{Kind: "runtime_state", Code: code, Details: types.DiagnosticDetails{Component: "agent", State: "usage_limit", Runtime: d.runtime}})
 	}
 	switch stringValue(m["type"]) {
+	case "system":
+		if m["subtype"] == "task_notification" {
+			id := stringValue(m["tool_use_id"])
+			if p, ok := d.pending[id]; ok && p.background {
+				status := stringValue(m["status"])
+				d.end(id, at, status == "failed" || status == "stopped", nil, errorCode(m), status == "completed" || status == "failed" || status == "stopped")
+			}
+		}
 	case "assistant", "user":
 		content, _ := object(m["message"])["content"].([]any)
 		for _, v := range content {
@@ -128,8 +137,17 @@ func (d *toolDiagnostics) observe(m map[string]any) {
 			switch c["type"] {
 			case "tool_use":
 				d.begin(stringValue(c["id"]), stringValue(c["name"]), stringValue(object(c["input"])["command"]), at)
+				if object(c["input"])["run_in_background"] == true {
+					id := stringValue(c["id"])
+					p := d.pending[id]
+					p.background = true
+					d.pending[id] = p
+				}
 			case "tool_result":
 				failed, _ := c["is_error"].(bool)
+				if p, ok := d.pending[stringValue(c["tool_use_id"])]; ok && p.background && !failed {
+					continue
+				}
 				d.end(stringValue(c["tool_use_id"]), at, failed, nil, errorCode(c), true)
 			}
 		}

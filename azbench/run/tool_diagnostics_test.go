@@ -105,3 +105,28 @@ runtime stderr
 		t.Fatal("duplicate timestamp fields")
 	}
 }
+
+func TestClaudeBackgroundLaunchWaitsForCompletionNotification(t *testing.T) {
+	for _, status := range []string{"completed", "failed"} {
+		t.Run(status, func(t *testing.T) {
+			var out []types.Diagnostic
+			d := newToolDiagnostics("claude", func(v types.Diagnostic) { out = append(out, v) })
+			for _, line := range []string{
+				`{"type":"assistant","timestamp":"2026-10-30T00:00:00Z","message":{"content":[{"type":"tool_use","id":"b1","name":"Bash","input":{"command":"sleep 12","run_in_background":true}}]}}`,
+				`{"type":"user","timestamp":"2026-10-30T00:00:00.1Z","message":{"content":[{"type":"tool_result","tool_use_id":"b1","is_error":false,"content":"background launch"}]}}`,
+			} {
+				decodeToolLine([]byte(line), d.observe)
+			}
+			if len(out) != 0 {
+				t.Fatal("launch counted as completion")
+			}
+			decodeToolLine([]byte(`{"type":"system","subtype":"task_notification","tool_use_id":"b1","status":"`+status+`","timestamp":"2026-10-30T00:00:12Z"}`), d.observe)
+			if len(out) != 1 || out[0].DurationMS != 12000 || out[0].Details.CommandFamily != "sleep" {
+				t.Fatalf("%+v", out)
+			}
+			if (out[0].Outcome == "succeeded") != (status == "completed") {
+				t.Fatalf("%+v", out[0])
+			}
+		})
+	}
+}

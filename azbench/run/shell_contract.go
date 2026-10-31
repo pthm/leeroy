@@ -18,7 +18,7 @@ func shellContract(runtime string) string {
 	case "codex":
 		text += "\nThe runtime enforces workspace write boundaries, not a command allowlist. If its shell returns a running session handle, poll that handle with its stdin/poll tool until completion before starting another wait.\n"
 	case "claude":
-		text += "\nShell permissions allow the command prefixes above. If Bash returns a background task ID, use TaskOutput with that ID to obtain completion.\n"
+		text += "\nShell permissions allow the command prefixes above. Prefer bounded foreground Bash calls. If Bash returns a background task ID, use the runtime's completion notification; Read can inspect the output file named in the response. Do not assume TaskOutput is installed, and do not treat background launch as completion.\n"
 	case "opencode":
 		text += "\nBash permissions allow each listed command and its arguments; other commands are denied. Use separate short calls if a long shell call times out.\n"
 	}

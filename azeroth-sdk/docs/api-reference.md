@@ -1882,6 +1882,7 @@ Battleground: a battleground or arena queue changed.
 
 | Field | Type | |
 |---|---|---|
+| `count` | number | protocol cast sequence; zero may be an unsolicited/server cast |
 | `spell` | number |  |
 | `name` | string |  |
 | `cast_ms?` | number | cast_start: how long it takes |
