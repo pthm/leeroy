@@ -18,6 +18,8 @@ Evidence collected on 2026-10-30. These are execution and contract checks, not a
 | OpenCode shell | All 15 command families through authenticated `openai/gpt-6.1-sol` | `bench/runs/20261030-reliability-shell-authenticated/opencode/` |
 | Comparison utility | Two unit tests: common-horizon sampling/missing evidence, overlapping episode duration | `python3 -m unittest discover -s bench/acceptance -p 'test_*.py'` |
 
+The final Go/race/real-map/lifecycle/runtime logs and binary hashes are copied to `bench/runs/20261030-reliability-validation/`; `/tmp` paths above name their original capture locations.
+
 Each GM directory contains `replies.jsonl` with timestamps, exact Lua calls, replies and command exit status. A Lua assertion/task failure cannot count as a pass. Runtime directories contain stamped transcripts and `commands.json`. The lifecycle fixture saves the complete run. Run artifacts are intentionally ignored by version control; this record and the reproducible fixtures are tracked.
 
 Installed runtime versions: Claude Code **2.1.292**, Codex CLI **0.165.0**, OpenCode **1.18.22**. Claude no longer exposes `TaskOutput`: its background Bash jobs report structured completion notifications. The harness now retains the pending command until that notification. Codex's exported command events show completion but do not expose every internal polling call separately.
@@ -56,7 +58,29 @@ The earlier candidate `20261030-164436-hogger-reliability` used 60 minutes and w
 
 The smoke trace exposed a report-only classification issue: a batch of pending requests cancelled when a task stopped could appear as an active retry episode. Operation totals still include these outcomes, while episode aggregation now closes the stopped task and excludes its cancellation batch. This has focused regression coverage and does not alter running SDK behavior or judge scores.
 
-Pending: final candidate report and comparison. After completion:
+The observation ended at **17:44:52 PDT** (pause cleanup completed at 17:45:39). The saved report says `state=paused`; all three judge values are provisional. The comparison is saved as `comparison.json` in the candidate directory.
+
+| Role | Baseline XP gained at 900 s | Candidate XP gained at 900 s | Baseline / candidate deaths | Baseline / candidate Hogger goal value |
+|---|---:|---:|---:|---:|
+| Paladin | 331 | 177 | 2 / 2 | 0 / 0 |
+| Priest | 331 | 333 | 2 / 2 | 0 / 0 |
+| Mage | 376 | 292 | 2 / 2 | 0 / 0 |
+
+This sample does **not** show improved encounter outcomes. It verifies that the tools remain usable during fresh autonomous play and that failures are attributable to saved evidence. No new route timeout or structured shell denial/timeout was recorded. Diagnostic coverage is available for all three agents with zero sequence gaps; paused reports contain no active failure episodes.
+
+Candidate diagnostic coverage includes setup and shutdown boundaries, so its sampled durations are intentionally separate from the 900-second judge comparison:
+
+| Role | Observed seconds | Observed dead seconds | Recovery requests | Movement ownership wait, seconds | Repeated-failure episodes | Union of episode intervals, seconds |
+|---|---:|---:|---:|---:|---:|---:|
+| Paladin | 928.006 | 120.001 | 2 | 0 | 3 | 26.193 |
+| Priest | 918.006 | 88.001 | 2 | 5.853 | 69 | 186.673 |
+| Mage | 908.006 | 230.002 | 2 | 32.203 | 17 | 24.785 |
+
+All three have zero observed broken-weapon time and zero movement preemptions in this smoke run; preemption and broken-weapon behavior were exercised separately by the live fixtures. The baseline has no equivalent reliability instrumentation, so an improvement in these counters cannot be calculated.
+
+The priest's episodes include 47,625 `act.cast/cooldown` refusals and 5,554 `act.cast/casting` refusals; the mage's include 7,797 `act.rest/not_alive` refusals. These are immediate, typed failures repeatedly invoked by agent code, not evidence of an unbounded SDK retry. Other episodes include `movement_busy`, `move_limit` and missing NPCs. The report retains operation, task, target, source line, result and event references; it does not infer that a failed call advanced a quest or that one particular strategic change would win. No hidden retry backoff or party policy was added.
+
+Reproduce the saved comparison:
 
 ```sh
 python3 bench/acceptance/compare.py bench/runs/20261030-100559-hogger-trio bench/runs/20261030-172848-hogger-reliability --seconds 900 > bench/runs/20261030-172848-hogger-reliability/comparison.json
