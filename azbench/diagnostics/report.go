@@ -278,6 +278,20 @@ func Read(agent string, paths ...string) Summary {
 		a.Count++
 		a.DurationMS += max(ev.DurationMS, 0)
 		a.Last = ev.ref
+		// A task shutdown can resolve many pending requests in one batch. Those
+		// outcomes count above, but are cleanup, not active repeated attempts.
+		if ev.Code == "task_stopped" || ev.Code == "task_paused" || ev.Code == "task_finished" || ev.Code == "session_closed" {
+			prefix := ev.Session + "|" + strconv.Itoa(ev.TaskID) + "|" + ev.Task + "|"
+			for key, p := range pendingByKey {
+				if strings.HasPrefix(p.base, prefix) {
+					if p.episode >= 0 {
+						s.Episodes[p.episode].Active = false
+					}
+					delete(pendingByKey, key)
+				}
+			}
+			continue
+		}
 		// Destination and all available target identifiers prevent unrelated objectives sharing an episode.
 		d := ev.Details
 		target, _ := json.Marshal(struct {

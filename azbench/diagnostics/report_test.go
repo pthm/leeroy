@@ -214,3 +214,37 @@ func TestRecoveryAndGearEvidencePreservesTaskAndSource(t *testing.T) {
 		t.Fatalf("observations invented failure episodes: %+v", s.Episodes)
 	}
 }
+
+func TestTaskShutdownClosesEpisodesWithoutCallingCleanupARetryLoop(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "record.jsonl")
+	events := []types.Diagnostic{failure(1, 1000), failure(2, 2000), failure(3, 3000)}
+	for i := 0; i < 6; i++ {
+		e := failure(uint64(4+i), 4000)
+		e.Code = "task_stopped"
+		events = append(events, e)
+	}
+	writeEvents(t, path, events)
+	s := Read("a1", path)
+	if len(s.Episodes) != 1 || s.Episodes[0].Active {
+		t.Fatalf("cleanup became an active episode: %+v", s.Episodes)
+	}
+	found := false
+	for _, a := range s.ByOperation {
+		if a.Code == "task_stopped" {
+			found = true
+			if a.Count != 6 {
+				t.Fatalf("lost cleanup evidence: %+v", a)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing cancellation aggregate")
+	}
+	// A resumed/replacement task can still start a fresh genuine retry episode.
+	events = append(events, failure(10, 5000), failure(11, 6000), failure(12, 7000))
+	writeEvents(t, path, events)
+	s = Read("a1", path)
+	if len(s.Episodes) != 2 || !s.Episodes[1].Active || s.Episodes[0].Active {
+		t.Fatalf("new attempts joined stale episode: %+v", s.Episodes)
+	}
+}

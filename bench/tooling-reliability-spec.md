@@ -198,7 +198,7 @@ Use one coherent error code set across the new API; keeping an old code is a cho
 `azbench report` writes `diagnostics` to each agent's `report.json` entry and a compact `diagnostics` summary to `team.json`. Version these fields with `diagnostics.schema = 1`. Judge scores keep their meanings; other report fields may change in the clean schema revision. Include:
 
 - Counts and total time by operation and error code, plus the first and last event IDs for each repeated failure.
-- Repeated-failure episodes: at least three identical `(task, op, code, target or destination)` failures within 30 seconds with no intervening success. Show episode duration, not only count.
+- Repeated-failure episodes: at least three identical `(task, op, code, target or destination)` failures within 30 seconds with no intervening success. Show episode duration, not only count. Task/session shutdown can cancel many outstanding requests at once; retain those individual outcomes in operation totals, close the task’s episodes, and do not classify the cancellation batch as an active retry loop.
 - Movement preemptions, time waiting for movement ownership, route timeouts, recovery attempts, dead time, broken-weapon time, and shell tool timeouts or denials.
 - Data coverage: record files found, session attempts, earliest and latest event, missing intervals, and model cost status (`known`, `estimated`, or `unavailable`). An unavailable cost is `null`, not zero.
 - Run state (`running`, `paused`, `completed`, or `failed`) and per-agent judge state. A paused run shows provisional board values and no final goal result until its judge finishes.
@@ -320,7 +320,7 @@ coverage, live danger estimates, or a hard deadline for stalled kernel operation
 
 ### Current implementation and acceptance status (2026-10-30)
 
-The implementation boundaries listed above are now covered by the additional stack below. Unit tests, the complete Go suite, focused race tests, real-map pathfinding tests, and the live acceptance suites pass. A fresh matched 120-minute Hogger run is in progress; benchmark interpretation remains pending its saved report. See [acceptance evidence](acceptance/README.md) for commands, artifact locations, runtime versions, limitations, and the final comparison.
+The implementation boundaries listed above are now covered by the additional stack below. Unit tests, the complete Go suite, focused race tests, real-map pathfinding tests, and the live acceptance suites pass. A fresh Hogger run uses the saved 120-minute scenario configuration, with a deliberately bounded 15-minute observation window for comparison; benchmark interpretation remains pending its saved report. See [acceptance evidence](acceptance/README.md) for commands, artifact locations, runtime versions, limitations, and the final comparison.
 
 | Changes | Completed behavior and evidence |
 |---|---|
@@ -342,7 +342,7 @@ Explicit limits remain part of the contracts, not silent success paths:
 - Spell range, target eligibility and danger use available observations and identify unknown evidence; the server remains authoritative. Cast sequence IDs are reserved through the request deadline plus a 30-second late-reply quarantine; exhaustion returns `cast_busy`.
 - A corpse release authorizes one transfer for its current recovery lease. It still invalidates active paths and queued movement; disconnects, expiry, a replacement lease and later unrelated teleports do not inherit that authorization.
 - Old runs have no new reliability instrumentation. Their missing counters remain null. The old Hogger snapshot was configured for 120 minutes but saved about 88 minutes of play; comparisons use the common observed sample horizon and disclose their differing full-run coverage.
-- The original ten-model mage matrix includes OpenRouter models. This session has no OpenRouter credentials, so an exact replay of that matrix cannot run. OpenCode itself is verified through its already-authenticated OpenAI provider; models are not silently substituted in a benchmark.
+- Benchmark confirmation is limited to the Hogger trio; replaying every historical scenario is not required. OpenCode itself is verified through its already-authenticated OpenAI provider. The original OpenRouter mage matrix is not replayed, and its models are not silently substituted.
 
 Unknown run state is permitted when saved artifacts cannot establish a specified lifecycle state. Tool timeout/denial totals describe observed structured codes only. A runtime JSON error is retained even if its process exits zero; generic error prose does not establish a permission denial, timeout, quota condition or game failure.
 

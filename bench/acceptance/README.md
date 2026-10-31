@@ -22,7 +22,7 @@ Each GM directory contains `replies.jsonl` with timestamps, exact Lua calls, rep
 
 Installed runtime versions: Claude Code **2.1.292**, Codex CLI **0.165.0**, OpenCode **1.18.22**. Claude no longer exposes `TaskOutput`: its background Bash jobs report structured completion notifications. The harness now retains the pending command until that notification. Codex's exported command events show completion but do not expose every internal polling call separately.
 
-The first OpenCode attempts used an unavailable OpenRouter provider. Enabling error logs revealed `ProviderModelNotFoundError`; no tool executed. The session has OpenAI OAuth and Anthropic credentials, and no `OPENROUTER_API_KEY`. The later authenticated OpenAI run passes. The runner now rejects an unconfigured OpenRouter model prefix before starting game sessions and retains structured runtime errors even when the runtime exits zero. The exact original OpenRouter mage matrix remains externally blocked; the passing smoke test is not represented as that benchmark.
+The first OpenCode attempts used an unavailable OpenRouter provider. Enabling error logs revealed `ProviderModelNotFoundError`; no tool executed. The session has OpenAI OAuth and Anthropic credentials, and no `OPENROUTER_API_KEY`. The later authenticated OpenAI run passes. The runner now rejects an unconfigured OpenRouter model prefix before starting game sessions and retains structured runtime errors even when the runtime exits zero. Replaying every historical scenario is outside this acceptance pass; the Hogger trio is the selected confirmation run. The OpenRouter mage matrix is not replayed, and the passing smoke test is not represented as that benchmark.
 
 ## Reproduce
 
@@ -48,16 +48,18 @@ The runtime smoke uses configured paid model access; normal unit tests skip both
 
 ## Matched benchmark
 
-Final candidate: `bench/runs/20261030-172848-hogger-reliability`, agents a57–a59, started **17:29:44 PDT**, configured for 120 minutes. It uses the SDK through `ee8f7b91` and harness through `f171f5cf`, plus the fresh-name scenario change. Runtime, model, level, classes, specs, initial location/resources and goal match the saved original scenario. Workspaces are fresh. No tactics or code are supplied to the agents during play.
+Final candidate: `bench/runs/20261030-172848-hogger-reliability`, agents a57–a59, started **17:29:44 PDT**, configured for 120 minutes and observed for a 15-minute regression smoke window. It uses the SDK through `ee8f7b91` and harness through `f171f5cf`, plus the fresh-name scenario change. Runtime, model, level, classes, specs, initial location/resources and goal match the saved original scenario. Workspaces are fresh. No tactics or code are supplied to the agents during play.
 
-Baseline: `bench/runs/20261030-100559-hogger-trio`, configured for 120 minutes but with **5,236 seconds** of saved judge samples per character. Its original report remains untouched. The comparison utility uses the common sampled horizon for judge progress, XP, deaths and kills. Full-run diagnostic durations have their own coverage and are not silently normalized to that horizon.
+Baseline: `bench/runs/20261030-100559-hogger-trio`, configured for 120 minutes but with **5,236 seconds** of saved judge samples per character. Its original report remains untouched. The comparison utility uses the first 900 seconds on each character’s judge-sample clock for progress, XP, deaths and kills. The final candidate is deliberately paused at that observation boundary; its score remains provisional, and the test does not establish full-run encounter performance. Full-run diagnostic durations have their own coverage and are not silently normalized to that horizon.
 
 The earlier candidate `20261030-164436-hogger-reliability` used 60 minutes and was paused after about 37 minutes when the saved baseline mismatch was found. `20261030-172246-hogger-reliability` was stopped during startup to include the healer-observation fix. Neither is counted as a matched trial.
+
+The smoke trace exposed a report-only classification issue: a batch of pending requests cancelled when a task stopped could appear as an active retry episode. Operation totals still include these outcomes, while episode aggregation now closes the stopped task and excludes its cancellation batch. This has focused regression coverage and does not alter running SDK behavior or judge scores.
 
 Pending: final candidate report and comparison. After completion:
 
 ```sh
-python3 bench/acceptance/compare.py bench/runs/20261030-100559-hogger-trio bench/runs/20261030-172848-hogger-reliability > bench/runs/20261030-172848-hogger-reliability/comparison.json
+python3 bench/acceptance/compare.py bench/runs/20261030-100559-hogger-trio bench/runs/20261030-172848-hogger-reliability --seconds 900 > bench/runs/20261030-172848-hogger-reliability/comparison.json
 ```
 
 Sample size is one three-agent run per condition. The shared world contains persistent changes and other sessions; GM probes used separate characters and were completed before the final benchmark. Contention and model variation prevent causal attribution or model ranking from this sample. The original baseline lacks the new failure-episode, ownership, route-timeout and sampled dead/broken-weapon counters; these comparisons must remain unavailable, not zero.

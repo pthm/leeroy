@@ -60,6 +60,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("baseline")
     parser.add_argument("candidate")
+    parser.add_argument("--seconds",type=float,help="cap the common judge-sample horizon")
     args=parser.parse_args()
     baseline,candidate=read_run(args.baseline),read_run(args.candidate)
     if baseline.keys()!=candidate.keys():
@@ -69,6 +70,10 @@ def main():
             if baseline[role][0].get(key)!=candidate[role][0].get(key):
                 raise ValueError(f"{role}: {key} differs")
     horizon=min(a[2][-1]["elapsed_s"] for a in [*baseline.values(),*candidate.values()])
+    if args.seconds is not None:
+        if not args.seconds>0:
+            raise ValueError("seconds must be positive")
+        horizon=min(horizon,args.seconds)
     print(json.dumps({"baseline":args.baseline,"candidate":args.candidate,"common_horizon_s":horizon,
         "note":"Judge signals use the common sampled horizon. Diagnostics retain each full run's own coverage; missing baseline instrumentation is not zero. One run per condition does not establish causality.",
         "agents":[{"spec":role,"baseline":summarize(baseline[role],horizon),"candidate":summarize(candidate[role],horizon)} for role in sorted(baseline)]},indent=2))
