@@ -127,31 +127,63 @@ func Load(dataDir string) (*Book, error) {
 	return b, nil
 }
 
+// Stats are the character values formulas scale with, by their token: AP (attack power), RAP (ranged attack
+// power), SPH (spell power for healing), SPS (spell power), SPI (spirit), PL (level). A formula using one that
+// isn't given shows how it scales instead: "13 (+31% of attack power)".
+type Stats map[string]float64
+
+// statNames: the scaling tokens descriptions use (Spell.dbc counts: AP 596, RAP 105, SPH 94, MW 27...), and what
+// to call them
+var statNames = map[string]string{"AP": "attack power", "RAP": "ranged attack power", "SPH": "spell power",
+	"SPS": "spell power", "SPI": "spirit", "PL": "level", "MW": "weapon damage", "MWB": "weapon damage",
+	"MWS": "weapon speed", "RWB": "ranged weapon damage", "HND": "hands"}
+
 // Description is the spell's description with its placeholders filled in ("" for an unknown spell).
-func (b *Book) Description(id uint32) string {
+func (b *Book) Description(id uint32) string { return b.DescriptionWith(id, nil) }
+
+// DescriptionWith fills in stat-scaled formulas from stats.
+func (b *Book) DescriptionWith(id uint32, stats Stats) string {
 	if s := b.spells[id]; s != nil {
-		return b.resolve(id, s.desc)
+		return b.resolve(id, s.desc, stats)
 	}
 	return ""
 }
 
 // Tooltip is what the spell's aura says while it's on you, filled in.
-func (b *Book) Tooltip(id uint32) string {
+func (b *Book) Tooltip(id uint32) string { return b.TooltipWith(id, nil) }
+
+// TooltipWith fills in stat-scaled formulas from stats.
+func (b *Book) TooltipWith(id uint32, stats Stats) string {
 	if s := b.spells[id]; s != nil {
-		return b.resolve(id, s.tip)
+		return b.resolve(id, s.tip, stats)
 	}
 	return ""
 }
 
-func (b *Book) resolve(id uint32, text string) string {
-	r := &resolver{b: b, id: id, last: math.NaN()}
+func (b *Book) resolve(id uint32, text string, stats Stats) string {
+	r := &resolver{b: b, id: id, last: math.NaN(), stats: stats}
 	return r.text(text, 0)
 }
 
 type resolver struct {
-	b    *Book
-	id   uint32
-	last float64 // the last number written, for plurals
+	b     *Book
+	id    uint32
+	last  float64 // the last number written, for plurals
+	stats Stats
+}
+
+// stat: the scaling token at text[i:] (after its '$'), longest first, or ""
+func stat(text string, i int) string {
+	j := i
+	for j < len(text) && text[j] >= 'A' && text[j] <= 'Z' {
+		j++
+	}
+	for k := j; k > i; k-- {
+		if _, ok := statNames[text[i:k]]; ok {
+			return text[i:k]
+		}
+	}
+	return ""
 }
 
 // value is an effect value: base+1, or a range when the die rolls more than 1 (lo != hi)
@@ -289,13 +321,25 @@ func (r *resolver) text(text string, depth int) string {
 				out.WriteString(text[start:])
 				return out.String()
 			}
-			if v, ok := r.expr(text[i+1:end], depth+1); ok {
-				out.WriteString(num(v))
+			// whole numbers, as the client shows them, unless a precision follows: ${...}.1
+			digits, next := 0, end+1
+			if next+1 < len(text) && text[next] == '.' && text[next+1] >= '0' && text[next+1] <= '9' {
+				digits, next = int(text[next+1]-'0'), next+2
+			}
+			if v, t, ok := r.exprText(text[i+1:end], depth+1); ok {
+				p := math.Pow(10, float64(digits))
+				v = math.Round(v*p) / p
+				if t == "" {
+					t = strconv.FormatFloat(v, 'f', digits, 64)
+				} else {
+					t = roundScaled(t)
+				}
+				out.WriteString(t)
 				r.last = v
 			} else {
-				out.WriteString(text[start : end+1])
+				out.WriteString(text[start:next])
 			}
-			i = end + 1
+			i = next
 		case c == '<': // $<variable>
 			end := strings.IndexByte(text[i:], '>')
 			if end < 0 {
@@ -333,6 +377,15 @@ func (r *resolver) text(text string, depth int) string {
 				out.WriteString(one)
 			}
 			i += semi + 1
+		case stat(text, i) != "": // a bare $AP: its value, or what it is
+			name := stat(text, i)
+			if v, ok := r.stats[name]; ok {
+				out.WriteString(num(v))
+				r.last = v
+			} else {
+				out.WriteString(statNames[name])
+			}
+			i += len(name)
 		default:
 			v, s, end, ok := r.token(text, i, depth)
 			if !ok {
@@ -361,24 +414,47 @@ func (r *resolver) variable(name string, depth int) (float64, bool) {
 	return v, err == nil
 }
 
-// expr evaluates an arithmetic expression after resolving its placeholders: + - * / and parentheses
+// expr evaluates an arithmetic expression after resolving its placeholders: + - * / parentheses and $floor()
 func (r *resolver) expr(e string, depth int) (float64, bool) {
-	// placeholders become numbers (a range's low end)
+	v, _, ok := r.exprText(e, depth)
+	return v, ok
+}
+
+// exprText also says how the value scales with stats it wasn't given ("13 (+31% of attack power)"); text is ""
+// when it doesn't
+func (r *resolver) exprText(e string, depth int) (float64, string, bool) {
+	// placeholders become numbers (a range's low end); unknown stats become {NAME} slots
 	var b strings.Builder
+	unknown := []string{}
 	for i := 0; i < len(e); {
 		if e[i] != '$' {
 			b.WriteByte(e[i])
 			i++
 			continue
 		}
+		if strings.HasPrefix(strings.ToUpper(e[i+1:]), "FLOOR(") {
+			b.WriteString("f(")
+			i += len("$FLOOR(")
+			continue
+		}
+		if name := stat(e, i+1); name != "" {
+			if v, ok := r.stats[name]; ok {
+				b.WriteString(strconv.FormatFloat(v, 'f', -1, 64))
+			} else {
+				b.WriteString("{" + name + "}")
+				unknown = append(unknown, name)
+			}
+			i += 1 + len(name)
+			continue
+		}
 		if i+1 < len(e) && e[i+1] == '<' {
 			end := strings.IndexByte(e[i:], '>')
 			if end < 0 {
-				return 0, false
+				return 0, "", false
 			}
 			v, ok := r.variable(e[i+2:i+end], depth+1)
 			if !ok {
-				return 0, false
+				return 0, "", false
 			}
 			b.WriteString(strconv.FormatFloat(v, 'f', -1, 64))
 			i += end + 1
@@ -386,14 +462,45 @@ func (r *resolver) expr(e string, depth int) (float64, bool) {
 		}
 		v, _, end, ok := r.token(e, i+1, depth)
 		if !ok {
-			return 0, false
+			return 0, "", false
 		}
 		b.WriteString(strconv.FormatFloat(v, 'f', -1, 64))
 		i = end
 	}
-	p := &parser{s: strings.ReplaceAll(b.String(), " ", "")}
-	v, ok := p.sum()
-	return v, ok && p.i == len(p.s)
+	src := strings.ReplaceAll(b.String(), " ", "")
+	eval := func(set map[string]float64) (float64, bool) {
+		x := src
+		for _, n := range unknown {
+			x = strings.ReplaceAll(x, "{"+n+"}", strconv.FormatFloat(set[n], 'f', -1, 64))
+		}
+		p := &parser{s: x}
+		v, ok := p.sum()
+		return v, ok && p.i == len(p.s)
+	}
+	base, ok := eval(nil)
+	if !ok || len(unknown) == 0 {
+		return base, "", ok
+	}
+	// how it scales: per stat, the change from 0 to 1 (and 2, to be sure it's linear)
+	text, seen := num(base), map[string]bool{}
+	for _, n := range unknown {
+		if seen[n] {
+			continue
+		}
+		seen[n] = true
+		one, ok1 := eval(map[string]float64{n: 1})
+		two, ok2 := eval(map[string]float64{n: 2})
+		k := one - base
+		if !ok1 || !ok2 || math.Abs((two-base)-2*k) > 1e-6 {
+			return 0, "", false
+		}
+		if n == "PL" {
+			text += fmt.Sprintf(" (+%s per level)", num(k))
+		} else {
+			text += fmt.Sprintf(" (+%s%% of %s)", num(k*100), statNames[n])
+		}
+	}
+	return base, text, true
 }
 
 type parser struct {
@@ -437,6 +544,10 @@ func (p *parser) unary() (float64, bool) {
 		v, ok := p.unary()
 		return -v, ok
 	}
+	floor := p.i+1 < len(p.s) && p.s[p.i] == 'f' && p.s[p.i+1] == '('
+	if floor {
+		p.i++
+	}
 	if p.i < len(p.s) && p.s[p.i] == '(' {
 		p.i++
 		v, ok := p.sum()
@@ -444,6 +555,9 @@ func (p *parser) unary() (float64, bool) {
 			return 0, false
 		}
 		p.i++
+		if floor {
+			v = math.Floor(v)
+		}
 		return v, true
 	}
 	j := p.i
@@ -496,4 +610,16 @@ func lastBranch(text string, i int) (string, int) {
 		}
 	}
 	return alt, end
+}
+
+// roundScaled: "99.4 (+31% of attack power)" -> "99 (+31% of attack power)"
+func roundScaled(t string) string {
+	head, rest, _ := strings.Cut(t, " ")
+	if v, err := strconv.ParseFloat(head, 64); err == nil {
+		head = strconv.FormatFloat(math.Round(v), 'f', 0, 64)
+	}
+	if rest == "" {
+		return head
+	}
+	return head + " " + rest
 }

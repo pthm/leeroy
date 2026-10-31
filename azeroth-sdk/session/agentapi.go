@@ -126,32 +126,10 @@ func (b *Bot) setupAgentAPI() {
 
 	// ---------- me ----------
 	e.Func("me.stats", "() → Stats?", "your character sheet: what gear, buffs and talents add up to; nil until the character object is observed", func() any {
-		o := w.GetObject(w.CharGUID())
-		if o == nil {
-			return nil
+		if st := characterStats(w); st != nil {
+			return *st
 		}
-		f := func(i uint16) float64 { return math.Round(float64(math.Float32frombits(o.Value(i)))*100) / 100 }
-		maxOf := func(base uint16, n uint16, float bool) float64 {
-			best := 0.0
-			for k := uint16(1); k < n; k++ { // schools 1-6 (holy..arcane); 0 is physical
-				v := float64(o.Value(base + k))
-				if float {
-					v = f(base + k)
-				}
-				best = math.Max(best, v)
-			}
-			return best
-		}
-		speed := float64(o.Value(0x3E)) / 1000
-		minD, maxD := f(0x46), f(0x47)
-		st := types.Stats{Strength: o.Value(0x54), Agility: o.Value(0x55), Stamina: o.Value(0x56), Intellect: o.Value(0x57),
-			Spirit: o.Value(0x58), Armor: o.Value(0x63), AttackPower: o.Value(0x7B), RangedAttackPower: o.Value(0x7E),
-			WeaponDamage: [2]float64{minD, maxD}, WeaponSpeed: speed, CritPct: f(0x405), DodgePct: f(0x401), ParryPct: f(0x402),
-			SpellCritPct: maxOf(0x408, 7, true), SpellPower: uint32(maxOf(0x493, 7, false)), BonusHealing: o.Value(0x4A8)}
-		if speed > 0 {
-			st.MeleeDPS = math.Round((minD+maxD)/2/speed*10) / 10
-		}
-		return st
+		return nil
 	})
 	e.Func("me.resting", "() → bool", "in an inn or city: rested XP builds up", func() bool {
 		o := w.GetObject(w.CharGUID())

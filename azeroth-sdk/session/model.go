@@ -217,8 +217,8 @@ func spellOf(w *client.WorldClient, id uint32) *types.Spell {
 	return &types.Spell{ID: id, Name: sp.Name, Rank: sp.Rank, Level: sp.Level, CastMS: sp.CastMS, CooldownMS: sp.Cooldown,
 		CategoryCooldownMS: sp.CategoryCooldown, GCDMS: sp.GCD, Range: sp.Range, Cost: spellCost(sp, baseMana(w)),
 		PowerType: name(powerNames, uint8(sp.PowerType)), Known: w.KnowsSpell(id),
-		Description: spellText(func(b *spelltext.Book) string { return b.Description(id) }),
-		Aura:        spellText(func(b *spelltext.Book) string { return b.Tooltip(id) })}
+		Description: spellText(func(b *spelltext.Book) string { return b.DescriptionWith(id, scaling(w)) }),
+		Aura:        spellText(func(b *spelltext.Book) string { return b.TooltipWith(id, scaling(w)) })}
 }
 
 var spellBook = sync.OnceValue(func() *spelltext.Book {
@@ -469,4 +469,45 @@ func itemEffect(spell, trigger uint32) string {
 		text = spellName(spell)
 	}
 	return prefix + text
+}
+
+// characterStats: the character sheet (me.stats); nil until the character object is observed
+func characterStats(w *client.WorldClient) *types.Stats {
+	o := w.GetObject(w.CharGUID())
+	if o == nil {
+		return nil
+	}
+	f := func(i uint16) float64 { return math.Round(float64(math.Float32frombits(o.Value(i)))*100) / 100 }
+	maxOf := func(base uint16, n uint16, float bool) float64 {
+		best := 0.0
+		for k := uint16(1); k < n; k++ { // schools 1-6 (holy..arcane); 0 is physical
+			v := float64(o.Value(base + k))
+			if float {
+				v = f(base + k)
+			}
+			best = math.Max(best, v)
+		}
+		return best
+	}
+	speed := float64(o.Value(0x3E)) / 1000
+	minD, maxD := f(0x46), f(0x47)
+	st := types.Stats{Strength: o.Value(0x54), Agility: o.Value(0x55), Stamina: o.Value(0x56), Intellect: o.Value(0x57),
+		Spirit: o.Value(0x58), Armor: o.Value(0x63), AttackPower: o.Value(0x7B), RangedAttackPower: o.Value(0x7E),
+		WeaponDamage: [2]float64{minD, maxD}, WeaponSpeed: speed, CritPct: f(0x405), DodgePct: f(0x401), ParryPct: f(0x402),
+		SpellCritPct: maxOf(0x408, 7, true), SpellPower: uint32(maxOf(0x493, 7, false)), BonusHealing: o.Value(0x4A8)}
+	if speed > 0 {
+		st.MeleeDPS = math.Round((minD+maxD)/2/speed*10) / 10
+	}
+	return &st
+}
+
+// scaling: what spell formulas scale with ($AP, $SPH...), from the character sheet; nil before it's observed
+func scaling(w *client.WorldClient) spelltext.Stats {
+	st := characterStats(w)
+	if st == nil {
+		return nil
+	}
+	return spelltext.Stats{"AP": float64(st.AttackPower), "RAP": float64(st.RangedAttackPower),
+		"SPH": float64(max(st.SpellPower, st.BonusHealing)), "SPS": float64(st.SpellPower), "SPI": float64(st.Spirit),
+		"PL": float64(w.PlayerLevel())}
 }

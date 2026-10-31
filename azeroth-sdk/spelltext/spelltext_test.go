@@ -3,6 +3,7 @@ package spelltext
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -32,5 +33,20 @@ func TestDescriptions(t *testing.T) {
 	}
 	if got := b.Tooltip(133); got != "1 Fire damage every 2 seconds." {
 		t.Errorf("tooltip 133: %q", got)
+	}
+}
+
+func TestStatScaling(t *testing.T) {
+	b := book(t)
+	// Revenge rank 1: ${$m1+$AP*0.310} to ${$M1+$AP*0.310}
+	want := "Instantly counterattack an enemy for 99 (+31% of attack power) to 121 (+31% of attack power) damage."
+	if got := b.Description(6572); !strings.HasPrefix(got, want) {
+		t.Errorf("revenge:\n got %q\nwant %q...", got, want)
+	}
+	if got := b.DescriptionWith(6572, Stats{"AP": 76}); !strings.HasPrefix(got, "Instantly counterattack an enemy for 123 to 145 damage.") {
+		t.Errorf("revenge with AP 76 (rounded like the client): %q", got)
+	}
+	if got := b.DescriptionWith(6572, Stats{"AP": 100}); !strings.HasPrefix(got, "Instantly counterattack an enemy for 130 to 152 damage.") {
+		t.Errorf("revenge with AP 100: %q", got)
 	}
 }

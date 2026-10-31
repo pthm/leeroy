@@ -405,7 +405,7 @@ type Spell struct {
 	Cost               uint32  `json:"cost" doc:"what a cast costs you now, in power_type (most mana costs are a share of your base mana)"`
 	PowerType          string  `json:"power_type"`
 	Known              bool    `json:"known"`
-	Description        string  `json:"description,omitempty" doc:"what it does, with its numbers filled in as the client's tooltip shows them (base values: your spell power and talents aren't added)"`
+	Description        string  `json:"description,omitempty" doc:"what it does, with its numbers filled in as the client's tooltip shows them, attack power and spell power scaling from your character sheet (talents aren't added)"`
 	Aura               string  `json:"aura,omitempty" doc:"what its buff or debuff says while it's on a unit"`
 }
 
