@@ -295,6 +295,7 @@ def coordination(p):
     peer=Probe(8113,p.artifacts / "peer")
     try:
         def moving_target():
+            p.gm(".gm off");peer.gm(".gm off")
             p.go((-9466,74,57,0));peer.go((-9466,74,57,0))
             guid=p.call("return me.guid()")
             peer.until('return units.get('+json.dumps(guid)+')')

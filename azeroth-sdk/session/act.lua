@@ -845,9 +845,17 @@ local function spirit_recovery(c)
   if me.alive() and not me.ghost() then return A.ok("act.spirit_res") end
   if not me.ghost() then return c:fail("not_a_ghost", "release before spirit resurrection") end
   local healer
-  for _, u in ipairs(units.nearby(60)) do
-    for _, role in ipairs(u.roles or {}) do if role == "spirit_healer" then healer = healer or u end end
-  end
+  -- Teleport acknowledgement precedes the nearby-object stream. Allow that
+  -- stream a bounded window instead of treating its first empty frame as absence.
+  local observe_until=now()+5000
+  repeat
+    for _, u in ipairs(units.nearby(60)) do
+      for _, role in ipairs(u.roles or {}) do if role == "spirit_healer" then healer = healer or u end end
+    end
+    if not healer then
+      local ended=c:sleep(math.min(0.2,(observe_until-now())/1000));if ended then return ended end
+    end
+  until healer or now()>=observe_until
   if not healer then return c:fail("not_found", "no spirit healer is visible") end
   c.data.spirit_option = {npc_guid=healer.guid, durability_loss=true, cost_known=false}
   local d,err=c:danger(healer);if err then return err end
