@@ -251,11 +251,87 @@ def recovery(p):
     p.gm(".cheat god on")
 
 
+def casting(p):
+    p.gm(".levelup 10")
+    for spell in (133,168,122,2050,1459):
+        if not p.call(f"return spells.known({spell})"):
+            p.gm(f".learn {spell}")
+            p.until(f"return spells.known({spell})")
+    p.go((-8949,-132,83,0))
+    def moving():
+        return p.task('local q=me.position();local walk=move.to(q.x+20,q.y,q.z);wait(0.5);local r=act.cast(168);assert(r.ok,r.error and r.error.code);assert(not me.movement().owner);return {cast=r,walk=result(walk.id)}')
+    p.check("cast_stops_owned_movement",moving)
+    def cooldown():
+        time.sleep(2)
+        return p.task('local first=act.cast(122);assert(first.ok,first.error and first.error.code);local second=act.cast(122);assert(not second.ok and second.error.code=="cooldown" and second.data.attempts==0);return {first=first,second=second}')
+    p.check("cast_cooldown",cooldown)
+    def lost_target():
+        time.sleep(2)
+        return p.task('local r=act.cast(133,"17379390999999999999");assert(not r.ok and r.error.code=="unit_gone" and r.data.attempts==0);return r')
+    p.check("cast_lost_target",lost_target)
+    def overlapping():
+        time.sleep(2)
+        return p.task('local a=spells.cast(168);local b=spells.cast(168);local ar=await(a);local br=await(b);assert(ar.id~=br.id);assert(ar.ok~=br.ok,"same-spell outcomes were not distinct");return {first=ar,second=br}')
+    p.check("cast_same_spell_correlation",overlapping)
+    def facing():
+        p.gm(".gm off")
+        p.go((-9843.54,127.525,5.3698,0))
+        u=p.until('for _,u in ipairs(units.nearby(50)) do if u.alive and not u.player and u.reaction=="hostile" then return u end end')
+        p.go((u["x"]+6,u["y"],u["z"],0))
+        time.sleep(2)
+        return p.task('local guid='+json.dumps(u["guid"])+';assert(await(move.turn(0)).ok);local before=spells.check(133,guid);assert(before.facing==false);local r=act.cast(133,guid);assert(r.ok,r.error and r.error.code);assert(r.data.attempts<=2);return {before=before,cast=r}')
+    p.check("cast_corrects_facing",facing)
+    def floor_heal():
+        p.go((-9472,34,64,0))
+        time.sleep(2)
+        # Select an observed friendly unit on the lower floor with blocked LOS.
+        u=p.until('for _,u in ipairs(units.nearby(35)) do if u.alive and u.reaction=="friendly" and math.abs(u.z-me.position().z)>3 and units.in_sight(u.guid)==false then return u end end')
+        r=p.task('local before=me.position();local r=act.cast(2050,'+json.dumps(u["guid"])+');assert(not r.ok and r.error.code=="line_of_sight" and r.data.attempts==0);assert(act.dist(before.x,before.y,before.z)<0.5);return r')
+        return {"target":u,"cast":r}
+    p.check("heal_other_floor_does_not_move",floor_heal)
+
+
+def coordination(p):
+    peer=Probe(8113,p.artifacts / "peer")
+    try:
+        def moving_target():
+            p.go((-9466,74,57,0));peer.go((-9466,74,57,0))
+            guid=p.call("return me.guid()")
+            peer.until('return units.get('+json.dumps(guid)+')')
+            p.call('coord_walk=nil;task.spawn("acceptance-walk",function() coord_walk=act.go_to{x=-9496,y=74,z=57} end)')
+            start=p.until('return me.position()',lambda q:q["x"]<-9468)
+            r=peer.task('local before=me.position();local r=act.cast(1459,'+json.dumps(guid)+');assert(r.ok,r.error and r.error.code);assert(r.data.attempts<=2 and act.dist(before.x,before.y,before.z)<0.5);return r')
+            end=p.call("return me.position()")
+            assert math.dist((start["x"],start["y"]),(end["x"],end["y"]))>0.5
+            p.until("return coord_walk")
+            return {"cast":r,"target_start":start,"target_end":end}
+        p.check("cast_moving_target_without_chasing",moving_target)
+        def competing_recovery():
+            p.go((-9466,74,57,0))
+            p.task('return await(combat.target(me.guid()))')
+            p.gm(".gm off");p.gm(".cheat god off")
+            p.call('normal_result=nil;errand_result=nil;task.spawn("acceptance-normal",function() normal_result=move.with_control{max_s=30,fn=function() local r=act.go_to{x=-9540,y=74,z=57};wait(5);return r end} end)')
+            p.until('local m=me.movement();return m.owner and m.owner.phase=="walking"')
+            p.call('task.spawn("acceptance-errand",function() errand_result=act.vendor{npc_entry=151,repair=true} end)')
+            p.gm(".die");p.until("return me.alive()",lambda alive:not alive)
+            r=p.task('return act.recover{spirit=true,rest=false,timeout_s=45}',55)
+            assert r["ok"] and r["data"]["alive"],json.dumps(r)
+            normal=p.until("return normal_result");errand=p.until("return errand_result")
+            assert not normal["ok"] and normal["error"]["code"]=="preempted",json.dumps(normal)
+            assert not errand["ok"] and errand["error"]["code"] in ("teleported","preempted","movement_busy"),json.dumps(errand)
+            return {"recovery":r,"normal":normal,"errand":errand}
+        p.check("recovery_preempts_travel_and_queued_errand",competing_recovery)
+    finally:
+        for name in ("acceptance-walk","acceptance-normal","acceptance-errand"):
+            p.call('task.stop('+json.dumps(name)+')')
+        peer.finish()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8112)
     ap.add_argument("--artifacts", required=True)
-    ap.add_argument("--suite", choices=("all","contracts","routes","errands","professions","recovery"), default="all")
+    ap.add_argument("--suite", choices=("all","contracts","routes","errands","professions","recovery","casting","coordination"), default="all")
     args = ap.parse_args()
     p = Probe(args.port, args.artifacts)
     try:
@@ -266,6 +342,8 @@ def main():
         if args.suite in ("all", "errands"): errands(p)
         if args.suite in ("all", "professions"): professions(p)
         if args.suite in ("all", "recovery"): recovery(p)
+        if args.suite == "casting": casting(p)
+        if args.suite == "coordination": coordination(p)
     finally:
         p.finish()
     raise SystemExit(any(r["status"] == "failed" for r in p.records))
