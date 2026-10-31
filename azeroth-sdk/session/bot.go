@@ -14,6 +14,7 @@ import (
 	"github.com/pthm/leeroy/azeroth-sdk/client"
 	"github.com/pthm/leeroy/azeroth-sdk/movement"
 	"github.com/pthm/leeroy/azeroth-sdk/navigation"
+	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
 	"github.com/pthm/leeroy/azeroth-sdk/script"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
@@ -851,12 +852,15 @@ func (b *Bot) moveToPointGuarded(x, y, z float32, valid func() bool) (noPath boo
 	return b.moveToPointContext(ctx, x, y, z, valid)
 }
 func (b *Bot) moveToPointContext(ctx context.Context, x, y, z float32, valid func() bool) (noPath bool) {
+	return b.prepareMoveContext(ctx, x, y, z, valid) != nil
+}
+func (b *Bot) prepareMoveContext(ctx context.Context, x, y, z float32, valid func() bool) error {
 	if ctx.Err() != nil {
-		return true
+		return ctx.Err()
 	}
 	b.ensureMovementController()
 	if b.world.Falling() { // no steering in the air
-		return
+		return fmt.Errorf("movement unavailable while falling")
 	}
 
 	now := time.Now()
@@ -868,7 +872,7 @@ func (b *Bot) moveToPointContext(ctx context.Context, x, y, z float32, valid fun
 		b.movementMu.Unlock()
 		// Fallback: at least stop any old movement
 		b.world.MoveStop()
-		return
+		return fmt.Errorf("movement controller unavailable")
 	}
 
 	if b.moveController.IsMoving() {
@@ -892,24 +896,24 @@ func (b *Bot) moveToPointContext(ctx context.Context, x, y, z float32, valid fun
 		// Sticky: same-ish dest for 1.5s — never repath.
 		if destMoved2 < 25.0 && math.Abs(float64(ddz)) < 5.0 && since < 1500*time.Millisecond {
 			b.movementMu.Unlock()
-			return
+			return nil
 		}
 		// Moderate mob drift: repath at most ~0.67Hz.
 		if destMoved2 < 64.0 && math.Abs(float64(ddz)) < 8.0 && since < 1200*time.Millisecond {
 			b.movementMu.Unlock()
-			return
+			return nil
 		}
 		// Absolute floor while moving.
 		if since < 700*time.Millisecond {
 			b.movementMu.Unlock()
-			return
+			return nil
 		}
 		// Path already ends near requested dest.
 		if ex, ey, ez, ok := b.moveController.Destination(); ok {
 			edx, edy, edz := ex-x, ey-y, ez-z
 			if edx*edx+edy*edy < 16.0 && math.Abs(float64(edz)) < 5.0 {
 				b.movementMu.Unlock()
-				return
+				return nil
 			}
 		}
 	}
@@ -919,11 +923,15 @@ func (b *Bot) moveToPointContext(ctx context.Context, x, y, z float32, valid fun
 
 	// If we have nav, compute a proper path (real pathfinding as required for movement).
 	var pts []navigation.Point3D
+	var prepared *navigation.PathResult
 	if b.nav != nil {
 		result, err := b.findPath(ctx, mapID, current, navigation.Point3D{X: x, Y: y, Z: z})
-		noPath = !(err == nil && result != nil && result.Found)
+
 		if err != nil {
-			b.log("pathfinding error: %v", err) // e.g. mmaps version mismatch; was silent
+			return err
+		}
+		if result != nil && result.Collision != nil && result.Collision.State != "clear" {
+			return &pathfinding.TraversalError{Check: *result.Collision}
 		}
 		if err == nil && result != nil && result.Found && !result.Partial && len(result.Points) > 1 {
 			if preparer, ok := b.nav.(interface {
@@ -931,24 +939,23 @@ func (b *Bot) moveToPointContext(ctx context.Context, x, y, z float32, valid fun
 			}); ok {
 				result, err = preparer.PreparePathContext(ctx, mapID, result)
 				if err != nil {
-					b.log("path preparation: %v", err)
-					return true
+					return err
 				}
 			}
+			prepared = result
 			pts = append([]navigation.Point3D(nil), result.Points...)
-			// The navmesh path is used as is: it already excludes slopes over the walkable angle and
-			// obstacles. (A "crazy path" check here used to swap long paths for a straight line, which
-			// walked bots up cliffs and through buildings.)
+			// Preserve the exact prepared samples and movement modes. Any
+			// shortcut here would invalidate their support and clearance checks.
 		} else {
 			b.logDecision("No path found to target")
 		}
 	}
 
 	if ctx.Err() != nil {
-		return true
+		return ctx.Err()
 	}
 	if len(pts) == 0 {
-		return true
+		return fmt.Errorf("route_unreachable")
 	} // an unchecked short hop is not a walkable path
 
 	// Hand off to the (now only) movement implementation.
@@ -956,11 +963,19 @@ func (b *Bot) moveToPointContext(ctx context.Context, x, y, z float32, valid fun
 	b.movementMu.Lock()
 	if ctx.Err() != nil || (valid != nil && !valid()) {
 		b.movementMu.Unlock()
-		return
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return context.Canceled
+	}
+	currentX, currentY, currentZ, _, currentMap := b.world.Position()
+	if currentMap != mapID || math.Abs(float64(currentX-px)) > 0.05 || math.Abs(float64(currentY-py)) > 0.05 || math.Abs(float64(currentZ-pz)) > 0.05 {
+		b.movementMu.Unlock()
+		return errRouteStale
 	}
 	b.ensureMovementControllerLocked()
 	if b.moveController != nil {
-		b.moveController.SetPreparedPath(pts, time.Now(), po, mapID)
+		b.moveController.SetPreparedRoute(prepared, time.Now(), po, mapID)
 		b.isMoving = true
 		b.lastMoveCommandPos = requestedDest
 		b.lastMoveCommandTime = now
@@ -968,7 +983,7 @@ func (b *Bot) moveToPointContext(ctx context.Context, x, y, z float32, valid fun
 	b.movementMu.Unlock()
 
 	// The controller will emit the appropriate START / HB packets.
-	return
+	return nil
 }
 
 type terrainHeightNavigator interface {

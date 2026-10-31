@@ -106,12 +106,12 @@ func (r *routeRequests) finish(j *routeRequest, out *script.Outcome) {
 		details := types.DiagnosticDetails{}
 		switch d := out.Data.(type) {
 		case types.PathCheck:
-			details.Route = &types.DiagnosticRoute{Source: d.Source, Status: d.Status, From: d.From, Destination: d.Destination, Distance: d.Distance, Gap: d.Gap, FloorValid: d.FloorValid}
+			details.Route = &types.DiagnosticRoute{Source: d.Source, Status: d.Status, From: d.From, Destination: d.Destination, Distance: d.Distance, Gap: d.Gap, FloorValid: d.FloorValid, Collision: d.Collision}
 		case types.RouteCheck:
 			details.Route = &types.DiagnosticRoute{Source: d.Source, Status: d.Status, From: d.From, Destination: d.Destination, Distance: d.Distance, CompletedLegs: d.CompletedLegs, BlockedLeg: d.BlockedLeg}
 			if len(d.Legs) > 0 {
 				last := d.Legs[len(d.Legs)-1]
-				details.Route.Gap, details.Route.FloorValid = last.Gap, last.FloorValid
+				details.Route.Gap, details.Route.FloorValid, details.Route.Collision = last.Gap, last.FloorValid, last.Collision
 			}
 		case types.DangerCheck:
 			details.State = d.State
@@ -170,6 +170,16 @@ func checkRoute(data types.PathCheck, from, to navigation.Point3D, res *navigati
 		}
 		return routeFailure(data, code, message)
 	}
+	if res != nil {
+		data.Collision = collisionEvidence(res.Collision, res.Replanned)
+		if res.Collision != nil && res.Collision.State != "clear" {
+			code := "route_blocked"
+			if res.Collision.State == "unknown" {
+				code = "collision_unavailable"
+			}
+			return routeFailure(data, code, res.Collision.Reason)
+		}
+	}
 	if res == nil || !res.Found || len(res.Points) == 0 {
 		return routeFailure(data, "route_unreachable", "no navmesh path connects the requested points")
 	}
@@ -227,4 +237,11 @@ func (b *Bot) setupRoutes() {
 			task, _, _ := e.CurrentTaskIdentity()
 			return r.start(task, m, navigation.Point3D{X: px, Y: py, Z: pz}, navigation.Point3D{X: x, Y: y, Z: z})
 		})
+}
+
+func collisionEvidence(c *pathfinding.CollisionCheck, replanned bool) *types.CollisionEvidence {
+	if c == nil {
+		return nil
+	}
+	return &types.CollisionEvidence{State: c.State, Reason: c.Reason, Segment: c.Segment, Position: types.Position{X: float64(c.Position.X), Y: float64(c.Position.Y), Z: float64(c.Position.Z)}, Normal: types.Position{X: float64(c.Normal.X), Y: float64(c.Normal.Y), Z: float64(c.Normal.Z)}, Model: c.Model, Replanned: replanned, Scope: "static"}
 }

@@ -257,3 +257,24 @@ func TestPartialRouteNearDestinationIsNotVerified(t *testing.T) {
 		t.Fatal(out)
 	}
 }
+
+func TestRouteCollisionEvidence(t *testing.T) {
+	for _, state := range []string{"blocked", "unknown", "clear"} {
+		r := &navigation.PathResult{Found: state == "clear", Replanned: true, Points: []navigation.Point3D{{}, {X: 1}}, Collision: &pathfinding.CollisionCheck{State: state, Reason: "fixture", Model: "wall", Segment: 1}}
+		out := checkRoute(types.PathCheck{}, navigation.Point3D{}, navigation.Point3D{X: 1}, r, nil)
+		data := out.Data.(types.PathCheck)
+		if data.Collision == nil || data.Collision.State != state || data.Collision.Scope != "static" || !data.Collision.Replanned {
+			t.Fatalf("lost evidence: %+v", data)
+		}
+		code := ""
+		if state == "blocked" {
+			code = "route_blocked"
+		}
+		if state == "unknown" {
+			code = "collision_unavailable"
+		}
+		if out.Code != code {
+			t.Fatal(out)
+		}
+	}
+}

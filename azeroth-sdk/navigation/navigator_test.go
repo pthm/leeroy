@@ -37,7 +37,15 @@ func TestConvertResultAcceptsCappedNavPaths(t *testing.T) {
 func TestPartialPathAndSurfaceMetadataSurviveCopies(t *testing.T) {
 	raw := &pathfinding.PathResult{Type: pathfinding.PathfindNormal | pathfinding.PathfindShort, Points: []pathfinding.Point3D{{X: 1}}, Corridor: []detour.DtPolyRef{7}, PointPolys: []detour.DtPolyRef{7}, Transitions: []bool{true}}
 	got := convertResult(raw)
+	got.Swimming = []bool{true}
+	got.Collision = &pathfinding.CollisionCheck{State: "clear"}
+	got.Replanned = true
 	copy := got.Clone()
+	got.Swimming[0] = false
+	got.Collision.State = "blocked"
+	if !copy.Swimming[0] || copy.Collision.State != "clear" || !copy.Replanned {
+		t.Fatal("clearance metadata aliased")
+	}
 	raw.Corridor[0] = 8
 	got.Points[0].Z = 99
 	got.surface.PointPolys[0] = 9

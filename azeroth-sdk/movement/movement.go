@@ -63,12 +63,14 @@ type MovementController struct {
 	speed  float32
 
 	// Path data (2D horizontal parameterization for speed)
-	prepared  bool // geometry is final; following it must not query or change floors
-	path      []navigation.Point3D
-	segLens   []float32 // 2D length of each segment i -> i+1
-	cumLens   []float32 // cumulative 2D length up to start of segment i
-	totalDist float32
-	mapID     uint32 // for GetHeight snapping on elevation changes
+	prepared     bool // geometry is final; following it must not query or change floors
+	swimSamples  []bool
+	segmentIndex int
+	path         []navigation.Point3D
+	segLens      []float32 // 2D length of each segment i -> i+1
+	cumLens      []float32 // cumulative 2D length up to start of segment i
+	totalDist    float32
+	mapID        uint32 // for GetHeight snapping on elevation changes
 
 	// Simulation state (driven by external time ticks for determinism in tests)
 	startTime  time.Time
@@ -144,12 +146,20 @@ func (m *MovementController) SetNavigator(nav navigation.Navigator) {
 // The caller is responsible for providing a path that starts near current position.
 // mapID is used (when > 0 and nav is available) to snap Z to real ground height on elevation.
 func (m *MovementController) SetPath(path []navigation.Point3D, startTime time.Time, initialO float32, mapID uint32) {
+	m.swimSamples = nil
 	m.setPath(path, startTime, initialO, mapID, false)
 }
 
 // SetPreparedPath installs final navigation geometry without I/O or height changes.
 func (m *MovementController) SetPreparedPath(path []navigation.Point3D, startTime time.Time, initialO float32, mapID uint32) {
+	m.swimSamples = nil
 	m.setPath(path, startTime, initialO, mapID, true)
+}
+
+// SetPreparedRoute also carries precomputed movement modes; ticks do no spatial I/O.
+func (m *MovementController) SetPreparedRoute(r *navigation.PathResult, at time.Time, o float32, mapID uint32) {
+	m.swimSamples = append([]bool(nil), r.Swimming...)
+	m.setPath(r.Points, at, o, mapID, true)
 }
 func (m *MovementController) setPath(path []navigation.Point3D, startTime time.Time, initialO float32, mapID uint32, prepared bool) {
 	if len(path) == 0 {
@@ -179,6 +189,7 @@ func (m *MovementController) setPath(path []navigation.Point3D, startTime time.T
 
 	m.startTime = startTime
 	m.travelDist = 0
+	m.segmentIndex = 0
 	m.isMoving = true
 	if !wasMoving {
 		m.firstMoveSent = false
@@ -308,6 +319,7 @@ func (m *MovementController) advanceAlongPath(dist float32) {
 		return
 	}
 	if dist >= m.totalDist {
+		m.segmentIndex = len(m.path) - 1
 		last := m.path[len(m.path)-1]
 		m.curX, m.curY = last.X, last.Y
 		m.curZ = last.Z // use path Z
@@ -327,6 +339,7 @@ func (m *MovementController) advanceAlongPath(dist float32) {
 		segStart := m.cumLens[i]
 		segEnd := m.cumLens[i] + m.segLens[i]
 		if dist >= segStart && dist < segEnd {
+			m.segmentIndex = i
 			p0 := m.path[i]
 			p1 := m.path[i+1]
 			segFrac := float32(0)
@@ -523,6 +536,7 @@ func (m *MovementController) handleTurnPhase(now time.Time) {
 			// resume at the vertex; advance our logical travelDist to start of next seg
 			vertexDist := m.cumLens[m.nextSegIdx]
 			m.travelDist = vertexDist
+			m.segmentIndex = m.nextSegIdx
 			p := m.path[m.nextSegIdx]
 			m.curX, m.curY, m.curZ = p.X, p.Y, p.Z
 			m.curO = m.turnTargetO
@@ -611,6 +625,13 @@ func (m *MovementController) AbortAndSnap(x, y, z, o float32) {
 
 func (m *MovementController) clampCurrentZToGround() {
 	if m.prepared {
+		swim := m.segmentIndex < len(m.swimSamples) && m.swimSamples[m.segmentIndex]
+		if swim != m.swimming {
+			m.swimming = swim
+			if m.OnSwimChange != nil {
+				m.OnSwimChange(swim)
+			}
+		}
 		return
 	}
 	if m.nav == nil {

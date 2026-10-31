@@ -36,11 +36,13 @@ func (p Point3D) DistanceTo2D(o Point3D) float32 {
 
 // PathResult holds the result of a pathfinding query.
 type PathResult struct {
-	Found   bool
-	Partial bool // a known prefix, never completion of the requested destination
-	Points  []Point3D
-	surface *pathfinding.PathResult // Detour references stay inside navigation
-
+	Found     bool
+	Partial   bool // a known prefix, never completion of the requested destination
+	Swimming  []bool
+	Collision *pathfinding.CollisionCheck
+	Replanned bool
+	Points    []Point3D
+	surface   *pathfinding.PathResult // Detour references stay inside navigation
 }
 
 // Navigator is the interface for pathfinding.
@@ -113,20 +115,52 @@ func (n *embeddedNavigator) FindPath(mapID uint32, start, dest Point3D) (*PathRe
 	return n.FindPathContext(context.Background(), mapID, start, dest)
 }
 func (n *embeddedNavigator) FindPathContext(ctx context.Context, mapID uint32, start, dest Point3D) (*PathResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, pathfinding.QueryTimeout)
+	defer cancel()
 	result, err := n.svc.FindPathContext(ctx, mapID, pathfinding.Point3D{X: start.X, Y: start.Y, Z: start.Z},
 		pathfinding.Point3D{X: dest.X, Y: dest.Y, Z: dest.Z})
 	if err != nil {
 		return nil, err
 	}
-	return convertResult(result), nil
+	r := convertResult(result)
+	if !r.Found || r.Partial {
+		return r, nil
+	}
+	prepared, err := n.PreparePathContext(ctx, mapID, r)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if err != nil {
+		if prepared != nil {
+			return prepared, nil
+		}
+		return nil, err
+	}
+	return prepared, nil
 }
 
 func (n *embeddedNavigator) FindRandomPath(mapID uint32, center Point3D, radius float32) (*PathResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), pathfinding.QueryTimeout)
+	defer cancel()
 	result, err := n.svc.FindRandomPath(mapID, pathfinding.Point3D{X: center.X, Y: center.Y, Z: center.Z}, radius)
 	if err != nil {
 		return nil, err
 	}
-	return convertResult(result), nil
+	r := convertResult(result)
+	if !r.Found || r.Partial {
+		return r, nil
+	}
+	prepared, err := n.PreparePathContext(ctx, mapID, r)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if err != nil {
+		if prepared != nil {
+			return prepared, nil
+		}
+		return nil, err
+	}
+	return prepared, nil
 }
 
 func (n *embeddedNavigator) GetHeight(mapID uint32, x, y, z float32) (float32, bool) {
@@ -207,16 +241,32 @@ func (r *PathResult) Clone() *PathResult {
 	q := *r
 	q.Points = slices.Clone(r.Points)
 	q.surface = r.surface.Clone()
+	q.Swimming = slices.Clone(r.Swimming)
+	if r.Collision != nil {
+		c := *r.Collision
+		q.Collision = &c
+	}
 	return &q
 }
 
 // PreparePathContext validates the final geometry before handing it to movement.
 func (n *embeddedNavigator) PreparePathContext(ctx context.Context, m uint32, r *PathResult) (*PathResult, error) {
-	if r == nil || !r.Found || r.Partial || r.surface == nil {
-		return nil, fmt.Errorf("route_unreachable: complete surface path required")
+	if r == nil || r.Partial || r.surface == nil {
+		return nil, fmt.Errorf("complete surface path required")
 	}
-	if err := n.svc.ValidateSurfaceContext(ctx, m, r.surface); err != nil {
+	p, err := n.svc.PrepareWalkingContext(ctx, m, r.surface, pathfinding.WalkingBody())
+	if p == nil {
 		return nil, err
 	}
-	return r.Clone(), nil
+	out := r.Clone()
+	out.Found = err == nil
+	out.Collision = &p.Collision
+	out.Replanned = p.Replanned || r.Replanned
+	out.surface = p.Surface.Clone()
+	out.Swimming = slices.Clone(p.Swimming)
+	out.Points = make([]Point3D, len(p.Points))
+	for i, v := range p.Points {
+		out.Points[i] = Point3D{v.X, v.Y, v.Z}
+	}
+	return out, err
 }

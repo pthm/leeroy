@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/pthm/leeroy/azeroth-sdk/navigation"
+	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
@@ -89,5 +90,38 @@ func TestReachBudgetExpiryRemainsUnknown(t *testing.T) {
 	_, distance, reachable = b.newReach().of(1, 10, 0, 0, 0)
 	if distance == nil || reachable == nil || !*reachable || n.calls.Load() != 2 {
 		t.Fatal("subsequent route did not recover")
+	}
+}
+
+type clearanceNavigator struct {
+	blockedMovementNavigator
+	state   string
+	partial bool
+	calls   int
+}
+
+func (n *clearanceNavigator) FindPathContext(_ context.Context, _ uint32, a, b navigation.Point3D) (*navigation.PathResult, error) {
+	n.calls++
+	return &navigation.PathResult{Found: n.state == "clear", Partial: n.partial, Points: []navigation.Point3D{a, b}, Collision: &pathfinding.CollisionCheck{State: n.state}}, nil
+}
+func TestReachUnknownAndPartialDoNotCertifyArrival(t *testing.T) {
+	b := testBot()
+	defer b.lua.Close()
+	n := &clearanceNavigator{state: "unknown"}
+	b.nav = n
+	_, distance, reachable := b.newReach().of(1, 10, 0, 0, 0)
+	if distance != nil || reachable != nil || len(b.pathCache) != 0 {
+		t.Fatal("unknown collision cached as unreachable")
+	}
+	n.state = "clear"
+	n.partial = true
+	_, distance, reachable = b.newReach().of(1, 10, 0, 0, 0)
+	if distance != nil || reachable == nil || *reachable {
+		t.Fatal("partial path certified arrival")
+	}
+	n.partial = false
+	_, _, reachable = b.newReach().of(1, 10, 0, 2, 0)
+	if reachable == nil || !*reachable || n.calls != 3 {
+		t.Fatal("nearby floor reused cached verdict")
 	}
 }

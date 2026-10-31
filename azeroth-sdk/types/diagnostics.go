@@ -93,13 +93,14 @@ type DiagnosticGear struct {
 // DiagnosticRoute omits the potentially large waypoint arrays while retaining
 // the geometric evidence needed to explain a terminal route result.
 type DiagnosticRoute struct {
-	Source        string   `json:"source"`
-	Status        string   `json:"status"`
-	From          Position `json:"from"`
-	Destination   Position `json:"destination"`
-	Distance      float64  `json:"distance"`
-	Gap           *float64 `json:"gap,omitempty"`
-	FloorValid    *bool    `json:"floor_valid,omitempty"`
-	CompletedLegs int      `json:"completed_legs,omitempty"`
-	BlockedLeg    int      `json:"blocked_leg,omitempty"`
+	Collision     *CollisionEvidence `json:"collision,omitempty"`
+	Source        string             `json:"source"`
+	Status        string             `json:"status"`
+	From          Position           `json:"from"`
+	Destination   Position           `json:"destination"`
+	Distance      float64            `json:"distance"`
+	Gap           *float64           `json:"gap,omitempty"`
+	FloorValid    *bool              `json:"floor_valid,omitempty"`
+	CompletedLegs int                `json:"completed_legs,omitempty"`
+	BlockedLeg    int                `json:"blocked_leg,omitempty"`
 }

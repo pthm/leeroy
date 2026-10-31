@@ -994,3 +994,22 @@ func TestGroundHeightCancellationDoesNotFallBack(t *testing.T) {
 		t.Fatal("cancelled height accepted")
 	}
 }
+
+func TestPreparedSwimmingModesAvoidSpatialQueries(t *testing.T) {
+	m := NewMovementController(&fakeSender{}, 7, nil, DefaultMovementConfig())
+	now := time.Now()
+	m.WaterFunc = func(float32, float32) (float32, bool) { t.Fatal("water I/O during prepared movement"); return 0, false }
+	changes := []bool{}
+	m.OnSwimChange = func(v bool) { changes = append(changes, v) }
+	r := &navigation.PathResult{Points: []navigation.Point3D{{}, {X: 7}, {X: 14}}, Swimming: []bool{false, true, false}}
+	m.SetPreparedRoute(r, now, 0, 0)
+	r.Swimming[1] = false
+	m.Update(now.Add(time.Second))
+	if !m.swimming {
+		t.Fatal("did not enter swimming")
+	}
+	m.Update(now.Add(3 * time.Second))
+	if m.swimming || len(changes) != 2 || !changes[0] || changes[1] {
+		t.Fatal(changes)
+	}
+}

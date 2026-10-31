@@ -2,6 +2,9 @@ package session
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -14,8 +17,11 @@ import (
 // movementBackend keeps arbitration testable without a server. plan must check
 // valid at publication under the same lock used by stop. It must not publish a
 // cancelled path or stop a newer path when its own computation finishes late.
+var errRouteStale = errors.New("position changed while preparing route")
+
 type movementBackend struct {
 	plan     func(context.Context, types.Position, func() bool) bool
+	prepare  func(context.Context, types.Position, func() bool) error
 	stop     func()
 	position func() types.Position
 	moving   func() bool
@@ -194,11 +200,40 @@ func (m *movementRequests) worker() {
 		r.planning = true
 		deadline := r.deadline
 		m.mu.Unlock()
-		noPath := m.backend.plan(r.ctx, *r.owner.Destination, func() bool { return !r.cancelled.Load() && r.ctx.Err() == nil && m.now().Before(deadline) })
+		valid := func() bool { return !r.cancelled.Load() && r.ctx.Err() == nil && m.now().Before(deadline) }
+		var planErr error
+		if m.backend.prepare != nil {
+			planErr = m.backend.prepare(r.ctx, *r.owner.Destination, valid)
+		} else if m.backend.plan(r.ctx, *r.owner.Destination, valid) {
+			planErr = fmt.Errorf("route_unreachable")
+		}
+		noPath := planErr != nil
 		m.mu.Lock()
 		m.expireLeaseLocked()
 		if m.active == r && !r.cancelled.Load() && (r.ctx.Err() != nil || !m.now().Before(deadline)) {
 			m.finishLocked(r, script.Fail("route_timeout", "planning deadline expired", r.owner))
+			m.advanceLocked()
+		} else if m.active == r && !r.cancelled.Load() && planErr != nil {
+			code := "route_unreachable"
+			var evidence any = r.owner
+			var blocked *pathfinding.TraversalError
+			if errors.As(planErr, &blocked) {
+				code = "route_blocked"
+				if blocked.Check.State == "unknown" {
+					code = "collision_unavailable"
+				}
+				evidence = collisionEvidence(&blocked.Check, false)
+			}
+			if errors.Is(planErr, errRouteStale) {
+				code = "route_stale"
+			}
+			if errors.Is(planErr, context.DeadlineExceeded) {
+				code = "route_timeout"
+			}
+			if errors.Is(planErr, pathfinding.ErrQueryLimit) {
+				code = "route_limit"
+			}
+			m.finishLocked(r, script.Fail(code, planErr.Error(), evidence))
 			m.advanceLocked()
 		} else if m.active == r && !r.cancelled.Load() {
 			r.noPath = noPath
@@ -243,7 +278,9 @@ func (m *movementRequests) poll() {
 		} else if r.owner.Phase == "walking" {
 			d := m.distance(r)
 			res := types.MoveDone{Distance: math.Round(d*10) / 10, NoPath: r.noPath}
-			if d < 2.5 || (d < 5 && !m.backend.moving()) {
+			p := m.backend.position()
+			vertical := math.Abs(p.Z - r.owner.Destination.Z)
+			if d < 2.5 && vertical <= float64(pathfinding.MaxProjectionVertical) {
 				m.finishLocked(r, script.Ok(res))
 			} else if !m.backend.moving() && now.Sub(r.started) > time.Second {
 				m.finishLocked(r, script.Fail("stuck", "movement stopped short of the destination", res))
@@ -346,8 +383,8 @@ func (m *movementRequests) stop(taskID int) *script.Outcome {
 func (b *Bot) setupMovementRequests() {
 	e := b.lua
 	m := newMovementRequests(e.Reqs, movementBackend{
-		plan: func(ctx context.Context, p types.Position, valid func() bool) bool {
-			return b.moveToPointContext(ctx, float32(p.X), float32(p.Y), float32(p.Z), valid)
+		prepare: func(ctx context.Context, p types.Position, valid func() bool) error {
+			return b.prepareMoveContext(ctx, float32(p.X), float32(p.Y), float32(p.Z), valid)
 		},
 		stop: func() { b.StopMoving() },
 		position: func() types.Position {

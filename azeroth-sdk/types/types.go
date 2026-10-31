@@ -152,35 +152,49 @@ type ObjectActivation struct {
 	State  *uint32   `json:"state,omitempty" doc:"observed GAMEOBJECT_BYTES_1 after a state change"`
 }
 
+// CollisionEvidence describes static geometry checks, not dynamic door state.
+type CollisionEvidence struct {
+	State     string   `json:"state" doc:"clear, blocked, or unknown for static movement geometry"`
+	Reason    string   `json:"reason,omitempty"`
+	Segment   int      `json:"segment,omitempty" doc:"1-based blocked movement segment"`
+	Position  Position `json:"position"`
+	Normal    Position `json:"normal"`
+	Model     string   `json:"model,omitempty"`
+	Replanned bool     `json:"replanned"`
+	Scope     string   `json:"scope" doc:"static; doors, lifts and other dynamic objects require separate state"`
+}
+
 // PathCheck reports a navmesh leg without silently changing the requested floor.
 type PathCheck struct {
-	Status      string     `json:"status" doc:"verified, partial, or failed; partial is a reachable prefix, not permission to walk it"`
-	Reachable   bool       `json:"reachable" doc:"true only with a navmesh path starting and ending within 3 yards of the requested 3D points"`
-	Reason      string     `json:"reason" doc:"verified or the failure code; unknown checks never imply unreachable"`
-	Map         uint32     `json:"map"`
-	From        Position   `json:"from"`
-	Destination Position   `json:"destination"`
-	Source      string     `json:"source" doc:"session_navmesh"`
-	Waypoints   []Position `json:"waypoints" doc:"3D path on this map; empty if walkability could not be established"`
-	Distance    float64    `json:"distance" doc:"walk distance in yards; zero if no path was established"`
-	Gap         *float64   `json:"gap,omitempty" doc:"3D endpoint gap in yards; absent if no path was established"`
-	StartGap    *float64   `json:"start_gap,omitempty" doc:"gap from requested start to the first navmesh point"`
-	VerticalGap *float64   `json:"vertical_gap,omitempty" doc:"absolute endpoint Z gap"`
-	FloorValid  *bool      `json:"floor_valid,omitempty" doc:"whether both endpoints match requested elevations within 3 yards; absent without a path"`
+	Collision   *CollisionEvidence `json:"collision,omitempty"`
+	Status      string             `json:"status" doc:"verified, partial, or failed; partial is a reachable prefix, not permission to walk it"`
+	Reachable   bool               `json:"reachable" doc:"true only with a navmesh path starting and ending within 3 yards of the requested 3D points"`
+	Reason      string             `json:"reason" doc:"verified or the failure code; unknown checks never imply unreachable"`
+	Map         uint32             `json:"map"`
+	From        Position           `json:"from"`
+	Destination Position           `json:"destination"`
+	Source      string             `json:"source" doc:"session_navmesh"`
+	Waypoints   []Position         `json:"waypoints" doc:"3D path on this map; empty if walkability could not be established"`
+	Distance    float64            `json:"distance" doc:"walk distance in yards; zero if no path was established"`
+	Gap         *float64           `json:"gap,omitempty" doc:"3D endpoint gap in yards; absent if no path was established"`
+	StartGap    *float64           `json:"start_gap,omitempty" doc:"gap from requested start to the first navmesh point"`
+	VerticalGap *float64           `json:"vertical_gap,omitempty" doc:"absolute endpoint Z gap"`
+	FloorValid  *bool              `json:"floor_valid,omitempty" doc:"whether both endpoints match requested elevations within 3 yards; absent without a path"`
 }
 
 // RouteLeg is one requested waypoint's navmesh validation, in execution order.
 type RouteLeg struct {
-	Index       int      `json:"index" doc:"1-based requested waypoint index"`
-	From        Position `json:"from"`
-	Destination Position `json:"destination"`
-	Status      string   `json:"status"`
-	Reason      string   `json:"reason"`
-	Distance    float64  `json:"distance"`
-	Gap         *float64 `json:"gap,omitempty"`
-	StartGap    *float64 `json:"start_gap,omitempty"`
-	VerticalGap *float64 `json:"vertical_gap,omitempty"`
-	FloorValid  *bool    `json:"floor_valid,omitempty"`
+	Collision   *CollisionEvidence `json:"collision,omitempty"`
+	Index       int                `json:"index" doc:"1-based requested waypoint index"`
+	From        Position           `json:"from"`
+	Destination Position           `json:"destination"`
+	Status      string             `json:"status"`
+	Reason      string             `json:"reason"`
+	Distance    float64            `json:"distance"`
+	Gap         *float64           `json:"gap,omitempty"`
+	StartGap    *float64           `json:"start_gap,omitempty"`
+	VerticalGap *float64           `json:"vertical_gap,omitempty"`
+	FloorValid  *bool              `json:"floor_valid,omitempty"`
 }
 
 // RouteCheck certifies connected navmesh legs from the character's captured position.

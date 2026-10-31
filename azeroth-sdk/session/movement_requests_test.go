@@ -2,12 +2,14 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/pthm/leeroy/azeroth-sdk/navigation"
+	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
 	"github.com/pthm/leeroy/azeroth-sdk/script"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
@@ -418,6 +420,43 @@ func TestRecoveryReleaseTransferPreservesOnlyItsCurrentLease(t *testing.T) {
 			}
 			if !f.control.transferredSince(serial) {
 				t.Fatal("transfer completion not observed")
+			}
+		})
+	}
+}
+
+func TestMovementStoppedNearbyOrOnWrongFloorIsNotArrival(t *testing.T) {
+	for _, p := range []types.Position{{X: 4}, {Z: 2}} {
+		t.Run(fmt.Sprint(p), func(t *testing.T) {
+			f := newMovementFixture(t, false)
+			id := f.start(1, 0)
+			f.walking(t, id)
+			f.mu.Lock()
+			f.position = p
+			f.moving = false
+			f.mu.Unlock()
+			f.clock.Add(int64(2 * time.Second))
+			f.control.poll()
+			f.resultCode(t, id, "stuck")
+		})
+	}
+}
+func TestMovementPreparationFailureCannotBecomeNearbySuccess(t *testing.T) {
+	for _, state := range []string{"blocked", "unknown"} {
+		t.Run(state, func(t *testing.T) {
+			f := newMovementFixture(t, false)
+			f.control.backend.prepare = func(context.Context, types.Position, func() bool) error {
+				return &pathfinding.TraversalError{Check: pathfinding.CollisionCheck{State: state, Reason: "fixture", Model: "wall", Segment: 2}}
+			}
+			id := f.start(1, 1)
+			waitMovement(t, func() bool { return f.control.reqs.Result(id)["pending"] != true })
+			code := "route_blocked"
+			if state == "unknown" {
+				code = "collision_unavailable"
+			}
+			f.resultCode(t, id, code)
+			if len(f.published) != 0 {
+				t.Fatal("published failed path")
 			}
 		})
 	}

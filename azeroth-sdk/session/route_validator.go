@@ -66,7 +66,7 @@ func (r *routeRequests) startRoute(task int, from types.Position, points []types
 			res, err := r.find(ctx, from.Map, current, dest)
 			checked := checkRoute(types.PathCheck{Map: from.Map, From: routePosition(current, from.Map), Destination: p, Source: "session_navmesh"}, current, dest, res, err)
 			check := checked.Data.(types.PathCheck)
-			data.Legs = append(data.Legs, types.RouteLeg{Index: i + 1, From: check.From, Destination: p, Status: check.Status, Reason: check.Reason, Distance: check.Distance, Gap: check.Gap, StartGap: check.StartGap, VerticalGap: check.VerticalGap, FloorValid: check.FloorValid})
+			data.Legs = append(data.Legs, types.RouteLeg{Collision: check.Collision, Index: i + 1, From: check.From, Destination: p, Status: check.Status, Reason: check.Reason, Distance: check.Distance, Gap: check.Gap, StartGap: check.StartGap, VerticalGap: check.VerticalGap, FloorValid: check.FloorValid})
 			if len(data.Waypoints)+len(check.Waypoints) > maxRouteWaypoints {
 				return queryFailure(data, "route_limit", "route exceeds 8192 navmesh points; split it into shorter queries")
 			}

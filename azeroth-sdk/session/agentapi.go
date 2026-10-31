@@ -1078,7 +1078,7 @@ func (r *reach) of(guid uint64, x, y, z float64, eye float32) (inSight *bool, pa
 		inSight = &clear
 	}
 	e, hit := b.pathCache[guid]
-	if !hit || time.Since(e.at) > 5*time.Second || dist3(e.from, r.from) > 3 || dist3(e.to, to) > 3 {
+	if !hit || time.Since(e.at) > 5*time.Second || e.from != r.from || e.to != to {
 		if time.Now().After(r.deadline) {
 			return inSight, nil, nil
 		}
@@ -1089,13 +1089,16 @@ func (r *reach) of(guid uint64, x, y, z float64, eye float32) (inSight *bool, pa
 		if err != nil {
 			return inSight, nil, nil
 		}
-		if res != nil && res.Found && len(res.Points) > 0 {
+		if res != nil && res.Collision != nil && res.Collision.State == "unknown" {
+			return inSight, nil, nil
+		}
+		if res != nil && res.Found && !res.Partial && len(res.Points) > 0 {
 			prev := r.from
 			for _, p := range res.Points {
 				e.dist += dist3(prev, p)
 				prev = p
 			}
-			e.ok = dist3(prev, to) <= 5
+			e.ok = checkRoute(types.PathCheck{}, r.from, to, res, nil).OK
 		}
 		b.pathCache[guid] = e
 	}
