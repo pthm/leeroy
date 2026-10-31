@@ -139,8 +139,13 @@ func TestCorpseReplyDistinguishesMissingAndMalformed(t *testing.T) {
 	}
 	packet := append([]byte{1}, make([]byte, 20)...)
 	s.onPacket(42, msgCorpseQuery, packet)
-	if s.corpse == nil || len(s.corpse) != 4 {
+	if s.corpse == nil || len(s.corpse) != 5 {
 		t.Fatal("corpse at origin lost")
+	}
+	packet[17] = 36 // the corpse's own map: inside the Deadmines, reported at its entrance on map 0
+	s.onPacket(42, msgCorpseQuery, packet)
+	if s.corpse[3] != 0 || s.corpse[4] != 36 {
+		t.Fatalf("instance corpse map lost: %v", s.corpse)
 	}
 	s.onPacket(42, msgCorpseQuery, []byte{0})
 	if s.corpse != nil {

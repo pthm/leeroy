@@ -255,6 +255,9 @@ type Corpse struct {
 	Place
 	Map       uint32  `json:"map"`
 	ReclaimIn float64 `json:"reclaim_in" doc:"seconds until you can reclaim it"`
+	Instance  uint32  `json:"instance,omitempty" doc:"the corpse is inside this instance map; x, y, z is then the way in"`
+	Portal    bool    `json:"portal,omitempty" doc:"x, y, z is the instance portal: walk into it as a ghost to come back to life inside"`
+	Radius    float64 `json:"radius,omitempty" doc:"the portal triggers anywhere within this many yards of x, y, z"`
 }
 
 type Achievements struct {

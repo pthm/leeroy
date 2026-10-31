@@ -22,6 +22,11 @@ Flying, your hearthstone, and coming back from death. The rest of the SDK is in 
   it cannot exceed the shared attempt limit. A hostile or unverified healer site is refused even with
   permission. Available healer metadata includes `durability_loss=true` and `cost_known=false`: the exact
   server-configured penalty is not exposed.
+- A corpse inside an instance: `death.corpse()` reports `instance` (its map) and `portal=true`, with x, y, z a
+  reachable point inside the instance's portal trigger (`radius` yards around it); the server's own corpse
+  position is the instance entrance on the outside map at ground height, which can be the surface above the
+  tunnel the portal is in. Recovery walks into the portal: a ghost entering the instance its corpse is in comes
+  back to life at the entrance inside.
 - Corpse recovery checks path endpoint gap, vertical tolerance, reclaim range, line of sight, and the server's
   timer. If the corpse site is hostile, it considers observed clear points 32 yards away. A failed walk to
   such a point terminates recovery. `safe=false` skips the corpse-site hostile check; it does not bypass

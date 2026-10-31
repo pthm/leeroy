@@ -616,6 +616,9 @@ Everything in [Place](#place), plus:
 |---|---|---|
 | `map` | number |  |
 | `reclaim_in` | number | seconds until you can reclaim it |
+| `instance?` | number | the corpse is inside this instance map; x, y, z is then the way in |
+| `portal?` | bool | x, y, z is the instance portal: walk into it as a ghost to come back to life inside |
+| `radius?` | number | the portal triggers anywhere within this many yards of x, y, z |
 
 ### Achievements
 

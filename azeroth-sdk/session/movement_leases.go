@@ -206,6 +206,10 @@ func (m *movementRequests) registerLeases(e *script.Engine) {
 		}
 		return r
 	})
+	e.InternalFunc("move._expect_transfer", "(seconds) → nil", func(seconds float64) {
+		id, _, _ := e.CurrentTaskIdentity()
+		m.expectRecoveryTransfer(id, time.Duration(seconds*float64(time.Second)))
+	})
 	e.InternalFunc("move._acquire", "(priority, queue_timeout_s, max_s) → Request", func(priority string, queue, max float64) map[string]any {
 		id, name, call := e.CurrentTaskIdentity()
 		return m.acquire(id, name, call, priority, queue, max)

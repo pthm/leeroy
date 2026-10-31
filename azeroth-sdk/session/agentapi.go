@@ -68,7 +68,7 @@ type agentState struct {
 	// itemCD: an item cast's cooldown, by the item's guid, or its entry when that's 0
 	itemCD      func(item uint64, entry, spell uint32) (cdRule, bool)
 	pushed      map[uint32]time.Time // SMSG_SPELL_COOLDOWN: sent before the SPELL_GO, it wins over Spell.dbc
-	corpse      []float32            // x, y, z, map
+	corpse      []float32            // x, y, z, map, the corpse's own map (an instance when it differs)
 	corpseAt    time.Time
 	corpseKnown bool
 	reclaimAt   time.Time
@@ -285,6 +285,15 @@ func (b *Bot) setupAgentAPI() {
 				}
 				c := types.Corpse{Place: types.Place{X: round1(s.corpse[0]), Y: round1(s.corpse[1]), Z: round1(s.corpse[2])}, Map: uint32(s.corpse[3]),
 					ReclaimIn: math.Max(0, math.Ceil(time.Until(s.reclaimAt).Seconds()))}
+				if in := uint32(s.corpse[4]); in != c.Map {
+					c.Instance = in
+					if p, ok := portalNear(b.areaTriggers, c.Map, s.corpse[0], s.corpse[1]); ok {
+						c.X, c.Y, c.Z, c.Portal, c.Radius = round1(p.x), round1(p.y), round1(p.z), true, round1(p.radius())
+						if a, ok := b.portalApproach(p, navigation.Point3D{X: s.corpse[0], Y: s.corpse[1], Z: s.corpse[2]}); ok {
+							c.X, c.Y, c.Z = round1(a.X), round1(a.Y), round1(a.Z)
+						}
+					}
+				}
 				m := b.me3()
 				c.Distance = round1(float32(math.Sqrt((c.X-m.x)*(c.X-m.x) + (c.Y-m.y)*(c.Y-m.y) + (c.Z-m.z)*(c.Z-m.z))))
 				relate(m.x, m.y, m.z, m.o, &c.Place)
@@ -734,7 +743,10 @@ func (s *agentState) onPacket(me uint64, op uint16, data []byte) {
 		s.corpseKnown, s.corpseAt, s.corpse = true, now, nil
 		if found, _ := r.ReadByte(); found != 0 {
 			m := u32()
-			s.corpse = []float32{f32(), f32(), f32(), float32(m)}
+			s.corpse = []float32{f32(), f32(), f32(), float32(m), float32(m)}
+			if r.Len() >= 4 {
+				s.corpse[4] = float32(u32())
+			}
 		}
 	case smsgAchievementEarned: // also sent for players nearby
 		if readPackedGUID(r) == me {

@@ -778,12 +778,42 @@ local function recovery_move(c, p, tolerance)
   if A.dist(p.x, p.y) > (tolerance or 4) or (r.data and r.data.no_path) then return c:fail("unreachable", "walk did not confirm the recovery point") end
   return r
 end
+-- A ghost that walks into the portal of the instance its corpse is in comes back to life inside, at the entrance:
+-- death.corpse reports that portal (portal=true) in place of the corpse.
+local function portal_recovery(c, portal)
+  c:state("ghost_travel")
+  local ended = c:guard(); if ended then return ended end
+  -- the trigger's centre can be past the end of the navmesh (the Deadmines' is at the back of its tunnel): walk to
+  -- the nearest reachable point when that's still inside the trigger
+  local target, req = portal, world.path(portal.x, portal.y, portal.z)
+  local path = await(req, math.max(0.001, math.min(15, (c.deadline-now())/1000)))
+  if path.error and path.error.code == "wait_timeout" and req.id then world._cancel(req.id) end
+  step(c.data.steps, "world.path", path)
+  if not path.ok then
+    local w = path.data and path.data.waypoints
+    local e = w and w[#w]
+    if not e or math.sqrt((e.x-portal.x)^2+(e.y-portal.y)^2+(e.z-portal.z)^2) > (portal.radius or 0) then return c:fail(path.error.code, path.error.message, path) end
+    target = e
+  end
+  move._expect_transfer((c.deadline-now())/1000+10) -- the portal's teleport must not end this recovery's movement lease
+  ended = c:guard(); if ended then return ended end
+  local r = await(move.to(target.x, target.y, target.z), math.max(0.001, (c.deadline-now())/1000)) -- graveyards can be 800 yd out
+  step(c.data.steps, "move.to", r)
+  if not r.ok and r.error.code ~= "teleported" then return c:fail(r.error.code, r.error.message, r) end
+  for _ = 1, 30 do -- the trigger fires within half a second of arriving; the transfer takes a few more
+    if me.alive() and not me.ghost() then return A.ok("act.corpse_run") end
+    ended = c:sleep(1); if ended then return ended end
+  end
+  return c:fail("not_alive", "walked into the instance portal but did not come back to life")
+end
 local function corpse_recovery(c, o, attempt_limit)
   if me.alive() and not me.ghost() then return A.ok("act.corpse_run") end
   if not me.ghost() then return c:fail("not_a_ghost", "release before running to the corpse") end
   local lookup=c:action("death.corpse",death.corpse,5)
   if not lookup.ok then return lookup end
   local corpse=lookup.data
+  if corpse.portal then return portal_recovery(c, corpse) end
+  if corpse.instance then return c:fail("unreachable", "corpse is inside instance map "..corpse.instance.." and no portal is known near its entrance") end
   if A.dist(corpse.x, corpse.y, corpse.z) > 35 then
     local r = recovery_move(c, corpse, 4); if not r.ok then return r end
   end
