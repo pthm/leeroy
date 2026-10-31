@@ -305,6 +305,10 @@ func (w *WorldClient) stepFall(now time.Time) bool {
 }
 
 // maybeFall starts a fall when the ground is well below us (a teleport into the air).
+// Settle falls to the ground if we're hanging over it, as after a teleport: a flight leaves you at its path's last
+// point, yards over the floor at some flight masters (Stormwind 2.3, Sentinel Hill 3.7), where a client drops.
+func (w *WorldClient) Settle() { w.maybeFall() }
+
 func (w *WorldClient) maybeFall() {
 	w.moveMu.Lock()
 	ground, mapID, x, y, z := w.ground, w.mapID, w.posX, w.posY, w.posZ

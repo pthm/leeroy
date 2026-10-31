@@ -836,6 +836,7 @@ type spellRec struct {
 	Level            uint32  `json:"level"`   // the level you can learn it at (base level)
 	costPct          uint32  // ManaCostPercentage: most 3.3.5 spells cost a percentage of base mana, with Cost 0
 	attrs            uint32  // Attributes (passive 0x40, hidden 0x80)
+	attrsEx2         uint32  // AttributesEx2 (auto-repeat 0x20)
 	dispel           uint32  // 1 magic, 2 curse, 3 disease, 4 poison
 	casterState      uint32  // the aura state you need (Victory Rush: victory_rush), 0 = none
 	targetState      uint32  // the aura state the target needs (Execute: health_below_20)
@@ -873,10 +874,16 @@ func loadSpells() {
 			// field indices per AzerothCore DBCStructure.h SpellEntry
 			spells[f(0)] = &spellRec{Name: str(f(136)), Rank: str(f(153)), Category: f(1), Cooldown: f(29),
 				CategoryCooldown: f(30), GCDCategory: f(205), GCD: f(206), PowerType: f(41), Cost: f(42),
-				Range: ranges[f(46)], CastMS: castTimes[f(28)], Level: f(38), costPct: f(204), attrs: f(4), dispel: f(2),
+				Range: ranges[f(46)], CastMS: castTimes[f(28)], Level: f(38), costPct: f(204), attrs: f(4), attrsEx2: f(6), dispel: f(2),
 				casterState: f(20), targetState: f(21)}
 		}
 	})
+}
+
+// autoRepeat: a wand's Shoot, Auto Shot: the server repeats it until something stops it
+func autoRepeat(id uint32) bool {
+	s := spellInfo(id)
+	return s != nil && s.attrsEx2&0x20 != 0
 }
 
 func spellInfo(id uint32) *spellRec {

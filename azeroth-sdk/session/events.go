@@ -665,9 +665,16 @@ func (b *Bot) setupActions() {
 
 // castMatch resolves a request on the spell's cast_done / cast_failed.
 func castMatch(spell uint32, count uint8) func(script.Event) *script.Outcome {
+	return castMatchRepeating(spell, count, autoRepeat(spell))
+}
+
+// castMatchRepeating: an auto-repeating spell (a wand's Shoot, Auto Shot) starts with the request's cast count, but
+// the server sends every shot with count 0, then "interrupted" with the request's count when the shooting stops:
+// its first shot completes the request
+func castMatchRepeating(spell uint32, count uint8, repeating bool) func(script.Event) *script.Outcome {
 	return func(ev script.Event) *script.Outcome {
 		c, ok := ev.Data.(types.Cast)
-		if !ok || c.Spell != spell || c.Count != count {
+		if !ok || c.Spell != spell || (c.Count != count && !(repeating && c.Count == 0 && ev.Type == "cast_done")) {
 			return nil
 		}
 		switch ev.Type {

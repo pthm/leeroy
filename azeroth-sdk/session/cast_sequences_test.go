@@ -42,3 +42,18 @@ func TestCastMatchRejectsOtherRequestAndUnsolicitedOutcome(t *testing.T) {
 		}
 	}
 }
+
+// A wand's Shoot: the request's count on cast_start, every shot count 0 (Isolde's 879 failed Shoot requests while
+// 1141 shots hit, 2026-10-31)
+func TestAutoRepeatShotCompletesTheCast(t *testing.T) {
+	match := castMatchRepeating(5019, 124, true)
+	if o := match(script.Event{Type: "cast_done", Data: types.Cast{Spell: 5019, Count: 0, Hits: 1}}); o == nil || !o.OK {
+		t.Fatalf("shot = %+v", o)
+	}
+	if o := match(script.Event{Type: "cast_failed", Data: types.Cast{Spell: 5019, Count: 0, Code: "interrupted"}}); o != nil {
+		t.Fatalf("another cast's failure matched: %+v", o)
+	}
+	if o := match(script.Event{Type: "cast_done", Data: types.Cast{Spell: 133, Count: 0, Hits: 1}}); o != nil {
+		t.Fatalf("another spell matched: %+v", o)
+	}
+}

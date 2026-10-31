@@ -339,13 +339,17 @@ func (b *Bot) setupTravel() {
 			t.mu.Lock()
 			t.flight = fl
 			t.mu.Unlock()
-			took, asked := false, time.Now()
+			took, settled, asked := false, false, time.Now()
 			return b.request("flights.take", args, 30*time.Minute, func() *script.Outcome {
 				flying := w.MovementLock() == "in_flight"
 				switch {
 				case flying:
 					took = true
-				case took: // landed
+				case took && !settled: // landed: drop from the path's last point to the floor, then report
+					settled = true
+					w.Settle()
+				case took && w.Falling():
+				case took:
 					f := *fl
 					f.Seconds = int(time.Since(asked).Seconds())
 					return script.Ok(f)
