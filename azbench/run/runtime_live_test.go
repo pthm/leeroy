@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,7 +31,7 @@ func TestRuntimePermissionsLive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	commands := []string{"wow help", "azworld help", "standings --help", "sleep 0.1", "tail -n 1 fixture.txt", "cat fixture.txt", "ls .", "grep alpha fixture.txt", "mkdir -p smoke-dir", "head -n 1 fixture.txt", "wc -l fixture.txt", "sort fixture.txt", "uniq fixture.txt", "cut -c 1-2 fixture.txt", "rg alpha fixture.txt"}
+	commands := []string{"wow help", "azworld help", "standings --help", "sleep 12", "tail -n 1 fixture.txt", "cat fixture.txt", "ls .", "grep alpha fixture.txt", "mkdir -p smoke-dir", "head -n 1 fixture.txt", "wc -l fixture.txt", "sort fixture.txt", "uniq fixture.txt", "cut -c 1-2 fixture.txt", "rg alpha fixture.txt"}
 	for _, runtime := range strings.Split(selected, ",") {
 		t.Run(runtime, func(t *testing.T) {
 			if runtime != "claude" && runtime != "codex" && runtime != "opencode" {
@@ -55,14 +56,24 @@ func TestRuntimePermissionsLive(t *testing.T) {
 			}
 			p := &player{r: &Runner{repo: repo, dir: dir}, ws: ws, dir: dir, port: 8112, a: a}
 			prompt := "Run these permission smoke commands exactly, one separate shell tool call each. Do not change files or call other commands. Finish only after all calls return; if a tool yields a session/task handle, poll it with the runtime polling tool. Report failures accurately. These are local tool tests, not gameplay.\n" + strings.Join(commands, "\n")
+			if runtime == "claude" {
+				prompt += "\nFor sleep 12, set Bash run_in_background=true, then use TaskOutput with block=true to wait for completion."
+			}
+			if runtime == "codex" {
+				prompt += "\nFor sleep 12, set exec_command yield_time_ms=1000, then use write_stdin to wait for completion."
+			}
 			cmd := p.agentCmd(prompt, "")
 			out, err := os.Create(filepath.Join(dir, "agent.jsonl"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			cmd.Stdout, cmd.Stderr = out, out
+			reader, writer := io.Pipe()
+			drained := make(chan error, 1)
+			go func() { drained <- stampLinesObserved(reader, out, nil) }()
+			cmd.Stdout, cmd.Stderr = writer, writer
 			if err := cmd.Start(); err != nil {
-				out.Close()
+				writer.Close()
+				<-drained
 				t.Fatal(err)
 			}
 			done := make(chan error, 1)
@@ -74,12 +85,19 @@ func TestRuntimePermissionsLive(t *testing.T) {
 				err = <-done
 				t.Errorf("runtime smoke deadline expired")
 			}
-			out.Close()
+			writer.Close()
+			if err := <-drained; err != nil {
+				t.Error("transcript:", err)
+			}
 			if err != nil {
 				t.Errorf("runtime process: %v (see %s)", err, dir)
 			}
 			seen := map[string]bool{}
+			polled := false
 			diag := newToolDiagnostics(runtime, func(d types.Diagnostic) {
+				if d.Op == "TaskOutput" && d.Outcome == "succeeded" {
+					polled = true
+				}
 				if d.Kind == "tool_call" && d.Outcome == "succeeded" {
 					seen[d.Details.CommandFamily] = true
 				}
@@ -101,6 +119,9 @@ func TestRuntimePermissionsLive(t *testing.T) {
 				if !seen[name] {
 					t.Errorf("no successful %s tool evidence; inspect %s", name, dir)
 				}
+			}
+			if runtime == "claude" && !polled {
+				t.Error("no successful TaskOutput completion evidence")
 			}
 			summary, _ := json.MarshalIndent(seen, "", "  ")
 			os.WriteFile(filepath.Join(dir, "commands.json"), summary, 0644)
