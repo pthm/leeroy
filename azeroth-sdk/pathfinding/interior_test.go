@@ -71,6 +71,14 @@ func TestInteriorStackedFloorsStayDistinct(t *testing.T) {
 		if err != nil || r.Type != PathfindNormal {
 			t.Fatalf("z=%v: %+v %v", z, r, err)
 		}
+		if len(r.PointPolys) != len(r.Points) || len(r.Corridor) != 1 {
+			t.Fatal("missing surface references")
+		}
+		for _, ref := range r.PointPolys {
+			if ref != r.Corridor[0] {
+				t.Fatal("surface changed")
+			}
+		}
 		for _, p := range r.Points {
 			if math.Abs(float64(p.Z-z)) > 0.05 {
 				t.Fatalf("changed floor: %+v", r)

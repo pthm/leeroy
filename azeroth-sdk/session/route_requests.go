@@ -186,7 +186,7 @@ func checkRoute(data types.PathCheck, from, to navigation.Point3D, res *navigati
 		prev = p
 		data.Waypoints = append(data.Waypoints, routePosition(p, data.Map))
 	}
-	if gap > 3 || !floor {
+	if res.Partial || gap > 3 || !floor {
 		data.Status, data.Reason = "partial", "route_unreachable"
 		return script.Fail("route_unreachable", "navmesh path ends short of the requested 3D destination", data)
 	}

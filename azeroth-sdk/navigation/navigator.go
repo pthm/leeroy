@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"sync"
 	"time"
 
@@ -35,8 +36,11 @@ func (p Point3D) DistanceTo2D(o Point3D) float32 {
 
 // PathResult holds the result of a pathfinding query.
 type PathResult struct {
-	Found  bool
-	Points []Point3D
+	Found   bool
+	Partial bool // a known prefix, never completion of the requested destination
+	Points  []Point3D
+	surface *pathfinding.PathResult // Detour references stay inside navigation
+
 }
 
 // Navigator is the interface for pathfinding.
@@ -166,7 +170,7 @@ func convertResult(r *pathfinding.PathResult) *PathResult {
 	for i, p := range r.Points {
 		points[i] = Point3D{X: p.X, Y: p.Y, Z: p.Z}
 	}
-	return &PathResult{Found: found, Points: points}
+	return &PathResult{Found: found, Partial: r.Type&(pathfinding.PathfindIncomplete|pathfinding.PathfindShort|pathfinding.PathfindFarFromPolyStart|pathfinding.PathfindFarFromPolyEnd) != 0, Points: points, surface: r.Clone()}
 }
 
 // ============================================================
@@ -194,4 +198,14 @@ func (n *embeddedNavigator) FloorHeightContext(ctx context.Context, m uint32, x,
 }
 func (n *embeddedNavigator) GetTerrainHeightContext(ctx context.Context, m uint32, x, y float32) (float32, bool) {
 	return n.svc.GetTerrainHeightContext(ctx, m, x, y)
+}
+
+func (r *PathResult) Clone() *PathResult {
+	if r == nil {
+		return nil
+	}
+	q := *r
+	q.Points = slices.Clone(r.Points)
+	q.surface = r.surface.Clone()
+	return &q
 }

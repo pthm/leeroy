@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"slices"
 
 	"github.com/pthm/leeroy/azeroth-sdk/navigation"
 )
@@ -13,9 +12,7 @@ type routeKey struct {
 }
 
 func copyPath(p *navigation.PathResult) *navigation.PathResult {
-	q := *p
-	q.Points = slices.Clone(p.Points)
-	return &q
+	return p.Clone()
 }
 
 // A session performs at most one navmesh search at a time. Cancellation also
@@ -39,7 +36,7 @@ func (b *Bot) findPath(ctx context.Context, mapID uint32, from, to navigation.Po
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	if err == nil && result != nil && result.Found && len(result.Points) > 0 && dist3(from, result.Points[0]) <= 3 && dist3(to, result.Points[len(result.Points)-1]) <= 3 {
+	if err == nil && result != nil && result.Found && !result.Partial && len(result.Points) > 0 && dist3(from, result.Points[0]) <= 3 && dist3(to, result.Points[len(result.Points)-1]) <= 3 {
 		if b.routeCache == nil || len(b.routeCache) >= 128 {
 			b.routeCache = map[routeKey]*navigation.PathResult{}
 		}

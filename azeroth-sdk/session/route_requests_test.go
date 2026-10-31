@@ -249,3 +249,11 @@ func TestRecoveryDeadlineCancelsRouteBackend(t *testing.T) {
 	// The recovery coordinator owns request 1; its nested path owns request 2.
 	routeResult(t, b.routes, 2, "recovery_timeout")
 }
+
+func TestPartialRouteNearDestinationIsNotVerified(t *testing.T) {
+	p := navigation.Point3D{X: 1}
+	out := checkRoute(types.PathCheck{}, navigation.Point3D{}, p, &navigation.PathResult{Found: true, Partial: true, Points: []navigation.Point3D{{}, p}}, nil)
+	if out.OK || out.Data.(types.PathCheck).Status != "partial" {
+		t.Fatal(out)
+	}
+}

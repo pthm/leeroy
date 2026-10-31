@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 
@@ -56,6 +57,24 @@ type Point3D struct {
 type PathResult struct {
 	Type   PathType
 	Points []Point3D
+	// Corridor and PointPolys retain the selected surfaces after smoothing.
+	Corridor                     []detour.DtPolyRef
+	PointPolys                   []detour.DtPolyRef
+	Transitions                  []bool // segment ending at this point crosses an off-mesh link
+	RequestedStart, RequestedEnd Point3D
+	ProjectedStart, ProjectedEnd Point3D
+}
+
+func (r *PathResult) Clone() *PathResult {
+	if r == nil {
+		return nil
+	}
+	q := *r
+	q.Points = slices.Clone(r.Points)
+	q.Corridor = slices.Clone(r.Corridor)
+	q.PointPolys = slices.Clone(r.PointPolys)
+	q.Transitions = slices.Clone(r.Transitions)
+	return &q
 }
 
 // PathLength computes the total length of the path.
@@ -336,8 +355,10 @@ func (pf *PathFinder) FindPathContext(ctx context.Context, start, dest Point3D) 
 	// Build smooth point path.
 	smoothPath := make([]float32, maxPointPathLength*vertexSize)
 	var smoothPathSize int
+	smoothRefs := make([]detour.DtPolyRef, maxPointPathLength)
+	transitions := make([]bool, maxPointPathLength)
 
-	status := pf.findSmoothPath(ctx, startPoint[:], endPoint[:], polyPath, uint32(polyPathSize), smoothPath, &smoothPathSize, uint32(maxPointPathLength))
+	status := pf.findSmoothPath(ctx, startPoint[:], endPoint[:], polyPath, uint32(polyPathSize), smoothPath, &smoothPathSize, uint32(maxPointPathLength), smoothRefs, transitions)
 
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -346,6 +367,7 @@ func (pf *PathFinder) FindPathContext(ctx context.Context, start, dest Point3D) 
 	if polyPathSize == 1 && smoothPathSize == 1 {
 		copy(smoothPath[1*vertexSize:], endPoint[:])
 		smoothPathSize = 2
+		smoothRefs[1] = endPoly
 	} else if smoothPathSize < 2 || detour.DtStatusFailed(status) {
 		return &PathResult{
 			Type:   pathType | PathfindNopath,
@@ -379,8 +401,11 @@ func (pf *PathFinder) FindPathContext(ctx context.Context, start, dest Point3D) 
 	}
 
 	return &PathResult{
-		Type:   pathType,
-		Points: points,
+		Type: pathType, Points: points,
+		Corridor: slices.Clone(polyPath[:polyPathSize]), PointPolys: smoothRefs[:smoothPathSize], Transitions: transitions[:smoothPathSize],
+		RequestedStart: start, RequestedEnd: dest,
+		ProjectedStart: Point3D{closestStart[2], closestStart[0], closestStart[1]},
+		ProjectedEnd:   Point3D{closestEnd[2], closestEnd[0], closestEnd[1]},
 	}, nil
 }
 
@@ -463,7 +488,7 @@ func (pf *PathFinder) getPolyByLocation(point []float32, distance *float32, clos
 }
 
 func (pf *PathFinder) findSmoothPath(ctx context.Context, startPos, endPos []float32, polyPath []detour.DtPolyRef, polyPathSize uint32,
-	smoothPath []float32, smoothPathSize *int, maxSmoothPathSize uint32) detour.DtStatus {
+	smoothPath []float32, smoothPathSize *int, maxSmoothPathSize uint32, refs []detour.DtPolyRef, transitions []bool) detour.DtStatus {
 	*smoothPathSize = 0
 	nsmoothPath := uint32(0)
 
@@ -487,6 +512,7 @@ func (pf *PathFinder) findSmoothPath(ctx context.Context, startPos, endPos []flo
 
 	// Store first point as-is (from boundary or start). AC stores iterPos directly here; +0.5 is added only to subsequent steering points.
 	dtVcopy(smoothPath[nsmoothPath*vertexSize:], iterPos[:])
+	refs[nsmoothPath] = polys[0]
 	nsmoothPath++
 
 	for npolys > 0 && nsmoothPath < maxSmoothPathSize {
@@ -553,6 +579,7 @@ func (pf *PathFinder) findSmoothPath(ctx context.Context, startPos, endPos []flo
 			if nsmoothPath < maxSmoothPathSize {
 				// record the target as-is (AC copies targetPos directly; NormalizePath fixes Z later)
 				dtVcopy(smoothPath[nsmoothPath*vertexSize:], iterPos[:])
+				refs[nsmoothPath] = polys[npolys-1]
 				nsmoothPath++
 			}
 			break
@@ -575,6 +602,7 @@ func (pf *PathFinder) findSmoothPath(ctx context.Context, startPos, endPos []flo
 			if detour.DtStatusSucceed(pf.navMesh.GetOffMeshConnectionPolyEndPoints(prevRef, polyRef, connStartPos[:], connEndPos[:])) {
 				if nsmoothPath < maxSmoothPathSize {
 					dtVcopy(smoothPath[nsmoothPath*vertexSize:], connStartPos[:])
+					refs[nsmoothPath] = prevRef
 					nsmoothPath++
 				}
 				copy(iterPos[:], connEndPos[:])
@@ -583,6 +611,8 @@ func (pf *PathFinder) findSmoothPath(ctx context.Context, startPos, endPos []flo
 					return detour.DT_FAILURE
 				}
 				iterPos[1] = polyH + 0.5 // match AC temp lift
+				record = iterPos
+				transitions[nsmoothPath] = true
 				// record version (lifted)
 				if nsmoothPath < maxSmoothPathSize {
 					smoothPath[nsmoothPath*vertexSize+1] = iterPos[1]
@@ -592,6 +622,7 @@ func (pf *PathFinder) findSmoothPath(ctx context.Context, startPos, endPos []flo
 
 		if nsmoothPath < maxSmoothPathSize {
 			dtVcopy(smoothPath[nsmoothPath*vertexSize:], record[:])
+			refs[nsmoothPath] = polys[0]
 			nsmoothPath++
 		}
 	}
