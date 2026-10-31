@@ -304,9 +304,13 @@ func (b *Bot) setupAgentAPI() {
 		if b.IsAlive() {
 			return b.refuse("death.release", nil, "not_dead", "you're alive")
 		}
-		w.RepopRequest()
+		task, _, _ := e.CurrentTaskIdentity()
+		serial := b.moves.expectRecoveryTransfer(task, 10*time.Second)
+		if err := w.RepopRequest(); err != nil {
+			return b.refuse("death.release", nil, "not_available", "release request could not be sent")
+		}
 		return b.request("death.release", nil, 10*time.Second, func() *script.Outcome {
-			if b.IsGhost() {
+			if b.IsGhost() && b.moves.transferredSince(serial) && w.SessionPhase() == client.PhaseInWorld {
 				return script.Ok(nil)
 			}
 			return nil

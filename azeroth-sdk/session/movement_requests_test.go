@@ -390,3 +390,35 @@ func TestMovementDiagnosticsDoNotHoldControllerLock(t *testing.T) {
 		t.Fatalf("preemptions=%d events=%+v", preempt, events)
 	}
 }
+
+func TestRecoveryReleaseTransferPreservesOnlyItsCurrentLease(t *testing.T) {
+	for _, mode := range []string{"authorized", "other_task", "expired", "disconnect", "second_transfer"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newMovementFixture(t, false)
+			f.control.acquire(1, "recovery", "call", "recovery", 0, 60)
+			task := 1
+			if mode == "other_task" {
+				task = 2
+			}
+			serial := f.control.expectRecoveryTransfer(task, 10*time.Second)
+			if mode == "expired" {
+				f.control.expectedTransferUntil = time.Now().Add(-time.Second)
+			}
+			reason := "teleported"
+			if mode == "disconnect" {
+				reason = "world_changed"
+			}
+			f.control.invalidateWorld(reason)
+			if mode == "second_transfer" {
+				f.control.invalidateWorld("teleported")
+			}
+			owner, _ := f.control.snapshot()
+			if (owner != nil) != (mode == "authorized") {
+				t.Fatalf("owner=%+v", owner)
+			}
+			if !f.control.transferredSince(serial) {
+				t.Fatal("transfer completion not observed")
+			}
+		})
+	}
+}

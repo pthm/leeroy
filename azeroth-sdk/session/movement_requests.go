@@ -43,20 +43,23 @@ type movementCompletion struct {
 	result *script.Outcome
 }
 type movementRequests struct {
-	mu          sync.Mutex
-	reqs        *script.Requests
-	backend     movementBackend
-	now         func() time.Time
-	active      *movementRequest
-	lease       *movementLease
-	leases      map[int]*movementLease
-	queue       []*movementRequest
-	events      []types.Diagnostic
-	completions []movementCompletion
-	inactive    []movementInactive
-	wake        chan struct{}
-	done        chan struct{}
-	closed      bool
+	mu                    sync.Mutex
+	reqs                  *script.Requests
+	backend               movementBackend
+	now                   func() time.Time
+	active                *movementRequest
+	lease                 *movementLease
+	leases                map[int]*movementLease
+	queue                 []*movementRequest
+	events                []types.Diagnostic
+	completions           []movementCompletion
+	inactive              []movementInactive
+	wake                  chan struct{}
+	done                  chan struct{}
+	closed                bool
+	transferSerial        uint64
+	expectedTransferLease *movementLease
+	expectedTransferUntil time.Time
 }
 
 func newMovementRequests(reqs *script.Requests, backend movementBackend) *movementRequests {
@@ -397,17 +400,38 @@ func (b *Bot) setupMovementRequests() {
 func (m *movementRequests) invalidateWorld(reason string) {
 	m.mu.Lock()
 	defer m.unlock()
+	m.transferSerial++
+	preserve := reason == "teleported" && m.lease != nil && m.lease == m.expectedTransferLease && m.now().Before(m.expectedTransferUntil)
+	m.expectedTransferLease = nil
 	out := script.Fail(reason, "world position or connection changed; observe state before moving again", nil)
 	for _, r := range m.queue {
 		m.finishLocked(r, out)
 	}
 	m.queue = nil
-	if m.lease != nil {
+	if m.lease != nil && !preserve {
 		m.invalidateLeaseLocked(out)
 	}
 	if m.active != nil {
 		m.finishLocked(m.active, out)
 	}
+}
+
+// A release request authorizes one server transfer for its current recovery
+// lease. Paths and queued owners still expire; only the bounded scope survives.
+// The ticket cannot migrate to a replacement lease or survive a disconnect.
+func (m *movementRequests) expectRecoveryTransfer(task int, timeout time.Duration) uint64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.lease != nil && m.lease.owner.TaskID == task && m.lease.owner.Priority == "recovery" {
+		m.expectedTransferLease = m.lease
+		m.expectedTransferUntil = m.now().Add(timeout)
+	}
+	return m.transferSerial
+}
+func (m *movementRequests) transferredSince(serial uint64) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.transferSerial != serial
 }
 
 func (m *movementRequests) ownerEventLocked(owner types.MovementOwner, state, code string, wait int64) {
