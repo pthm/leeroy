@@ -177,7 +177,7 @@ func (pf *PathFinder) validateSurface(ctx context.Context, r *PathResult) error 
 			ts = ts[1:]
 		}
 		if dist2D(a, p) < 0.1 {
-			ts = []float32{1} // the step across a seam: no floor between its ends to check
+			continue // the step across a seam (up to ~2.4 yd in the Steamvault): no floor to check; the walk checks the step
 		}
 		for _, t := range ts {
 			v := []float32{a.Y + t*(p.Y-a.Y), a.Z + t*(p.Z-a.Z), a.X + t*(p.X-a.X)}

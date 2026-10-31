@@ -128,7 +128,9 @@ func newPathFinderContext(ctx context.Context, mmapMgr *MMapManager, terrainMgr 
 
 	filter := detour.DtAllocDtQueryFilter()
 	// Include all ground, water, magma areas like AC does for non-creature queries.
-	filter.SetIncludeFlags(0x01 | 0x08 | 0x02) // NAV_GROUND | NAV_WATER | NAV_MAGMA
+	// NAV_GROUND | NAV_WATER: routes go round lava and slime (NAV_MAGMA 0x02, NAV_SLIME 0x04), which hurt and which
+	// preparation refuses anyway (hazardous_surface: the Obsidian Sanctum's lava lakes)
+	filter.SetIncludeFlags(0x01 | 0x08)
 	filter.SetExcludeFlags(0)
 
 	return &PathFinder{

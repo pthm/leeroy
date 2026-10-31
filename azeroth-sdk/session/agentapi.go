@@ -287,7 +287,7 @@ func (b *Bot) setupAgentAPI() {
 					ReclaimIn: math.Max(0, math.Ceil(time.Until(s.reclaimAt).Seconds()))}
 				if in := uint32(s.corpse[4]); in != c.Map {
 					c.Instance = in
-					if p, ok := portalNear(b.areaTriggers, c.Map, s.corpse[0], s.corpse[1]); ok {
+					if p, ok := portalNear(b.areaTriggers, c.Map, in, s.corpse[0], s.corpse[1]); ok {
 						c.X, c.Y, c.Z, c.Portal, c.Radius = round1(p.x), round1(p.y), round1(p.z), true, round1(p.radius())
 						if a, ok := b.portalApproach(p, navigation.Point3D{X: s.corpse[0], Y: s.corpse[1], Z: s.corpse[2]}); ok {
 							c.X, c.Y, c.Z = round1(a.X), round1(a.Y), round1(a.Z)

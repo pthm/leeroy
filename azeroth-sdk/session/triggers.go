@@ -62,14 +62,18 @@ func (t *areaTrigger) radius() float32 {
 	return min(t.bx, t.by, t.bz) / 2
 }
 
-// portalNear: the area trigger on map m nearest (2D) x, y within 40 yd. The server reports a corpse inside an instance
+// portalNear: the area trigger on map m nearest (2D) x, y within 40 yd that leads into instance (or whose destination
+// isn't known). The server reports a corpse inside an instance
 // at the instance's Map.dbc entrance on the outside map, with the height of the ground there, which can be the
 // surface above the tunnel the portal is in; the portal trigger itself is the place a ghost has to walk to.
-func portalNear(triggers []areaTrigger, m uint32, x, y float32) (*areaTrigger, bool) {
+func portalNear(triggers []areaTrigger, m, instance uint32, x, y float32) (*areaTrigger, bool) {
 	var best *areaTrigger
 	bestD := float32(40 * 40)
 	for i := range triggers {
 		t := &triggers[i]
+		if to, known := portalMaps[t.id]; known && to != instance {
+			continue // a portal to another instance (Blackrock Mountain's are yards apart)
+		}
 		if d := (t.x-x)*(t.x-x) + (t.y-y)*(t.y-y); t.mapID == m && d <= bestD {
 			best, bestD = t, d
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 )
 
 // BodyProfile defines a standing character. StepHeight reserves the lower foot
@@ -138,14 +139,23 @@ func (b *BIH) overlap(ctx context.Context, q AABox, visit func(uint32) error) er
 // also the coverage authority: an indexed object absent from loaded tiles is
 // unknown, while an empty indexed region really is empty (even without a tile).
 func (vm *VMapManager) collisionModels(ctx context.Context, m uint32, box AABox) (*StaticMapTree, []ModelInstance, error) {
+	tree, models, err := vm.collisionModelsMargin(ctx, m, box, 1)
+	if err != nil && strings.HasPrefix(err.Error(), "collision instance") {
+		// a building spawned from a tile further off than its neighbours (Ulduar's): load a wider ring
+		return vm.collisionModelsMargin(ctx, m, box, 4)
+	}
+	return tree, models, err
+}
+
+func (vm *VMapManager) collisionModelsMargin(ctx context.Context, m uint32, box AABox, margin int) (*StaticMapTree, []ModelInstance, error) {
 	tree, err := vm.getTreeContext(ctx, m)
 	if err != nil {
 		return nil, nil, err
 	}
 	minX, minY := gameToGridCoords(box.High.X, box.High.Y)
 	maxX, maxY := gameToGridCoords(box.Low.X, box.Low.Y)
-	minX, maxX = max(0, minX-1), min(63, maxX+1)
-	minY, maxY = max(0, minY-1), min(63, maxY+1)
+	minX, maxX = max(0, minX-margin), min(63, maxX+margin)
+	minY, maxY = max(0, minY-margin), min(63, maxY+margin)
 	if (maxX-minX+1)*(maxY-minY+1) > MaxQueryTiles {
 		return nil, nil, ErrQueryLimit
 	}
