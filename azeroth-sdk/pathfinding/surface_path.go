@@ -18,10 +18,15 @@ const surfaceSampleSpacing = 0.25
 // Goldshire), where characters stand on the ground.
 const MaxSupportBelow = float32(2.0)
 
-// projectionTooFar: requested point a is too far from its navmesh projection b to be the same floor. a may be up to
-// MaxSupportBelow under it (standing on the ground beneath a floating navmesh), MaxProjectionVertical over it.
+// MaxEndpointVertical: a requested start or destination this close above or below its navmesh projection is on the
+// same floor. Requested heights are often a creature's spawn or a pose on stairs, and the detail mesh floats over
+// steps and slopes (the Sentinel Hill tower's stairs: 2-3 yd); storeys are further apart than this, and the
+// session's floor checks use the same 3 yd.
+const MaxEndpointVertical = float32(3.0)
+
+// projectionTooFar: requested point a is too far from its navmesh projection b to be the same floor.
 func projectionTooFar(a, b Point3D) bool {
-	return math.Hypot(float64(a.X-b.X), float64(a.Y-b.Y)) > float64(MaxProjectionHorizontal) || a.Z > b.Z+MaxProjectionVertical || a.Z < b.Z-MaxSupportBelow
+	return math.Hypot(float64(a.X-b.X), float64(a.Y-b.Y)) > float64(MaxProjectionHorizontal) || abs32(a.Z-b.Z) > MaxEndpointVertical
 }
 
 // surfacePath uses the funnel with ALL_CROSSINGS, retaining corners and each
@@ -149,17 +154,33 @@ func (pf *PathFinder) validateSurface(ctx context.Context, r *PathResult) error 
 		// Each generated segment lies in one convex polygon. Verify containment
 		// on that polygon and adjacency at crossings, avoiding the port's raycast
 		// t=0 precision failure at shared edges. This also rejects removed corners.
-		if ref != r.PointPolys[i-1] && !pf.adjacent(r.PointPolys[i-1], ref) {
-			return fmt.Errorf("disconnected surface at segment %d", i)
+		prev := r.PointPolys[i-1]
+		if ref != prev && !pf.adjacent(prev, ref) {
+			// a point on a corner or a tile seam lies on every polygon that meets there; it's labelled with one
+			// of them, and the segment leaving it can start in another (the start pose on a stair corner)
+			alt, ok := pf.sharedPoly(r.Corridor, a, ref)
+			if !ok {
+				return fmt.Errorf("disconnected surface at segment %d", i)
+			}
+			prev = alt
 		}
 		if !allowed[ref] {
 			return fmt.Errorf("segment %d leaves corridor", i)
 		}
 		// Check actual support at both ends and the middle on the segment's polygon.
-		for _, t := range []float32{0, 0.5, 1} {
+		// a itself was checked as the previous segment's end, on the polygon it was reached from: at a tile seam the
+		// two tiles' detail meshes disagree by up to ~0.8 yd, and a carries the height of the side it came from
+		ts := []float32{0, 0.5, 1}
+		if i > 1 {
+			ts = ts[1:]
+		}
+		if dist2D(a, p) < 0.1 {
+			ts = []float32{1} // the step across a seam: no floor between its ends to check
+		}
+		for _, t := range ts {
 			v := []float32{a.Y + t*(p.Y-a.Y), a.Z + t*(p.Z-a.Z), a.X + t*(p.X-a.X)}
-			h, known := pf.surfaceHeight(r.PointPolys[i-1], v)
-			if (!known || math.Abs(float64(h-v[1])) > 0.4) && ref != r.PointPolys[i-1] {
+			h, known := pf.surfaceHeight(prev, v)
+			if (!known || math.Abs(float64(h-v[1])) > 0.4) && ref != prev {
 				// a segment from a pose near a polygon's edge (the route's start) crosses into the next polygon
 				// before its end: the other end's polygon carries it (adjacency was checked above)
 				h, known = pf.surfaceHeight(ref, v)
@@ -171,6 +192,20 @@ func (pf *PathFinder) validateSurface(ctx context.Context, r *PathResult) error 
 	}
 	return nil
 }
+
+// sharedPoly: a corridor polygon that carries p (within 0.4 yd) and is ref or adjacent to it
+func (pf *PathFinder) sharedPoly(corridor []detour.DtPolyRef, p Point3D, ref detour.DtPolyRef) (detour.DtPolyRef, bool) {
+	for _, c := range corridor {
+		if c != ref && !pf.adjacent(c, ref) {
+			continue
+		}
+		if h, ok := pf.surfaceHeight(c, []float32{p.Y, p.Z, p.X}); ok && math.Abs(float64(h-p.Z)) <= 0.4 {
+			return c, true
+		}
+	}
+	return 0, false
+}
+
 func (s *PathFindingService) ValidateSurfaceContext(ctx context.Context, m uint32, r *PathResult) error {
 	pf, err := s.acquirePathFinderContext(ctx, m)
 	if err != nil {

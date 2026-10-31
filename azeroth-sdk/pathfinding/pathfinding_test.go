@@ -1,6 +1,8 @@
 package pathfinding
 
 import (
+	"context"
+	"errors"
 	"math"
 	"os"
 	"sync"
@@ -500,5 +502,27 @@ func TestFindPath_Map489_NoZeroHeightWaypoint(t *testing.T) {
 		if p.Z < 250 { // the map's floor is around 300
 			t.Fatalf("point %d at z=%.1f", i, p.Z)
 		}
+	}
+}
+
+// An unreachable destination nearby is an ordinary partial path to the nearest reachable point, found fast; one far
+// away that exhausts even the long search is ErrSearchLimit. The Deadmines' portal trigger centre is past the end of
+// the navmesh in its tunnel.
+func TestUnreachableDestinationsPartialOrSearchLimit(t *testing.T) {
+	s := NewPathFindingServiceFromDataDir(requireACData(t))
+	portal := Point3D{-11208.5, 1685.34, 25.7612}
+	r, err := s.FindPathContext(context.Background(), 0, Point3D{-11095.519, 1511.8961, 28.704964}, portal)
+	if err != nil || r.Type&PathfindIncomplete == 0 {
+		t.Fatalf("near: %v %v", r, err)
+	}
+	if e := r.Points[len(r.Points)-1]; math.Abs(float64(e.Y-1681.3)) > 0.5 || math.Abs(float64(e.Z-23.9)) > 0.5 {
+		t.Fatalf("near: ends at %+v, want the end of the tunnel", e)
+	}
+	start := time.Now()
+	if _, err := s.FindPathContext(context.Background(), 0, Point3D{-10547, 1197, 31.7}, portal); !errors.Is(err, ErrSearchLimit) {
+		t.Fatalf("far: %v", err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("far: %v", d)
 	}
 }

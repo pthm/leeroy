@@ -3,6 +3,7 @@ package pathfinding
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"time"
@@ -16,6 +17,9 @@ const MaxQueryTiles = 1024
 const maxTileBytes = 16 << 20
 
 var ErrQueryLimit = errors.New("route exceeds query limits: use legs of at most 4096 yards and at most 1024 tiles")
+
+// ErrSearchLimit: the navmesh search gave up before it reached the destination (a long, winding route)
+var ErrSearchLimit = fmt.Errorf("%w: the navmesh search ran out before reaching the destination; use shorter legs (a few hundred yards each)", ErrQueryLimit)
 
 func validateLeg(start, dest Point3D) error {
 	for _, p := range []Point3D{start, dest} {

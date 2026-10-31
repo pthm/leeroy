@@ -31,11 +31,14 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   `segment`, `position`, `normal`, `model`, and whether a bounded replan succeeded (`replanned`).
   Its `scope="static"`: moving doors, lifts and other dynamic objects are outside this check.
   A disconnected or truncated route returns `route_unreachable`, with a prefix when available
-  (`status="partial"`). A prefix still needs its own successful validation before movement.
+  (`status="partial"`). Its message names the nearest reachable point and how far above or below the
+  request it is (a z under the ground, a storey the navmesh doesn't have); a start off the navmesh is named
+  the same way. A prefix still needs its own successful validation before movement.
   Missing navigation data returns `not_available`. Unknown gaps and floors are omitted.
 - Detour polygon references are retained through the funnel, caches and preparation. Samples follow
-  the selected polygon's detail surface, including every portal crossing. Projection is bounded to
-  0.75 yards horizontally and 1.5 yards vertically. Support is sampled at most every 0.25 yards;
+  the selected polygon's detail surface, including every portal crossing. A requested start or destination
+  must project onto the navmesh within 0.75 yards horizontally and 3 yards vertically (a creature's spawn
+  height, a pose on stairs where the detail mesh floats); arrival uses the same 3 yards. Support is sampled at most every 0.25 yards;
   physical heights come from nearby terrain and movement-mask WMO/M2 rays. Overhead terrain does
   not replace a cave floor. Final body segments use continuous capsule sweeps against indexed triangles.
   The default standing profile is radius 0.3, height 2.03128, step 1.4 yards and maximum slope 60 degrees:
@@ -58,7 +61,8 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   need no additional packet.
   Support sampling is discrete, so sub-sample ground gaps are not a continuous terrain-contact guarantee.
 - Route checks have a 15-second wall deadline including queueing (`route_timeout`). Legs are limited to
-  4096 yards in 3D and a 1024-tile search rectangle (`route_limit`). A session admits at most 16 pending
+  4096 yards in 3D and a 1024-tile search rectangle (`route_limit`). A long, winding route whose search runs
+  out before reaching the destination is `route_limit` too: walk it in legs of a few hundred yards. A session admits at most 16 pending
   checks (`route_busy`) and runs one search at a time, shared with movement and nearby-unit reachability.
   Up to 128 exact map/start/destination searches are cached; partial routes, failures and cancelled searches are not cached. Nearby-unit reachability also requires exact endpoint matches for cache reuse; unknown collision coverage is not cached as unreachable.
   Awaiting with a shorter timeout only stops the wait. Task pause/stop/failure/return or session close

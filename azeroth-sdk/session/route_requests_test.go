@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -276,5 +277,13 @@ func TestRouteCollisionEvidence(t *testing.T) {
 		if out.Code != code {
 			t.Fatal(out)
 		}
+	}
+}
+
+func TestEndsShortNamesTheNearestReachablePoint(t *testing.T) {
+	// Isolde's tower: the navmesh has the ground at z 65, not the storey at z 99
+	msg := endsShort(navigation.Point3D{X: -9561.3, Y: -705.9, Z: 64.8}, navigation.Point3D{X: -9561.3, Y: -705.9, Z: 99.1})
+	if !strings.Contains(msg, "(-9561.3, -705.9, 64.8), 34.3 yd below it") {
+		t.Fatal(msg)
 	}
 }

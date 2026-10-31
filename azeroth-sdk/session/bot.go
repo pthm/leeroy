@@ -61,6 +61,9 @@ type Bot struct {
 	lastAttackReject atomic.Pointer[attackReject] // for bot.last_attack_error() // last move_to found no navmesh path (move_to returns false)
 	id               string
 	config           Config
+	areaTriggers     []areaTrigger // AreaTrigger.dbc, loaded at startup
+	portalMu         sync.Mutex
+	portals          map[uint32]navigation.Point3D // trigger id -> where to walk into it (portalApproach)
 	status           BotStatus
 	err              error
 	mu               sync.Mutex
@@ -948,6 +951,14 @@ func (b *Bot) prepareMoveContext(ctx context.Context, x, y, z float32, valid fun
 			// shortcut here would invalidate their support and clearance checks.
 		} else {
 			b.logDecision("No path found to target")
+			if to := (navigation.Point3D{X: x, Y: y, Z: z}); err == nil && result != nil && result.Found && len(result.Points) > 0 {
+				if dist3(result.Points[0], current) > 3 {
+					return fmt.Errorf("%s", startsOff(result.Points[0], current))
+				}
+				if result.Partial || dist3(result.Points[len(result.Points)-1], to) > 3 {
+					return fmt.Errorf("%s", endsShort(result.Points[len(result.Points)-1], to))
+				}
+			}
 		}
 	}
 

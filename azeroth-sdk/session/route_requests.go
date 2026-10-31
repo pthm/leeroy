@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -188,7 +189,7 @@ func checkRoute(data types.PathCheck, from, to navigation.Point3D, res *navigati
 	floor := vertical <= 3 && math.Abs(float64(start.Z-from.Z)) <= 3
 	data.Gap, data.StartGap, data.VerticalGap, data.FloorValid = &gap, &startGap, &vertical, &floor
 	if startGap > 3 {
-		return routeFailure(data, "route_unreachable", "navmesh path starts too far from the requested position")
+		return routeFailure(data, "route_unreachable", startsOff(start, from))
 	}
 	prev := from
 	for _, p := range res.Points {
@@ -198,11 +199,35 @@ func checkRoute(data types.PathCheck, from, to navigation.Point3D, res *navigati
 	}
 	if res.Partial || gap > 3 || !floor {
 		data.Status, data.Reason = "partial", "route_unreachable"
-		return script.Fail("route_unreachable", "navmesh path ends short of the requested 3D destination", data)
+		return script.Fail("route_unreachable", endsShort(end, to), data)
 	}
 	data.Status, data.Reason, data.Reachable = "verified", "verified", true
 	return script.Ok(data)
 }
+
+// endsShort explains a navmesh path that stops short of to: where it ends, so a caller can go there instead or
+// see that the requested height is on a floor the navmesh doesn't have (an upper storey, a roof, a wrong z).
+func endsShort(end, to navigation.Point3D) string {
+	return fmt.Sprintf("navmesh path ends %.1f yd short of the requested 3D destination: the nearest reachable point is (%.1f, %.1f, %.1f), %s",
+		dist3(end, to), end.X, end.Y, end.Z, relHeight(end.Z-to.Z, "it"))
+}
+
+// startsOff explains a start the navmesh doesn't cover (a storey or ledge it lacks): where its nearest floor is
+func startsOff(start, from navigation.Point3D) string {
+	return fmt.Sprintf("you're %.1f yd from the navmesh: its nearest floor is at (%.1f, %.1f, %.1f), %s; step onto it (or back the way you came) and route from there",
+		dist3(start, from), start.X, start.Y, start.Z, relHeight(start.Z-from.Z, "you"))
+}
+
+// relHeight: "4.2 yd above you", "beside you"
+func relHeight(dz float32, what string) string {
+	if dz > 3 {
+		return fmt.Sprintf("%.1f yd above %s", dz, what)
+	} else if dz < -3 {
+		return fmt.Sprintf("%.1f yd below %s", -dz, what)
+	}
+	return "beside " + what
+}
+
 func (b *Bot) setupRoutes() {
 	e := b.lua
 	r := &routeRequests{observe: e.RecordObservationEvent, reqs: e.Reqs, jobs: map[int]*routeRequest{}, timeout: pathfinding.QueryTimeout, find: func(ctx context.Context, m uint32, from, to navigation.Point3D) (*navigation.PathResult, error) {

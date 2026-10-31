@@ -445,7 +445,7 @@ func TestRecoveryReleaseTransferPreservesOnlyItsCurrentLease(t *testing.T) {
 }
 
 func TestMovementStoppedNearbyOrOnWrongFloorIsNotArrival(t *testing.T) {
-	for _, p := range []types.Position{{X: 4}, {Z: 2}} {
+	for _, p := range []types.Position{{X: 4}, {Z: 4}} { // beside it, a floor above it
 		t.Run(fmt.Sprint(p), func(t *testing.T) {
 			f := newMovementFixture(t, false)
 			id := f.start(1, 0)

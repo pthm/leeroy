@@ -113,7 +113,7 @@ func (m *MMapManager) CreateQuery(mapID uint32) (*detour.DtNavMeshQuery, error) 
 	defer md.mu.RUnlock()
 
 	query := detour.DtAllocNavMeshQuery()
-	if status := query.Init(md.navMesh, 8192); detour.DtStatusFailed(status) {
+	if status := query.Init(md.navMesh, queryNodes); detour.DtStatusFailed(status) {
 		return nil, fmt.Errorf("failed to init NavMeshQuery for map %d, status: %d", mapID, status)
 	}
 	return query, nil

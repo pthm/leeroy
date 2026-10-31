@@ -286,7 +286,7 @@ func (m *movementRequests) poll() {
 			res := types.MoveDone{Distance: math.Round(d*10) / 10, NoPath: r.noPath}
 			p := m.backend.position()
 			vertical := math.Abs(p.Z - r.owner.Destination.Z)
-			if d < 2.5 && vertical <= float64(pathfinding.MaxProjectionVertical) {
+			if math.Sqrt(d*d-vertical*vertical) < 2.5 && vertical <= float64(pathfinding.MaxEndpointVertical) {
 				m.finishLocked(r, script.Ok(res))
 			} else if !m.backend.moving() && now.Sub(r.started) > time.Second {
 				m.finishLocked(r, script.Fail("stuck", "movement stopped short of the destination", res))

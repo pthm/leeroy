@@ -14,8 +14,10 @@ import (
 )
 
 const (
-	maxPathLength      = 1024 // was 74 (the server's creature limit): ~300yd, so longer trips fell back to a straight line
-	maxPointPathLength = 8192
+	queryNodes         = 8192
+	longQueryNodes     = 65535 // the most a detour node index addresses: 8192 runs out between Westfall and Stormwind
+	maxPathLength      = 1024  // was 74 (the server's creature limit): ~300yd, so longer trips fell back to a straight line
+	maxPointPathLength = 16384
 	invalidPolyRef     = detour.DtPolyRef(0)
 
 	GROUND_HEIGHT_TOLERANCE = 0.05
@@ -98,6 +100,7 @@ type PathFinder struct {
 	vmapMgr    *VMapManager
 	mapID      uint32
 	query      *detour.DtNavMeshQuery
+	longQuery  *detour.DtNavMeshQuery // allocated for the first long route that runs out of queryNodes
 	navMesh    *detour.DtNavMesh
 	meshMu     *sync.RWMutex
 	filter     *detour.DtQueryFilter
@@ -117,7 +120,7 @@ func newPathFinderContext(ctx context.Context, mmapMgr *MMapManager, terrainMgr 
 		return nil, err
 	}
 	query := detour.DtAllocNavMeshQuery()
-	if status := query.Init(md.navMesh, 8192); detour.DtStatusFailed(status) {
+	if status := query.Init(md.navMesh, queryNodes); detour.DtStatusFailed(status) {
 		md.mu.RUnlock()
 		return nil, fmt.Errorf("failed to init NavMeshQuery for map %d, status: %d", mapID, status)
 	}
@@ -320,13 +323,40 @@ func (pf *PathFinder) FindPathContext(ctx context.Context, start, dest Point3D) 
 		polyPath[0] = startPoly
 		polyPathSize = 1
 	} else {
-		status := pf.query.InitSlicedFindPath(startPoly, endPoly, startPoint[:], endPoint[:], pf.filter, 0)
-		status, err := runSlicedSearch(ctx, status, pf.query.UpdateSlicedFindPath)
+		search := func(q *detour.DtNavMeshQuery) (detour.DtStatus, bool, error) {
+			status := q.InitSlicedFindPath(startPoly, endPoly, startPoint[:], endPoint[:], pf.filter, 0)
+			status, err := runSlicedSearch(ctx, status, q.UpdateSlicedFindPath)
+			if err != nil {
+				return status, false, err
+			}
+			outOfNodes := status&detour.DT_OUT_OF_NODES != 0
+			if !detour.DtStatusFailed(status) {
+				status = q.FinalizeSlicedFindPath(polyPath, &polyPathSize, maxPathLength)
+			}
+			return status, outOfNodes && polyPathSize > 0 && polyPath[polyPathSize-1] != endPoly, nil
+		}
+		status, gaveUp, err := search(pf.query)
 		if err != nil {
 			return nil, err
 		}
-		if !detour.DtStatusFailed(status) {
-			status = pf.query.FinalizeSlicedFindPath(polyPath, &polyPathSize, maxPathLength)
+		// A short route runs out only when the destination isn't connected (the search exhausts everything reachable
+		// around it): an ordinary partial path, ending at the nearest reachable point. A long one gets a bigger search;
+		// if that runs out too, its partial path ends wherever the search got closest, often up a hillside, not a
+		// place to walk to.
+		if gaveUp && dist2D(start, dest) > 400 {
+			if pf.longQuery == nil {
+				pf.longQuery = detour.DtAllocNavMeshQuery()
+				if st := pf.longQuery.Init(pf.navMesh, longQueryNodes); detour.DtStatusFailed(st) {
+					pf.longQuery = nil
+					return nil, fmt.Errorf("failed to init a long NavMeshQuery for map %d, status: %d", pf.mapID, st)
+				}
+			}
+			if status, gaveUp, err = search(pf.longQuery); err != nil {
+				return nil, err
+			}
+			if gaveUp {
+				return nil, ErrSearchLimit
+			}
 		}
 		if polyPathSize == 0 || detour.DtStatusFailed(status) {
 			return &PathResult{

@@ -184,6 +184,12 @@ func TestPreparedRealInteriorRoutes(t *testing.T) {
 		{"abbey fountain", Point3D{-8911.7, -111.1, 82}, Point3D{-8785, -162, 82}},     // past Waterbasin.m2's rim
 		{"abbey to vineyard", Point3D{-8946, -131.5, 83.67}, Point3D{-8850, -224, 82}}, // navmesh 1.55 yd over the terrain
 		{"road to goldshire", Point3D{-9054.7, -459.4, 72.57}, Point3D{-9460, 32, 57}}, // the same, several times
+		// overnight refusals (2026-10-31)
+		{"tile seam", Point3D{-10122.321, 1106.5042, 36.423527}, Point3D{-10238, 1010, 34.706173}},           // tiles 177/178 disagree by 0.47 yd at y 1066.67
+		{"big tile seam", Point3D{-10510.307, 1046.3115, 60.53798}, Point3D{-9053, 453, 69.477394}},          // 1.16 yd at x -9066.67
+		{"tower corner", Point3D{-9568.202, -712.1493, 90.351875}, Point3D{-9564.4, -706.8, 90.628}},         // Tower of Azora: the start on a polygon corner
+		{"westfall to stormwind", Point3D{-10289.533, 913.2661, 37.025093}, Point3D{-8835, 608, 59.75}},      // 8192 search nodes ran out
+		{"sentinel hill stairs", Point3D{-11213.776, 1174.5902, 96.182884}, Point3D{-11210.4, 1179.4, 93.9}}, // destination 2.8 yd under the navmesh
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
