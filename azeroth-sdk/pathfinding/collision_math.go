@@ -7,29 +7,35 @@ import (
 )
 
 func rayTriangle(o, d, a, b, c Vector3) (float32, Vector3, bool) {
-	e, f := b.Sub(a), c.Sub(a)
-	h := d.Cross(f)
-	den := e.Dot(h)
-	if math.Abs(float64(den)) < 1e-9 {
+	// Float32 barycentric products can reject both faces at a shared edge.
+	// Keep intersection arithmetic in double precision, including cross products.
+	ex, ey, ez := float64(b.X)-float64(a.X), float64(b.Y)-float64(a.Y), float64(b.Z)-float64(a.Z)
+	fx, fy, fz := float64(c.X)-float64(a.X), float64(c.Y)-float64(a.Y), float64(c.Z)-float64(a.Z)
+	dx, dy, dz := float64(d.X), float64(d.Y), float64(d.Z)
+	hx, hy, hz := dy*fz-dz*fy, dz*fx-dx*fz, dx*fy-dy*fx
+	den := ex*hx + ey*hy + ez*hz
+	if math.Abs(den) < 1e-12 {
 		return 0, Vector3{}, false
 	}
-	s := o.Sub(a)
-	u := s.Dot(h) / den
-	if u < 0 || u > 1 {
+	sx, sy, sz := float64(o.X)-float64(a.X), float64(o.Y)-float64(a.Y), float64(o.Z)-float64(a.Z)
+	u := (sx*hx + sy*hy + sz*hz) / den
+	const epsilon = 1e-9
+	if u < -epsilon || u > 1+epsilon {
 		return 0, Vector3{}, false
 	}
-	q := s.Cross(e)
-	v := d.Dot(q) / den
-	if v < 0 || u+v > 1 {
+	qx, qy, qz := sy*ez-sz*ey, sz*ex-sx*ez, sx*ey-sy*ex
+	v := (dx*qx + dy*qy + dz*qz) / den
+	if v < -epsilon || u+v > 1+epsilon {
 		return 0, Vector3{}, false
 	}
-	t := f.Dot(q) / den
-	n := unit(e.Cross(f))
+	t := (fx*qx + fy*qy + fz*qz) / den
+	n := unit(b.Sub(a).Cross(c.Sub(a)))
 	if n.Dot(d) > 0 {
 		n = n.Mul(-1)
 	}
-	return t, n, t >= 0 && t <= 1
+	return float32(math.Max(0, math.Min(1, t))), n, t >= -epsilon && t <= 1+epsilon
 }
+
 func closestTriangle(p, a, b, c Vector3) Vector3 {
 	ab, ac, ap := b.Sub(a), c.Sub(a), p.Sub(a)
 	d1, d2 := ab.Dot(ap), ac.Dot(ap)

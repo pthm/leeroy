@@ -165,3 +165,59 @@ func TestModelSpawnTrimsExtractedTerminator(t *testing.T) {
 		t.Fatalf("%q %v", s.name, err)
 	}
 }
+
+func TestPreparedRealInteriorRoutes(t *testing.T) {
+	s := NewPathFindingServiceFromDataDir(requireACData(t))
+	for _, tc := range []struct {
+		name string
+		a, b Point3D
+	}{
+		{"bridge", Point3D{-8930, 545, 94.715}, Point3D{-8880, 590, 93.402}},
+		{"road", Point3D{-9466, 74, 57}, Point3D{-9496, 73, 57}},
+		{"inn", Point3D{-9460, 8, 57}, Point3D{-9472, 34, 64}},
+		{"upper", Point3D{-9797, 132, 25}, Point3D{-9807, 117, 24}},
+		{"lower", Point3D{-9824, 122, 4}, Point3D{-9843.54, 127.525, 5.3698}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			raw, err := s.FindPathContext(ctx, 0, tc.a, tc.b)
+			if err != nil {
+				t.Fatal(err)
+			}
+			start := time.Now()
+			r, err := s.PrepareWalkingContext(ctx, 0, raw, WalkingBody())
+			if tc.name == "inn" {
+				// The shipped navmesh crosses the inn entrance wall. Keep this
+				// mismatch explicit until the baked corridor or geometry is fixed.
+				if err == nil || r == nil || r.Collision.State != "blocked" || r.Collision.Reason != "body_obstructed" || r.Collision.Model != "Goldshireinn.wmo" {
+					t.Fatalf("expected known inn obstruction: %+v %v", r, err)
+				}
+				t.Logf("known mesh/collision mismatch: %+v", r.Collision)
+				return
+			}
+			if err != nil {
+				t.Fatalf("prepare: %+v %v", r, err)
+			}
+			if tc.name == "lower" && !r.Replanned {
+				t.Fatal("mine cart was not avoided")
+			}
+
+			t.Logf("%d points, repaired=%v, triangles=%d, preparation=%s", len(r.Points), r.Replanned, r.Collision.Triangles, time.Since(start))
+			if r.Collision.State != "clear" || r.Points[0] != tc.a {
+				t.Fatal(r)
+			}
+		})
+	}
+}
+
+func TestMovementRayKeepsSharedTriangleEdges(t *testing.T) {
+	vm, _ := collisionFixture(t, []Vector3{{-30, -30, 0}, {0, -30, 0}, {0, 0, 0}, {-30, 0, 0}}, []MeshTriangle{{0, 1, 2}, {0, 2, 3}})
+	for i := 0; i < 100; i++ {
+		v := float32(12) + float32(i)/17
+		hit := vm.TraceMovementContext(context.Background(), 0, Point3D{v, v, 1.5}, Point3D{v, v, -1.5})
+		if hit.State != "blocked" || math.Abs(float64(hit.Position.Z)) > .001 {
+			t.Fatalf("seam %g: %+v", v, hit)
+		}
+	}
+}

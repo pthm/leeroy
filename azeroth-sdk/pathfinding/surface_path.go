@@ -10,6 +10,9 @@ import (
 const MaxProjectionHorizontal = float32(0.75)
 const MaxProjectionVertical = float32(1.5)
 
+// Bound support sampling as well as path interpolation near steps and ledges.
+const surfaceSampleSpacing = 0.25
+
 func projectionTooFar(a, b Point3D) bool {
 	return math.Hypot(float64(a.X-b.X), float64(a.Y-b.Y)) > float64(MaxProjectionHorizontal) || math.Abs(float64(a.Z-b.Z)) > float64(MaxProjectionVertical)
 }
@@ -26,6 +29,10 @@ func (pf *PathFinder) surfacePath(ctx context.Context, a, b []float32, corridor 
 	if detour.DtStatusFailed(status) || n == 0 {
 		return nil, nil, nil, false, fmt.Errorf("surface corridor unavailable")
 	}
+	return pf.sampleSurfaceCorners(ctx, corridor, corners, flags, polys, n, status)
+}
+
+func (pf *PathFinder) sampleSurfaceCorners(ctx context.Context, corridor []detour.DtPolyRef, corners []float32, flags []detour.DtStraightPathFlags, polys []detour.DtPolyRef, n int, status detour.DtStatus) (points []Point3D, refs []detour.DtPolyRef, links []bool, truncated bool, err error) {
 	appendPoint := func(v []float32, ref detour.DtPolyRef, link bool) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -52,7 +59,7 @@ func (pf *PathFinder) surfacePath(ctx context.Context, a, b []float32, corridor 
 			ref = corridor[len(corridor)-1]
 		}
 		link := flags[i-1]&detour.DT_STRAIGHTPATH_OFFMESH_CONNECTION != 0
-		steps := int(math.Ceil(math.Hypot(float64(to[0]-from[0]), float64(to[2]-from[2]))))
+		steps := int(math.Ceil(math.Hypot(float64(to[0]-from[0]), float64(to[2]-from[2])) / surfaceSampleSpacing))
 		if steps < 1 || link {
 			steps = 1
 		}
@@ -270,4 +277,77 @@ func (pf *PathFinder) refineSurface(ctx context.Context, pts []Point3D, polys []
 		}
 	}
 	return
+}
+
+// centeredCorridor is a bounded alternative to the shortest funnel path. Portal
+// interior points avoid hugging boundaries when a body's width clips a corner.
+func (pf *PathFinder) centeredCorridor(ctx context.Context, r *PathResult, fraction float32) (*PathResult, error) {
+	if len(r.Corridor) < 2 {
+		return nil, fmt.Errorf("no alternate corridor")
+	}
+	n := len(r.Corridor) + 1
+	corners := make([]float32, n*3)
+	refs := make([]detour.DtPolyRef, n)
+	flags := make([]detour.DtStraightPathFlags, n)
+	a, b := r.Points[0], r.Points[len(r.Points)-1]
+	copy(corners, []float32{a.Y, a.Z, a.X})
+	copy(corners[(n-1)*3:], []float32{b.Y, b.Z, b.X})
+	refs[0] = r.Corridor[0]
+	for i := 0; i < len(r.Corridor)-1; i++ {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		var tile *detour.DtMeshTile
+		var poly *detour.DtPoly
+		if detour.DtStatusFailed(pf.navMesh.GetTileAndPolyByRef(r.Corridor[i], &tile, &poly)) || poly.GetType() != detour.DT_POLYTYPE_GROUND {
+			return nil, fmt.Errorf("unsupported corridor transition")
+		}
+		found := false
+		for j := poly.FirstLink; j != detour.DT_NULL_LINK; j = tile.Links[j].Next {
+			link := tile.Links[j]
+			if link.Ref != r.Corridor[i+1] {
+				continue
+			}
+			if int(link.Edge) >= int(poly.VertCount) {
+				return nil, fmt.Errorf("invalid portal")
+			}
+			va := tile.Verts[int(poly.Verts[link.Edge])*3:]
+			vb := tile.Verts[int(poly.Verts[(int(link.Edge)+1)%int(poly.VertCount)])*3:]
+			f := fraction
+			if link.Side != 0xff {
+				f = (float32(link.Bmin) + fraction*float32(int(link.Bmax)-int(link.Bmin))) / 255
+			}
+			for k := 0; k < 3; k++ {
+				corners[(i+1)*3+k] = va[k] + f*(vb[k]-va[k])
+			}
+			refs[i+1] = r.Corridor[i+1]
+			found = true
+			break
+		}
+		if !found {
+			return nil, fmt.Errorf("disconnected portal")
+		}
+	}
+	pts, polys, links, short, err := pf.sampleSurfaceCorners(ctx, r.Corridor, corners, flags, refs, n, detour.DT_SUCCESS)
+	if err != nil {
+		return nil, err
+	}
+	if short {
+		return nil, ErrQueryLimit
+	}
+	out := r.Clone()
+	out.Points, out.PointPolys, out.Transitions = pts, polys, links
+	return out, pf.validateSurface(ctx, out)
+}
+func (s *PathFindingService) CenteredPathContext(ctx context.Context, m uint32, r *PathResult, fraction float32) (*PathResult, error) {
+	pf, err := s.acquirePathFinderContext(ctx, m)
+	if err != nil {
+		return nil, err
+	}
+	defer s.releasePathFinder(m, pf)
+	if err := lockContext(ctx, pf.meshMu.TryRLock); err != nil {
+		return nil, err
+	}
+	defer pf.meshMu.RUnlock()
+	return pf.centeredCorridor(ctx, r, fraction)
 }

@@ -268,6 +268,9 @@ func (vm *VMapManager) TraceMovementContext(ctx context.Context, m uint32, a, b 
 		if !ok {
 			return unknownCollision("collision model unavailable: " + mi.spawn.name)
 		}
+		if mi.iInvScale <= 0 || math.IsInf(float64(mi.iInvScale), 0) || math.IsNaN(float64(mi.iInvScale)) {
+			return unknownCollision("invalid model scale")
+		}
 		p, q := modelPoint(mi, vec(a)), modelPoint(mi, vec(b))
 		d := q.Sub(p)
 		box := boundsOf(p, q).expanded(0.001)
