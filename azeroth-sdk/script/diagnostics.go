@@ -19,6 +19,12 @@ type diagnosticStream struct {
 	session, agent string
 	seq, nextCall  uint64
 	sink           func(types.Diagnostic)
+	streaks        map[string]*streak // consecutive identical top-level failures, by task name
+}
+
+type streak struct {
+	op, code string
+	n        int
 }
 
 type diagnosticCall struct {
@@ -118,14 +124,43 @@ func (e *Engine) beginDiagnostic(L *lua.LState, op string, details types.Diagnos
 	return &diagnosticCall{event: ev, start: time.Now()}
 }
 
-func (e *Engine) endDiagnostic(c *diagnosticCall, ok bool, code string, request, attempts int) {
+// endDiagnostic records a call's end. For a task's top-level call it returns how many times in a row that task's
+// top-level calls have now failed with this op and code (0 on success), and emits failure_loop at 25 and every 250 after.
+func (e *Engine) endDiagnostic(c *diagnosticCall, ok bool, code string, request, attempts int) int {
 	ev := c.event
 	ev.Outcome = "succeeded"
 	if !ok {
 		ev.Outcome, ev.Code = "failed", bounded(code, 128)
 	}
 	ev.Request, ev.DurationMS, ev.Details.Attempts = request, time.Since(c.start).Milliseconds(), attempts
+	n := 0
+	if ev.Task != "" && ev.ParentCall == "" {
+		n = e.diag.streak(ev)
+		if n == 25 || n > 25 && (n-25)%250 == 0 {
+			go e.Emit("failure_loop", types.FailureLoop{Task: ev.Task, Op: ev.Op, Code: ev.Code, Count: n})
+		}
+	}
 	e.diag.emit(ev)
+	return n
+}
+
+func (d *diagnosticStream) streak(ev types.Diagnostic) int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if ev.Outcome != "failed" {
+		delete(d.streaks, ev.Task)
+		return 0
+	}
+	s := d.streaks[ev.Task]
+	if s == nil || s.op != ev.Op || s.code != ev.Code {
+		if d.streaks == nil {
+			d.streaks = map[string]*streak{}
+		}
+		s = &streak{op: ev.Op, code: ev.Code}
+		d.streaks[ev.Task] = s
+	}
+	s.n++
+	return s.n
 }
 
 // Only numeric identifiers and short GUIDs are retained, never caller-provided prose.
@@ -231,8 +266,9 @@ func (e *Engine) registerDiagnostics() {
 		if data, ok := r.RawGetString("data").(*lua.LTable); ok {
 			attempts = int(lua.LVAsNumber(data.RawGetString("attempts")))
 		}
-		e.endDiagnostic(c, r.RawGetString("ok") == lua.LTrue, code, 0, attempts)
+		n := e.endDiagnostic(c, r.RawGetString("ok") == lua.LTrue, code, 0, attempts)
 		t.calls = t.calls[:len(t.calls)-1]
-		return 0
+		L.Push(lua.LNumber(n))
+		return 1
 	})
 }

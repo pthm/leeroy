@@ -266,7 +266,7 @@ var (
 	subs   = map[*script.Engine][]string{}
 )
 
-var defaultSubs = []string{"goal_met", "maintenance", "attention", "death", "stall", "script_error", "task_finished", "party_invite", "trade", "summon_request", "ready_check", "loot_roll_start",
+var defaultSubs = []string{"goal_met", "maintenance", "attention", "death", "stall", "failure_loop", "script_error", "task_finished", "party_invite", "trade", "summon_request", "ready_check", "loot_roll_start",
 	"gear_broken", "chat:whisper", "chat:party", "chat:raid", "chat:say"}
 
 func subscribed(e *script.Engine) []string {

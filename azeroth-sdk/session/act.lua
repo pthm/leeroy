@@ -1211,7 +1211,9 @@ for _, n in ipairs({ "go_to", "travel", "approach", "follow", "reach_npc", "acce
       task._action_end(call, A.fail("act." .. n, "script_error", "helper raised a Lua error"))
       error(r, 0)
     end
-    task._action_end(call, r)
+    -- the same failure 25 times in a row: wait min(5, n/25) s before returning it, so a loop retrying it doesn't spin
+    local n = task._action_end(call, r)
+    if n >= 25 then wait(math.min(5, n / 25)) end
     return r
   end
 end

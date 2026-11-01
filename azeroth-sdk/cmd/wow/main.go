@@ -111,7 +111,7 @@ func evalLua(code string) int {
 			switch t {
 			case "chat":
 				fmt.Fprintf(os.Stderr, "wow: %s %s from %s: %s\n", t, jqjson.Interp(jqjson.Field(d, "kind")), jqjson.Interp(jqjson.Field(d, "from")), jqjson.Interp(jqjson.Field(d, "text")))
-			case "party_invite", "trade", "attention", "goal_met", "maintenance":
+			case "party_invite", "trade", "attention", "goal_met", "maintenance", "failure_loop":
 				fmt.Fprintf(os.Stderr, "wow: %s %s\n", t, jqjson.Compact(d))
 			case "slow_tick":
 				fmt.Fprintf(os.Stderr, "wow: slow_tick %s\n", jqjson.Compact(d))

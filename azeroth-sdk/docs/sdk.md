@@ -155,15 +155,18 @@ whole (`result(id)` for an action's result, or `--full`). Scripts, `result(id)` 
 whole list.
 
 **Your subscription** decides what `wow wait` (without `--types`) waits for. The default is `goal_met`, `maintenance`, `attention`, `death`,
-`stall`, `script_error`, `task_finished`, `party_invite`, `trade`, `gear_broken`, and chat from players to you
+`stall`, `failure_loop`, `script_error`, `task_finished`, `party_invite`, `trade`, `gear_broken`, and chat from players to you
 (`chat:whisper`, `chat:party`, `chat:raid`, `chat:say`). A session restart resets it to the default.
 When what wakes `wow wait` is only chat, it keeps collecting matching events until 2 s pass with none (8 s at most,
 and never past its timeout), so a burst of chat comes back as one reply. A whisper, a chat line containing your
 character's name, or any other event type returns at once. Your own chat never wakes it.
+`failure_loop` means a task's top-level call (an `act.*` helper, or a function returning a Request, called directly
+from the task) failed with the same op and error code 25 times in a row; it comes again at every 250 more. From the
+25th such failure in a row, an `act.*` helper waits min(5, n/25) seconds before returning it. Neither stops the task.
 
 **Every `wow` reply** carries `"events"`: what happened since your previous call, counted by type, with these in
 full: the types you subscribe to, failed actions and tasks, `goal_met`, `maintenance`, channel chat, level-ups, resurrections, errors, notices,
-group changes, quest completions and slow ticks. Subscribed chat, invites, trades, questions from scripts, script
+group changes, quest completions and slow ticks. Subscribed chat, invites, trades, questions from scripts, failure loops, script
 errors and slow ticks also go to stderr, so piping a reply through `cut` or `jq` doesn't hide them.
 The log keeps the whole run, through session restarts, and reading it consumes nothing.
 

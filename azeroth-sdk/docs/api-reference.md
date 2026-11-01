@@ -142,8 +142,10 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `group.invite(name) → Request` | invite a player (by exact character name) to your group: ok once the invite is sent; they answer with group.accept. Completion: the server acknowledged the invitation; membership is not implied. | [Request](#request) |
 | `group.invited_by() → string?` | who invited you, nil if no invite is pending |  |
 | `group.leave() → Request` | leave your group. Completion: server group membership is absent. | [Request](#request) |
+| `group.promote(guid) → Request` | make a party member (a guid from group.info) the leader: ok once the server's group update names them; not_leader unless you lead. Completion: the server's group update names the member as leader. | [Request](#request) |
 | `group.ready([ready = true]) → Request` | answer a ready check (ready_check event). Completion: no server confirmation is available; a sent response returns unconfirmed. | [Request](#request) |
 | `group.report([minutes = 10]) → GroupReport?` | how your party has spent the last minutes, from what you've seen of them: each member's time fighting, travelling, idle, dead and with the group, and their kills and deaths (XP and scores: the standings); nil when you're solo | [GroupReport](#groupreport) |
+| `group.set_loot(method [, threshold = "uncommon" [, master = you]]) → Request` | set the group's loot rules (the leader only): method free_for_all, round_robin, master_loot, group_loot or need_before_greed; threshold the lowest quality it applies to, uncommon to artifact; master, with master_loot, the member who hands out loot. ok once the server's group update shows them. Completion: the server's group update shows the requested method, threshold and master looter. | [Request](#request) |
 
 ### innkeeper
 
@@ -166,8 +168,10 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `items.info(item_entry) → Request<Item>` | an item's template: stats, slot, prices and usability. Cached answers resolve immediately; not_found for an explicit negative answer, not_available if the query cannot be sent, timeout after 5 seconds. Completion: an item template was observed or explicitly absent; absence fails not_found. | [Request](#request), [Item](#item) |
 | `items.list() → Item[]` | everything you wear and carry (equipped, bags, backpack) | [Item](#item) |
 | `items.loot(guid) → Request<Looted>` | loot a corpse within 5 yd: takes every item and the money (waits a moment for a fresh corpse to become lootable). A game object's guid fails with wrong_target_type: objects.use opens chests. Completion: the loot interaction completed with the reported items and money. | [Request](#request), [Looted](#looted) |
+| `items.open(item) → Request<Looted>` | open an item you carry (entry or guid) that holds loot (a clam, a sack, an unlocked lockbox), as right-clicking it does, and take what's inside. item_locked for a locked lockbox, cant_do_right_now for an item that holds nothing, bags_full. Completion: the opened item's loot (or its absence) was observed: it's gone or its stack shrank, or loot arrived, and a second passed with nothing more. | [Request](#request), [Looted](#looted) |
 | `items.roll(roll, choice) → Request<LootRollResult>` | roll on group loot (loot_roll_start event, items.rolls): need, greed, disenchant or pass. No choice before the countdown ends is a pass. Completion: the server echoed this player's vote for the requested roll. | [Request](#request), [LootRollResult](#lootrollresult) |
 | `items.rolls() → LootRoll[]` | group loot waiting for your roll (also in me.status().loot_rolls) | [LootRoll](#lootroll) |
+| `items.split(item, count) → Request<Item>` | split count off a stack you carry (entry or guid) into an empty bag slot, as dragging with shift does: ok with the new stack. bags_full when no slot is empty; tried_to_split_more_than_count and the server's other bag errors. Completion: a stack of the requested count of the item is observed in the chosen empty slot. | [Request](#request), [Item](#item) |
 | `items.unequip(slot) → Request` | take off what you wear in a slot (head, chest, main_hand, off_hand, finger1, trinket2, ...) into your bags. Completion: the item is observed outside its equipped slot. | [Request](#request) |
 | `items.use(item [, guid]) → Request<CastDone>` | use an item you carry (entry or guid): food, drink, potions, quest items; optionally on a unit or game object (guid). Food and drink work out of combat, and you must sit still while they tick. Completion: a matching server item-use spell completion event was observed. | [Request](#request), [CastDone](#castdone) |
 
@@ -233,6 +237,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | Function | | Returns |
 |---|---|---|
 | `objects.find(entry [, dist = 80]) → Object?` | the nearest game object with that entry; nil if none | [Object](#object) |
+| `objects.get(guid) → Object?` | one game object by GUID; nil if it's out of sight or not a game object (units.get takes units) | [Object](#object) |
 | `objects.nearby([dist = 30]) → Object[]` | game objects within dist yards (chests, doors, quest objects, herbs...), nearest first | [Object](#object) |
 | `objects.use(guid [, spell]) → Request<ObjectActivation>` | use a game object within ~5 yd. Chests use the Opening spell for their lock's type; herb, ore and locked nodes select Herb Gathering, Mining or Pick Lock from observed lock metadata. not_available while the object template is loading; unsupported_gathering requires an explicit spell. Plain objects require an observed state change. data.kind distinguishes cast completion from state_changed; neither establishes quest progress. Completion: matching opening cast completion or an observed game-object state change; quest progress is checked separately by act.use_object. | [Request](#request), [ObjectActivation](#objectactivation) |
 
@@ -264,6 +269,8 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `spells.find(name [, rank]) → Spell?` | a spell by name (any case): the highest rank you know, or that rank (a number, or "Rank 2"); nil if you know none | [Spell](#spell) |
 | `spells.info(id) → Spell?` | a spell's name, rank, cast time, cooldown, range and cost; nil if unknown | [Spell](#spell) |
 | `spells.known(id) → bool` | whether you know the spell (that rank) |  |
+| `spells.stop_auto_repeat() → Request` | stop your auto-repeating spell (a wand's Shoot, Auto Shot), as the client does: ok once the server says it stopped; not_repeating when the server sends no stop (none was running). Completion: the server's auto-repeat cancel for this player was observed. | [Request](#request) |
+| `spells.stop_casting() → Request` | stop the cast or channel in progress (me.casting), as the client's Escape does: ok once the server has ended it; not_casting when there's none; cast_finished when it went off first. Completion: the cast or channel is observed ended; one that went off first fails cast_finished. | [Request](#request) |
 | `spells.usable(id [, guid]) → bool` | convenience for spells.check(id,guid).usable; unknown details do not certify server acceptance |  |
 
 ### summon
@@ -318,6 +325,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `units.attackers([dist = 30]) → Creature[]` | living creatures within dist that are targeting you | [Creature](#creature) |
 | `units.auras(guid) → Aura[]` | a unit's buffs and debuffs (units in sight: your target, party members, mobs). mine = you cast it: is your debuff still on the mob? | [Aura](#aura) |
 | `units.behind(guid) → bool` | whether you stand behind the unit (backstab and similar need it) |  |
+| `units.engaged() → Engaged[]` | living creatures in combat with you, your pet or your party, nearest first: each one that has one of you on its threat list (on_threat) or as its target, including those fleeing or targeting nobody. What the server has sent; it doesn't say whether a fight is over | [Engaged](#engaged) |
 | `units.get(guid) → (Creature \| Player)?` | one unit by GUID; nil if it's out of sight | [Creature](#creature), [Player](#player) |
 | `units.has_aura(guid, spell) → bool` | whether the unit has that aura (buff or debuff) |  |
 | `units.in_sight(guid) → bool?` | line of sight to an observed unit; nil if the unit or collision evidence is unavailable (see world.in_sight) |  |
@@ -388,8 +396,10 @@ Everything in [Place](#place), plus:
 | `reaction` | string | toward you: hostile (attacks on sight), neutral (fights back) or friendly |
 | `target` | GUID | who it's targeting; null for nobody |
 | `in_combat` | bool |  |
+| `fleeing?` | bool | the server's fleeing flag (UNIT_FLAG_FLEEING): it runs in fear, or a creature runs at low health |
 | `casting?` | Casting | the spell it's casting or channelling now (interrupt it, or get out of the way) |
 | `states?` | string[] | the game's aura states: health_below_20 (Execute, Hammer of Wrath), health_below_35, defense (it dodged, parried or blocked: Revenge), frozen, bleeding, enrage, ... |
+| `control?` | Control[] | auras that take away its control (stun, polymorph, fear, root, silence, ...) |
 
 ### Place
 
@@ -416,6 +426,20 @@ Place is where something is in the world, measured from you: anything around you
 | `name` | string |  |
 | `ms_left` | number |  |
 
+### Control
+
+Control is an aura that stops a unit acting, moving or casting as it would: a stun, charm, confuse, fear, root, silence or pacify aura (Spell.dbc EffectApplyAuraName).
+
+| Field | Type | |
+|---|---|---|
+| `spell` | number |  |
+| `name` | string |  |
+| `mechanic` | string | the spell's mechanic (Spell.dbc): polymorph, stun, sap, sleep, fear, root, charm, disoriented, freeze, knockout, horror, shackle, banish, silence, ...; the aura's kind (stun, confuse, fear, root, charm, silence, pacify) for a spell without one |
+| `caster_guid` | GUID |  |
+| `remaining_ms?` | number | nil when the server sends no duration for it |
+| `breaks_on_damage` | bool | any damage removes it (Spell.dbc AuraInterruptFlags: TAKE_DAMAGE) |
+| `damage_limit?` | bool | the damage it takes adds up, and past a limit set by the caster's level (that level's warrior base health / 4.75) removes it |
+
 ### Creature
 
 Everything in [Unit](#unit), plus:
@@ -439,6 +463,16 @@ Everything in [Unit](#unit), plus:
 | `quest_status?` | string | the marker over a quest giver: available (yellow !: a quest for you), available_repeatable (blue !), available_low_level (only quests far below your level), unavailable (none for you yet: level or prerequisites), incomplete (grey ?: you're on its quest), reward (yellow ?: turn a quest in here) |
 | `threat_pct?` | number | your threat on it as a share of the top (100 = it attacks you; another unit pulls it off you past 110 in melee, 130 at range); only while it has you on its threat table |
 
+### Engaged
+
+UnitRef names a unit in events and results. Engaged is a creature in combat with you, your pet or your party (units.engaged).
+
+Everything in [Creature](#creature), plus:
+
+| Field | Type | |
+|---|---|---|
+| `on_threat` | GUID[] | you, your pet and party members on its threat list, highest threat first (the server sends a creature's threat list to everyone near it); empty when only its target is one of you |
+
 ### Player
 
 Everything in [Unit](#unit), plus:
@@ -450,8 +484,6 @@ Everything in [Unit](#unit), plus:
 | `race` | string | human, dwarf, night_elf, gnome, draenei, orc, undead, tauren, troll, blood_elf |
 
 ### UnitRef
-
-UnitRef names a unit in events and results.
 
 | Field | Type | |
 |---|---|---|
@@ -472,6 +504,7 @@ Everything in [Place](#place), plus:
 | `entry` | number | game object template id |
 | `name` | string | empty for a moment after it first comes into view |
 | `type` | string | chest, door, button, goober (quest objects), questgiver, portal (use it: you're teleported), ship (boats and zeppelins), elevator, mailbox, fishing_pool (fish here), fishing_bobber, ... Mining veins and herbs are chests: see gather |
+| `state` | string | the server's object state (GAMEOBJECT_BYTES_1): closed (ready: a door shut, a chest or button not yet used), open (active: a door open, a chest or button used) or alternate (the second active state, which some doors take when opened another way) |
 | `gather?` | string | the skill it takes: mining, herbalism, lockpicking, fishing or inscription |
 | `skill?` | number | the skill level it needs |
 | `can_use?` | bool | with gather: your skill is high enough (false without the skill: learn it from a trainer) |
@@ -677,6 +710,7 @@ Item is an item template and, for one you carry, where it is and its state. The 
 | `why_not?` | string | why you can't |
 | `guid?` | GUID | an item you carry |
 | `count?` | number |  |
+| `charges?` | number | uses left on its spell (a Bag of Marbles: 3 when new), apart from count; absent for an item without charges or with none left |
 | `bag?` | number | 255 = your own slots (equipped 0-18, bags 19-22, backpack 23-38); 19-22 = inside that bag |
 | `bag_slot` | number |  |
 | `equipped?` | bool | worn: equipment slots 0-18, or a bag in bag slots 19-22 |
@@ -789,6 +823,9 @@ Everything in [Item](#item), plus:
 |---|---|---|
 | `leader` | string |  |
 | `me_leader` | bool | you lead the group |
+| `loot_method` | string | free_for_all, round_robin, master_loot, group_loot or need_before_greed (group.set_loot; the leader sets it) |
+| `loot_threshold` | string | the lowest quality the loot method applies to (uncommon, rare, epic, ...); below it the group loots round robin |
+| `master_looter?` | GUID | with master_loot: who hands out the loot |
 | `members` | GroupMember[] | the others, not you |
 | `spread?` | number | yards between the two of you farthest apart (you included), across the ground: how clustered the party is. Counts whoever's position is known and in your zone |
 | `spread_pair?` | string[] | who those two are |
@@ -1967,6 +2004,7 @@ Battleground: a battleground or arena queue changed.
 | `guid` | GUID |  |
 | `channel?` | string |  |
 | `text` | string |  |
+| `self?` | bool | you sent it: the server's echo of your own say, yell, party, raid, guild, channel or emote chat (from is you), or of a whisper you sent (kind whisper_sent, from is who you whispered). Your own chat doesn't wake events.wait |
 
 ### None
 
@@ -2027,6 +2065,17 @@ Energize: power (mana, rage, energy, runic power) given to you, or by you to ano
 | `op` | string | items, items.loot, vendor.buy, vendor.sell, trainer.learn, group, quests, chat.whisper, chat.channel, chat.join |
 | `code` | string |  |
 | `message` | string |  |
+
+### FailureLoop
+
+FailureLoop: a task's top-level call failed the same way many times in a row (at 25, then every 250 more).
+
+| Field | Type | |
+|---|---|---|
+| `task` | string |  |
+| `op` | string | the call, e.g. act.make_room |
+| `code` | string | its error code, e.g. no_disposable_item |
+| `count` | number | consecutive identical failures so far |
 
 ### FlightLearned
 
@@ -2248,6 +2297,7 @@ An event is an [Event](#event) whose `data` is the type below.
 | `dispel` | Dispel | auras dispelled or stolen from you, or by you |
 | `energize` | Energize | power (mana, rage, energy...) given to you, or by you |
 | `error` | ErrorEvent | the server refused something |
+| `failure_loop` | FailureLoop | a task's top-level call failed with the same code 25 times in a row, and again every 250 more; from 25, act.* helpers wait min(5, n/25) s before returning such a failure |
 | `fight_end` | FightSummary | a fight ended (you or a party member in sight left combat, or you died): its summary, with the group's numbers when you're in a party |
 | `flight_end` | Flight | you landed |
 | `flight_learned` | FlightLearned | you discovered a flight point |
@@ -2312,7 +2362,9 @@ The `data` of an ok result, per op.
 | `items.equip` | Equipped |
 | `items.info` | Item |
 | `items.loot` | Looted |
+| `items.open` | Looted |
 | `items.roll` | LootRollResult |
+| `items.split` | Item |
 | `items.use` | CastDone |
 | `me.achievements` | Achievements |
 | `move.stop` | MoveDone |

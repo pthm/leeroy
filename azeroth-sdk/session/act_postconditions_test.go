@@ -1,10 +1,12 @@
 package session
 
 import (
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/pthm/leeroy/azeroth-sdk/script"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
 const fastClock = `clock = 0; now = function() return clock end; wait = function(s) clock = clock + s * 1000 end; `
@@ -165,4 +167,42 @@ func TestActPostconditionOptions(t *testing.T) {
       assert(not pcall(act.make_room, {force = true}))
       assert(not pcall(act.loot_nearby, {make_room = "true"}))
     `)
+}
+
+// act.make_room looping with nothing disposable: failure_loop at 25 and 275 consecutive failures, and from 25 the
+// wrapper waits min(5, n/25) s before returning each; a success ends the streak
+func TestActFailureLoop(t *testing.T) {
+	e := actWorld(t, actBase+fastClock+`
+      items.list = function() return {} end`, `
+      for i = 1, 24 do act.make_room() end
+      assert(clock == 0, clock)
+      act.make_room()
+      assert(clock == 1000, clock)
+      for i = 26, 300 do act.make_room() end
+      waited = clock
+      items.list = function() return {{guid = "junk", name = "Tooth", quality = "poor", sell_price = 2}} end
+      items.destroy = function() return {ok = true} end
+      assert(act.make_room().ok)
+      items.list = function() return {} end
+      clock = 0
+      act.make_room()
+      assert(clock == 0, clock)`)
+	// 25 + 26/25 + ... + 125/25 waits, then 5 s each from 125 to 300
+	want := 0.0
+	for n := 25; n <= 300; n++ {
+		want += min(5, float64(n)/25)
+	}
+	if v, _ := e.Eval(`return waited`); v != want*1000 {
+		t.Errorf("waited %v ms, want %v", v, want*1000)
+	}
+	var loops []types.FailureLoop
+	for end := time.Now().Add(time.Second); time.Now().Before(end) && len(loops) < 2; time.Sleep(10 * time.Millisecond) {
+		loops = loops[:0]
+		for _, ev := range e.Bus.Query(script.Query{Types: []string{"failure_loop"}}) {
+			loops = append(loops, ev.Data.(types.FailureLoop))
+		}
+	}
+	if want := []types.FailureLoop{{Task: "t", Op: "act.make_room", Code: "no_disposable_item", Count: 25}, {Task: "t", Op: "act.make_room", Code: "no_disposable_item", Count: 275}}; !slices.Equal(loops, want) {
+		t.Errorf("failure_loop events %+v, want %+v", loops, want)
+	}
 }

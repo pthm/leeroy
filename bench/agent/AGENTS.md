@@ -76,7 +76,8 @@ standings                                        # the score, and the minutes le
 2. **Scripts react to events.** `events.on(type, fn)` runs `fn` for each matching event (a death, a chat message,
    a finished fight) while you're doing something else.
 3. **You choose what wakes you.** `wow wait` blocks until an event in your subscription (`wow subscribe`): by
-   default deaths, stalls (no XP for a while: `events.watch`), script errors, tasks ending, your scripts'
+   default deaths, stalls (no XP for a while: `events.watch`), a task's call failing the same way 25 times in a row
+   (`failure_loop`), script errors, tasks ending, your scripts'
    questions, invites, trades, broken gear, chat from players to you, `goal_met` (the judge recorded your goal) and `maintenance` (an operator notice
    about the run, with the time it takes effect). Chat that isn't a whisper or your name is collected until 2 s of
    quiet (8 s at most) before `wow wait` returns. `wow events` shows what led up to it.

@@ -208,6 +208,14 @@ type Maintenance struct {
 	Message string `json:"message" doc:"what happens then, e.g. the run pauses"`
 }
 
+// FailureLoop: a task's top-level call failed the same way many times in a row (at 25, then every 250 more).
+type FailureLoop struct {
+	Task  string `json:"task"`
+	Op    string `json:"op" doc:"the call, e.g. act.make_room"`
+	Code  string `json:"code" doc:"its error code, e.g. no_disposable_item"`
+	Count int    `json:"count" doc:"consecutive identical failures so far"`
+}
+
 type ErrorEvent struct {
 	Op      string `json:"op" doc:"items, items.loot, vendor.buy, vendor.sell, trainer.learn, group, quests, chat.whisper, chat.channel, chat.join"`
 	Code    string `json:"code"`
@@ -463,6 +471,7 @@ var EventTypes = map[string]EventType{
 	"script_error":         {ScriptError{}, "a script raised an error"},
 	"attention":            {Attention{}, "a script asks the agent (ask)"},
 	"stall":                {Stall{}, "no XP for a while, or the XP rate fell below your threshold (events.watch); once until progress resumes"},
+	"failure_loop":         {FailureLoop{}, "a task's top-level call failed with the same code 25 times in a row, and again every 250 more; from 25, act.* helpers wait min(5, n/25) s before returning such a failure"},
 	"slow_tick":            {SlowTick{}, "a tick took over 300 ms: a script's work held the game up (wow tasks shows each task's busy_ms)"},
 	"progress":             {Progress{}, "a periodic digest of your progress (events.watch{every_s = ...}; off by default)"},
 	"answer":               {Answer{}, "the agent answered (answer)"},
