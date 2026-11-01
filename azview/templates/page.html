@@ -23,8 +23,10 @@
   <div id="mapwrap"><canvas id="map"></canvas>
     <div class="mapbar"><select id="mapsel" aria-label="Map"></select><button id="fitbtn" title="Frame everyone and keep them in view (F)">Fit</button>
       <button id="followbtn" aria-pressed="true" title="Auto follow: keep the selected player, the selected group, or everyone in view; dragging the map turns it off (A)">Auto follow</button>
+      <button title="Heatmap: where the players (or the selected player or group) spent their time, up to the playhead (H)" :aria-pressed="$store.v.heat" @click="$store.v.heat = !$store.v.heat">Heatmap</button>
+      <button title="Roads: the painted roads and the guards' patrol paths, the network the SDK's routes prefer (R)" :aria-pressed="$store.v.roads" @click="$store.v.roads = !$store.v.roads">Roads</button>
       <button id="zoombtn" aria-pressed="true" title="Auto zoom: keep the group, or everyone, in frame; scroll to set how close (Z)">Auto zoom</button></div>
-    <div class="hint">drag to pan · scroll to zoom · F to fit · A for auto follow · Z for auto zoom</div></div>
+    <div class="hint">drag to pan · scroll to zoom · F to fit · A auto follow · Z auto zoom · H heatmap · R roads</div></div>
   <aside>
     <div class="tabs" role="tablist">
       <button role="tab" @click="$store.v.tab = 'feed'" :aria-selected="$store.v.tab === 'feed'">Feed</button>

@@ -131,3 +131,10 @@ func readRoadTile(file string) ([]byte, bool) {
 	}
 	return b, true
 }
+
+// RoadTile is a grid square's road raster: 128x128 bytes, each the share of a ~4.2-yd cell that is road (0-255),
+// row-major from the north-west corner (row x falling, column y falling, as the minimap); nil if the square has none.
+func RoadTile(m uint32, gx, gy int) []byte {
+	t, _ := readRoadTile(clientFile("roads", m, gx, gy, "bin"))
+	return t
+}

@@ -18,17 +18,17 @@ const saved = (() => { try { return JSON.parse(localStorage.getItem("azview") ||
 const V = {
   t: 0, sel: null, grp: null, tab: "feed", sort: "score", bygroup: true,
   cats: Object.fromEntries(B.cats.map((c) => [c.key, c.on])),
-  metric: "dmg", range: "all", chart: "total", per: "0",
+  metric: "dmg", range: "all", chart: "total", per: "0", heat: false, roads: false,
   ...saved,
 };
 V.sel = V.grp = null; V.t = 0;
-const PERSIST = ["tab", "sort", "bygroup", "cats", "metric", "range", "chart", "per"];
+const PERSIST = ["tab", "sort", "bygroup", "cats", "metric", "range", "chart", "per", "heat", "roads"];
 document.addEventListener("alpine:init", () => {
   Alpine.store("v", V);
   Alpine.effect(() => { // any change to what the panels show: save it and refresh them
     const s = Alpine.store("v"), keep = Object.fromEntries(PERSIST.map((k) => [k, JSON.parse(JSON.stringify(s[k]))]));
     try { localStorage.setItem("azview", JSON.stringify(keep)); } catch {}
-    s.sel; s.grp; panelsNow();
+    s.sel; s.grp; s.heat; s.roads; panelsNow(); dirty = true;
   });
 });
 const store = () => window.Alpine?.store("v") ?? V;
@@ -218,6 +218,52 @@ function drawDetail(xa, ya, xb, yb) {
   if (missing.length || fading) dirty = true; // more to ask for, or a tile still fading in: draw again next frame
 }
 const smooth = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+// ---------- overlays ----------
+// The heatmap (/heat: one image of the map's visited area, where the players spent their time up to the playhead) is
+// fetched again when the map or the selection changes, or the playhead has moved 20 s (live: every 5 s).
+let heat = null, heatKey = "", heatT = -Infinity, heatAt = 0, heatLoading = false;
+function drawHeat() {
+  const s = store(), key = `${M.id}|${s.sel ?? ""}|${s.grp ?? ""}`, now = performance.now();
+  if (!heatLoading && (key !== heatKey || Math.abs(t - heatT) > 20000 || (liveFollow && now - heatAt > 5000))) {
+    heatLoading = true; const tt = t;
+    fetch(`heat?m=${M.id}&t=${Math.round(B.start + tt)}&sel=${encodeURIComponent(s.sel ?? "")}&grp=${s.grp ?? ""}`).then((r) => r.json()).then((h) => {
+      if (!h.png) { heat = null; return; }
+      const im = new Image(); im.onload = () => { heat = { ...h, im }; dirty = true; }; im.src = h.png;
+    }).catch(() => {}).finally(() => { heatLoading = false; heatKey = key; heatT = tt; heatAt = performance.now(); });
+  }
+  if (!heat?.im) return;
+  const r = cv.getBoundingClientRect();
+  cx.fillStyle = "#00000059"; cx.fillRect(0, 0, r.width, r.height); // the map dimmed a little, so the heat reads over it
+  const [sx, sy] = scr(heat.x0, heat.y0), k = (heat.res / RES) * view.s;
+  cx.imageSmoothingEnabled = true; cx.globalAlpha = 0.85;
+  cx.drawImage(heat.im, sx, sy, heat.w * k, heat.h * k);
+  cx.globalAlpha = 1;
+}
+// Roads: each grid square's painted roads (/roads, amber, from the client's ground textures) and the friendly NPCs'
+// patrol paths crossing it (/patrols, dashed): the network the SDK's routes prefer.
+const roadTiles = new Map(), patrolPaths = new Map();
+function drawRoads(w, h) {
+  const wx = (sx, sy) => [MAX - ((sy - view.oy) / view.s) * RES, MAX - ((sx - view.ox) / view.s) * RES];
+  const [xa, ya] = wx(0, 0), [xb, yb] = wx(w, h), g = (v) => Math.floor(32 - v / GRID), size = (GRID / RES) * view.s;
+  cx.imageSmoothingEnabled = true;
+  for (let gx = Math.max(0, g(xa)); gx <= Math.min(63, g(xb)); gx++) for (let gy = Math.max(0, g(ya)); gy <= Math.min(63, g(yb)); gy++) {
+    const key = `${M.id}/${gx}/${gy}`;
+    if (!roadTiles.has(key)) { const im = new Image(); im.onload = () => (dirty = true); im.src = `roads/${key}`; roadTiles.set(key, im); }
+    const im = roadTiles.get(key);
+    if (im.complete && im.naturalWidth) { const [sx, sy] = scr(GRID * (32 - gx), GRID * (32 - gy)); cx.globalAlpha = 0.8; cx.drawImage(im, sx, sy, size + 0.5, size + 0.5); cx.globalAlpha = 1; }
+    if (!patrolPaths.has(key)) { patrolPaths.set(key, []); fetch(`patrols?m=${M.id}&gx=${gx}&gy=${gy}`).then((r) => r.json()).then((p) => { patrolPaths.set(key, p); dirty = true; }).catch(() => {}); }
+  }
+  const drawn = new Set();
+  cx.lineWidth = 2; cx.setLineDash([6, 5]); cx.strokeStyle = "#ffe6a8cc"; cx.lineJoin = "round";
+  for (const [key, paths] of patrolPaths) {
+    if (!key.startsWith(`${M.id}/`)) continue;
+    for (const p of paths) {
+      const id = p[0].join(",") + p.length; if (drawn.has(id) || p.length < 2) continue; drawn.add(id); // a path crossing several squares, once
+      cx.beginPath(); p.forEach(([x, y], i) => { const [sx, sy] = scr(x, y); i ? cx.lineTo(sx, sy) : cx.moveTo(sx, sy); }); cx.stroke();
+    }
+  }
+  cx.setLineDash([]);
+}
 const groupMembers = () => { const s = store(); if (s.grp == null) return null; const g = Number(s.grp);
   return new Set([...P.keys()].filter((n) => at(n, t)?.s.grp === g)); };
 const focusSet = () => { const s = store(); return s.sel ? new Set([s.sel]) : groupMembers(); };
@@ -245,6 +291,8 @@ function drawMap() {
   cx.imageSmoothingEnabled = view.s < 2;
   drawTiles(r.width, r.height);
   if (sel || s.grp != null) { cx.fillStyle = "#0000004d"; cx.fillRect(0, 0, r.width, r.height); } // dim the map so the selection stands out
+  if (s.heat) drawHeat();
+  if (s.roads) drawRoads(r.width, r.height);
   // labels
   cx.textAlign = "center";
   for (const l of B.labels) {
@@ -433,6 +481,8 @@ function wire() {
     if (e.code === "KeyF" && !e.metaKey && !e.ctrlKey) refit();
     if (e.code === "KeyZ" && !e.metaKey && !e.ctrlKey) toggleZoom();
     if (e.code === "KeyA" && !e.metaKey && !e.ctrlKey) toggleFollow();
+    if (e.code === "KeyH" && !e.metaKey && !e.ctrlKey) store().heat = !store().heat;
+    if (e.code === "KeyR" && !e.metaKey && !e.ctrlKey) store().roads = !store().roads;
     if (e.code === "ArrowRight") setT(t + (e.shiftKey ? 60000 : 10000));
     if (e.code === "ArrowLeft") setT(t - (e.shiftKey ? 60000 : 10000));
   });

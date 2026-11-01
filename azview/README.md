@@ -122,6 +122,8 @@ reads the files every 250 ms (starting over if one shrinks). The page asks for w
 | `/live` | new data as server-sent events: `s` (a sample), `u` (units), `mark`, `tick`, `data` (anything else) |
 | `/panel/roster`, `/panel/pane` | the roster, and the feed or stats, as HTML for a moment and the UI state (`viewerQuery` in `viewer.js`) |
 | `/tile/<map>/<gx>/<gy>.png` | map tiles |
+| `/heat?m=&t=&sel=&grp=` | the heatmap: where the players (or the selected one or group) spent their time on a map up to t, as one image of the visited area (3 yd a pixel) and where it lies |
+| `/roads/<map>/<gx>/<gy>`, `/patrols?m=&gx=&gy=` | the road network the SDK's routes prefer (`azworld roads`, `route`): a square's painted roads (from `data/roads`) as an amber image, and the friendly NPCs' patrol paths crossing it |
 
 The map is a canvas drawn by `viewer.js` every frame from the samples around the playhead (a window from
 `/samples`, extended by `/live`). Live, the playhead trails the clock by 2.5 s so players are drawn between two samples
@@ -190,6 +192,10 @@ everywhere: the map follows it, the feed and the stats narrow to it.
   it keeps a selected group, or everyone, centred, and with Auto zoom (Z, on by default) zoomed to fit them. Auto follow (A, on by default) is that camera: off, the map stays where you put it; dragging the map turns it off, and clicking a card or a group header turns it back on; scrolling
   then sets how much closer or further than a snug fit (remembered), instead of zooming freely. Drag to pan (which
   stops the camera following); Fit (F) goes back to framing everyone and resets the auto zoom offset. A picker chooses the map (Auto: the followed player's, else where most players are).
+- **Overlays** (map bar toggles, remembered): **Heatmap** (H) shows where the players spent their time up to the
+  playhead (each step between position samples adds its seconds along its line; smoothed, on a log scale, in the
+  inferno colours over a slightly dimmed map), narrowed to the selected player or group; **Roads** (R) shows the
+  painted roads (amber) and the guards' and travellers' patrol paths (dashed).
 - **Seek bar**: play/pause, speed (1x to 300x), Live (follow the newest data), ticks for deaths, achievements, levels,
   quests and chat; hover for the time and the events there. Keys: Space plays, Left/Right seek 10 s (Shift: 60 s), F fits the map, Z toggles auto zoom.
 - **Feed**: one list with filter pills for events (deaths, kills, achievements, levels, quests, loot, zones, groups,

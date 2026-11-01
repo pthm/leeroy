@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -117,5 +118,25 @@ func TestStatsPanel(t *testing.T) {
 	group := render(t, s, "pane", Query{T: 3000, Tab: "stats", Metric: "dmg", Range: "all", Grp: 7})
 	if strings.Contains(group, `data-n="C"`) || !strings.Contains(group, "only group") {
 		t.Error("a selected group narrows the stats to its players")
+	}
+}
+
+// The heatmap covers where the players went, more where they stayed; only the selected players count.
+func TestHeatAt(t *testing.T) {
+	var lines []string
+	for i := 0; i < 60; i++ { // A stands at (0, 0) for a minute, then walks north 30 yd; B is elsewhere
+		lines = append(lines, fmt.Sprintf(`{"t":%d,"ev":"pos","n":"A","x":%d,"y":0,"m":0,"alive":1}`, i*1000, max(0, i-30)), fmt.Sprintf(`{"t":%d,"ev":"pos","n":"B","x":500,"y":500,"m":0,"alive":1}`, i*1000))
+	}
+	s := storeOf(t, strings.Join(lines, "\n"))
+	h := s.HeatAt(0, 60000, nil)
+	if h.PNG == "" || h.X0 < 530 || h.Y0 < 530 || h.W < 150 {
+		t.Fatalf("both players' ground, padded: %+v", h)
+	}
+	a := s.HeatAt(0, 60000, map[string]bool{"A": true})
+	if a.X0 > 100 || a.W > 30 {
+		t.Fatalf("only A's ground: %+v", a)
+	}
+	if none := s.HeatAt(1, 60000, nil); none.PNG != "" {
+		t.Fatal("nobody on map 1")
 	}
 }

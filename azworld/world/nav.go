@@ -394,3 +394,14 @@ func mapImage(m, x, y, radius, level float64, out string, path [][3]float64) *ob
 		"legend", legend+"north up; light lines = guard patrol paths; red = hostile 2+ levels above you, orange = around your level, brown = lower; big dot = elite; white = (x, y); yellow = route",
 		"roads", len(rd), "hostile_spawns", len(mobs))
 }
+
+// RoadPaths are the patrol paths of friendly NPCs (guards, patrollers, travelling merchants walk the roads) that
+// cross the box on map m: each a list of [x, y] points. The other half of the road network routes prefer.
+func RoadPaths(m uint32, x0, x1, y0, y1 float64) (paths [][][2]float64, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("road paths: %v", e)
+		}
+	}()
+	return roadPaths(float64(m), x0, x1, y0, y1), nil
+}
