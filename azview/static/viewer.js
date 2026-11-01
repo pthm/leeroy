@@ -349,7 +349,8 @@ function drawMap() {
   // the camera: on the followed player; or on the middle of the players it keeps in frame (the selected group, or
   // everyone), with auto zoom easing towards a fit of them (at least 80 yd across, 45 yd of room around), times zoomBias
   let centre = null;
-  const gm = s.grp != null ? groupMembers() : null;
+  let gm = s.grp != null ? groupMembers() : null;
+  if (gm && !gm.size) { s.grp = null; gm = null; } // the selected group has broken up (or isn't formed yet): back to everyone
   const frame = !autoCam || follow ? null : gm ? [...gm] : [...P.keys()];
   if (autoCam && follow) centre = at(follow, t);
   else if (frame) {
