@@ -1,0 +1,16 @@
+name: deadmines-sonnet
+description: >
+  deadmines.yaml on Claude Code with Sonnet 5.5: five brand-new level-1 Humans in Northshire, a dungeon party (a
+  tank, a healer, three DPS), with one goal: clear the Deadmines (achievement 628, earned when Edwin VanCleef dies).
+  Levelling and gear on the way are up to them. A week on the clock; each agent stops when it has the achievement.
+goal: achievement:628
+minutes: 10080
+require_fresh: true
+runtime: claude
+models: {claude: claude-sonnet-5-5}
+agents:
+  - {name: a49, char: Hadric, class: warrior, spec: protwarrior}
+  - {name: a50, char: Lisbet, class: priest, spec: holy}
+  - {name: a51, char: Garreth, class: rogue, spec: combat}
+  - {name: a52, char: Marigold, class: mage, spec: frost}
+  - {name: a53, char: Anselm, class: paladin, spec: ret}

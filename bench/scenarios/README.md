@@ -19,6 +19,7 @@ bin/azbench run bench/scenarios/hogger-trio.yaml --minutes 60
 | `models-frost.yaml` | 60 | ten new Frost Mages a31-a40, one per model, all on opencode through OpenRouter: Claude Opus, Sonnet and Haiku, three sizes of GPT and of Gemini, and DeepSeek |
 | `hogger-trio.yaml` | 120 | three new level-5 Claude Code agents a41-a43 in Goldshire (Protection Paladin, Holy Priest, Frost Mage) with one goal: "Wanted: Hogger" (quest 176) |
 | `deadmines.yaml` | 10080 | five new level-1 Codex (GPT-6.1 Sol) agents a44-a48 in Northshire, a dungeon party, with one goal: clear the Deadmines (`achievement:628`). A week on the clock; each stops when it has the achievement |
+| `deadmines-sonnet.yaml` | 10080 | the same party and goal on Claude Code with Sonnet 5.5, a49-a53 |
 
 All but the smoke tests set `require_fresh`: they refuse to start if any agent's workspace exists.
 
