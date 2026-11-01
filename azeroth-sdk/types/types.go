@@ -93,13 +93,26 @@ type Unit struct {
 	Health    uint32 `json:"health"`
 	MaxHealth uint32 `json:"max_health"`
 	Place
-	Alive    bool     `json:"alive"`
-	Reaction string   `json:"reaction" doc:"toward you: hostile (attacks on sight), neutral (fights back) or friendly"`
-	Target   GUID     `json:"target" doc:"who it's targeting; null for nobody"`
-	InCombat bool     `json:"in_combat"`
-	Fleeing  bool     `json:"fleeing,omitempty" doc:"the server's fleeing flag (UNIT_FLAG_FLEEING): it runs in fear, or a creature runs at low health"`
-	Casting  *Casting `json:"casting,omitempty" doc:"the spell it's casting or channelling now (interrupt it, or get out of the way)"`
-	States   []string `json:"states,omitempty" doc:"the game's aura states: health_below_20 (Execute, Hammer of Wrath), health_below_35, defense (it dodged, parried or blocked: Revenge), frozen, bleeding, enrage, ..."`
+	Alive    bool      `json:"alive"`
+	Reaction string    `json:"reaction" doc:"toward you: hostile (attacks on sight), neutral (fights back) or friendly"`
+	Target   GUID      `json:"target" doc:"who it's targeting; null for nobody"`
+	InCombat bool      `json:"in_combat"`
+	Fleeing  bool      `json:"fleeing,omitempty" doc:"the server's fleeing flag (UNIT_FLAG_FLEEING): it runs in fear, or a creature runs at low health"`
+	Casting  *Casting  `json:"casting,omitempty" doc:"the spell it's casting or channelling now (interrupt it, or get out of the way)"`
+	States   []string  `json:"states,omitempty" doc:"the game's aura states: health_below_20 (Execute, Hammer of Wrath), health_below_35, defense (it dodged, parried or blocked: Revenge), frozen, bleeding, enrage, ..."`
+	Control  []Control `json:"control,omitempty" doc:"auras that take away its control (stun, polymorph, fear, root, silence, ...)"`
+}
+
+// Control is an aura that stops a unit acting, moving or casting as it would: a stun, charm, confuse, fear, root,
+// silence or pacify aura (Spell.dbc EffectApplyAuraName).
+type Control struct {
+	Spell          uint32  `json:"spell"`
+	Name           string  `json:"name"`
+	Mechanic       string  `json:"mechanic" doc:"the spell's mechanic (Spell.dbc): polymorph, stun, sap, sleep, fear, root, charm, disoriented, freeze, knockout, horror, shackle, banish, silence, ...; the aura's kind (stun, confuse, fear, root, charm, silence, pacify) for a spell without one"`
+	CasterGUID     GUID    `json:"caster_guid"`
+	RemainingMS    *uint32 `json:"remaining_ms,omitempty" doc:"nil when the server sends no duration for it"`
+	BreaksOnDamage bool    `json:"breaks_on_damage" doc:"any damage removes it (Spell.dbc AuraInterruptFlags: TAKE_DAMAGE)"`
+	DamageLimit    bool    `json:"damage_limit,omitempty" doc:"the damage it takes adds up, and past a limit set by the caster's level (that level's warrior base health / 4.75) removes it"`
 }
 
 type Creature struct {

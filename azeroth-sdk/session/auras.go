@@ -4,7 +4,9 @@ package session
 // queries and as aura_gained / aura_faded events for auras on you and auras you cast on others.
 
 import (
+	"cmp"
 	"math"
+	"slices"
 
 	"github.com/pthm/leeroy/azeroth-sdk/client"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
@@ -32,6 +34,50 @@ func (b *Bot) aura(a client.AuraInfo) types.Aura {
 func hiddenAura(spell uint32) bool {
 	sp := spellInfo(spell)
 	return sp != nil && (sp.attrs&0x80 != 0 || sp.Name == "")
+}
+
+// controlAuras: SPELL_AURA_* that take control away (SpellAuraDefines.h), named for a spell with no mechanic
+var controlAuras = map[uint32]string{2: "charm", 5: "confuse", 6: "charm", 7: "fear", 12: "stun", 25: "pacify", 26: "root",
+	27: "silence", 60: "silence", 177: "charm"}
+
+// mechanicNames: enum Mechanics (SharedDefines.h)
+var mechanicNames = map[uint32]string{1: "charm", 2: "disoriented", 3: "disarm", 4: "distract", 5: "fear", 6: "grip",
+	7: "root", 8: "slow_attack", 9: "silence", 10: "sleep", 11: "snare", 12: "stun", 13: "freeze", 14: "knockout",
+	15: "bleed", 16: "bandage", 17: "polymorph", 18: "banish", 19: "shield", 20: "shackle", 21: "mount", 22: "infected",
+	23: "turn", 24: "horror", 25: "invulnerability", 26: "interrupt", 27: "daze", 28: "discovery", 29: "immune_shield",
+	30: "sap", 31: "enraged", 32: "wounded", 36: "taunted"}
+
+// controls: a unit's auras that take its control away, with the mechanic of the effect that does it (else the spell's)
+func controls(auras []client.AuraInfo) []types.Control {
+	var out []types.Control
+	for _, a := range auras {
+		sp := spellInfo(a.Spell)
+		if sp == nil {
+			continue
+		}
+		for i, aura := range sp.effAura {
+			kind, ok := controlAuras[aura]
+			if !ok {
+				continue
+			}
+			c := types.Control{Spell: a.Spell, Name: sp.Name, Mechanic: kind, CasterGUID: types.GUID(a.Caster), BreaksOnDamage: sp.auraInterrupt&0x2 != 0}
+			// AuraEffect::CalculateAmount and HandleBreakableCCAuraProc: the confuse, fear, stun, root and transform
+			// auras of a spell with proc flags (and no proc-trigger aura) take damage up to a cap
+			c.DamageLimit = sp.procFlags != 0 && !slices.Contains(sp.effAura[:], 42) && slices.ContainsFunc(sp.effAura[:], func(a uint32) bool {
+				return a == 5 || a == 7 || a == 12 || a == 26 || a == 56
+			})
+			if m := cmp.Or(sp.effMechanic[i], sp.mechanic); mechanicNames[m] != "" {
+				c.Mechanic = mechanicNames[m]
+			}
+			if a.Left() > 0 {
+				ms := uint32(a.Left().Milliseconds())
+				c.RemainingMS = &ms
+			}
+			out = append(out, c)
+			break
+		}
+	}
+	return out
 }
 
 func (b *Bot) aurasOf(unit uint64) []types.Aura {

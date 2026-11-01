@@ -1,11 +1,14 @@
 package session
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/pthm/leeroy/azeroth-sdk/client"
 )
@@ -78,5 +81,25 @@ func TestSpellFacingFlag(t *testing.T) {
 		if got := spellInfo(id).facing & 1; got != want {
 			t.Errorf("spell %d: facing %d, want %d", id, got, want)
 		}
+	}
+}
+
+// With the game data: control auras name the spell's mechanic and whether damage breaks them (AuraInterruptFlags)
+func TestControls(t *testing.T) {
+	dir, _ := filepath.Abs("../../data")
+	if _, err := os.Stat(filepath.Join(dir, "dbc", "Spell.dbc")); err != nil {
+		t.Skip("no game data in ../../data")
+	}
+	spellsDir, spellsOnce = dir, sync.Once{}
+	now := time.Now()
+	auras := []client.AuraInfo{{Spell: 118, Caster: 7, Flags: 0x20, MaxDurationMS: 20000, DurationMS: 15000, At: now}, // Polymorph
+		{Spell: 6770}, {Spell: 122}, {Spell: 853}, {Spell: 1243}} // Sap, Frost Nova, Hammer of Justice; Power Word: Fortitude isn't one
+	var got []string
+	for _, c := range controls(auras) {
+		got = append(got, fmt.Sprintf("%d %s %v %v %d %v", c.Spell, c.Mechanic, c.BreaksOnDamage, c.DamageLimit, c.CasterGUID, c.RemainingMS != nil))
+	}
+	want := []string{"118 polymorph true false 7 true", "6770 sap true true 0 false", "122 root false true 0 false", "853 stun false false 0 false"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("controls: %q, want %q", got, want)
 	}
 }

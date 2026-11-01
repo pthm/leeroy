@@ -861,10 +861,15 @@ type spellRec struct {
 	facing           uint32 // FacingCasterFlags: 1 = the target must be in front of you (SPELL_FACING_FLAG_INFRONT)
 	family           uint32 // SpellFamilyName (a class's spells share one), and its SpellFamilyFlags: spell mods pick spells by these bits
 	familyFlags      [3]uint32
-	school           uint32  // SchoolMask
-	casterState      uint32  // the aura state you need (Victory Rush: victory_rush), 0 = none
-	targetState      uint32  // the aura state the target needs (Execute: health_below_20)
-	Range            float32 `json:"range"` // max range against hostile targets, yards (melee spells ~5)
+	school           uint32    // SchoolMask
+	mechanic         uint32    // Mechanic (MECHANIC_*)
+	effMechanic      [3]uint32 // EffectMechanic: an effect's own mechanic
+	effAura          [3]uint32 // EffectApplyAuraName (SPELL_AURA_*)
+	auraInterrupt    uint32    // AuraInterruptFlags: what removes its aura (0x2 AURA_INTERRUPT_FLAG_TAKE_DAMAGE: any damage)
+	procFlags        uint32    // ProcFlags: the events its aura reacts to
+	casterState      uint32    // the aura state you need (Victory Rush: victory_rush), 0 = none
+	targetState      uint32    // the aura state the target needs (Execute: health_below_20)
+	Range            float32   `json:"range"` // max range against hostile targets, yards (melee spells ~5)
 }
 
 var (
@@ -900,7 +905,8 @@ func loadSpells() {
 			spells[f(0)] = &spellRec{Name: str(f(136)), Rank: str(f(153)), Category: f(1), Cooldown: f(29),
 				CategoryCooldown: f(30), GCDCategory: f(205), GCD: f(206), PowerType: f(41), Cost: f(42),
 				Range: ranges[f(46)], CastMS: castTimes[f(28)], Level: f(38), costPct: f(204), attrs: f(4), attrsEx2: f(6), dispel: f(2),
-				facing: f(19), casterState: f(20), targetState: f(21), family: f(208), familyFlags: [3]uint32{f(209), f(210), f(211)}, school: f(225)}
+				facing: f(19), casterState: f(20), targetState: f(21), family: f(208), familyFlags: [3]uint32{f(209), f(210), f(211)}, school: f(225),
+				mechanic: f(3), effMechanic: [3]uint32{f(83), f(84), f(85)}, effAura: [3]uint32{f(95), f(96), f(97)}, auraInterrupt: f(32), procFlags: f(34)}
 			// the client's own Opening spells: SPELL_EFFECT_OPEN_LOCK (Effect[3] 71, MiscValue[3] 110 = lock type),
 			// hidden and unlogged (attributes 0x80|0x100); the lowest id for each lock type
 			for k := 0; k < 3; k++ {

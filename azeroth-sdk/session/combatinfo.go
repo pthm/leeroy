@@ -82,6 +82,7 @@ func auraStates(o *client.WorldObject) []string {
 func (b *Bot) unitExtras(u *types.Unit, guid uint64) {
 	o := b.world.GetObject(guid)
 	u.States = auraStates(o)
+	u.Control = controls(b.world.Auras(guid))
 	if ci := b.cinfo; ci != nil {
 		ci.mu.Lock()
 		c, ok := ci.casts[guid]
