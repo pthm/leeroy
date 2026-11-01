@@ -150,8 +150,9 @@ pixel), each 256 px, rendered on demand from the game client (`azworld/world/det
 upscaled smoothly, plus the fine detail of the ground textures the game paints the terrain with (each chunk's texture
 layers and alpha maps from the client's ADT files): the texture render minus itself blurred to the minimap's
 resolution. The minimap keeps the colours, shading, buildings and water; the textures add the ground's grain and sharp
-road and path edges; where the two disagree a lot (a roof, water) less detail is added. The page uses the level whose
-pixels are about a screen pixel, and shows its part of a coarser tile while a finer one loads. Over that, the
+road and path edges; where the two disagree a lot (a roof, water) less detail is added. Between two levels the finer
+one fades in as you zoom, over the coarser (by how far between them the zoom is), a tile that arrives fades in over a
+quarter second, and a sub-square whose tile hasn't come yet shows its part of a coarser one already here. Over that, the
 client's own models are drawn, textured, seen from above: every building, wall and bridge (WMO) and tree, fence, lamp
 and crate (M2) the ADTs place, and the doodads each building places (a city's trees and statues, an inn's lanterns),
 read from the client (`azeroth-sdk/clientdata`: `ParseADT`'s placements, `LoadWMO`, `LoadM2`) and placed with the

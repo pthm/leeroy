@@ -168,42 +168,56 @@ function drawTiles(w, h) {
   drawDetail(xa, ya, xb, yb);
 }
 // Zoomed in past the minimap's own resolution (a pixel per ~2 yd), detail tiles: a square cut into 2^level x 2^level,
-// each 256 px (/detail, world.DetailTile). The level is the one whose pixels are about a screen pixel; a sub-square
+// each 256 px (/detail, world.DetailTile). Between two levels the finer one fades in as you zoom (by how far between
+// them the zoom is), over the coarser; a tile that arrives fades in over FADE_MS rather than popping. A sub-square
 // whose tile hasn't come yet shows its part of a coarser one already here.
-const detail = new Map(), DETAIL_LOADS = 12; // at most this many tiles on their way (the browser runs six at once)
+const detail = new Map(), DETAIL_LOADS = 12, FADE_MS = 250; // at most this many tiles on their way (the browser runs six at once)
 function drawDetail(xa, ya, xb, yb) {
   if (!B.detail?.includes(M.id)) return;
-  const L = Math.max(0, Math.min(B.maxDetail, Math.ceil(Math.log2(((GRID / RES) * view.s) / 256 * 0.9))));
-  const want = new Set(), missing = [];
-  if (L) {
+  const zoom = Math.log2(((GRID / RES) * view.s) / 256 * 0.9); // 0: a minimap pixel per screen pixel; each level is 1
+  const base = Math.max(0, Math.min(B.maxDetail, Math.floor(zoom))), fine = base < B.maxDetail ? base + 1 : 0;
+  const mix = fine ? smooth(zoom - base) : 0; // how far the finer level has faded in
+  const want = new Set(), missing = [], now = performance.now();
+  let fading = false;
+  const r = cv.getBoundingClientRect();
+  cx.imageSmoothingEnabled = true;
+  // one level's tiles over the screen at opacity alpha; the base level fills gaps from coarser tiles already here
+  const layer = (L, alpha, fillGaps) => {
     const n = 1 << L, sub = GRID / n, size = (sub / RES) * view.s, idx = (v) => Math.floor((MAX - v) / sub);
-    const r = cv.getBoundingClientRect(), [cr, cc] = [idx(MAX - ((r.height / 2 - view.oy) / view.s) * RES), idx(MAX - ((r.width / 2 - view.ox) / view.s) * RES)];
-    cx.imageSmoothingEnabled = true;
+    const cr = idx(MAX - ((r.height / 2 - view.oy) / view.s) * RES), cc = idx(MAX - ((r.width / 2 - view.ox) / view.s) * RES);
     for (let R = Math.max(0, idx(xa)); R <= Math.min(64 * n - 1, idx(xb)); R++) for (let C = Math.max(0, idx(ya)); C <= Math.min(64 * n - 1, idx(yb)); C++) {
       const [sx, sy] = scr(MAX - R * sub, MAX - C * sub);
-      for (let l = L; l >= 1; l--) { // this level, or the part of a coarser one already here
+      for (let l = L; l >= (fillGaps ? 1 : L); l--) { // this level, or the part of a coarser one already here
         const f = 1 << (L - l), rr = Math.floor(R / f), c = Math.floor(C / f), m = 1 << l;
         const key = `${M.id}/${l}/${Math.floor(rr / m)}/${Math.floor(c / m)}/${rr % m}/${c % m}`;
         if (l === L) want.add(key);
         const im = detail.get(key);
-        if (!im?.complete || !im.naturalWidth) { if (l === L && !im) missing.push([Math.hypot(R - cr, C - cc), key]); continue; }
+        if (!im?.complete || !im.naturalWidth) { if (l === L && !im) missing.push([Math.hypot(R - cr, C - cc) + (fillGaps ? 0 : 1e4), key]); continue; }
+        const born = Math.min(1, (now - (im.loaded ?? 0)) / FADE_MS); // fading in since it arrived
+        if (born < 1) fading = true;
         const part = 256 / f;
+        cx.globalAlpha = alpha * (l === L ? born : 1);
         cx.drawImage(im, (C % f) * part, (R % f) * part, part, part, sx, sy, size + 0.5, size + 0.5);
         break;
       }
     }
-  }
+    cx.globalAlpha = 1;
+  };
+  if (base) layer(base, 1, true);
+  if (fine && mix > 0.01) layer(fine, mix, false);
   // tiles on their way that aren't wanted any more (zoomed or panned past) are dropped, and the nearest to the
-  // middle of the screen are asked for first
+  // middle of the screen are asked for first, the coarser level before the finer
   let loading = 0;
   for (const [key, im] of detail) if (!im.complete) { if (want.has(key)) loading++; else { im.src = ""; detail.delete(key); } }
   missing.sort((a, b) => a[0] - b[0]);
   for (const [, key] of missing.slice(0, Math.max(0, DETAIL_LOADS - loading))) {
-    const im = new Image(); im.onload = im.onerror = () => (dirty = true); im.src = `detail/${key}.jpg?v=${B.detailVersion}`; detail.set(key, im);
+    const im = new Image(); im.onload = () => { im.loaded = performance.now(); dirty = true; }; im.onerror = () => (dirty = true);
+    im.src = `detail/${key}.jpg?v=${B.detailVersion}`; detail.set(key, im);
     if (detail.size > 1500) for (const [k, old] of detail) { if (old.complete && !want.has(k)) { detail.delete(k); break; } } // the oldest drawn one
   }
-  if (missing.length) dirty = true; // more to ask for next frame
+  if (missing.length || fading) dirty = true; // more to ask for, or a tile still fading in: draw again next frame
 }
+const smooth = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
 const groupMembers = () => { const s = store(); if (s.grp == null) return null; const g = Number(s.grp);
   return new Set([...P.keys()].filter((n) => at(n, t)?.s.grp === g)); };
 const focusSet = () => { const s = store(); return s.sel ? new Set([s.sel]) : groupMembers(); };
