@@ -21,13 +21,13 @@ body { display: grid; grid-template-rows: 1fr auto; height: 100vh; }
 .rt { font-size: 10px; padding: 1px 6px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
 .rt-claude { color: #d97757; } .rt-codex { color: #10a37f; }
 .dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #0006; }
-main { display: grid; grid-template-columns: clamp(260px, 20vw, 340px) 1fr clamp(380px, 28vw, 560px); min-height: 0; }
+main { display: grid; grid-template-columns: clamp(260px, 20vw, 340px) 1fr clamp(410px, 28vw, 560px); min-height: 0; }
 #mapwrap { position: relative; overflow: hidden; background: #2a2a28; cursor: grab; }
 #mapwrap:active { cursor: grabbing; }
 #map { position: absolute; inset: 0; width: 100%; height: 100%; }
 .hint { position: absolute; left: 10px; bottom: 8px; color: #fffc; font-size: 11.5px; text-shadow: 0 1px 2px #000; pointer-events: none; }
 #roster { display: grid; grid-template-rows: auto 1fr auto; min-height: 0; border-right: 1px solid var(--line); background: var(--panel); }
-.rhead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.rhead { display: flex; flex-wrap: nowrap; white-space: nowrap; align-items: center; gap: 6px 10px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
 .rhead label:first-of-type { margin-left: auto; }
 .rlist { overflow-y: auto; padding: 8px 10px; min-height: 0; }
 .ghead { display: flex; gap: 6px; align-items: baseline; margin: 10px 0 4px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--quiet); }
@@ -48,7 +48,8 @@ main { display: grid; grid-template-columns: clamp(260px, 20vw, 340px) 1fr clamp
 .pc.off > * { opacity: .45; }
 .pc.sel { box-shadow: 0 0 0 2px var(--accent); }
 .pc-top { display: flex; align-items: center; gap: 6px; min-width: 0; height: 18px; }
-.pc-top .who { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-top .who { flex: none; max-width: 65%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-top .spec { min-width: 0; }
 .pc-top .spec { color: var(--quiet); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pc-top .lvl { margin-left: auto; flex: none; padding: 0 6px; border-radius: 5px; background: var(--panel); border: 1px solid var(--line); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .hpbar { position: relative; height: 14px; border-radius: 4px; background: #00000080; overflow: hidden; }
@@ -67,7 +68,7 @@ main { display: grid; grid-template-columns: clamp(260px, 20vw, 340px) 1fr clamp
 .pc-sub .rt { margin-left: auto; }
 .coin { font-variant-numeric: tabular-nums; }
 .coin .g { color: #ffd100; } .coin .s { color: #c7c7cf; } .coin .c { color: #d38b4d; }
-.rlegend { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 6px 10px; border-top: 1px solid var(--line); color: var(--quiet); font-size: 11px; }
+.rlegend { display: flex; flex-wrap: wrap; gap: 4px 8px; padding: 6px 10px; border-top: 1px solid var(--line); color: var(--quiet); font-size: 11px; }
 .rlegend span::before { content: ""; display: inline-block; width: 10px; height: 8px; margin-right: 4px; border: 2px solid var(--c); border-radius: 3px; vertical-align: -1px; }
 .rlegend .lg-ghost::before { border-style: dashed; }
 .only { display: flex; align-items: center; gap: 8px; }
@@ -77,13 +78,14 @@ aside { display: grid; grid-template-rows: auto auto 1fr; min-height: 0; border-
 .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
 .pane { overflow-y: auto; padding: 0 12px 8px; min-height: 0; }
 .pane > :first-child:not(.filters) { margin-top: 8px; }
-.row { display: grid; grid-template-columns: 7ch 1fr; /* fits minutes up to 9999:59 */ gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.row { display: grid; grid-template-columns: 7.5ch 1fr; /* fits 99:59:59 */ gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
 .row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .row[style] { border-left: 2px solid var(--c); padding-left: 6px; }
-.pill { font: inherit; font-size: 12px; color: var(--quiet); background: none; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px 2px 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.pill { font: inherit; font-size: 11.5px; color: var(--quiet); background: none; border: 1px solid var(--line); border-radius: 999px; padding: 2px 6px 2px 5px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
 .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c); opacity: .35; }
 .pill[aria-pressed="true"] { color: var(--ink); border-color: color-mix(in srgb, var(--c) 60%, var(--line)); background: color-mix(in srgb, var(--c) 12%, transparent); }
 .pill[aria-pressed="true"]::before { opacity: 1; }
+.row > span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .row .t { color: var(--quiet); font-variant-numeric: tabular-nums; }
 .who { font-weight: 600; }
 .muted { color: var(--quiet); }
@@ -124,9 +126,13 @@ aside { display: grid; grid-template-rows: auto auto 1fr; min-height: 0; border-
 .seg select { padding-top: 2px; padding-bottom: 2px; font-size: 12px; }
 .slegend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; color: var(--quiet); font-size: 11px; }
 .slegend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; background: var(--c); }
-.tip { position: fixed; z-index: 10; min-width: 150px; max-width: 320px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px;
+.tip { position: fixed; z-index: 10; min-width: 150px; max-width: 380px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px;
   background: var(--panel); box-shadow: 0 4px 14px #0008; font-size: 12px; pointer-events: none; }
 .tip .t { color: var(--quiet); margin-bottom: 2px; }
+.tip .g { display: inline-block; width: 14px; font-weight: 700; }
+.tip .hintline { margin-top: 4px; font-size: 11px; }
+.tip .ev { display: grid; grid-template-columns: auto 14px 1fr; gap: 6px; padding: 1px 0; }
+.tip .ev .t { margin: 0; font-variant-numeric: tabular-nums; }
 .tip .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
 .tip .tr { display: flex; justify-content: space-between; gap: 16px; font-variant-numeric: tabular-nums; }
 #live[aria-pressed="true"] { color: var(--death); border-color: var(--death); }
@@ -152,18 +158,24 @@ input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px;
 /* map picker over the map, top left */
 .mapbar { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; align-items: flex-start; gap: 10px; pointer-events: none; }
 .mapbar > * { pointer-events: auto; }
-.mapbar select { background-color: color-mix(in srgb, var(--bg) 85%, transparent); }
+.mapbar select, .mapbar button { background-color: color-mix(in srgb, var(--bg) 85%, transparent); }
+.mapbar button { font: inherit; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+.mapbar button:hover { border-color: var(--quiet); }
+.mapbar button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.mapbar button:disabled { opacity: .45; cursor: default; }
 @media (max-width: 760px) {
-  main { grid-template-columns: 1fr; grid-template-rows: auto 55vh 1fr; }
-  #roster { border-right: 0; border-bottom: 1px solid var(--line); max-height: 35vh; }
+  html, body { height: auto; }
+  body { display: block; }
+  main { grid-template-columns: 1fr; grid-template-rows: auto 55vh 75vh; }
+  #roster { border-right: 0; border-bottom: 1px solid var(--line); max-height: 40vh; }
   aside { border-left: 0; border-top: 1px solid var(--line); }
-  footer { grid-template-columns: auto auto 1fr; }
-  #clock { grid-column: 3; }
+  footer { position: sticky; bottom: 0; z-index: 5; grid-template-columns: auto auto auto 1fr; padding: 8px 12px; }
+  #clock { text-align: right; }
   .tlwrap { grid-column: 1 / -1; }
 }
 #panebar { padding: 0 12px; }
 #panebar:empty { display: none; }
-.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); background: var(--panel); }
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--line); background: var(--panel); }
 .filters label { cursor: pointer; white-space: nowrap; }
 .filters .only { margin-left: auto; }
 </style>
@@ -172,13 +184,15 @@ input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px;
 <main>
   <section id="roster">
     <div class="rhead"><b>Players</b> <span class="muted" id="rcount"></span>
-      <label class="muted">Sort <select id="sort"><option value="score">score</option><option value="level">level</option><option value="hp">health</option><option value="name">name</option><option value="cls">class</option></select></label>
-      <label class="muted"><input type="checkbox" id="bygroup" checked> by group</label></div>
+      <label class="muted" title="Sort by"><select id="sort" aria-label="Sort by"><option value="score">score</option><option value="level">level</option><option value="hp">health</option><option value="name">name</option><option value="cls">class</option></select></label>
+      <label class="muted" title="Group players by party"><input type="checkbox" id="bygroup" checked> groups</label></div>
     <div class="rlist" id="rlist"></div>
     <div class="rlegend"><span style="--c:var(--death)">in combat</span><span style="--c:#6b6a66">dead</span><span class="lg-ghost" style="--c:#8fb8ff">ghost</span><span style="--c:var(--accent)">selected</span></div>
   </section>
   <div id="mapwrap"><canvas id="map"></canvas>
-    <div class="mapbar"><select id="mapsel" aria-label="Map" hidden></select></div><div class="hint">drag to pan · scroll to zoom · click a player to show their route · click their card to follow them, or a group's header to follow the group</div></div>
+    <div class="mapbar"><select id="mapsel" aria-label="Map" hidden></select><button id="fitbtn" title="Frame everyone and keep them in view (F)">Fit</button>
+      <button id="zoombtn" aria-pressed="true" title="Auto zoom: keep the group, or everyone, in frame; scroll to set how close (Z)">Auto zoom</button></div>
+    <div class="hint">drag to pan · scroll to zoom · F to fit · Z for auto zoom</div></div>
   <aside>
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="feed" aria-selected="true">Feed</button>
@@ -203,7 +217,8 @@ const LIVE = !!D.live; // live: data streams in over /stream and the map comes a
 const img = new Image(); if (!LIVE) img.src = "__MAP__";
 const $ = (id) => document.getElementById(id);
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-const fmt = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const fmt = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`; };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const P = D.players, color = Object.fromEntries(P.map((p) => [p.name, p.color]));
 // a distinct colour per player (two agents of one class must not look alike); class is in the label
@@ -325,13 +340,19 @@ function fitBox(xMin, xMax, yMin, yMax) {
   view.s = Math.min(r.width / Math.max(1, x1 - x0), r.height / Math.max(1, y1 - y0));
   view.ox = (r.width - (x1 + x0) * view.s) / 2; view.oy = (r.height - (y1 + y0) * view.s) / 2;
 }
+// frame the players where they are at the playhead (the whole map image, in a static replay with nobody placed yet)
 function fit() {
-  if (!LIVE) return fitBox(M.xMax - M.h * M.res, M.xMax, M.yMax - M.w * M.res, M.yMax);
-  const pts = P.flatMap((p) => p.track.slice(-600).filter((r) => r[15] === M.id).slice(-60));
-  if (!pts.length) return sizeCanvas();
-  const xs = pts.map((r) => r[1]), ys = pts.map((r) => r[2]);
-  fitBox(Math.min(...xs) - 300, Math.max(...xs) + 300, Math.min(...ys) - 300, Math.max(...ys) + 300);
+  const pts = P.map((p) => at(p, t)).filter((pp) => pp && pp.r[15] === M.id);
+  if (!pts.length) return LIVE ? sizeCanvas() : fitBox(M.xMax - M.h * M.res, M.xMax, M.yMax - M.w * M.res, M.yMax);
+  const xs = pts.map((q) => q.x), ys = pts.map((q) => q.y), pad = LIVE ? 120 : 350; // a replay's one map image is coarse up close
+  fitBox(Math.min(...xs) - pad, Math.max(...xs) + pad, Math.min(...ys) - pad, Math.max(...ys) + pad);
 }
+// Auto zoom: while the camera keeps a set of players in frame (a selected group, or everyone with nobody followed),
+// it also zooms to fit them; scrolling then adjusts zoomBias, how much closer or further than a snug fit, instead
+let autoZoom = true, zoomBias = 1;
+try { autoZoom = localStorage.getItem("replay-autozoom") !== "0"; zoomBias = Number(localStorage.getItem("replay-zoombias")) || 1; } catch {}
+const saveZoom = () => { try { localStorage.setItem("replay-autozoom", autoZoom ? "1" : "0"); localStorage.setItem("replay-zoombias", zoomBias); } catch {} };
+let autoCam = true; // with nobody followed, keep the players in the middle; dragging the map stops it, Fit (F) starts it again
 const GRID = 1600 / 3, tiles = new Map();
 function drawTiles(w, h) {
   // grid squares under the screen: gx = floor(32 - x / GRID), likewise gy
@@ -350,10 +371,20 @@ function drawTiles(w, h) {
 const scr = (x, y) => { const [px, py] = toPx(x, y); return [view.ox + px * view.s, view.oy + py * view.s]; };
 function drawMap() {
   const r = cv.getBoundingClientRect();
+  // the camera: on the followed player; or on the middle of the players it keeps in frame (the selected group, or
+  // everyone), with auto zoom easing towards a fit of them (at least 80 yd across, 45 yd of room around), times zoomBias
   let centre = null;
+  const frame = follow ? null : groupFollow && selGroup ? P.filter((p) => focusSet()?.has(p.name)) : autoCam ? P : null;
   if (follow) centre = at(P.find((p) => p.name === follow), t);
-  else if (groupFollow && selGroup) { const pts = P.filter((p) => focusSet()?.has(p.name)).map((p) => at(p, t)).filter((pp) => pp && pp.r[15] === M.id);
-    if (pts.length) centre = { x: pts.reduce((a, q) => a + q.x, 0) / pts.length, y: pts.reduce((a, q) => a + q.y, 0) / pts.length }; }
+  else if (frame) {
+    const pts = frame.map((p) => at(p, t)).filter((pp) => pp && pp.r[15] === M.id);
+    if (pts.length) {
+      const xs = pts.map((q) => q.x), ys = pts.map((q) => q.y), pad = 45, half = 40;
+      const hx = Math.max(half, (Math.max(...xs) - Math.min(...xs)) / 2 + pad), hy = Math.max(half, (Math.max(...ys) - Math.min(...ys)) / 2 + pad);
+      centre = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 };
+      if (autoZoom) { const want = zoomBias * Math.min(r.width / ((2 * hy) / M.res), r.height / ((2 * hx) / M.res)); view.s += (want - view.s) * 0.25; } // map x is screen y
+    }
+  }
   if (centre) { const [px, py] = toPx(centre.x, centre.y); view.ox = r.width / 2 - px * view.s; view.oy = r.height / 2 - py * view.s; }
   cx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   cx.clearRect(0, 0, r.width, r.height);
@@ -457,20 +488,22 @@ function drawMap() {
     for (const m of g.members) { if (m === head || m.pp.r[15] !== M.id) continue; const [mx, my] = scr(m.pp.x, m.pp.y); cx.beginPath(); cx.moveTo(hx, hy); cx.lineTo(mx, my); cx.stroke(); }
     cx.setLineDash([]);
   }
-  // event markers up to now
-  const focus = focusSet();
+  // event markers up to now (kept, with where they were drawn, for the hover tooltip)
+  const focus = focusSet(); markerHits = [];
   for (const e of MARKS) {
     if (e.t > t) break;
     if (focus && !focus.has(e.n)) continue;
     const p = P.find((q) => q.name === e.n); const pp = p && at(p, e.t); if (!pp || pp.r[15] !== M.id) continue;
-    const [sx, sy] = scr(pp.x, pp.y);
+    const [sx, sy] = scr(pp.x, pp.y); if (sx < -10 || sy < -10 || sx > r.width + 10 || sy > r.height + 10) continue; // off screen
     cx.fillStyle = css({ death: "--death", achievement: "--ach", level: "--level", quest: "--quest" }[e.ev]);
     cx.strokeStyle = "#000"; cx.lineWidth = 1;
     cx.font = "bold 13px system-ui"; cx.textAlign = "center";
     const glyph = { death: "✕", achievement: "★", level: "▲", quest: "!" }[e.ev];
     cx.strokeText(glyph, sx, sy + 4); cx.fillText(glyph, sx, sy + 4);
+    markerHits.push([sx, sy, e]);
   }
-  // players now
+  // players now; each name nudged down until it doesn't overlap one already drawn
+  const placed = [];
   for (const p of P) {
     const pp = at(p, t); if (!pp || pp.r[15] !== M.id) continue;
     const [sx, sy] = scr(pp.x, pp.y), dead = !pp.r[11], ghost = pp.r[12];
@@ -479,22 +512,35 @@ function drawMap() {
     cx.lineWidth = sel === p.name ? 3 : 1.5; cx.strokeStyle = pp.r[13] ? css("--death") : "#000"; cx.stroke();
     if (dead && !ghost) { cx.strokeStyle = css("--death"); cx.lineWidth = 2; cx.beginPath(); cx.moveTo(sx - 5, sy - 5); cx.lineTo(sx + 5, sy + 5); cx.moveTo(sx + 5, sy - 5); cx.lineTo(sx - 5, sy + 5); cx.stroke(); }
     cx.font = "600 12px system-ui"; cx.textAlign = "left"; cx.lineWidth = 3; cx.strokeStyle = "#000b"; cx.fillStyle = "#fff";
-    const label = p.name + (ghost ? " (ghost)" : "");
-    cx.strokeText(label, sx + 9, sy - 7); cx.fillText(label, sx + 9, sy - 7);
+    const label = p.name + (ghost ? " (ghost)" : ""), w = cx.measureText(label).width;
+    let lx = sx + 9, ly = sy - 7;
+    for (let k = 0; k < 8; k++) { const hit = placed.find(([x, y, pw]) => lx < x + pw + 4 && x < lx + w + 4 && Math.abs(y - ly) < 13); if (!hit) break; lx = hit[0]; ly = hit[1] + 14; }
+    placed.push([lx, ly, w]);
+    cx.strokeText(label, lx, ly); cx.fillText(label, lx, ly);
   }
 }
-let drag = null;
+let drag = null, markerHits = [];
 let down = null; // where the pointer went down, to tell a click from a drag
+// the markers within a few pixels of the pointer, newest first
+const markersAt = (e) => { const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+  return markerHits.filter(([x, y]) => Math.hypot(x - mx, y - my) < 9).map(([, , ev]) => ev).sort((a, b) => b.t - a.t); };
+cv.addEventListener("pointerleave", () => tip(null));
 cv.addEventListener("pointerdown", (e) => { drag = down = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); });
 cv.addEventListener("pointermove", (e) => {
-  if (!drag) return;
-  if ((follow || groupFollow) && Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) follow = null, groupFollow = false; // panning stops following, keeps the selection
+  if (!drag) { // hover: what happened at the markers under the pointer
+    const evs = markersAt(e); cv.style.cursor = evs.length ? "pointer" : "";
+    return tip(evs.length ? evs.slice(0, 6).map((ev) => { const [g, c] = GLYPH[ev.ev];
+      return `<div class="ev"><span class="t">${fmt(ev.t)}</span><span class="g" style="color:var(${c})">${g}</span><span>${line(ev)}</span></div>`; }).join("")
+      + (evs.length > 6 ? `<div class="muted">+${evs.length - 6} more</div>` : "") + `<div class="muted hintline">click to jump there</div>` : null, e);
+  }
+  if (Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) follow = null, groupFollow = autoCam = false; // panning stops following, keeps the selection
   view.ox += e.clientX - drag[0]; view.oy += e.clientY - drag[1]; drag = [e.clientX, e.clientY]; drawMap();
 });
 cv.addEventListener("pointerup", (e) => {
   drag = null;
   if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) return;
-  // a click: select the player under the pointer (their route appears), or clear the selection
+  // a click on a player's dot selects them (their route appears); on a marker, jumps to it; near a player, selects them;
+  // anywhere else clears the selection
   const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
   let best = null, bd = 14;
   for (const p of P) {
@@ -502,10 +548,12 @@ cv.addEventListener("pointerup", (e) => {
     const [sx, sy] = scr(pp.x, pp.y), d = Math.hypot(sx - mx, sy - my);
     if (d < bd) { bd = d; best = p.name; }
   }
+  const evs = markersAt(e); if (evs.length && bd >= 7) return setT(evs[0].t);
   select(best, false);
 });
 cv.addEventListener("wheel", (e) => {
   e.preventDefault(); const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top, k = Math.exp(-e.deltaY * 0.0015);
+  if (autoZoom && !follow && ((groupFollow && selGroup) || autoCam)) { zoomBias = Math.max(0.1, Math.min(10, zoomBias * k)); saveZoom(); return drawMap(); } // closer or further than a snug fit
   view.ox = mx - (mx - view.ox) * k; view.oy = my - (my - view.oy) * k; view.s *= k; drawMap();
 }, { passive: false });
 
@@ -550,7 +598,7 @@ const who = (n) => `<span class="who" style="color:${color[n] ?? "inherit"}">${e
 // who plays a character: runtime and model (bench meta.json), e.g. "claude · opus-5-5"
 const agentBadge = (n) => { const a = D.agents?.[n]; if (!a) return "";
   const m = String(a.model ?? "").replace(/^claude-/, "");
-  return ` <span class="rt rt-${esc(a.runtime)}" title="${esc(a.runtime)} ${esc(a.model)}${a.spec ? " · " + esc(a.spec) : ""}">${esc(a.runtime)} · ${esc(m)}</span>`; };
+  return ` <span class="rt rt-${esc(a.runtime)}" title="${esc(a.runtime)} · ${esc(a.model)}${a.spec ? " · " + esc(a.spec) : ""}">${esc(m)}</span>`; }; // the runtime is its colour
 const money = (c) => [[Math.floor(c / 10000), "g"], [Math.floor(c / 100) % 100, "s"], [c % 100, "c"]].filter(([v]) => v).map(([v, u]) => v + u).join(" ") || "0c";
 const unitName = (u) => (u ? (u.pl ? who(u.n) : esc(u.n) + (u.lvl ? ` <span class="muted">(${u.lvl})</span>` : "")) : "?");
 function line(e) {
@@ -625,7 +673,7 @@ function hears(e, n) {
 // they outnumber everything else a hundred to one
 const CATS = { events: ["Events", "#ffd100", ["death", "kill", "pvp", "achievement", "level", "quest", "loot", "zone", "release", "resurrect", "login", "logout", "spell", "group", "money"]],
   chat: ["Chat", "#aaaaff", ["chat"]], agent: ["Agent", "#d97757", ["say"]], combat: ["Combat", "#ff8040", ["dmg", "heal", "cast", "xp"]],
-  api: ["Evals", "#9b9a95", ["api"]], script_error: ["Script errors", "#ff4040", ["script_error"]] };
+  api: ["Evals", "#9b9a95", ["api"]], script_error: ["Errors", "#ff4040", ["script_error"]] };
 const FEED_CAT = Object.fromEntries(Object.entries(CATS).flatMap(([c, [, , kinds]]) => kinds.map((k) => [k, c])));
 let lastPane = "", lastBar = "";
 let feedShow = { events: true, chat: true, agent: true, combat: false, api: false, script_error: true };
@@ -703,6 +751,7 @@ const STAT = {
     by: (e) => CHAT_TAG[e.type] ?? { 1: "Say", 6: "Yell", 7: "Whisper", 10: "Emote", 17: "Channel" }[e.type] ?? "Other", byLabel: "channel" },
 };
 const TILES = ["dmg", "heal", "kills", "deaths", "xp", "quests"]; // the party summary
+const TILE_LABEL = { dmg: "Damage", heal: "Healing", kills: "Kills", deaths: "Deaths", xp: "XP", quests: "Quests" };
 const RANGES = { fight: "Current fight", 60: "Last minute", 300: "Last 5 min", 900: "Last 15 min", 3600: "Last hour", all: "Whole run" };
 const FIGHT_GAP = 10000; // a fight ends after 10 s without damage or healing
 let stat = { metric: "dmg", range: "all" };
@@ -710,6 +759,7 @@ try { Object.assign(stat, JSON.parse(localStorage.getItem("replay-stat") || "{}"
 if (!STAT[stat.metric]) stat.metric = "dmg";
 const short = (v) => { const a = Math.abs(v); return (a >= 1e6 ? (v / 1e6).toFixed(1) + "M" : a >= 1e4 ? (v / 1e3).toFixed(1) + "k" : a < 10 && v % 1 ? v.toFixed(1) : String(Math.round(v))); };
 const pct = (f) => (f > 0 && f < 0.005 ? "<1%" : Math.round(100 * f) + "%");
+const fmtAxis = (ms) => (ms >= 3600000 ? fmt(ms).slice(0, -3) : fmt(ms)); // h:mm, or m:ss under an hour
 const dur = (sec) => { const s = Math.round(sec), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
   return h ? `${h}h ${String(m).padStart(2, "0")}m` : m ? `${m}m ${String(s % 60).padStart(2, "0")}s` : `${s}s`; };
 const fmtStat = (m, v) => (v == null ? "–" : m.fmt === "time" ? dur(v) : m.fmt === "gold" ? (v < 0 ? "−" : "") + money(Math.abs(Math.round(v))) : m.fmt === "yd" ? short(v) + " yd" : short(v) + (m.unit ?? ""));
@@ -781,7 +831,7 @@ function statsHTML() {
   const G = period ? grid(w0, t1, 0, period * 1000) : grid(w0, t1, NB), t0 = G.g0, secs = Math.max(1, (t1 - t0) / 1000);
   const { tot, buckets, by } = statCompute(m, t0, t1, G, !rate);
   const per = G.step / 1000, bsec = (k) => Math.max(1, cellEnd(G, k) - (G.g0 + k * G.step)) / 1000; // the newest cell is part-way
-  if (rate) for (const b of Object.values(buckets)) for (let k = 0; k < G.nb; k++) b[k] = m.share ? (100 * b[k]) / bsec(k) : (b[k] / bsec(k)) * per;
+  if (rate) for (const b of Object.values(buckets)) for (let k = 0; k < G.nb; k++) b[k] = m.share ? (100 * b[k]) / bsec(k) : b[k]; // amounts per period as they are; shares of the time elapsed
   chartData = { m, t0, t1, G, buckets, fmtv: rate ? (v) => (m.fmt === "gold" ? fmtStat(m, v) : m.share ? Math.round(v) + "%" : short(v)) : (v) => fmtStat({ ...m, unit: "" }, v) }; // rates: the period is in the dropdown
   const groups = [...new Set(Object.values(STAT).map((x) => x.group))];
   const bar = `<div class="filters"><select data-stat="metric" aria-label="Metric">${groups.map((g) => `<optgroup label="${g}">${Object.entries(STAT).filter(([, x]) => x.group === g)
@@ -789,7 +839,7 @@ function statsHTML() {
     <select data-stat="range" aria-label="Time range">${Object.entries(RANGES).map(([k, l]) => `<option value="${k}"${k === String(stat.range) ? " selected" : ""}>${l}</option>`).join("")}</select>${selGroup ? onlyChip() : ""}</div>`;
   // party summary: the window's totals, each a shortcut to its metric
   const tiles = TILES.map((k) => { const x = STAT[k], v = Object.values(statCompute(x, t0, t1).tot).reduce((a, b) => a + b, 0);
-    return `<button class="tile${k === stat.metric ? " on" : ""}" data-metric="${k}"><b>${fmtStat(x, v)}</b><span>${x.label}</span></button>`; }).join("");
+    return `<button class="tile${k === stat.metric ? " on" : ""}" data-metric="${k}" title="${x.label}"><b>${fmtStat(x, v)}</b><span>${TILE_LABEL[k]}</span></button>`; }).join("");
   // ranked players
   const rows = Object.entries(tot).sort((a, b) => b[1] - a[1]), sum = rows.reduce((a, [, v]) => a + Math.max(0, v), 0), top = Math.max(1e-9, ...rows.map(([, v]) => Math.abs(v)));
   // per-second rates (DPS, HPS) are over each player's own time in combat, like Recount; the party's is the sum of them
@@ -810,7 +860,7 @@ function statsHTML() {
   const total = m.gauge ? "" : ` · party <b>${fmtStat(m, sum)}</b>${extra(sum) ? ` <span class="muted">(${extra(sum)})</span>` : ""}`;
   return [bar, `<div class="tiles">${tiles}</div>
     <section class="box"><h4>${esc(m.label)} <span class="muted">· ${stat.range === "fight" ? "fight " : ""}${fmt(t0)}–${fmt(t1)} (${dur(secs)})${total}</span></h4>${list}</section>
-    <section class="box"><h4 class="ch">Over time ${m.gauge ? "" : `<span class="seg"><button class="pill" style="--c:var(--accent)" data-chart="total" aria-pressed="${!rate}">${m.share ? "Total" : "Running total"}</button><button class="pill" style="--c:var(--accent)" data-chart="rate" aria-pressed="${rate}">${m.share ? "Share" : "Rate"}</button>${rate
+    <section class="box"><h4 class="ch">Over time ${m.gauge ? "" : `<span class="seg"><button class="pill" style="--c:var(--accent)" data-chart="total" aria-pressed="${!rate}">Total</button><button class="pill" style="--c:var(--accent)" data-chart="rate" aria-pressed="${rate}">${m.share ? "Share" : "Rate"}</button>${rate
       ? `<select data-stat="per" aria-label="Per">${[0, ...pers].map((p) => `<option value="${p}"${p === period ? " selected" : ""}>${p ? (m.share ? "each " : "per ") + periodName(p) : `Auto (${m.share ? "each " : "per "}${periodName(per)})`}</option>`).join("")}</select>` : ""}</span>`}</h4>
     <canvas id="chart"></canvas></section>
     <section class="box"><h4>Activity <span class="muted">· where each player's time went</span></h4><canvas id="strip"></canvas>
@@ -834,7 +884,7 @@ function drawStatChart() {
   g.font = "11px system-ui"; g.fillStyle = css("--quiet"); g.strokeStyle = css("--line"); g.lineWidth = 1;
   for (let k = 0; k <= 3; k++) { const v = lo + ((hi - lo) * k) / 3, y = Math.round(Y(v)) + 0.5; g.setLineDash(k ? [2, 4] : []); g.beginPath(); g.moveTo(L, y); g.lineTo(L + W, y); g.stroke(); g.textAlign = "right"; g.fillText(fmtv(v), L - 6, y + 4); }
   g.setLineDash([]);
-  for (let k = 0; k <= 3; k++) { g.textAlign = ["left", "center", "center", "right"][k]; g.fillText(fmt(a0 + ((a1 - a0) * k) / 3), L + (W * k) / 3, r.height - 3); }
+  for (let k = 0; k <= 3; k++) { g.textAlign = ["left", "center", "center", "right"][k]; g.fillText(fmtAxis(a0 + ((a1 - a0) * k) / 3), L + (W * k) / 3, r.height - 3); }
   const focus = hoverN ?? sel;
   for (const p of [...P].sort((a, b) => (a.name === focus) - (b.name === focus))) { // the focused line on top
     const b = buckets[p.name]; if (!b) continue;
@@ -983,7 +1033,7 @@ function card({ p, pp, s }, leader) {
   const target = tg ? `<div class="pc-tgt" title="target"><span>→ ${tg.tg.pl ? who(tg.tg.n) : esc(tg.tg.n || "#" + tg.tg.id)}${tg.tg.lvl ? ` <span class="muted">${tg.tg.lvl}</span>` : ""}</span>${tg.dead || tg.hp === 0 ? `<b class="muted">dead</b>` : tg.hp != null
       ? `<span class="tbar"><i style="width:${tg.hp}%;background:${tg.hp > 50 ? "#3ccf4e" : tg.hp > 20 ? "#e8c040" : "#e04040"}"></i></span><b>${tg.hp}%</b>` : ""}</div>`
     : `<div class="pc-tgt none"><span>${st === "dead" || st === "ghost" ? st : "no target"}</span></div>`;
-  const sc = s ? `<span title="progress ${s.value} · pace ${s.pace} · ${Math.round(s.recent_rate)}/h now">score <b>${s.score}</b>/h</span>` : "";
+  const sc = s && (s.score || s.value) ? `<span title="progress ${s.value} · pace ${s.pace} · ${Math.round(s.recent_rate)}/h now">score <b>${s.score}</b>/h</span>` : "";
   return `<div class="pc ${st}${sel === p.name ? " sel" : ""}" data-n="${esc(p.name)}" title="${esc(p.name)}: ${st === "combat" ? "in combat" : st || "idle"}">${top(r[8])}
     <div class="hpbar" title="health"><i style="width:${hp}%"></i><span>${r[11] ? `${r[3].toLocaleString()} / ${r[4].toLocaleString()}` : st}</span></div>
     <div class="pwbar" title="${pname} ${r[5]}/${r[6]}"><i style="width:${(100 * r[5]) / Math.max(1, r[6])}%;background:var(${pvar})"></i></div>
@@ -1082,14 +1132,21 @@ function render() {
   updateMaps();
   $("clock").textContent = `${fmt(t)} / ${fmt(D.duration)}`;
   if (LIVE) $("live").setAttribute("aria-pressed", liveFollow);
+  $("zoombtn").setAttribute("aria-pressed", autoZoom); $("zoombtn").disabled = !!follow; // a single followed player has nothing to fit
   drawMap(); drawTimeline();
   if (panels) { lastPanels = lastRender; renderPane(); renderRoster(); }
 }
+const refit = () => { follow = null; groupFollow = false; autoCam = true; zoomBias = 1; saveZoom(); fit(); drawMap(); };
+$("fitbtn").addEventListener("click", refit);
+const toggleZoom = () => { autoZoom = !autoZoom; saveZoom(); render(); };
+$("zoombtn").addEventListener("click", toggleZoom);
 $("play").addEventListener("click", () => { playing = !playing; $("play").textContent = playing ? "❚❚" : "▶"; $("play").setAttribute("aria-label", playing ? "Pause" : "Play"); if (playing && t >= D.duration) t = 0; last = performance.now(); });
 $("speed").addEventListener("change", (e) => (speed = Number(e.target.value)));
 addEventListener("keydown", (e) => {
   if (e.target.tagName === "SELECT") return;
   if (e.code === "Space") { e.preventDefault(); $("play").click(); }
+  if (e.code === "KeyF" && !e.metaKey && !e.ctrlKey) refit();
+  if (e.code === "KeyZ" && !e.metaKey && !e.ctrlKey) toggleZoom();
   if (e.code === "ArrowRight") setT(t + (e.shiftKey ? 60000 : 10000));
   if (e.code === "ArrowLeft") setT(t - (e.shiftKey ? 60000 : 10000));
 });
@@ -1118,7 +1175,7 @@ else {
       const p = player(e.n);
       SEEN_MAPS.add(e.m);
       p.track.push([rel, e.x, e.y, e.hp, e.hpmax, e.pw, e.pwmax, e.pt, e.lvl, e.xp, e.money, e.alive, e.ghost, e.combat, e.zone, e.m, e.grp ?? 0]);
-      if (!fitted) { fitted = true; M.id = e.m; fit(); }
+      if (!fitted) { fitted = true; M.id = e.m; fitBox(e.x - 200, e.x + 200, e.y - 200, e.y + 200); } // then the camera keeps the players centred
     } else if (e.ev === "units") {
       addUnits({ ...e, t: rel });
     } else {

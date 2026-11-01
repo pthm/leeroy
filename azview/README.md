@@ -113,10 +113,15 @@ bin/azview live [log.jsonl ...] [--run <run or team dir>] [--port 8800] [--chars
 
 Without files or `--run` it tails `server/azerothcore/env/dist/logs/recorder.jsonl`. It polls the files every 500 ms
 (starting over if one shrinks) and streams new events to the browser as server-sent events (`/stream`). The playhead
-follows the newest data until you seek back; the Live button returns to it.
+follows the newest data until you seek back; the Live button returns to it. `AZVIEW_PAGE=<path to replay.html>` serves
+the page from disk on every request instead of the built-in copy, for working on it: edit, then reload the browser.
 
-With `--run`, player chat comes once from the server log, with sender names (when it exists), instead of each agent's
-received copy; NPC chat from the client records is kept, once per speaker, text and 2 s. Each agent's transcript is
+With `--run`, and when the server log exists, these come from it for the run's characters (`ServerEvents`): player
+chat, once, with sender names, instead of each agent's received copy; damage and heals (in place of the client
+records' damage, which has no heals); and each change of target (a `tgt` event: the `pos` samples' `tgt`, or none). NPC
+chat from the client records is kept once per listening agent; the page merges the copies and knows who heard what.
+Quest titles and achievement names and points, which client records lack, are filled in from the world database and
+`data/dbc/Achievement.dbc`. Each agent's transcript is
 `<run dir>/<agent>/agent.jsonl` (older team runs: a `<time>-<agent>/` dir beside it), and its character name is read
 from the `prompt.md` next to it.
 
@@ -150,28 +155,48 @@ of every run.
 
 ### The viewer page
 
-- **Map**: every player's position; click a player (or their chip) to draw their route, the chip also follows
-  them. Drag to pan, scroll to zoom. Zone and area labels; dashed lines join each group member to its leader.
-- **Seek bar**: key events marked; play/pause, speed (1x to 300x). Keys: Space plays, Left/Right seek 10 s (Shift:
-  60 s).
-- **Panels**, synced to the playhead:
+Three columns, all synced to the playhead: players on the left, the map, and a Feed and Stats panel on the right.
+Selecting a player (their card, their dot on the map, a row in Stats) or a group (its header in the roster) applies
+everywhere: the map follows it, the feed and the stats narrow to it.
 
-| Tab | Shows |
-|---|---|
-| Players | Health and power bars, level, XP, money, zone, state (dead, ghost, in combat), latest score |
-| Events | Deaths, kills, PvP, achievements, levels, quests, loot, zones, release/resurrect, login/logout, spells learned, groups |
-| Chat | Chat, coloured by type |
-| Combat | Damage, heals, casts, kills, deaths, XP |
-| Agent | The agent's messages (`say`), API calls (`api`, off by default) and script errors; toggles per kind |
-| Scores | Chart and leaderboard of `score`, progress, pace or 10-minute rate, plus the faction total (sum of all players) |
-| Groups | Current parties: members, leader, how far apart they are; solo players |
+- **Players**: a card per player, grouped by party (leader first, how far apart they are) or flat, sorted by score,
+  level, health, name or class. Each card: level, health and power, current target with its health, the agent's latest
+  message, money, score and model. The border is the player's state: red in combat, grey dead, dashed blue a ghost;
+  the selected one has a gold ring. Clicking a card selects and follows the player; clicking a group header selects
+  the group.
+- **Map**: every player's position, with a short fading trail when nobody is selected; a selected player's whole
+  route (smoothed, fading with age, the part still ahead faint) on a dimmed map. Thin red lines from players to their
+  targets, with health bars over the targets; dashed lines join group members to their leader; creatures around the
+  players (hostile red, neutral yellow, friendly green, dead grey), named when zoomed in; death, achievement, level
+  and quest markers (hover for what happened, click to jump there). The camera follows a selected player; otherwise
+  it keeps a selected group, or everyone, centred, and with Auto zoom (Z, on by default) zoomed to fit them; scrolling
+  then sets how much closer or further than a snug fit (remembered), instead of zooming freely. Drag to pan (which
+  stops the camera following); Fit (F) goes back to framing everyone and resets the auto zoom offset. In live mode a picker chooses the map (Auto: the followed player's, else where most players are).
+- **Seek bar**: play/pause, speed (1x to 300x), ticks for deaths, achievements, levels, quests and chat; hover for the
+  time and the events there. Keys: Space plays, Left/Right seek 10 s (Shift: 60 s), F fits the map, Z toggles auto zoom.
+- **Feed**: one list with filter pills for events (deaths, kills, achievements, levels, quests, loot, zones, groups,
+  ...), chat, the agents' messages, combat (damage, heals, casts, XP; off by default), evals (`api`, off by default)
+  and script errors. Chat reads as in game: `[Party] [Aldous]: ...`, whispers from the selected player's side
+  (`To [Merrin]:`, `[Thessaly] whispers:`). With a player selected, chat is what they saw: their own, whispers to or
+  from them, their party's, say and emotes within 25 yd and yells within 300, channels, and NPC speech their client
+  recorded. Click a row to seek to it.
+- **Stats**: a metric over a time range ending at the playhead (current fight, the last minute to hour, the whole
+  run). Metrics: combat (damage and healing done and taken, kills, deaths, casts, time in combat, below 35% health,
+  out of mana), score (score, progress, pace, 10-minute rate), progress (XP, quests, levels, level, loot, money),
+  activity (distance, time idle, moving, dead, grouped) and agent (messages, evals, script errors, chat sent).
+  Party tiles; a ranked list (DPS and HPS per second of each player's own time in combat); a chart, either the
+  running total or the amount per period (Auto, 10 s to an hour), with a hover crosshair; an activity strip of
+  what each player was doing (combat, moving, idle, ghost, dead) with each one's split; and the selected player's
+  breakdown (by target, source, spell, quest, item...). Plots cut time on a fixed grid counted from the run's start,
+  so they scroll a cell at a time as the playhead moves.
 
 Colours follow WoW: class colours (players of the same class get `#1`, `#2`; `#2` and up draw dashed), health and
 power bar colours, chat-type colours, item quality colours.
 
 **Runtime and model badges**: `azbench run` writes `meta.json` in each agent's run dir (`agent`, `char`, `runtime`,
-`model`, `spec`, `role`). The viewers read it beside each transcript and show a badge like `claude · opus-5-5` (the
-`claude-` prefix dropped) on the player's chip and card; the card shows the spec in place of the class when set.
+`model`, `spec`, `role`). The viewers read it beside each transcript and show the model as a badge coloured by
+runtime, like `opus-5-5` (the `claude-` prefix dropped), on the player's card; the card shows the spec in place of
+the class when set.
 
 **Agent transcripts** become `say` events: for Claude Code (`stream-json`), the text blocks of `assistant` messages;
 for Codex (`--json`), `item.completed` events with an `agent_message` item. Lines without a `timestamp` are
