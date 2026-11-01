@@ -2,10 +2,14 @@ package main
 
 // The feed: the latest events up to the playhead, filtered by category and narrowed to the selected player or group.
 
-import "html/template"
+import (
+	"fmt"
+	"html/template"
+)
 
 // FeedRow is one line of the feed.
 type FeedRow struct {
+	ID    string  // stable across refreshes, so an update adds the new rows instead of rewriting the old ones
 	T     float64 // unix ms, for seeking
 	When  string
 	Color string
@@ -49,13 +53,19 @@ func (s *Store) inFocus(e Ev, f []string) bool {
 func (s *Store) Feed(q Query) map[string]any {
 	f := s.focus(q)
 	var rows []FeedRow
+	seen := map[string]int{}
 	for i := uptoEv(s.feed, q.T) - 1; i >= 0 && len(rows) < 200; i-- {
 		e := s.feed[i]
 		cat, color := feedCat(S(e, "ev"))
 		if !q.Cats[cat] || !s.inFocus(e, f) {
 			continue
 		}
-		rows = append(rows, FeedRow{T: N(e, "t"), When: Fmt(N(e, "t") - s.Start), Color: color, Line: s.Line(e, q.Sel)})
+		id := fmt.Sprintf("f%.0f-%s-%s", N(e, "t"), S(e, "ev"), S(e, "n"))
+		seen[id]++
+		if seen[id] > 1 { // the same moment, kind and player more than once: numbered, newest first
+			id += fmt.Sprint("-", seen[id])
+		}
+		rows = append(rows, FeedRow{ID: id, T: N(e, "t"), When: Fmt(N(e, "t") - s.Start), Color: color, Line: s.Line(e, q.Sel)})
 	}
 	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
 		rows[i], rows[j] = rows[j], rows[i]

@@ -188,3 +188,20 @@ input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px;
 .lpanel label { display: flex; align-items: center; gap: 8px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
 .lpanel select { margin-left: auto; padding-top: 1px; padding-bottom: 1px; font-size: 12px; }
 [x-cloak] { display: none !important; }
+
+/* short transitions between states, so updates ease in rather than snap (off for reduced motion) */
+@media (prefers-reduced-motion: no-preference) {
+  .hpbar > i, .pwbar > i, .pc-tgt .tbar i { transition: width .3s ease-out, background-color .3s; }
+  .mrow > i { transition: width .35s ease-out; }
+  .pc { transition: border-color .25s, box-shadow .2s, opacity .25s; }
+  .pc > * { transition: opacity .25s; }
+  .grp { transition: border-color .25s, background-color .25s; }
+  .pill, .tile, .mapbar button, footer button { transition: border-color .15s, background-color .15s, color .15s; }
+  .row { animation: row-in .3s ease-out; }
+  @keyframes row-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .pc { animation: fade-in .25s ease-out; }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  .lpanel { animation: drop-in .15s ease-out; }
+  @keyframes drop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .tip:not([hidden]), #tltip:not([hidden]) { animation: fade-in .12s ease-out; }
+}
