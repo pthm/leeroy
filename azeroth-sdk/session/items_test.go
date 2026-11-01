@@ -3,6 +3,7 @@ package session
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -218,5 +219,17 @@ func TestItemTargetFlag(t *testing.T) {
 		if guid != 0 && !bytes.Equal(buf.Bytes()[4:], packGUID(guid)) {
 			t.Errorf("%x: guid not packed after the flag", guid)
 		}
+	}
+}
+
+// items.loot on a chest's guid names objects.use instead of calling the chest alive
+func TestLootGameObjectRefused(t *testing.T) {
+	b := testBot()
+	b.setupItems()
+	if _, err := b.lua.Eval(`r = items.loot("` + fmt.Sprint(client.GameObjectGUID(17155, 7)) + `")`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.lua.Eval(`r = result(r.id) assert(r.ok == false and r.error.code == "wrong_target_type" and r.error.message:find("objects.use"), json.encode(r))`); err != nil {
+		t.Fatal(err)
 	}
 }

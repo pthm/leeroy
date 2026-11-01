@@ -596,9 +596,12 @@ func (b *Bot) setupItems() {
 			return script.Ok(nil)
 		}, func(ev script.Event) *script.Outcome { return failOn(ev, "items") })
 	})
-	e.Func("items.loot", "(guid) → Request<Looted>", "loot a corpse within 5 yd: takes every item and the money (waits a moment for a fresh corpse to become lootable)",
+	e.Func("items.loot", "(guid) → Request<Looted>", "loot a corpse within 5 yd: takes every item and the money (waits a moment for a fresh corpse to become lootable). A game object's guid fails with wrong_target_type: objects.use opens chests",
 		func(guid uint64) map[string]any {
 			args := map[string]any{"unit": gs(guid)}
+			if high := uint16(guid >> 48); high == 0xF110 || high == 0xF111 {
+				return b.refuse("items.loot", args, "wrong_target_type", "a game object: objects.use opens it and takes its loot")
+			}
 			full := freeSlots(w) == 0
 			u := b.GetUnitInfo(guid)
 			if u != nil && !u.IsPlayer && u.Distance > 5 {
