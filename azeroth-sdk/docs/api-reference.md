@@ -219,12 +219,12 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | Function | | Returns |
 |---|---|---|
 | `move.cancel(request_id) → Request` | explicitly cancel active or queued movement by request ID, including another task's; the walk fails cancelled; not_pending if absent. Completion: the identified movement request is terminal. | [Request](#request) |
-| `move.face(guid) → Request` | turn to face a unit; movement_busy if another task owns movement. Completion: local facing is set toward the observed unit; later server cast acceptance is separate. | [Request](#request) |
+| `move.face(guid) → Request` | turn to face a unit: ok once you're observed facing it (within 0.1 rad); not_facing when you don't, as while a route walks you (it faces you along its path); movement_busy if another task owns movement. Completion: the facing observed on the next tick is within 0.1 rad of the unit's bearing; later server cast acceptance is separate. | [Request](#request) |
 | `move.jump() → Request` | jump; movement_busy if another task owns movement. Completion: the local movement packet was accepted by the client; landing is not established. | [Request](#request) |
 | `move.owner() → MovementOwner?` | active local movement owner, or nil when idle; queued requests are in me.movement and task.list | [MovementOwner](#movementowner) |
 | `move.stop() → Request<MoveDone>` | stop this task's active movement; its walk fails cancelled. Refuses another caller's movement with movement_busy. Completion: the calling owner's local movement is stopped. | [Request](#request), [MoveDone](#movedone) |
 | `move.to(x, y, z) → Request<MoveDone>` | walk a supported route with static body clearance; blocked geometry returns route_blocked, missing collision evidence returns collision_unavailable and a changed starting pose returns route_stale. Arrival requires <2.5 yards total and <=1.5 yards vertical gap; same-task replacement returns replaced_by_owner; other callers queue FIFO for at most 5 seconds then movement_busy. Planning waits at most 15 seconds; walking at most 600 seconds. Task pause/termination cancels its moves. Completion: the local movement controller reached the requested point within its documented tolerance. | [Request](#request), [MoveDone](#movedone) |
-| `move.turn(o) → Request` | face an angle (radians, as me.position().o); movement_busy if another task owns movement. Completion: local facing is set to the requested angle. | [Request](#request) |
+| `move.turn(o) → Request` | face an angle (radians, as me.position().o): ok once you're observed facing it (within 0.1 rad); not_facing when you don't, as while a route walks you; movement_busy if another task owns movement. Completion: the facing observed on the next tick is within 0.1 rad of the requested angle. | [Request](#request) |
 | `move.unstuck() → Request<Teleport>` | the failsafe when you're truly stuck: what the real client's "Character stuck" does: a 10 s cast that hearths you home (me.home()). Not in combat or on a flight; shares the hearthstone's cooldown. Completion: a teleport event was observed while the owned stuck request was pending. | [Request](#request), [Teleport](#teleport) |
 | `move.with_control{fn [, priority = normal, queue_timeout_s = 5, max_s = 600]} → ActResult` | run fn() under a movement lease; fn must return a completed action result. Priorities recovery > urgent > normal; queue_timeout_s is 0..60, max_s is >0..600. Nested scopes share the outer deadline; higher nested priority promotes the lease. Preemption/expiry cancels movement and makes the scope fail even if fn later returns success; it does not interrupt arbitrary callback code | [ActResult](#actresult) |
 
@@ -359,7 +359,7 @@ In Lua these are tables with these fields; optional fields (`?`) are nil when un
 | `x` | number |  |
 | `y` | number |  |
 | `z` | number |  |
-| `o?` | number | facing, radians |
+| `o?` | number | facing, radians (your own position only) |
 | `map` | number | 0 Eastern Kingdoms, 1 Kalimdor, 530 Outland, 571 Northrend |
 
 ### Location

@@ -47,6 +47,12 @@ func name[T comparable](m map[T]string, k T) string {
 	return fmt.Sprint(k)
 }
 
+// facing: an orientation for Position.O, to 3 decimals
+func facing(o float32) *float64 {
+	f := math.Round(float64(o)*1000) / 1000
+	return &f
+}
+
 // ---------- units ----------
 
 func (b *Bot) baseUnit(u UnitInfo) types.Unit {

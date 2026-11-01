@@ -48,11 +48,11 @@ func (g *GUID) UnmarshalJSON(b []byte) error {
 // ---------- the world ----------
 
 type Position struct {
-	X   float64 `json:"x"`
-	Y   float64 `json:"y"`
-	Z   float64 `json:"z"`
-	O   float64 `json:"o,omitempty" doc:"facing, radians"`
-	Map uint32  `json:"map" doc:"0 Eastern Kingdoms, 1 Kalimdor, 530 Outland, 571 Northrend"`
+	X   float64  `json:"x"`
+	Y   float64  `json:"y"`
+	Z   float64  `json:"z"`
+	O   *float64 `json:"o,omitempty" doc:"facing, radians (your own position only)"`
+	Map uint32   `json:"map" doc:"0 Eastern Kingdoms, 1 Kalimdor, 530 Outland, 571 Northrend"`
 }
 
 // MemberPosition is a party member's position: party updates out of sight carry no z.

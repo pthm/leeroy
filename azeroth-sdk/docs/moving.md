@@ -135,6 +135,9 @@ Where things are from where you stand, walking and its traps. The rest of the SD
 - Movement-producing `act` helpers hold a lease across nested calls, waypoints and callbacks, including
   `on_attacked`. Their default priority is `normal`; `recover`, `corpse_run` and `spirit_res` use `recovery`.
   `move.face`, `move.turn` and `move.jump` refuse another caller's ownership with `movement_busy`.
+- `move.face` and `move.turn` complete when the facing observed on the next tick is within 0.1 radians of the
+  one asked for, else `not_facing`. A route that is walking you faces you along its path, so a turn during one
+  fails with `not_facing` at once.
 - `move.with_control{fn=function() ... end, priority="urgent", queue_timeout_s=5, max_s=600}` provides an
   explicit scope. `fn` must return a completed action result. Priorities are `recovery > urgent > normal`;
   higher priority preempts immediately, equal priority queues FIFO, and queued higher priorities run first.

@@ -155,7 +155,7 @@ func (b *Bot) setupCoreAPI() {
 	})
 	e.Func("me.position", "() → Position", "where you are and which way you face", func() types.Position {
 		x, y, z, o, m := w.Position()
-		return types.Position{X: round1(x), Y: round1(y), Z: round1(z), O: math.Round(float64(o)*1000) / 1000, Map: m}
+		return types.Position{X: round1(x), Y: round1(y), Z: round1(z), O: facing(o), Map: m}
 	})
 	e.Func("me.money", "() → copper", "your money", func() uint32 { return w.Money() })
 	e.Func("me.alive", "() → bool", "false while dead or a ghost", b.IsAlive)
@@ -258,22 +258,19 @@ func (b *Bot) setupCoreAPI() {
 	})
 
 	// ---------- move ----------
-	e.Func("move.face", "(guid) → Request", "turn to face a unit; movement_busy if another task owns movement", func(g uint64) map[string]any {
+	e.Func("move.face", "(guid) → Request", "turn to face a unit: ok once you're observed facing it (within 0.1 rad); not_facing when you don't, as while a route walks you (it faces you along its path); movement_busy if another task owns movement", func(g uint64) map[string]any {
 		args := map[string]any{"unit": gs(g)}
-		return b.steeringRequest("move.face", args, func() *script.Outcome {
-			if !b.FaceTarget(g) {
+		u := b.GetUnitInfo(g)
+		if u == nil {
+			return b.steeringRequest("move.face", args, func() *script.Outcome {
 				return script.Fail("unit_not_found", "no such unit in sight", nil)
-			}
-			return script.Ok(nil)
-		})
+			})
+		}
+		x, y, _, _ := b.GetPosition()
+		return b.faceRequest("move.face", args, float32(math.Atan2(float64(u.PosY-y), float64(u.PosX-x))))
 	})
-	e.Func("move.turn", "(o) → Request", "face an angle (radians, as me.position().o); movement_busy if another task owns movement", func(o float32) map[string]any {
-		return b.steeringRequest("move.turn", map[string]any{"o": o}, func() *script.Outcome {
-			if err := b.SetFacing(o); err != nil {
-				return script.Fail("failed", err.Error(), nil)
-			}
-			return script.Ok(nil)
-		})
+	e.Func("move.turn", "(o) → Request", "face an angle (radians, as me.position().o): ok once you're observed facing it (within 0.1 rad); not_facing when you don't, as while a route walks you; movement_busy if another task owns movement", func(o float32) map[string]any {
+		return b.faceRequest("move.turn", map[string]any{"o": o}, o)
 	})
 
 	// ---------- combat ----------
@@ -468,7 +465,7 @@ func (b *Bot) snapshot() types.Status {
 	st := types.Status{Name: b.config.CharacterName, Class: name(classNames, b.GetClass()), Race: name(raceNames, b.GetRace()),
 		Level: b.GetLevel(), Health: types.Resource{Current: hc, Max: hm},
 		Power: types.Resource{Current: pc, Max: pm, Type: name(powerNames, b.GetPowerType())},
-		Money: w.Money(), Position: types.Position{X: round1(x), Y: round1(y), Z: round1(z), O: math.Round(float64(o)*1000) / 1000, Map: m},
+		Money: w.Money(), Position: types.Position{X: round1(x), Y: round1(y), Z: round1(z), O: facing(o), Map: m},
 		Alive: b.IsAlive(), Ghost: b.IsGhost(), InCombat: b.InCombat(), FreeSlots: freeSlots(w),
 		Quests: b.questLog(), Threats: []types.Hostile{}, NPCs: []types.NearbyNPC{}, BagUpgrades: []types.Upgrade{},
 		Tasks: b.lua.TasksHeld()}

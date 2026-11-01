@@ -415,7 +415,7 @@ func (b *Bot) travelEvents(teleported bool) {
 	w := b.world
 	lock := w.MovementLock()
 	x, y, z, o, m := w.Position()
-	pos := types.Position{X: round1(x), Y: round1(y), Z: round1(z), O: math.Round(float64(o)*1000) / 1000, Map: m}
+	pos := types.Position{X: round1(x), Y: round1(y), Z: round1(z), O: facing(o), Map: m}
 	t.mu.Lock()
 	prev, from := t.lock, t.lastPos
 	t.lock, t.lastPos = lock, pos

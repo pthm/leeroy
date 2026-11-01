@@ -1,6 +1,7 @@
 package session
 
 import (
+	"fmt"
 	"math"
 	"time"
 
@@ -232,6 +233,44 @@ func (b *Bot) steeringRequest(op string, args map[string]any, fn func() *script.
 	id, _, _ := b.lua.CurrentTaskIdentity()
 	out := b.moves.steer(id, fn)
 	return b.lua.Reqs.Now(script.Spec{Op: op, Args: args}, out)
+}
+
+// faceTolerance: how far (radians) the observed facing may be from the one asked for
+const faceTolerance = 0.1
+
+// faceRequest turns you to want and completes on the next tick, when the facing observed then is within
+// faceTolerance of it. A route walking you faces you along its path, so it fails at once with not_facing.
+func (b *Bot) faceRequest(op string, args map[string]any, want float32) map[string]any {
+	want = float32(math.Mod(math.Mod(float64(want), 2*math.Pi)+2*math.Pi, 2*math.Pi)) // the server's [0, 2π)
+	off := func() (float32, float64) {
+		_, _, _, o := b.GetPosition()
+		return o, math.Abs(math.Remainder(float64(o-want), 2*math.Pi))
+	}
+	if b.moves == nil {
+		return b.refuse(op, args, "not_available", "movement controller is not initialized")
+	}
+	id, _, _ := b.lua.CurrentTaskIdentity()
+	out := b.moves.steer(id, func() *script.Outcome {
+		if _, d := off(); d <= faceTolerance {
+			return script.Ok(nil)
+		}
+		if b.movementActive() {
+			return script.Fail("not_facing", "a route is walking you and faces you along its path (move.stop ends it)", nil)
+		}
+		if err := b.world.SetFacing(want); err != nil {
+			return script.Fail("failed", err.Error(), nil)
+		}
+		return nil
+	})
+	if out != nil {
+		return b.lua.Reqs.Now(script.Spec{Op: op, Args: args}, out)
+	}
+	return b.request(op, args, time.Second, func() *script.Outcome {
+		if o, d := off(); d > faceTolerance {
+			return script.Fail("not_facing", fmt.Sprintf("facing %.2f after the turn to %.2f", o, want), map[string]any{"o": o, "want": want})
+		}
+		return script.Ok(nil)
+	}, nil)
 }
 
 func (m *movementRequests) leaseStatus(task, lease int) *script.Outcome {

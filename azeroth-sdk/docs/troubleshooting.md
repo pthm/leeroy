@@ -16,6 +16,7 @@ sdk.md.
 | `not_ready` / `no_power` | cooldown, or not enough mana, rage or energy | `spells.cooldown(id)`, `items.cooldown(item)`, `spells.usable(id, guid)` |
 | `caster_aurastate` / `target_aurastate` | the spell's condition isn't met (Victory Rush without a kill, Execute above 20%) | `me.states()`, the target's `states`, `spells.usable` |
 | `unit_not_infront` | the target isn't within 90 degrees of where you face, for a spell that requires facing | `move.face(guid)` before the cast (`act.cast` faces for you) |
+| `not_facing` from `move.face` / `move.turn` | a route is walking you (`move.to`, `act.go_to`) and faces you along its path | `me.moving()`; `move.stop` ends the route |
 | casting while dead (`caster_dead`) | a script still running after you died | `me.alive()`, or wait in your loop while dead |
 | `interrupted` | you moved or were hit mid-cast | `me.casting()` |
 | `miss`, `resist`, `immune`, `evade`, `reflect`, `dodge`, `parry`... | the spell went off but didn't land: power and cooldown are spent, so a retry may hit `not_ready` | `spells.cooldown(id)`; `immune`/`evade`: try another spell or target |

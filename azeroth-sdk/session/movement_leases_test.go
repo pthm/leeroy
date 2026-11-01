@@ -1,6 +1,7 @@
 package session
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -152,4 +153,19 @@ func TestMovementLeasePauseAndInvalidOptions(t *testing.T) {
 	}
 	id := leaseRequest(f, 0, "normal", 5, 600)
 	f.resultCode(t, id, "task_required")
+}
+
+// move.turn is ok only when the facing is observed; a route walking you faces you along its path, so a turn fails
+func TestFaceRequestObserved(t *testing.T) {
+	b := testBot()
+	b.moves = newMovementRequests(b.lua.Reqs, movementBackend{})
+	res := func(h map[string]any) map[string]any { return b.lua.Reqs.Result(h["id"].(int)) }
+	if r := res(b.faceRequest("move.turn", nil, 2*math.Pi)); r["ok"] != true { // you face 0 already
+		t.Fatalf("already facing: %v", r)
+	}
+	b.isMoving = true
+	r := res(b.faceRequest("move.turn", nil, 1))
+	if e, _ := r["error"].(map[string]any); r["ok"] != false || e["code"] != "not_facing" {
+		t.Fatalf("turn while walking: %v", r)
+	}
 }
