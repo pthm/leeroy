@@ -41,3 +41,14 @@ func TestNavTile(t *testing.T) {
 		os.WriteFile(os.Getenv("NAV_SHOT"), b, 0o644)
 	}
 }
+
+// The colour range runs from sandstone above the ground through grey to purple far under it, and holds at the ends.
+func TestNavTint(t *testing.T) {
+	up, ground, deep, deeper := navTint(20), navTint(0), navTint(-45), navTint(-80)
+	if up[0] < 200 || ground != [3]float64{130, 128, 118} || deep[2] < 140 || deep[0] < 120 || deeper != navTint(-50) {
+		t.Fatalf("up %v ground %v deep %v deeper %v", up, ground, deep, deeper)
+	}
+	if a, b := navTint(-10), navTint(-30); a == b {
+		t.Fatal("10 and 30 yd down differ")
+	}
+}

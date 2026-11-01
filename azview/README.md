@@ -204,8 +204,10 @@ everywhere: the map follows it, the feed and the stats narrow to it.
   events on a square root); **Roads** (R): the painted roads (amber) and the guards' and travellers' patrol paths
   (dashed); **Navmesh** (N): where the server lets players walk on a continent, in the instances' floor-plan style
   (each pixel the lowest walkable floor, a building's ground floor and not its roof, shaded by its height over the
-  terrain: raised floors warm, cellars and caves slate blue, the open ground faint; floors with another storey over
-  them opaque, so a building's rooms show; walls and drops darkened; the storeys above outlined). On the map, each
+  terrain: raised floors warm up to 16 yd, the open ground faint grey, and under it slate blue, indigo, violet and purple
+  down to 50 yd, so a mine's levels tell apart; floors with another storey over
+  them opaque, so a building's rooms show; walls and drops darkened on their upper side (so a narrow tunnel keeps its colour); the storeys raised over the
+  terrain outlined). On the map, each
   toggleable: trails, group lines, target lines, event markers, creatures, **aggro radii** (off by default: around
   each hostile creature, how close a player can come before it attacks, as the server works it out in
   `Creature::GetAggroRange`: its `detection_range`, a yard less for each level the nearest player is above it, 5 to

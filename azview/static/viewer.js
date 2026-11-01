@@ -305,7 +305,7 @@ function drawNav(w, h) {
       const f = 1 << (L - l), rr = Math.floor(R / f), c = Math.floor(C / f), m = 1 << l;
       const key = `${M.id}/${l}/${Math.floor(rr / m)}/${Math.floor(c / m)}/${rr % m}/${c % m}`;
       let im = navTiles.get(key);
-      if (!im && l === L) { im = new Image(); im.onload = () => (dirty = true); im.src = `nav/${key}.png`; navTiles.set(key, im);
+      if (!im && l === L) { im = new Image(); im.onload = () => (dirty = true); im.src = `nav/${key}.png?v=${B.navVersion}`; navTiles.set(key, im);
         if (navTiles.size > 800) navTiles.delete(navTiles.keys().next().value); }
       if (!im?.complete || !im.naturalWidth) continue;
       const part = 256 / f;
