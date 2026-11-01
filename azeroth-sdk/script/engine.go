@@ -379,7 +379,7 @@ func (e *Engine) Close() {
 		e.endTaskDiagnostics(t, "session_closed")
 	}
 	e.Reqs.close()
-	e.diag.emit(types.Diagnostic{Kind: "runtime_state", Details: types.DiagnosticDetails{Component: "session", State: "stop"}})
+	e.diag.emit(types.Diagnostic{Kind: "runtime_state", Details: types.DiagnosticDetails{Component: "session", State: types.StateStop}})
 	e.L.Close()
 	if e.workspace != nil {
 		e.workspace.Close()

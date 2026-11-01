@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/pthm/leeroy/azbench/diagnostics"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 	"net"
 	"net/http"
 	"os"
@@ -80,12 +81,12 @@ func (r *Runner) restart(name, message string) error {
 	p.mu.Lock()
 	st := p.state
 	p.mu.Unlock()
-	if st != "playing" {
+	if st != types.JudgePlaying {
 		return fmt.Errorf("%s is %s", name, st)
 	}
 	go func() {
 		p.logf("restarting")
-		p.runtimeState("supervisor", "restart")
+		p.runtimeState("supervisor", types.StateRestart)
 		p.stopAgent()
 		p.stopSession()
 		if !waitOffline(p.a.Char, 2*time.Minute) {

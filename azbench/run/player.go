@@ -351,9 +351,9 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 	p.agent = cmd
 	p.agentDone = done
 	p.mu.Unlock()
-	state := "start"
+	state := types.StateStart
 	if resume != "" {
-		state = "resume"
+		state = types.StateResume
 	}
 	p.harness(types.DiagnosticDetails{Component: "agent", State: state, Runtime: p.a.Runtime, ToolCoverage: true})
 	stop := time.AfterFunc(time.Until(end), func() { syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) })
@@ -368,7 +368,7 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 			p.logf("saving usage: %v", err)
 		}
 		code := cmd.ProcessState.ExitCode()
-		p.harness(types.DiagnosticDetails{Component: "agent", State: "stop", Runtime: p.a.Runtime, ExitCode: &code})
+		p.harness(types.DiagnosticDetails{Component: "agent", State: types.StateStop, Runtime: p.a.Runtime, ExitCode: &code})
 		p.exited(cmd)
 	}()
 	return nil

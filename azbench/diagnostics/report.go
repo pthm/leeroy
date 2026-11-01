@@ -223,13 +223,13 @@ func Read(agent string, paths ...string) Summary {
 			if ev.Details.State == "coverage_gap" {
 				s.Coverage.ReportedGaps++
 			}
-			if ev.Details.Component == "session" && ev.Details.State == "stop" && ev.Session != "" {
+			if ev.Details.Component == "session" && ev.Details.State == types.StateStop && ev.Session != "" {
 				closeEpisodes("", ev.Session)
 			}
-			if ev.Details.Component == "session" && ev.Details.State == "start" {
+			if ev.Details.Component == "session" && ev.Details.State == types.StateStart {
 				closeEpisodes("", "")
 			}
-			if ev.Details.Component == "judge" && (ev.Details.State == "paused" || ev.Details.State == "done" || ev.Details.State == "failed") {
+			if playing, ok := types.Playing(ev.Details); ok && !playing {
 				closeEpisodes("", "")
 			}
 		}

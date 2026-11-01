@@ -21,6 +21,7 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/pthm/leeroy/azbench/config"
 	"github.com/pthm/leeroy/azbench/judge"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
 // Runner supervises one run.
@@ -154,9 +155,9 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 		os.Remove(filepath.Join(r.dir, "paused"))
 	}
 	for _, p := range r.players {
-		state := "start"
+		state := types.StateStart
 		if resume {
-			state = "resume"
+			state = types.StateResume
 		}
 		p.runtimeState("supervisor", state)
 	}
@@ -193,10 +194,10 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 			}
 			if err != nil {
 				p.logf("not started: %v", err)
-				p.setState("failed")
+				p.setState(types.JudgeFailed)
 				return
 			}
-			p.setState("ready")
+			p.setState(types.JudgeReady)
 			p.logf("session up on port %d", p.port)
 		}()
 		if i < len(r.players)-1 {
@@ -219,11 +220,11 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 	}
 	r.noteOpenrouter(false)
 	left := time.Duration(r.minutesLeft() * float64(time.Minute))
-	r.logf("go: %d/%d sessions up, %.0f minutes", r.count("ready"), len(r.players), left.Minutes())
+	r.logf("go: %d/%d sessions up, %.0f minutes", r.count(types.JudgeReady), len(r.players), left.Minutes())
 
 	var judges sync.WaitGroup
 	for _, p := range r.players {
-		if p.state != "ready" {
+		if p.state != types.JudgeReady {
 			continue
 		}
 		judges.Add(1)
@@ -264,7 +265,7 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 		err  error
 	}
 	done := make(chan res, 1)
-	p.setState("playing")
+	p.setState(types.JudgePlaying)
 	go func() {
 		line, _, err := judge.Run(r.ctx, o)
 		done <- res{line, err}
@@ -292,9 +293,9 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 	j := <-done
 	if j.err != nil {
 		if r.ctx.Err() != nil {
-			p.setState("paused")
+			p.setState(types.JudgePaused)
 		} else {
-			p.setState("failed")
+			p.setState(types.JudgeFailed)
 		}
 	}
 	p.stopAgent()
@@ -312,7 +313,7 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 		f.Write(append(j.line, '\n'))
 		f.Close()
 	}
-	p.setState("done")
+	p.setState(types.JudgeDone)
 	p.logf("done: %s", j.line)
 }
 
@@ -350,7 +351,7 @@ func (r *Runner) pause() {
 	r.paused = true
 	r.mu.Unlock()
 	for _, p := range r.players {
-		p.runtimeState("supervisor", "pause")
+		p.runtimeState("supervisor", types.StatePause)
 	}
 	r.cancel()
 }

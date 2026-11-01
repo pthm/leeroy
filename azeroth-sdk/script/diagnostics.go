@@ -40,7 +40,7 @@ func (e *Engine) SetDiagnosticSink(agent string, sink func(types.Diagnostic)) {
 	e.diag.mu.Lock()
 	e.diag.agent, e.diag.sink = agent, sink
 	e.diag.mu.Unlock()
-	e.diag.emit(types.Diagnostic{Kind: "runtime_state", Details: types.DiagnosticDetails{Component: "session", State: "start"}})
+	e.diag.emit(types.Diagnostic{Kind: "runtime_state", Details: types.DiagnosticDetails{Component: "session", State: types.StateStart}})
 }
 
 // RecordObservation records typed session observations using the same identity and sequence as actions.

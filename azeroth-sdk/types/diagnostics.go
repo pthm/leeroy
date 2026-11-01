@@ -21,6 +21,35 @@ type Diagnostic struct {
 	Details    DiagnosticDetails `json:"details"`
 }
 
+// Lifecycle states of runtime_state diagnostics, by component. The harness writes them and the reports read them;
+// both use these names.
+const (
+	StateStart   = "start"   // supervisor, session, agent
+	StateResume  = "resume"  // supervisor, agent
+	StatePause   = "pause"   // supervisor
+	StateRestart = "restart" // supervisor
+	StateStop    = "stop"    // session, agent
+
+	JudgeReady   = "ready"
+	JudgePlaying = "playing"
+	JudgePaused  = "paused"
+	JudgeDone    = "done"
+	JudgeFailed  = "failed"
+)
+
+// Playing says whether a runtime_state event starts play (true) or stops it (false); ok is false for an event that
+// does neither. Play runs from the judge's "playing" to its next stop, or the supervisor's pause.
+func Playing(d DiagnosticDetails) (playing, ok bool) {
+	switch {
+	case d.Component == "judge" && d.State == JudgePlaying:
+		return true, true
+	case d.Component == "judge" && (d.State == JudgePaused || d.State == JudgeDone || d.State == JudgeFailed),
+		d.Component == "supervisor" && d.State == StatePause:
+		return false, true
+	}
+	return false, false
+}
+
 // DiagnosticDetails is an allowlist: arbitrary request arguments, results, error messages, commands,
 // prompts and chat are never copied here. Status is explicitly agent-authored and limited to 512 bytes.
 type DiagnosticDetails struct {

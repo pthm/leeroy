@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -60,6 +61,16 @@ func TestHarnessResumeAndTornRecord(t *testing.T) {
 	s := diagnostics.Read("a1", path)
 	if s.Coverage.MalformedLines != 1 || s.Coverage.Status != "partial" {
 		t.Fatalf("torn coverage: %+v", s.Coverage)
+	}
+	// the reports read the states the harness writes: play, pause, play again
+	var play []bool
+	for _, e := range events {
+		if playing, ok := types.Playing(e.Details); ok {
+			play = append(play, playing)
+		}
+	}
+	if fmt.Sprint(play) != "[true false true]" {
+		t.Fatalf("play changes: %v", play)
 	}
 }
 

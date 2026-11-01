@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/pthm/leeroy/azbench/diagnostics"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
 // intervalPlayed excludes whole sample intervals crossing a pause/stop: attributing their progress to
@@ -19,12 +20,11 @@ func intervalPlayed(dir string) func(int64, int64) bool {
 	}
 	var changes []change
 	for _, ev := range jsonl(filepath.Join(dir, "harness.jsonl")) {
-		if ev["kind"] != "runtime_state" || get(ev["details"], "component") != "judge" {
+		if ev["kind"] != "runtime_state" {
 			continue
 		}
-		state := get(ev["details"], "state")
-		if state == "playing" || state == "paused" || state == "done" || state == "failed" {
-			changes = append(changes, change{int64(fnum(ev["t"])), state == "playing"})
+		if playing, ok := types.Playing(types.DiagnosticDetails{Component: str(get(ev["details"], "component")), State: str(get(ev["details"], "state"))}); ok {
+			changes = append(changes, change{int64(fnum(ev["t"])), playing})
 		}
 	}
 	sort.SliceStable(changes, func(i, j int) bool { return changes[i].t < changes[j].t })
@@ -55,11 +55,11 @@ func savedJudgeState(dir string) string {
 	for _, e := range jsonl(filepath.Join(dir, "harness.jsonl")) {
 		if e["kind"] == "runtime_state" && get(e["details"], "component") == "judge" {
 			switch get(e["details"], "state") {
-			case "playing":
+			case types.JudgePlaying:
 				state = "running"
-			case "paused":
+			case types.JudgePaused:
 				state = "paused"
-			case "failed":
+			case types.JudgeFailed:
 				state = "failed"
 			}
 		}

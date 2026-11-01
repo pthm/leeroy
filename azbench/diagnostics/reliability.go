@@ -1,5 +1,7 @@
 package diagnostics
 
+import "github.com/pthm/leeroy/azeroth-sdk/types"
+
 // Duration metrics are sampled observed intervals, not extrapolated wall time.
 // Missing samples, pauses and session boundaries never become dead/broken time.
 type Reliability struct {
@@ -29,15 +31,9 @@ func (s *Summary) summarizeReliability(events []recorded) {
 			if e.Details.Component == "tooling" && e.Details.State == "instrumented_v1" {
 				instrumented = true
 			}
-			if e.Details.Component == "judge" || e.Details.Component == "supervisor" {
-				switch e.Details.State {
-				case "paused", "done", "failed", "stopped":
-					paused = true
-					clear(previous)
-				case "running", "start", "started", "resumed":
-					paused = false
-					clear(previous)
-				}
+			if playing, ok := types.Playing(e.Details); ok {
+				paused = !playing
+				clear(previous)
 			}
 			if e.Details.Component == "session" {
 				delete(previous, e.Session)
