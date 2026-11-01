@@ -104,7 +104,9 @@ func newServer(s *Store, title string) *server {
 	for _, r := range world.MustRows(world.Bench(), "SELECT map, name FROM area WHERE zone = 0 AND map NOT IN (0, 1, 530, 571) ORDER BY id") {
 		v.maps[r[0]] = r[1]
 	}
-	v.labels = append(world.Labels(0, nil), world.Labels(1, nil)...)
+	for _, m := range []uint32{0, 1, 530, 571} { // the continents (wowbench.area_location has no instances)
+		v.labels = append(v.labels, world.Labels(m, nil)...)
+	}
 	if world.HasClientData() { // tiles changed from the terrain render to the minimap, then instance floor plans: busts browser caches
 		v.tileVersion = 3
 	}

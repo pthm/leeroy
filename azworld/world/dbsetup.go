@@ -253,7 +253,8 @@ func Setup(schema, repo string) (summary string, err error) {
 	}
 
 	// Cell (lx, ly) of grid file (gx, gy) is centred at 533.33 * (32 - g - (l + 0.5) / 16), the inverse of
-	// GridTerrainData::getArea. ponytail: maps 0 and 1 only (Eastern Kingdoms, Kalimdor).
+	// GridTerrainData::getArea. The continents only (Eastern Kingdoms, Kalimdor, Outland, Northrend): an instance's
+	// floor plan is drawn without labels.
 	type areaPts struct {
 		m, id int64
 		pts   [][2]float64
@@ -276,7 +277,7 @@ func Setup(schema, repo string) (summary string, err error) {
 		mp, _ := strconv.Atoi(mm[1])
 		gx, _ := strconv.Atoi(mm[2])
 		gy, _ := strconv.Atoi(mm[3])
-		if mp > 1 {
+		if mp != 0 && mp != 1 && mp != 530 && mp != 571 {
 			continue
 		}
 		b, err := os.ReadFile(filepath.Join(DataDir(), "maps", f))
