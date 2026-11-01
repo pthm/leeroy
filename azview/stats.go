@@ -7,12 +7,12 @@ package main
 
 import (
 	"cmp"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"math"
 	"slices"
 	"strconv"
-	"strings"
 )
 
 // statDef is how a metric is counted. who: the player an event counts for (its "n" by default); val: how much (1 by
@@ -615,8 +615,8 @@ func (s *Store) Stats(q Query) map[string]any {
 	return map[string]any{
 		"Label": label, "Range": rangeNote + Fmt(t0-s.Start) + "–" + Fmt(t1-s.Start), "Dur": dur(secs), "Total": total, "TotalExtra": extra(sum, ""),
 		"Tiles": tiles, "Metric": key, "Rows": rows, "Gauge": m.gauge != nil, "Rate": rate, "Share": m.share, "PerOpts": perOpts,
-		"Chart": s.chartSVG(r.buckets, g, fmtv, q.Sel, label, only), "Strip": s.stripSVG(t0, t1, only, q.Sel),
-		"Sel": q.Sel, "SelColor": s.color(q.Sel), "ByLabel": m.byLabel, "HasBy": q.Sel != "" && m.by != nil, "Parts": parts, "More": more,
+		"Plots": plotsJSON(s.chartData(r.buckets, g, fmtv, label, only), s.stripData(t0, t1, only, q.Width)),
+		"Sel":   q.Sel, "SelColor": s.color(q.Sel), "ByLabel": m.byLabel, "HasBy": q.Sel != "" && m.by != nil, "Parts": parts, "More": more,
 		"Score": label == "Score" || key == "progress" || key == "pace" || key == "recent", "Only": s.only(q, s.focus(q)),
 		"States": func() (out [][2]string) {
 			for _, k := range []int{idle, moving, combat, ghost, dead} {
@@ -636,8 +636,6 @@ func (s *Store) color(n string) string {
 
 // ---------- SVG ----------
 
-const chartW, chartH, padL, padR = 480.0, 170.0, 58.0, 58.0
-
 func fmtAxis(ms float64) string {
 	if ms >= 3600000 {
 		f := Fmt(ms)
@@ -646,10 +644,32 @@ func fmtAxis(ms float64) string {
 	return Fmt(ms)
 }
 
-// chartSVG is the metric over the window, a line per player, the selected one thicker with a fill; each cell has a
-// hover target with every player's value there.
-func (s *Store) chartSVG(buckets map[string][]float64, g grid, fmtv func(float64) string, sel, label string, only map[string]bool) template.HTML {
-	lo, hi := 0.0, 0.0
+// ChartSeries is a player's line on the chart: a value per cell (nil where there's none) and each as text.
+type ChartSeries struct {
+	Name   string     `json:"n"`
+	Color  string     `json:"color"`
+	Dashed bool       `json:"dashed,omitempty"`
+	Vals   []*float64 `json:"v"`
+	Text   []string   `json:"s"`
+}
+
+// ChartData is the metric over the window for the page to draw (viewer.js drawStats): the grid's cells (each ends at
+// min(g0 + (k+1) step, t1); times relative to the run's start), the y axis' range and labels, and a line per player.
+type ChartData struct {
+	Label  string        `json:"label"`
+	G0     float64       `json:"g0"`
+	Step   float64       `json:"step"`
+	T1     float64       `json:"t1"`
+	NB     int           `json:"nb"`
+	Lo     float64       `json:"lo"`
+	Hi     float64       `json:"hi"`
+	YTicks []string      `json:"yticks"` // at lo + (hi-lo)*k/3
+	XTicks []string      `json:"xticks"` // at a0 + (a1-a0)*k/3 over the cells
+	Series []ChartSeries `json:"series"`
+}
+
+func (s *Store) chartData(buckets map[string][]float64, g grid, fmtv func(float64) string, label string, only map[string]bool) ChartData {
+	d := ChartData{Label: label, G0: g.g0 - s.Start, Step: g.step, T1: g.t1 - s.Start, NB: g.nb}
 	first := true
 	for _, b := range buckets {
 		for _, v := range b {
@@ -657,194 +677,84 @@ func (s *Store) chartSVG(buckets map[string][]float64, g grid, fmtv func(float64
 				continue
 			}
 			if first {
-				hi, first = v, false
+				d.Lo, d.Hi, first = math.Min(0, v), v, false
 			}
-			lo, hi = math.Min(lo, v), math.Max(hi, v)
+			d.Lo, d.Hi = math.Min(d.Lo, v), math.Max(d.Hi, v)
 		}
 	}
-	if hi <= lo {
-		hi = lo + 1e-9
-	}
-	H := chartH - 18 - 8
-	W := chartW - padL - padR
-	a0, a1 := g.g0, g.g0+float64(g.nb)*g.step
-	X := func(k int) float64 { return padL + (g.end(k)-a0)/(a1-a0)*W }
-	Y := func(v float64) float64 { return 6 + H - (v-lo)/(hi-lo)*H }
-	var b strings.Builder
-	fmt.Fprintf(&b, `<svg class="chart" viewBox="0 0 %g %g" role="img" aria-label="%s over time">`, chartW, chartH, esc(label))
-	for k := 0; k <= 3; k++ {
-		v := lo + (hi-lo)*float64(k)/3
-		y := math.Round(Y(v)) + 0.5
-		dash := ""
-		if k > 0 {
-			dash = ` stroke-dasharray="2 4"`
-		}
-		fmt.Fprintf(&b, `<line x1="%g" x2="%g" y1="%g" y2="%g" class="grid"%s/><text x="%g" y="%g" text-anchor="end" class="ax">%s</text>`, padL, padL+W, y, y, dash, padL-6, y+4, esc(fmtv(v)))
+	if d.Hi <= d.Lo {
+		d.Hi = d.Lo + 1e-9
 	}
 	for k := 0; k <= 3; k++ {
-		anchor := []string{"start", "middle", "middle", "end"}[k]
-		fmt.Fprintf(&b, `<text x="%g" y="%g" text-anchor="%s" class="ax">%s</text>`, padL+W*float64(k)/3, chartH-3, anchor, fmtAxis(a0+(a1-a0)*float64(k)/3-s.Start))
+		d.YTicks = append(d.YTicks, fmtv(d.Lo+(d.Hi-d.Lo)*float64(k)/3))
+		d.XTicks = append(d.XTicks, fmtAxis(d.G0+float64(g.nb)*g.step*float64(k)/3))
 	}
-	ps := s.statPlayers(only)
-	order := slices.Clone(ps)
-	slices.SortStableFunc(order, func(a, b *Player) int { return cmp.Compare(boolInt(a.Name == sel), boolInt(b.Name == sel)) }) // the selected line on top
-	type end struct {
-		y     float64
-		v     string
-		color string
-		dim   bool
-	}
-	var ends []end
-	for _, p := range order {
-		bk := buckets[p.Name]
-		if bk == nil {
+	for _, p := range s.statPlayers(only) {
+		b := buckets[p.Name]
+		if b == nil {
 			continue
 		}
-		var d strings.Builder
-		pen := false
-		lastK := -1
-		for k, v := range bk {
-			if math.IsNaN(v) {
-				pen = false
-				continue
-			}
-			cmd := "L"
-			if !pen {
-				cmd = "M"
-			}
-			fmt.Fprintf(&d, "%s%.1f %.1f", cmd, X(k), Y(v))
-			pen, lastK = true, k
-		}
-		if d.Len() == 0 {
-			continue
-		}
-		c := ClassColor(p.Cls)
-		width, op := 1.6, 1.0
-		if sel != "" && p.Name != sel {
-			op = 0.3
-		}
-		if p.Name == sel {
-			width = 3
-			fmt.Fprintf(&b, `<path d="%s L%.1f %.1f L%.1f %.1f Z" fill="%s" opacity=".18"/>`, d.String(), X(lastK), Y(lo), X(firstK(bk)), Y(lo), c)
-		}
-		dash := ""
-		if s.classIndex(p) > 1 {
-			dash = ` stroke-dasharray="6 4"`
-		}
-		fmt.Fprintf(&b, `<path d="%s" fill="none" stroke="%s" stroke-width="%g" opacity="%g"%s stroke-linejoin="round"/>`, d.String(), c, width, op, dash)
-		ends = append(ends, end{Y(bk[lastK]), fmtv(bk[lastK]), c, sel != "" && p.Name != sel})
-	}
-	// the latest values in the right margin, nudged apart so they don't overlap
-	slices.SortFunc(ends, func(a, b end) int { return cmp.Compare(a.y, b.y) })
-	lastY := -1e9
-	for _, e := range ends {
-		y := math.Max(e.y+4, lastY+12)
-		lastY = y
-		op := 1.0
-		if e.dim {
-			op = 0.4
-		}
-		fmt.Fprintf(&b, `<text x="%g" y="%g" class="end" fill="%s" opacity="%g">%s</text>`, padL+W+6, y, e.color, op, esc(e.v))
-	}
-	// hover targets: a column per cell, its tooltip every player's value there
-	for k := 0; k < g.nb; k++ {
-		x0 := padL + (g.g0+float64(k)*g.step-a0)/(a1-a0)*W
-		var tip strings.Builder // plain text, made into HTML by the client: a title line, then label<TAB>value lines
-		fmt.Fprintf(&tip, "%s · %s", Fmt(g.end(k)-s.Start), label)
-		type pv struct {
-			n string
-			v float64
-		}
-		var vals []pv
-		for _, p := range ps {
-			if bk := buckets[p.Name]; bk != nil && !math.IsNaN(bk[k]) {
-				vals = append(vals, pv{p.Name, bk[k]})
+		cs := ChartSeries{Name: p.Name, Color: ClassColor(p.Cls), Dashed: s.classIndex(p) > 1, Vals: make([]*float64, len(b)), Text: make([]string, len(b))}
+		for k, v := range b {
+			if !math.IsNaN(v) {
+				v := v
+				cs.Vals[k], cs.Text[k] = &v, fmtv(v)
 			}
 		}
-		slices.SortFunc(vals, func(a, b pv) int { return cmp.Compare(b.v, a.v) })
-		for _, x := range vals {
-			fmt.Fprintf(&tip, "\n%s\t%s", x.n, fmtv(x.v))
-		}
-		fmt.Fprintf(&b, `<rect class="hov" x="%.1f" y="6" width="%.1f" height="%g" data-tip="%s"/>`, x0, X(k)-x0, H, esc(tip.String()))
+		d.Series = append(d.Series, cs)
 	}
-	b.WriteString(`</svg>`)
-	return template.HTML(b.String())
+	return d
 }
 
-func firstK(b []float64) int {
-	for k, v := range b {
-		if !math.IsNaN(v) {
-			return k
-		}
-	}
-	return 0
+// StripRow is what a player was doing across the window: seconds in each state per cell, and over the whole window
+// ([idle, moving, combat, ghost, dead] each).
+type StripRow struct {
+	Name  string       `json:"n"`
+	Color string       `json:"color"`
+	Cells [][5]float64 `json:"cells"`
+	All   [5]float64   `json:"all"`
 }
 
-func boolInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
+// StripData is the activity strip for the page to draw: its own grid (finer on a wider pane) and a row per player.
+type StripData struct {
+	G0     float64     `json:"g0"`
+	Step   float64     `json:"step"`
+	T0     float64     `json:"t0"`
+	T1     float64     `json:"t1"`
+	NB     int         `json:"nb"`
+	States [][2]string `json:"states"` // name and colour, in the cells' order
+	Rows   []StripRow  `json:"rows"`
 }
 
-// stripSVG is what each player was doing across the window: a row each of equal cells, coloured by the state that
-// took most of a cell (a thin line when they were logged out for most of it), then the whole window's split.
-func (s *Store) stripSVG(t0, t1 float64, only map[string]bool, sel string) template.HTML {
-	const rh, gap, sw = 12.0, 7.0, padR - 10
-	W := chartW - padL - padR
-	g := s.grid(t0, t1, 44, 0)
-	ps := s.statPlayers(only)
-	h := math.Max(1, float64(len(ps)))*(rh+gap) - gap + 2
-	a0, a1 := g.g0, g.g0+float64(g.nb)*g.step
-	xOf := func(tm float64) float64 { return padL + (tm-a0)/(a1-a0)*W }
-	var b strings.Builder
-	fmt.Fprintf(&b, `<svg class="strip" viewBox="0 0 %g %g" role="img" aria-label="activity">`, chartW, h)
-	tipOf := func(name, when string, v [6]float64) string { // see chartSVG's tooltips; a third field is a swatch colour
-		t := name + " · " + when
-		for _, x := range split(v) {
-			st := stateName[int(x[0])]
-			t += fmt.Sprintf("\n%s\t%s\t%s", st[0], pct(x[1]), st[1])
-		}
-		return t
+// stripData cuts the window into cells about 8 px wide on a pane of width px (4 to 96 of them).
+func (s *Store) stripData(t0, t1 float64, only map[string]bool, width int) StripData {
+	n := 44
+	if width > 0 {
+		n = max(4, min(96, (width-2*66)/8))
 	}
-	for row, p := range ps {
-		y := float64(row)*(rh+gap) + 1
-		op := 1.0
-		if sel != "" && p.Name != sel {
-			op = 0.4
-		}
+	g := s.grid(t0, t1, n, 0)
+	d := StripData{G0: g.g0 - s.Start, Step: g.step, T0: t0 - s.Start, T1: t1 - s.Start, NB: g.nb}
+	order := []int{idle, moving, combat, ghost, dead}
+	for _, k := range order {
+		d.States = append(d.States, stateName[k])
+	}
+	for _, p := range s.statPlayers(only) {
 		cells, all := activity(p, t0, t1, g)
-		fmt.Fprintf(&b, `<g opacity="%g"><text x="0" y="%g" class="name" fill="%s">%s</text>`, op, y+rh/2+4, ClassColor(p.Cls), esc(p.Name))
-		for k, v := range cells {
-			c0, c1 := g.g0+float64(k)*g.step, g.end(k)
-			x0, x1 := math.Max(padL, xOf(c0)), math.Min(padL+W, xOf(c1))
-			if x1-x0 < 1 {
-				continue
+		row := StripRow{Name: p.Name, Color: ClassColor(p.Cls), Cells: make([][5]float64, len(cells))}
+		for k, c := range cells {
+			for i, st := range order {
+				row.Cells[k][i] = math.Round(c[st]*10) / 10
 			}
-			best, covered := 0, 0.0
-			for _, st := range stateOrder {
-				if v[st] > v[best] {
-					best = st
-				}
-			}
-			for _, x := range v {
-				covered += x
-			}
-			tip := esc(tipOf(p.Name, Fmt(c0-s.Start)+"–"+Fmt(c1-s.Start), v))
-			if best == 0 || covered < (c1-c0)/1000*0.3 { // logged out
-				fmt.Fprintf(&b, `<rect x="%.1f" y="%g" width="%.1f" height="2" rx="1" class="off"/><rect class="hov" x="%.1f" y="%g" width="%.1f" height="%g" data-tip="%s"/>`, x0+0.5, y+rh/2-1, x1-x0-1, x0, y, x1-x0, rh, tip)
-				continue
-			}
-			fmt.Fprintf(&b, `<rect x="%.1f" y="%g" width="%.1f" height="%g" rx="2" fill="%s" data-tip="%s"/>`, x0+0.5, y, math.Max(1, x1-x0-1), rh, stateName[best][1], tip)
 		}
-		x := padL + W + 10
-		tip := esc(tipOf(p.Name, Fmt(t0-s.Start)+"–"+Fmt(t1-s.Start), all))
-		for _, part := range split(all) {
-			fmt.Fprintf(&b, `<rect x="%.1f" y="%g" width="%.1f" height="%g" fill="%s" data-tip="%s"/>`, x, y, part[1]*sw, rh, stateName[int(part[0])][1], tip)
-			x += part[1] * sw
+		for i, st := range order {
+			row.All[i] = math.Round(all[st]*10) / 10
 		}
-		b.WriteString(`</g>`)
+		d.Rows = append(d.Rows, row)
 	}
-	b.WriteString(`</svg>`)
-	return template.HTML(b.String())
+	return d
+}
+
+func plotsJSON(c ChartData, st StripData) template.JS {
+	b, _ := json.Marshal(map[string]any{"chart": c, "strip": st})
+	return template.JS(b)
 }

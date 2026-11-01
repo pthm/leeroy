@@ -17,6 +17,7 @@ type Query struct {
 	ByGroup                   bool
 	Cats                      map[string]bool
 	Metric, Range, Chart, Per string
+	Width                     int // the pane's width, CSS px: the activity strip's cells are about 8 px
 }
 
 func queryOf(r *http.Request) Query {
@@ -24,6 +25,7 @@ func queryOf(r *http.Request) Query {
 	q := Query{T: num(r, "t"), Sel: g("sel"), Tab: g("tab"), Sort: g("sort"), ByGroup: g("bygroup") == "1",
 		Cats: map[string]bool{}, Metric: g("metric"), Range: g("range"), Chart: g("chart"), Per: g("per")}
 	q.Grp, _ = strconv.Atoi(g("grp"))
+	q.Width, _ = strconv.Atoi(g("w"))
 	for _, c := range strings.Split(g("cats"), ",") {
 		q.Cats[c] = true
 	}

@@ -35,7 +35,8 @@ document.addEventListener("alpine:init", () => {
 const store = () => window.Alpine?.store("v") ?? V;
 window.viewerQuery = () => { const s = store();
   return { t: Math.round(B.start + t), sel: s.sel ?? "", grp: s.grp ?? "", tab: s.tab, sort: s.sort, bygroup: s.bygroup ? 1 : 0,
-    cats: Object.keys(s.cats).filter((k) => s.cats[k]).join(","), metric: s.metric, range: s.range, chart: s.chart, per: s.per }; };
+    cats: Object.keys(s.cats).filter((k) => s.cats[k]).join(","), metric: s.metric, range: s.range, chart: s.chart, per: s.per,
+    w: Math.round(document.getElementById("pane")?.clientWidth ?? 0) }; };
 
 // panels refresh at most 5 times a second (Stats once), when the playhead moved, data arrived or what they show changed
 let panelsDue = true, lastPanels = 0;
@@ -224,6 +225,120 @@ function drawDetail(xa, ya, xb, yb) {
   if (missing.length || fading) dirty = true; // more to ask for, or a tile still fading in: draw again next frame
 }
 const smooth = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+// ---------- stats plots ----------
+// The Stats tab's chart and activity strip, drawn from the data the server sends with the panel (#plots: the metric's
+// cells and a line per player, the strip's cells and each player's seconds in each state). They share one time axis
+// and margins (PL, PR), so a moment is at the same x in each; hovering either shows a crosshair in both (hoverT, a
+// time), and hovering a player (a row in the list, a strip row) brings their line forward (hoverN).
+const PL = 66, PR = 66;
+let hoverT = null, hoverN = null, plots = null, chartGeom = null, stripGeom = null;
+const cellEnd = (g, k) => Math.min(g.g0 + (k + 1) * g.step, g.t1);
+function drawStats() {
+  const el = document.getElementById("plots");
+  plots = el ? JSON.parse(el.textContent) : null;
+  if (!plots) return;
+  drawChart(); drawStrip();
+}
+function canvasFor(id, h) {
+  const c = document.getElementById(id); if (!c) return null;
+  if (h) c.style.height = h + "px";
+  const r = c.getBoundingClientRect(), g = c.getContext("2d");
+  c.width = r.width * devicePixelRatio; c.height = r.height * devicePixelRatio; g.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  return { c, r, g };
+}
+function drawChart() {
+  const d = plots.chart, cv2 = canvasFor("chart", 170); if (!cv2 || !d) return;
+  const { r, g } = cv2, W = r.width - PL - PR, H = r.height - 18 - 8, a0 = d.g0, a1 = d.g0 + d.nb * d.step;
+  const X = (k) => PL + ((cellEnd(d, k) - a0) / (a1 - a0)) * W, Y = (v) => 6 + H - ((v - d.lo) / (d.hi - d.lo || 1)) * H;
+  chartGeom = { W, a0, a1 };
+  g.font = "11px system-ui"; g.fillStyle = css("--quiet"); g.strokeStyle = css("--line"); g.lineWidth = 1;
+  for (let k = 0; k <= 3; k++) {
+    const y = Math.round(Y(d.lo + ((d.hi - d.lo) * k) / 3)) + 0.5;
+    g.setLineDash(k ? [2, 4] : []); g.beginPath(); g.moveTo(PL, y); g.lineTo(PL + W, y); g.stroke();
+    g.textAlign = "right"; g.fillText(d.yticks[k], PL - 6, y + 4);
+  }
+  g.setLineDash([]);
+  for (let k = 0; k <= 3; k++) { g.textAlign = ["left", "center", "center", "right"][k]; g.fillText(d.xticks[k], PL + (W * k) / 3, r.height - 3); }
+  const focus = hoverN ?? store().sel;
+  const series = [...d.series].sort((a, b) => (a.n === focus) - (b.n === focus)); // the focused line on top
+  for (const s of series) {
+    g.beginPath(); let pen = false;
+    s.v.forEach((v, k) => { if (v == null) { pen = false; return; } pen ? g.lineTo(X(k), Y(v)) : g.moveTo(X(k), Y(v)); pen = true; });
+    g.globalAlpha = focus && s.n !== focus ? 0.3 : 1;
+    if (s.n === focus) { // a soft fill under the focused line
+      const pts = s.v.map((v, k) => (v == null ? null : [X(k), Y(v)])).filter(Boolean);
+      if (pts.length) { const f = new Path2D(); f.moveTo(pts[0][0], Y(d.lo)); pts.forEach(([x, y]) => f.lineTo(x, y)); f.lineTo(pts.at(-1)[0], Y(d.lo)); f.closePath();
+        const grad = g.createLinearGradient(0, 6, 0, 6 + H); grad.addColorStop(0, s.color + "55"); grad.addColorStop(1, s.color + "00"); g.fillStyle = grad; g.fill(f); }
+    }
+    g.setLineDash(s.dashed ? [6, 4] : []); g.strokeStyle = s.color; g.lineWidth = s.n === focus ? 3 : 1.6; g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+  }
+  // the latest values in the right margin, nudged apart so they don't overlap
+  g.font = "600 11px system-ui"; g.textAlign = "left";
+  const ends = d.series.map((s) => { let k = s.v.length - 1; while (k >= 0 && s.v[k] == null) k--; return k >= 0 ? [s, Y(s.v[k]), s.s[k]] : null; }).filter(Boolean).sort((a, b) => a[1] - b[1]);
+  let lastY = -1e9;
+  for (const [s, y0, txt] of ends) { const y = Math.max(y0 + 4, lastY + 12); lastY = y;
+    g.globalAlpha = focus && s.n !== focus ? 0.4 : 1; g.fillStyle = s.color; g.fillText(txt, PL + W + 6, y, PR - 8); g.globalAlpha = 1; }
+  if (hoverT != null) {
+    const k = cellAt(d, hoverT), x = X(k);
+    crosshair(g, x, 6, 6 + H);
+    for (const s of d.series) { const v = s.v[k]; if (v == null) continue;
+      g.beginPath(); g.arc(x, Y(v), 3.5, 0, 7); g.fillStyle = s.color; g.fill(); g.strokeStyle = "#000"; g.lineWidth = 1; g.stroke(); }
+  }
+}
+const cellAt = (d, tm) => Math.max(0, Math.min(d.nb - 1, Math.round((tm - d.g0) / d.step) - 1)); // the nearest point
+const crosshair = (g, x, y0, y1) => { g.strokeStyle = css("--ink"); g.globalAlpha = 0.55; g.setLineDash([3, 3]); g.lineWidth = 1;
+  g.beginPath(); g.moveTo(Math.round(x) + 0.5, y0); g.lineTo(Math.round(x) + 0.5, y1); g.stroke(); g.setLineDash([]); g.globalAlpha = 1; };
+function drawStrip() {
+  const d = plots.strip; if (!d) return;
+  const RH = 12, GAP = 7, cv2 = canvasFor("strip", Math.max(1, d.rows.length) * (RH + GAP) - GAP + 2); if (!cv2) return;
+  const { r, g } = cv2, W = Math.max(10, r.width - PL - PR), SW = PR - 10, a0 = chartGeom?.a0 ?? d.g0, a1 = chartGeom?.a1 ?? d.g0 + d.nb * d.step;
+  const xOf = (tm) => PL + ((tm - a0) / (a1 - a0)) * W;
+  stripGeom = { W, SW, RH, GAP, a0, a1 };
+  const focus = hoverN ?? store().sel, colors = d.states.map((s) => s[1]), order = [2, 1, 0, 3, 4]; // a cell's colour: combat over moving over idle...
+  g.font = "600 11px system-ui"; g.textBaseline = "middle"; g.textAlign = "left";
+  const rr = (x, y, w, h) => { g.beginPath(); g.roundRect(x, y, w, h, 2); g.fill(); };
+  d.rows.forEach((row, i) => {
+    const y = i * (RH + GAP) + 1;
+    g.globalAlpha = focus && row.n !== focus ? 0.4 : 1;
+    g.fillStyle = row.color; g.fillText(row.n, 0, y + RH / 2, PL - 8);
+    row.cells.forEach((v, k) => {
+      const c0 = d.g0 + k * d.step, c1 = cellEnd(d, k), x0 = Math.max(PL, xOf(c0)), x1 = Math.min(PL + W, xOf(c1)); if (x1 - x0 < 1) return;
+      let best = -1; for (const st of order) if (v[st] > 0 && (best < 0 || v[st] > v[best])) best = st;
+      const covered = v.reduce((a, b) => a + b, 0);
+      if (best < 0 || covered < ((c1 - c0) / 1000) * 0.3) { g.fillStyle = css("--line"); rr(x0 + 0.5, y + RH / 2 - 1, x1 - x0 - 1, 2); return; } // logged out
+      g.fillStyle = colors[best]; rr(x0 + 0.5, y, Math.max(1, x1 - x0 - 1), RH);
+    });
+    let x = L0(W); const tot = row.all.reduce((a, b) => a + b, 0) || 1; // the window's split
+    for (const st of order) { const f = row.all[st] / tot; if (f <= 0) continue; g.fillStyle = colors[st]; g.fillRect(x, y, f * SW, RH); x += f * SW; }
+    g.globalAlpha = 1;
+  });
+  if (hoverT != null && plots.chart) crosshair(g, xOf(cellEnd(plots.chart, cellAt(plots.chart, hoverT))), 0, r.height); // where the chart's is
+}
+const L0 = (W) => PL + W + 10;
+const pctText = (f) => (f > 0 && f < 0.005 ? "<1%" : Math.round(100 * f) + "%");
+function hoverStats(e) {
+  const t0 = e.target;
+  if (t0.id === "chart" && plots?.chart && chartGeom) {
+    const d = plots.chart, x = e.clientX - t0.getBoundingClientRect().left, { W, a0, a1 } = chartGeom;
+    const k = cellAt(d, a0 + ((x - PL) / W) * (a1 - a0)), at = cellEnd(d, k); // snapped to a point on the lines
+    if (at !== hoverT) { hoverT = at; drawChart(); drawStrip(); }
+    const rows = d.series.filter((s) => s.v[k] != null).sort((a, b) => b.v[k] - a.v[k]);
+    return tip(`<div class="t">${fmt(at)} · ${esc(d.label)}</div>` + (rows.map((s) => `<div class="tr"><span class="who" style="color:${s.color}">${esc(s.n)}</span><b>${esc(s.s[k])}</b></div>`).join("") || `<div class="muted">nothing</div>`), e);
+  }
+  if (t0.id === "strip" && plots?.strip && stripGeom) {
+    const d = plots.strip, rc = t0.getBoundingClientRect(), { W, RH, GAP, a0, a1 } = stripGeom, x = e.clientX - rc.left - PL, i = Math.floor((e.clientY - rc.top) / (RH + GAP));
+    const row = d.rows[i], onAxis = x >= 0 && x <= W ? a0 + (x / W) * (a1 - a0) : null;
+    if (hoverN !== (row?.n ?? null) || hoverT !== onAxis) { hoverN = row?.n ?? null; hoverT = onAxis; drawChart(); drawStrip(); }
+    if (!row || x < 0) return tip(null);
+    const whole = x > W, k = Math.max(0, Math.min(d.nb - 1, Math.floor(((onAxis ?? d.t1) - d.g0) / d.step))), v = whole ? row.all : row.cells[k];
+    const when = whole ? `${fmt(d.t0)}–${fmt(d.t1)}` : `${fmt(d.g0 + k * d.step)}–${fmt(cellEnd(d, k))}`, tot = v.reduce((a, b) => a + b, 0);
+    return tip(`<div class="t"><span class="who" style="color:${row.color}">${esc(row.n)}</span> · ${when}</div>` + (tot ? [2, 1, 0, 3, 4].filter((st) => v[st] > 0).map((st) =>
+      `<div class="tr"><span><span class="sw" style="background:${d.states[st][1]}"></span>${d.states[st][0]}</span><b>${pctText(v[st] / tot)}</b></div>`).join("") : `<div class="muted">logged out</div>`), e);
+  }
+  const m = t0.closest?.(".mrow[data-n]"), n = m?.dataset.n ?? null; // a player's row in the list
+  if (n !== hoverN || hoverT != null) { hoverN = n; hoverT = null; drawChart(); drawStrip(); }
+  tip(null);
+}
 // ---------- combat and aggro ----------
 // HITS: damage and heals involving a player, {t, a (amount), k (d dealt, t taken, h healed), n (the player)}, in time
 // order: from /samples and /live. Drawn as combat text rising over the player (dealt: over their target) for 1.5 s.
@@ -531,14 +646,6 @@ const markersAt = (e) => { const r = cv.getBoundingClientRect(), mx = e.clientX 
   return markerHits.filter(([x, y]) => Math.hypot(x - mx, y - my) < 9).map(([, , ev]) => ev).sort((a, b) => b.t - a.t); };
 const tip = (html, ev) => { const el = $("tip"); if (!html) { el.hidden = true; return; } el.innerHTML = html; el.hidden = false;
   el.style.left = Math.min(innerWidth - el.offsetWidth - 8, ev.clientX + 14) + "px"; el.style.top = Math.max(8, ev.clientY - el.offsetHeight - 10) + "px"; };
-// a plot's tooltip from its plain text: a title line (a player's name first is coloured), then label<TAB>value[<TAB>swatch]
-const whoHTML = (n) => P.has(n) ? `<span class="who" style="color:${P.get(n).color}">${esc(n)}</span>` : esc(n);
-function tipHTML(text) {
-  const [title, ...rows] = text.split("\n"), [first, ...rest] = title.split(" · ");
-  return `<div class="t">${[whoHTML(first), ...rest.map(esc)].join(" · ")}</div>` + (rows.map((r) => { const [a, b, c] = r.split("\t");
-    return `<div class="tr"><span>${c ? `<span class="sw" style="background:${esc(c)}"></span>` : ""}${whoHTML(a)}</span><b>${esc(b)}</b></div>`; }).join("")
-    || `<div class="muted">${title.includes("–") ? "logged out" : "nothing"}</div>`);
-}
 function wire() {
   cv.addEventListener("pointerleave", () => tip(null));
   cv.addEventListener("pointerdown", (e) => { drag = down = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); });
@@ -611,10 +718,12 @@ function wire() {
     if (el.matches(".row")) setT(Number(el.dataset.t) - B.start);
   });
   document.addEventListener("change", (e) => { const k = e.target.dataset?.stat; if (k) store()[k] = e.target.value; });
-  // the stats plots' hover targets carry their tooltip
+  // the stats plots: one crosshair for both (hoverT), a player's line forward when they're hovered (hoverN)
   const pane = $("pane");
-  pane.addEventListener("mousemove", (e) => { const h = e.target.closest?.("[data-tip]"); tip(h ? tipHTML(h.dataset.tip) : null, e); });
-  pane.addEventListener("mouseleave", () => tip(null));
+  pane.addEventListener("mousemove", hoverStats);
+  pane.addEventListener("mouseleave", () => { hoverT = hoverN = null; tip(null); drawStats(); });
+  document.addEventListener("htmx:afterSettle", (e) => { if (e.detail.target?.id === "pane") drawStats(); });
+  addEventListener("resize", () => drawStats());
   addEventListener("resize", () => { fit(); dirty = true; });
 }
 // Fit: auto follow back on, the zoom reset to a snug fit of what it follows (the selection, or everyone)

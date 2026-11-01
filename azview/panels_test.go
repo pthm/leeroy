@@ -88,7 +88,7 @@ func TestStatsPanel(t *testing.T) {
 	s.Start = 0
 	q := Query{T: 3000, Tab: "stats", Metric: "dmg", Range: "all", Chart: "total", Sel: "A"}
 	got := render(t, s, "pane", q)
-	for _, want := range []string{"party <b>100</b>", `data-n="C"`, ">60<", ">40<", "60%", "40%", "<svg class=\"chart\"", "<svg class=\"strip\"", "A</span> by target", "Kobold", "Wolf", "75%"} {
+	for _, want := range []string{"party <b>100</b>", `data-n="C"`, ">60<", ">40<", "60%", "40%", `id="plots"`, `"series":[`, `"rows":[`, "A</span> by target", "Kobold", "Wolf", "75%"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("stats lacks %q", want)
 		}
@@ -157,5 +157,15 @@ func TestHeatDeaths(t *testing.T) {
 	}
 	if at(300, 300) == 0 || at(0, 0) != 0 {
 		t.Fatalf("heat at the death (%d), none where A only walked (%d)", at(300, 300), at(0, 0))
+	}
+}
+
+// The activity strip has more cells on a wider pane (about one every 8 px), within 4 and 96.
+func TestStripResolution(t *testing.T) {
+	s := storeOf(t, party)
+	s.Start = 0
+	narrow, wide, none := s.stripData(0, 3600000, nil, 400), s.stripData(0, 3600000, nil, 900), s.stripData(0, 3600000, nil, 0)
+	if !(narrow.NB < wide.NB) || wide.NB > 96 || narrow.NB < 4 || none.NB == 0 || len(wide.Rows) != 3 || len(wide.Rows[0].Cells) != wide.NB {
+		t.Fatalf("cells: narrow %d, wide %d, unknown width %d; rows %d", narrow.NB, wide.NB, none.NB, len(wide.Rows))
 	}
 }
