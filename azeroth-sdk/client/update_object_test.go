@@ -170,3 +170,34 @@ func TestNearTeleportKeepsObjects(t *testing.T) {
 		t.Fatal("near teleport dropped an object the server still has in view")
 	}
 }
+
+// Death comes only from the server's health update. Predicted melee damage (a 1 HP ghost hit on reclaim) and the
+// reclaim delay's forced 0 only move the local value.
+func TestDeathFromHealthUpdateOnly(t *testing.T) {
+	w := NewWorldClient("t", nil, func(string, ...interface{}) {})
+	w.charGUID = 5
+	deaths := 0
+	w.OnDeath = func() { deaths++ }
+	health := func(v uint32) { w.readValuesUpdate(bytes.NewReader(le(uint8(1), uint32(1)<<UnitFieldHealth, v)), w.charGUID) }
+	hit := func(dmg uint32) {
+		var p bytes.Buffer
+		p.Write(le(uint32(0)))
+		writePackedGUID(&p, 0xF130000000000001)
+		writePackedGUID(&p, w.charGUID)
+		p.Write(le(dmg, make([]byte, 32)))
+		w.handleAttackerStateUpdate(p.Bytes())
+	}
+
+	health(1) // a ghost
+	hit(30)
+	w.handleCorpseReclaimDelay(le(uint32(30000)))
+	if deaths != 0 || w.Health() != 0 {
+		t.Fatalf("predicted: %d deaths, health %d", deaths, w.Health())
+	}
+	health(60) // resurrected
+	health(0)
+	health(0)
+	if deaths != 1 {
+		t.Fatalf("server death: %d deaths", deaths)
+	}
+}

@@ -243,12 +243,13 @@ func (b *Bot) watchEvents() {
 		}
 	}
 	// A character whose connection drops in combat stays in the world and can die there; it then logs in dead
-	// with no death event. Log it (no killer) once our own object has arrived.
+	// with no death event. Log it (no killer) once our own object has arrived, unless the stream already ends in
+	// that death (it died before a restart).
 	go func() {
 		for range 20 {
 			time.Sleep(500 * time.Millisecond)
 			if w.GetObject(me) != nil {
-				if !b.IsAlive() {
+				if !b.IsAlive() && !b.diedLast() {
 					b.emit("death", types.Death{})
 				}
 				return
@@ -696,6 +697,12 @@ func castMatchRepeating(spell uint32, count uint8, repeating bool) func(script.E
 		}
 		return nil
 	}
+}
+
+// diedLast: the event stream's last death or resurrection is a death.
+func (b *Bot) diedLast() bool {
+	last := b.lua.Bus.Query(script.Query{Types: []string{"death", "resurrected"}, Last: 1})
+	return len(last) == 1 && last[0].Type == "death"
 }
 
 // SetEventsFile keeps the event stream in path (JSONL), before Run.

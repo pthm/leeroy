@@ -1005,6 +1005,9 @@ type WorldClient struct {
 	maxPower  uint32
 	level     uint32
 	money     uint32 // PLAYER_FIELD_COINAGE (copper), private self updates
+	// serverHealth: the last UNIT_FIELD_HEALTH the server sent; death is its drop to 0. health may run ahead of
+	// it (predicted damage, the reclaim delay), so a prediction against a 1 HP ghost isn't a death.
+	serverHealth uint32
 
 	// SMSG_CORPSE_RECLAIM_DELAY — server sends ms until CMSG_RECLAIM_CORPSE is legal.
 	// .die self-kill sets PvP corpse (Unit::Kill with player killer) so delay is often 30s.
@@ -2273,9 +2276,6 @@ func (w *WorldClient) handleCorpseReclaimDelay(data []byte) {
 		w.health = 0
 		w.statsMu.Unlock()
 		w.log("SMSG_CORPSE_RECLAIM_DELAY delay_ms=%d ready_in=%s (forced HP=0)", delayMs, time.Duration(delayMs)*time.Millisecond)
-		if w.OnDeath != nil {
-			w.OnDeath()
-		}
 		return
 	}
 	w.statsMu.Unlock()
@@ -3766,13 +3766,9 @@ func (w *WorldClient) handleAttackerStateUpdate(data []byte) {
 
 		w.statsMu.Lock()
 		w.logAt(LogDebug, "Took %d damage from attacker GUID %d (HP: %d/%d)", totalDamage, attackerGUID, w.health, w.maxHealth)
-		if w.health > 0 && totalDamage >= w.health {
+		if w.health > 0 && totalDamage >= w.health { // predicted: the death comes with the server's health update
 			w.health = 0
 			w.statsMu.Unlock()
-			w.log("Bot has died! (killed by GUID %d)", attackerGUID)
-			if w.OnDeath != nil {
-				w.OnDeath()
-			}
 		} else if w.health > totalDamage {
 			w.health -= totalDamage
 			w.statsMu.Unlock()
@@ -4834,10 +4830,10 @@ func (w *WorldClient) readValuesUpdate(r *bytes.Reader, guid uint64) {
 				case UnitFieldHealth:
 					if guid == w.charGUID {
 						w.statsMu.Lock()
-						oldHealth := w.health
-						w.health = value
+						died := value == 0 && w.serverHealth > 0
+						w.health, w.serverHealth = value, value
 						w.statsMu.Unlock()
-						if value == 0 && oldHealth > 0 {
+						if died {
 							w.log("Bot has died! (health went to 0 in update)")
 							if w.OnDeath != nil {
 								w.OnDeath()
