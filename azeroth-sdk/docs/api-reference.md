@@ -678,7 +678,7 @@ Item is an item template and, for one you carry, where it is and its state. The 
 | `count?` | number |  |
 | `bag?` | number | 255 = your own slots (equipped 0-18, bags 19-22, backpack 23-38); 19-22 = inside that bag |
 | `bag_slot` | number |  |
-| `equipped?` | bool |  |
+| `equipped?` | bool | worn: equipment slots 0-18, or a bag in bag slots 19-22 |
 | `durability?` | number |  |
 | `max_durability?` | number |  |
 | `broken?` | bool | durability 0: it does nothing until repaired |

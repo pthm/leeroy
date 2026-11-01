@@ -73,7 +73,7 @@ var statNames = map[uint32]string{0: "mana", 1: "health", 3: "agility", 4: "stre
 	38: "attack_power", 39: "ranged_attack_power", 41: "healing", 42: "spell_damage", 43: "mana_per_5s", 44: "armor_penetration",
 	45: "spell_power", 46: "health_per_5s", 47: "spell_penetration", 48: "block_value"}
 
-// inventory type -> slot name and the equipment slots (0-18) it can go in
+// inventory type -> slot name and the equipment slots (0-18) or bag slots (19-22) it can go in
 // equipSlots: equipment slot names agents can pass (inventory slot index)
 var equipSlots = map[string]uint8{"head": 0, "neck": 1, "shoulder": 2, "shirt": 3, "chest": 4, "waist": 5, "legs": 6, "feet": 7,
 	"wrists": 8, "hands": 9, "finger1": 10, "finger2": 11, "trinket1": 12, "trinket2": 13, "back": 14, "main_hand": 15,
@@ -87,7 +87,7 @@ var invSlots = map[uint32]struct {
 	10: {"hands", []uint8{9}}, 11: {"finger", []uint8{10, 11}}, 12: {"trinket", []uint8{12, 13}}, 13: {"one_hand", []uint8{15, 16}},
 	14: {"shield", []uint8{16}}, 15: {"ranged", []uint8{17}}, 16: {"back", []uint8{14}}, 17: {"two_hand", []uint8{15}},
 	19: {"tabard", []uint8{18}}, 21: {"main_hand", []uint8{15}}, 22: {"off_hand", []uint8{16}}, 23: {"held_in_off_hand", []uint8{16}},
-	25: {"thrown", []uint8{17}}, 26: {"ranged", []uint8{17}}, 28: {"relic", []uint8{17}}}
+	18: {"bag", []uint8{19, 20, 21, 22}}, 25: {"thrown", []uint8{17}}, 26: {"ranged", []uint8{17}}, 28: {"relic", []uint8{17}}}
 
 // proficiency spells: item class (2 weapon, 4 armor) -> subclass -> the skill spell you need to know
 var proficiency = map[uint32]map[uint32]uint32{

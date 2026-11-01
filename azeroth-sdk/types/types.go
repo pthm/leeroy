@@ -307,7 +307,7 @@ type Item struct {
 	Count         uint32 `json:"count,omitempty"`
 	Bag           uint8  `json:"bag,omitempty" doc:"255 = your own slots (equipped 0-18, bags 19-22, backpack 23-38); 19-22 = inside that bag"`
 	BagSlot       uint8  `json:"bag_slot"`
-	Equipped      bool   `json:"equipped,omitempty"`
+	Equipped      bool   `json:"equipped,omitempty" doc:"worn: equipment slots 0-18, or a bag in bag slots 19-22"`
 	Durability    uint32 `json:"durability,omitempty"`
 	MaxDurability uint32 `json:"max_durability,omitempty"`
 	Broken        bool   `json:"broken,omitempty" doc:"durability 0: it does nothing until repaired"`

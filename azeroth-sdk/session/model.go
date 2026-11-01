@@ -174,7 +174,7 @@ func bagItems(w *client.WorldClient) []types.Item {
 		}
 		it := itemTemplate(w, o.Value(3))
 		it.GUID, it.Count, it.Bag, it.BagSlot = types.GUID(guid), max(o.Value(fieldItemStack), 1), bag, slot
-		it.Equipped = bag == 255 && slot < 19
+		it.Equipped = bag == 255 && slot < 23 // worn gear and the bags in bag slots 19-22
 		it.Soulbound = o.Value(fieldItemFlags)&1 != 0
 		it.Durability, it.MaxDurability = o.Value(fieldItemDur), o.Value(fieldItemMaxDur)
 		it.Broken = it.MaxDurability > 0 && it.Durability == 0
