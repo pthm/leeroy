@@ -37,6 +37,7 @@ type Runner struct {
 	elapsed time.Duration // a resumed run: how much of it was played before
 	paused  bool
 	mu      sync.Mutex
+	pidsMu  sync.Mutex // the pids file
 }
 
 // Options for a run.
@@ -115,6 +116,14 @@ func (r *Runner) Resume(message string) error {
 }
 
 func (r *Runner) run(resume bool, message string, quiet bool) error {
+	if resume {
+		if err := Running(r.dir); err != nil {
+			return err
+		}
+		if n := stopLeftovers(r.dir); n > 0 { // after a crash: what its supervisor left running
+			r.logf("stopped %d processes a crashed supervisor left running", n)
+		}
+	}
 	for _, p := range r.players {
 		if r.s.RequireFresh && !resume {
 			if _, err := os.Stat(p.ws); err == nil {

@@ -86,6 +86,11 @@ the message ends with a generated `WHAT CHANGED` section: the subjects of the co
 are uncommitted SDK changes (in a jj checkout git's `HEAD` is `@-`, so the working copy's changes count as uncommitted).
 Commit subjects are what agents read there, so they state what changed, not advice.
 
+`azbench status` reports `"state": "crashed"` when the supervisor's pid in `control.json` is gone (killed, or died
+without its cleanup), with `left_running`: how many of its sessions and agents (from `pids`) still run, unjudged.
+`resume` refuses while the supervisor's pid lives, and after a crash first stops what it left running (SIGTERM, so a
+session logs out; SIGKILL after 30 s). A pid in `pids` counts only while its command line still names the program.
+
 `azbench restart <run dir> <agent> --message <file>` does the same for one agent while the others play: its
 workspace docs are refreshed, its session restarts on the current build and its conversation resumes. Its judge
 keeps running.
@@ -108,8 +113,9 @@ keeps running.
 | `<agent>.record.jsonl` | the client-side event log for the viewer (positions, combat, chat, API calls) |
 | `<Char>.events.jsonl` | the character's event stream; the judge reads combat and cooperation from it |
 | `board/<Char>.json` | each judge's latest result (with `minutes_left`), read by `standings` |
-| `alerts.log` | agents that stopped early |
-| `control.json` | while the supervisor runs: its control API |
+| `alerts.log` | agents and sessions that stopped early |
+| `control.json` | while the supervisor runs: its control API (address and pid) |
+| `pids` | the process groups of the supervisor's running sessions and agents (empty once they stop) |
 | `paused` | the run was paused |
 | `team.json`, `report.json` | the results and the report card ([judge](../azbench/judge/README.md#azbench-report)) |
 | `replay.html` | the replay |

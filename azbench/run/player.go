@@ -162,6 +162,7 @@ func (p *player) login(ctx context.Context) error {
 				p.mu.Lock()
 				p.session = cmd
 				p.mu.Unlock()
+				p.r.savePids()
 				_, err := eval(ctx, p.port, fmt.Sprintf("LIB = %q; chat.join(%q, 1)", p.ws+"/", p.r.s.Channel))
 				return err
 			}
@@ -367,6 +368,7 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 	p.agent = cmd
 	p.agentDone = done
 	p.mu.Unlock()
+	p.r.savePids()
 	state := types.StateStart
 	if resume != "" {
 		state = types.StateResume
@@ -565,6 +567,7 @@ func (p *player) stopAgent() {
 	done := p.agentDone
 	p.agent = nil
 	p.mu.Unlock()
+	defer p.r.savePids()
 	if alive(cmd) {
 		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 		for i := 0; i < 50 && alive(cmd); i++ {
@@ -593,6 +596,7 @@ func (p *player) stopSession() {
 	if cmd == nil {
 		return
 	}
+	defer p.r.savePids()
 	if alive(cmd) {
 		calm(p.port)
 		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)

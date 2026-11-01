@@ -142,6 +142,7 @@ func benchCommand(cmd string, args []string) bool {
 		if *message == "" {
 			die("resume needs --message <file>: what each agent's conversation picks up with ($LEFT = minutes left)")
 		}
+		check(run.Running(dir)) // before the build: bin/ is in use while it runs
 		if !*noBuild {
 			check(run.Build(repo))
 		}
@@ -153,7 +154,7 @@ func benchCommand(cmd string, args []string) bool {
 		fmt.Print(string(out))
 	case "status":
 		pos := parse(1, "<run dir>")
-		out, err := run.Control(pos[0], "GET", "/status", nil)
+		out, err := run.Status(pos[0])
 		check(err)
 		fmt.Print(string(out))
 	case "restart":

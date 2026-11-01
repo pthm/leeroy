@@ -9,7 +9,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
+	"syscall"
 	"time"
 )
 
@@ -62,7 +67,7 @@ func (r *Runner) status() map[string]any {
 		}
 		ps = append(ps, st)
 	}
-	return map[string]any{"run": r.dir, "scenario": r.s.Name, "goal": r.s.Goal, "minutes": r.s.Minutes,
+	return map[string]any{"run": r.dir, "state": "running", "scenario": r.s.Name, "goal": r.s.Goal, "minutes": r.s.Minutes,
 		"minutes_left": int(r.minutesLeft() + 0.5), "players": ps}
 }
 
@@ -122,8 +127,14 @@ func Control(dir, method, path string, body any) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s isn't running (no control.json)", dir)
 	}
-	var c struct{ Addr string }
+	var c struct {
+		Addr string
+		Pid  int
+	}
 	json.Unmarshal(b, &c)
+	if !pidAlive(c.Pid) {
+		return nil, fmt.Errorf("%s: supervisor crashed (pid %d is gone); %d of its processes still run; azbench resume stops them", dir, c.Pid, len(leftovers(dir)))
+	}
 	j, _ := json.Marshal(body)
 	req, _ := http.NewRequest(method, "http://"+c.Addr+path, bytes.NewReader(j))
 	resp, err := http.DefaultClient.Do(req)
@@ -137,4 +148,92 @@ func Control(dir, method, path string, body any) ([]byte, error) {
 		return out.Bytes(), fmt.Errorf("%s", bytes.TrimSpace(out.Bytes()))
 	}
 	return out.Bytes(), nil
+}
+
+// Status is a run's status from its supervisor, or state "crashed" when control.json's pid is gone: the supervisor
+// died without its cleanup, and its agents and sessions (left_running) may still be playing, unjudged.
+func Status(dir string) ([]byte, error) {
+	b, err := os.ReadFile(filepath.Join(dir, "control.json"))
+	var c struct{ Pid int }
+	if err == nil && json.Unmarshal(b, &c) == nil && !pidAlive(c.Pid) {
+		out, _ := json.Marshal(map[string]any{"run": dir, "state": "crashed", "pid": c.Pid, "left_running": len(leftovers(dir))})
+		return append(out, '\n'), nil
+	}
+	return Control(dir, "GET", "/status", nil)
+}
+
+// Running is an error while a live supervisor holds the run (control.json's pid exists).
+// ponytail: a reused pid reads as alive; the message names it for the operator to check.
+func Running(dir string) error {
+	b, err := os.ReadFile(filepath.Join(dir, "control.json"))
+	var c struct{ Pid int }
+	if err == nil && json.Unmarshal(b, &c) == nil && pidAlive(c.Pid) {
+		return fmt.Errorf("%s: its supervisor (pid %d) is still running; azbench pause it first", dir, c.Pid)
+	}
+	return nil
+}
+
+func pidAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	err := syscall.Kill(pid, 0)
+	return err == nil || err == syscall.EPERM
+}
+
+// savePids writes <run>/pids: the process group of each session and agent this supervisor started and hasn't
+// stopped, with its program's name, so a resume after a crash can stop what it left behind.
+func (r *Runner) savePids() {
+	r.pidsMu.Lock()
+	defer r.pidsMu.Unlock()
+	var b strings.Builder
+	for _, p := range r.players {
+		p.mu.Lock()
+		for _, c := range []*exec.Cmd{p.session, p.agent} {
+			if c != nil && c.Process != nil {
+				fmt.Fprintf(&b, "%d %s\n", c.Process.Pid, filepath.Base(c.Path))
+			}
+		}
+		p.mu.Unlock()
+	}
+	os.WriteFile(filepath.Join(r.dir, "pids"), []byte(b.String()), 0o644)
+}
+
+// leftovers: the process groups in <run>/pids that still run, each only if its leader's command line still names
+// the program recorded for it (pids are reused).
+func leftovers(dir string) []int {
+	b, _ := os.ReadFile(filepath.Join(dir, "pids"))
+	var pids []int
+	for _, line := range strings.Split(string(b), "\n") {
+		var pid int
+		var name string
+		if n, _ := fmt.Sscan(line, &pid, &name); n != 2 {
+			continue
+		}
+		out, err := exec.Command("ps", "-o", "command=", "-p", strconv.Itoa(pid)).Output()
+		if err == nil && strings.Contains(string(out), name) {
+			pids = append(pids, pid)
+		}
+	}
+	return pids
+}
+
+// stopLeftovers stops the process groups a crashed supervisor left running: SIGTERM (a session logs out, ~20 s),
+// then SIGKILL after 30 s. It returns how many there were.
+func stopLeftovers(dir string) int {
+	pids := leftovers(dir)
+	for _, pid := range pids {
+		syscall.Kill(-pid, syscall.SIGTERM)
+	}
+	for end := time.Now().Add(30 * time.Second); time.Now().Before(end); time.Sleep(200 * time.Millisecond) {
+		if !slices.ContainsFunc(pids, pidAlive) {
+			return len(pids)
+		}
+	}
+	for _, pid := range pids {
+		if pidAlive(pid) {
+			syscall.Kill(-pid, syscall.SIGKILL)
+		}
+	}
+	return len(pids)
 }
