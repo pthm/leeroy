@@ -2,6 +2,9 @@ package session
 
 import (
 	"encoding/binary"
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -74,6 +77,49 @@ func TestCooldowns(t *testing.T) {
 	if s.castSpell != 0 {
 		t.Errorf("interrupted cast still casting")
 	}
+}
+
+// The GCD starts once per cast, at SPELL_START (Spell::prepare), as the server's does: a cast-time spell's SPELL_GO
+// doesn't restart it, an instant cast's GO with no START starts it, and an interrupted cast cancels it.
+func TestGCDOncePerCast(t *testing.T) {
+	dir, _ := filepath.Abs("../../data")
+	if _, err := os.Stat(filepath.Join(dir, "dbc", "Spell.dbc")); err != nil {
+		t.Skip("no game data in ../../data")
+	}
+	spellsDir, spellsOnce = dir, sync.Once{}
+	le := binary.LittleEndian
+	const me, heal, fort = uint64(0x2A), uint32(2050), uint32(1243) // Lesser Heal (1.5 s cast), Power Word: Fortitude
+	s := &agentState{cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, onEvent: map[uint32]cdRule{},
+		pushed: map[uint32]time.Time{}}
+	pkt := func(op uint16, spell uint32) {
+		p := append(append(packGUID(me), packGUID(me)...), 1)
+		s.onPacket(me, op, le.AppendUint32(le.AppendUint32(le.AppendUint32(p, spell), 0), 1500))
+	}
+	gcd := func(what string, spell uint32, want float64) {
+		t.Helper()
+		if ms := cdMS(s.cooldownLeft(spell)); ms > want || ms < want-50 {
+			t.Errorf("%s: %v ms, want %v", what, ms, want)
+		}
+	}
+
+	pkt(smsgSpellStart, heal)
+	gcd("casting", heal, 1500)
+	s.gcdUntil = time.Now() // the cast took its 1.5 s
+	pkt(smsgSpellGo, heal)
+	gcd("cast-time spell's GO", heal, 0)
+	gcd("another spell after it", fort, 0)
+
+	pkt(smsgSpellStart, fort) // the server sends a START for instant casts too
+	pkt(smsgSpellGo, fort)
+	gcd("instant with START", heal, 1500)
+	s.gcdUntil = time.Time{}
+	pkt(smsgSpellGo, fort)
+	gcd("instant GO, no START", heal, 1500)
+
+	s.gcdUntil = time.Time{}
+	pkt(smsgSpellStart, heal)
+	s.onPacket(me, smsgSpellFailure, append(le.AppendUint32(append(packGUID(me), 1), heal), 0x28))
+	gcd("interrupted", fort, 0)
 }
 
 // SMSG_INITIAL_SPELLS on login and on every far teleport: the cast spell comes with category 0, a category sibling

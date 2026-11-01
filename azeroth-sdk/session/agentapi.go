@@ -64,6 +64,7 @@ type agentState struct {
 	cd        map[uint32]time.Time // spell -> ready at
 	catCD     map[uint32]time.Time // spell category -> ready at
 	gcdUntil  time.Time
+	gcdSpell  uint32 // the spell whose SPELL_START started the GCD; its SPELL_GO doesn't restart it
 	onEvent   map[uint32]cdRule // spell -> the cooldown SMSG_COOLDOWN_EVENT starts (potions used in combat)
 	// itemCD: an item cast's cooldown, by the item's guid, or its entry when that's 0
 	itemCD      func(item uint64, entry, spell uint32) (cdRule, bool)
@@ -574,13 +575,16 @@ func (s *agentState) onPacket(me uint64, op uint16, data []byte) {
 		r.ReadByte() // cast count
 		spell, _ := u32(), u32()
 		sp := spellInfo(spell)
-		if sp != nil && sp.GCD > 0 {
+		// the server starts the GCD once, at Spell::prepare (SPELL_START); a GO with no START is a direct cast
+		if sp != nil && sp.GCD > 0 && (op == smsgSpellStart || s.gcdSpell != spell) {
 			s.gcdUntil = now.Add(time.Duration(sp.GCD) * time.Millisecond)
 		}
 		if op == smsgSpellStart {
+			s.gcdSpell = spell
 			s.castSpell, s.castUntil = spell, now.Add(time.Duration(u32())*time.Millisecond)
 			return
 		}
+		s.gcdSpell = 0
 		if s.castSpell == spell {
 			s.castSpell = 0
 		}
@@ -683,8 +687,12 @@ func (s *agentState) onPacket(me uint64, op uint16, data []byte) {
 	case smsgSpellFailure: // caster, cast count, spell, reason
 		if readPackedGUID(r) == me {
 			r.ReadByte()
-			if u32() == s.castSpell {
+			spell := u32()
+			if spell == s.castSpell {
 				s.castSpell = 0
+			}
+			if spell == s.gcdSpell { // interrupted while preparing: the server cancels its GCD (Spell::cancel)
+				s.gcdUntil, s.gcdSpell = time.Time{}, 0
 			}
 		}
 	case smsgSpellDelayed: // caster, ms: pushback from a hit
