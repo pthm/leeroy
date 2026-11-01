@@ -1,0 +1,100 @@
+# To investigate
+
+Things runs turned up that need a closer look (most from travel-models, 20261101-145156). Not agent-facing (the agents don't read this). Each has its evidence
+and how to reproduce it; move it into a spec or fix it, then delete it here.
+
+## Navigation
+
+### Navmesh islands with no way off (Lake Jorune, Terokkar)
+
+The Lake Jorune graveyard (1298, at -2434 4661 161, map 530) sits on a plateau the navmesh doesn't connect to
+anything: a flood from it reaches 57,573 sq yd (x -2683..-2340, y 4411..4804), against 36 million from Shattrath's
+graveyard. The terrain drops 66-83 degrees in every direction (24 bearings sampled), so it's real geometry, not tree
+holes. A player jumps off and takes the fall; the navmesh has no drop links, so routes from it fail
+(`terrain_unreachable`, or a partial path ending at the rim, -2367 4750 143). A death nearby resurrects there again, and so does a spirit healer res from a ghost run: the server picks the
+graveyard by the corpse's map and position but the ghost's current zone (`GameGraveyard.cpp` GetClosestGraveyard
+with nearCorpse), so with the corpse on another continent nothing matches and it falls back to a Terokkar
+graveyard, this one, every time (Cosimo about 35 min, Evander about 25 min and a hearth back to redo the route).
+
+- Seen: travel-models (20261101-145156), Cosimo (Opus) stuck on it for 20+ minutes.
+- Reproduce: `NAVMAP=530 go run ./azeroth-sdk/cmd/navprobe data -2434 4661 161 -1793 4932 -22` (ends 602 yd short).
+- Questions: how many graveyards (and other spots agents get put: quest teleports, summons) are on islands like
+  this? Should routes plan survivable drops (fall height against health), as off-mesh links or a route option?
+
+### Walking where a player can't: 60 degree navmesh slopes (Dun Morogh to the Wetlands over the mountains)
+
+The navmesh is built for 60 degree slopes (AzerothCore's mmaps default, for creatures; `pathfinding/collision.go`
+uses the same), but the 3.3.5 client stops a player walking up slopes past about 50 degrees, and the server doesn't
+check. So an SDK character can climb what a player can't: Dorian (Luna) went from Ironforge straight over the
+mountains to the Wetlands (up to z 445 at -4367 -2212, climbs of 55-58 degrees between samples, e.g. -4424 -2637
+308 -> 318 over 6.6 yd) instead of through Loch Modan and Dun Algaz, and reached Menethil in about 20 minutes.
+
+- Seen: travel-models (20261101-145156), a59.record.jsonl, from about 240 s after leaving the tram.
+- The client's limit: 50 degrees. [WoWee](https://github.com/Kelsidavis/WoWee) (`include/rendering/movement_limits.hpp`)
+  refuses ground whose normal's z is under cos 50 = 0.6428, the same for terrain, WMO and M2 surfaces, and steps over
+  0.6 yd, as retail does. (Their terrain skipped the check at first, so any mountain was walkable: the same bug.)
+- Plan: a second navmesh for the SDK only, at 50 degrees; the server keeps its 60 degree one, so creatures path as
+  before.
+  1. Build AzerothCore's mmaps_generator: the compose `ac-tools` service (`--profile tools`, target `tools`), from
+     our server source; there's no arm64 image to pull. About 10-20 minutes.
+  2. Generate from data/maps and data/vmaps into a new directory with `walkableSlopeAngle: 50` (mmaps-config.yaml),
+     the rest unchanged. The generator takes a map and `--threads`: the continents first (0, 1, 530, 571). Time
+     unmeasured; guess 1-2 hours on 12 cores.
+  3. Swap it in as data/mmaps between runs (sessions load tiles as they go: never under a live run).
+  4. `WalkingBody().MaxSlope` 60 -> 50 (`pathfinding/collision.go`).
+  5. Check: Dorian's leg (Ironforge to Menethil) should go through Loch Modan; routes with stairs and ramps that work
+     now still do (Northshire Abbey, Stormwind, Ironforge); look for places a player reaches that the stricter mesh
+     cuts off (a player can jump up a short steep stretch).
+- Don't run the generation during a benchmark run: it takes every core and would slow the agents.
+- Step height, separately: WoWee says 0.6 yd, our body takes 1.4 (the navmesh climbs 1.6) because the Northshire
+  Abbey stairs have 1.05 yd steps. Find out which is right before changing it.
+
+## SDK
+
+- **A walk outlives a jump.** A walk still running after a jump pulled Cosimo back up to the ledge it jumped from.
+  A jump should end the walk it interrupts, or say it didn't.
+- **No boats or zeppelins.** The SDK drops ONTRANSPORT whenever the character moves (`client/selfmove.go`), so it
+  can't ride one; the docs say so. Haiku and Sonnet worked that out at the Stormwind dock (The Bravery to Auberdine
+  is the intended route to Darnassus) and quit. Needs: boarding, riding along the transport's path, getting off.
+- **A death mid-walk is reported as `rooted`.** The server roots a corpse; `MovementLock()` (client/control.go)
+  returns `w.rooted` without checking dead or ghost first, so `act.go_to` says "server controls or blocks movement".
+  About 25 times across Cosimo, Evander and Faramund; Evander read it as "a spider rooted Evander ... and he died".
+  Check dead/ghost first and say `dead`.
+- **A portal's failure is reported as range.** `objects.use` on the Shattrath portal (183317) from 2.9 yd returned
+  "timeout: stand within ~5 yd"; the real event was `cast_failed` spell 17608 `targets_dead`. The plain-object path
+  (session/items.go, around 818-829) waits only for a GOBytes1 change, so it never sees `cast_failed`, and probably
+  not `teleported` on success either (unverified). Match those events there.
+- **Teleports to another map (the Dark Portal) are hard to walk into.** Trigger 4354 is a box 3.8 yd deep (15.5 wide);
+  `act.go_to` arrives within 3.5 yd (moving.md) and ignores a smaller tolerance, so the walk stops short; and once,
+  the teleport happened but the result still said "unreachable: walk completed outside the destination tolerance".
+  Same-map portals are walked into (moving.md); `areatrigger_teleport` boxes should be too, and a cross-map
+  transfer should end the walk as arrived.
+- **A false `resurrected` event on a long teleport as a ghost.** `stateEvents` (session/events.go) reads
+  `IsAlive() && !IsGhost()`, which flickers true while the player object is rebuilt. Cosimo believed it ("the server
+  resurrected me on arrival") with `me.ghost()` still true at 1 HP.
+- **Routes fail when the destination's z is a few yards off.** `route_unreachable` though the reachable point is
+  directly below ("path ends 5.7 yd short ... 5.7 yd below it"): Bertil 20 times through Stormwind (about 6 min),
+  Dorian 11 (about 5 min). Without a z, `act.go_to` uses `world.ground_z` (act.lua), which picked a floor 7 yd off
+  the navmesh at Darkshire. Project a destination onto the navmesh when z is missing or a little off.
+
+## azworld
+
+- **No portals, teleports or transports.** The working route to Darnassus (the Dark Portal, then Shattrath's portal)
+  was found only by querying `areatrigger_teleport` and `conditions` by hand (Cosimo, Evander, Faramund); Haiku and
+  Sonnet, with only "Boats and zeppelins aren't supported" to go on, decided there was no way and quit. A query for
+  where teleports, portals and transports go (systems, not a route) would answer it. Rules-only, per the doc rule.
+- **`route` fails past about 900 yd**: "plan needs more than 64 waypoints", or `terrain_unreachable` for roads that
+  are walked fine (Darkshire to Deadwind Pass). Haiku took a `terrain_unreachable` as proof there was no route.
+  Return a coarser or partial plan instead of failing, and find why the terrain grid breaks on that road.
+- **No flight paths:** `taxinodes_dbc`, `taxipath_dbc`, `taxipathnode_dbc` are empty, and nothing answers which flight
+  points connect. Didn't matter here (no money), will for travel with gold.
+- `azworld zone Stormwind City` unquoted looks up "Stormwind": join the arguments.
+
+## Harness
+
+- **An agent that exits early stays stopped.** Haiku quit with 78 minutes left and Sonnet with 64 (alerts.log; exit 0,
+  no restart). Decide whether an early exit before the goal gets one continuation prompt (the clock and score are
+  unchanged either way), or stands as the agent's choice and is reported as such.
+- **Claude Code permission prompts:** 13 across Haiku, Sonnet and Opus, for compound commands, `$VAR`, zsh range globs
+  and redirects to /tmp; Opus was refused a grep in azeroth-sdk outside client/, session/ and script/ while looking
+  for the jump snap-back. Widen the allowed reads to the whole SDK, and check the shell patterns.
