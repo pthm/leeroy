@@ -178,7 +178,7 @@ var methods = map[string]method{
 		if len(p.Types) == 0 {
 			p.Types = subscribed(e)
 		}
-		p.Query.Since = e.Bus.Seq()
+		p.Query.Since, p.Query.Wake = e.Bus.Seq(), true
 		if p.Since != nil {
 			p.Query.Since = *p.Since
 		}

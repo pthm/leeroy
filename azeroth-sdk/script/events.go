@@ -106,6 +106,7 @@ type Query struct {
 	Match string   `json:"match"`
 	Last  int      `json:"last"`
 	Limit int      `json:"limit"`
+	Wake  bool     `json:"-"` // what wakes a waiting agent: not its own chat (self)
 }
 
 func (q Query) wants(e Event) bool {
@@ -113,6 +114,9 @@ func (q Query) wants(e Event) bool {
 		return false
 	}
 	if len(q.Types) > 0 && !Matches(e, q.Types) {
+		return false
+	}
+	if q.Wake && selfChat(e) {
 		return false
 	}
 	if q.Match != "" {
@@ -138,6 +142,17 @@ func Matches(e Event, pats []string) bool {
 
 func glob(p, s string) bool {
 	return p == s || p == "*" || (strings.HasSuffix(p, "*") && strings.HasPrefix(s, strings.TrimSuffix(p, "*")))
+}
+
+// selfChat: the echo of the character's own chat, live or read back from the file
+func selfChat(e Event) bool {
+	switch d := e.Data.(type) {
+	case types.Chat:
+		return d.Self
+	case map[string]any:
+		return e.Type == "chat" && d["self"] == true
+	}
+	return false
 }
 
 // kindOf: a chat event's kind ("whisper", "npc_say", ...), live or read back from the file

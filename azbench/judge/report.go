@@ -434,7 +434,7 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 		why := "?"
 		for _, ev := range events {
 			t := int64(fnum(ev["t"]))
-			if t < c.s || t > c.e+1500 {
+			if t < c.s || t > c.e+1500 || get(ev["data"], "self") == true { // the agent's own chat doesn't wake it
 				continue
 			}
 			typ, kind := str(ev["type"]), str(get(ev["data"], "kind"))

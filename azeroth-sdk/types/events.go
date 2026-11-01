@@ -151,6 +151,7 @@ type Chat struct {
 	GUID    GUID   `json:"guid"`
 	Channel string `json:"channel,omitempty"`
 	Text    string `json:"text"`
+	Self    bool   `json:"self,omitempty" doc:"you sent it: the server's echo of your own say, yell, party, raid, guild, channel or emote chat (from is you), or of a whisper you sent (kind whisper_sent, from is who you whispered). Your own chat doesn't wake events.wait"`
 }
 
 // TravelRefused: the server turned a portal or an instance down.

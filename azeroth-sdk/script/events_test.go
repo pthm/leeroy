@@ -26,3 +26,17 @@ func TestMatchesKind(t *testing.T) {
 		}
 	}
 }
+
+// a waiting agent's query skips its own chat, live or read back from the file; other queries keep it
+func TestWakeSkipsOwnChat(t *testing.T) {
+	b := NewBus("")
+	b.Emit("chat", types.Chat{Kind: "say", Text: "mine", Self: true})
+	b.Emit("chat", map[string]any{"kind": "say", "text": "mine, from the file", "self": true})
+	b.Emit("chat", types.Chat{Kind: "say", Text: "theirs"})
+	if n := len(b.Query(Query{Types: []string{"chat:say"}, Wake: true})); n != 1 {
+		t.Fatalf("wake: %d events", n)
+	}
+	if n := len(b.Query(Query{Types: []string{"chat:say"}})); n != 3 {
+		t.Fatalf("query: %d events", n)
+	}
+}

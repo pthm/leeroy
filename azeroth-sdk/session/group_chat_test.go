@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/binary"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,7 @@ func TestInventoryCapacityCodeIsCanonical(t *testing.T) {
 func TestGroupChatPackets(t *testing.T) {
 	le := binary.LittleEndian
 	b := testBot()
+	b.config.CharacterName = "Me"
 	c := &controlState{watched: map[uint16]bool{}, names: map[uint64]string{}, acks: map[string]bool{}}
 	party := func(op uint32, name string, res uint32) []byte {
 		return le.AppendUint32(le.AppendUint32(append(le.AppendUint32(nil, op), name+"\x00"...), res), 0)
@@ -65,6 +67,16 @@ func TestGroupChatPackets(t *testing.T) {
 	c.onPacket(b, smsgMessageChat, chat(0x11, b.world.CharGUID(), "Trade - City", "wts"))
 	if !c.acks["whisper\x00hi there"] || !c.acks["channel\x00trade - city\x00wts"] {
 		t.Fatalf("echoes: %v", c.acks)
+	}
+	// both are your own chat: events with self, which don't wake a waiting agent
+	var chats []string
+	for _, ev := range b.lua.Bus.Wait(script.Query{Types: []string{"chat"}, Limit: 2}, 2*time.Second) {
+		if d := ev.Data.(types.Chat); d.Self {
+			chats = append(chats, d.Kind+" "+d.From)
+		}
+	}
+	if !slices.Contains(chats, "channel Me") || len(b.lua.Bus.Query(script.Query{Types: []string{"chat"}, Wake: true})) != 0 {
+		t.Fatalf("own chat: %q", chats)
 	}
 
 	var got []string

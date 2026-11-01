@@ -538,8 +538,10 @@ func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
 		case ok && m.Type == 0x11 && guid == w.CharGUID():
 			c.acks["channel\x00"+strings.ToLower(m.Channel)+"\x00"+m.Text] = true
 		}
-		// not your own chat, nor the server's echo of a whisper you sent
-		if ok && guid != w.CharGUID() && chatKind(m.Type) != "whisper_sent" {
+		if ok && guid == w.CharGUID() {
+			m.From = b.config.CharacterName
+		}
+		if ok {
 			if m.From == "" && guid != 0 {
 				m.From = c.names[guid]
 				if m.From == "" {
@@ -555,7 +557,8 @@ func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
 // second) on its own goroutine.
 func (c *controlState) chatEvent(b *Bot, m ChatMessage, guid uint64) {
 	ev := func(from string) {
-		b.emit("chat", types.Chat{Kind: chatKind(m.Type), From: from, GUID: types.GUID(guid), Channel: m.Channel, Text: m.Text})
+		self := guid == b.world.CharGUID() || chatKind(m.Type) == "whisper_sent"
+		b.emit("chat", types.Chat{Kind: chatKind(m.Type), From: from, GUID: types.GUID(guid), Channel: m.Channel, Text: m.Text, Self: self})
 	}
 	if m.From != "" || guid == 0 || guid>>48 != 0 {
 		ev(m.From)
