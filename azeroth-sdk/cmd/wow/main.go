@@ -4,10 +4,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"github.com/pthm/leeroy/azeroth-sdk/jqjson"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -39,7 +41,7 @@ Events shown shorten a list of more than 8 points (a route's waypoints) to {coun
 or --full reads it whole.
 Subscribed chat, invites, trades, script questions, script errors and slow ticks are also printed to stderr
 ("wow: chat ...", "wow: script_errors ..."), so a reply piped through jq or cut can't hide them.
-Session: the azsdk daemon on port $WOW_PORT (default 8090).
+Session: the azsdk daemon on port $WOW_PORT (default 8090), through its socket /tmp/azsdk-$WOW_PORT.sock when there is one.
 `
 
 var digits = regexp.MustCompile(`^[0-9]+$`)
@@ -52,7 +54,16 @@ func rpc(method string, params any) (v any, ok bool) {
 	if port == "" {
 		port = "8090"
 	}
-	resp, err := (&http.Client{Timeout: 11 * time.Minute}).Post("http://127.0.0.1:"+port+"/rpc", "application/json", strings.NewReader(body))
+	// the daemon's Unix socket (azsdk), else its TCP port: a TCP connection per call leaves a port in TIME_WAIT
+	dial := func(ctx context.Context, _, _ string) (net.Conn, error) {
+		var d net.Dialer
+		if c, err := d.DialContext(ctx, "unix", "/tmp/azsdk-"+port+".sock"); err == nil {
+			return c, nil
+		}
+		return d.DialContext(ctx, "tcp", "127.0.0.1:"+port)
+	}
+	client := &http.Client{Timeout: 11 * time.Minute, Transport: &http.Transport{DialContext: dial}}
+	resp, err := client.Post("http://127.0.0.1:"+port+"/rpc", "application/json", strings.NewReader(body))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "wow: can't reach the session on 127.0.0.1:%s (%v)\n", port, err)
 		return nil, false

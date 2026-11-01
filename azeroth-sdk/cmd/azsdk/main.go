@@ -6,13 +6,14 @@
 // The second form runs one character without a config file (one daemon per agent, as LEEROY's bench does).
 // -duration stops after that long (e.g. a short first login that only creates the character).
 // Each character logs in (creating it if needed) and stays in the world until the daemon stops. Agents
-// talk to http://<listen>/rpc (JSON-RPC 2.0); see api/.
+// talk to http://<listen>/rpc (JSON-RPC 2.0), also served on the Unix socket /tmp/azsdk-<port>.sock; see api/.
 package main
 
 import (
 	"encoding/json"
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -131,6 +132,17 @@ func main() {
 		log.Printf("agent API on http://%s/rpc (%d characters)", cfg.Listen, len(sessions))
 		log.Fatal(http.ListenAndServe(cfg.Listen, api.Handler(sessions)))
 	}()
+	// The same API on a Unix socket named by the port, which wow tries first: a TCP connection per wow call leaves
+	// its client port in TIME_WAIT for 30 s, and enough calls ran the machine out of ports.
+	if _, port, err := net.SplitHostPort(cfg.Listen); err == nil {
+		sock := "/tmp/azsdk-" + port + ".sock"
+		os.Remove(sock)
+		if l, err := net.Listen("unix", sock); err != nil {
+			log.Printf("agent API socket: %v", err)
+		} else {
+			go http.Serve(l, api.Handler(sessions))
+		}
+	}
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	ended := make(chan struct{})
