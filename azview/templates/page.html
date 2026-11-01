@@ -21,13 +21,27 @@
     <div class="rlegend"><span style="--c:var(--death)">in combat</span><span style="--c:#6b6a66">dead</span><span class="lg-ghost" style="--c:#8fb8ff">ghost</span><span style="--c:var(--accent)">selected</span></div>
   </section>
   <div id="mapwrap"><canvas id="map"></canvas>
-    <div class="mapbar"><select id="mapsel" aria-label="Map"></select><button id="fitbtn" title="Frame everyone and keep them in view (F)">Fit</button>
-      <button id="followbtn" aria-pressed="true" title="Auto follow: keep the selected player, the selected group, or everyone in view; dragging the map turns it off (A)">Auto follow</button>
-      <button title="Heatmap: where the players (or the selected player or group) spent their time, up to the playhead (H)" :aria-pressed="$store.v.heat" @click="$store.v.heat = !$store.v.heat">Heatmap</button>
-      <button title="Roads: the painted roads and the guards' patrol paths, the network the SDK's routes prefer (R)" :aria-pressed="$store.v.roads" @click="$store.v.roads = !$store.v.roads">Roads</button>
-      <button title="Navmesh: where the server lets players walk, shaded by height over the ground; a building's rooms and storeys show (N)" :aria-pressed="$store.v.nav" @click="$store.v.nav = !$store.v.nav">Navmesh</button>
-      <button id="zoombtn" aria-pressed="true" title="Auto zoom: keep the group, or everyone, in frame; scroll to set how close (Z)">Auto zoom</button></div>
-    <div class="hint">drag to pan · scroll to zoom · F to fit · A auto follow · Z auto zoom · H heatmap · R roads · N navmesh</div></div>
+    <div class="mapbar"><select id="mapsel" aria-label="Map"></select>
+      <span class="seg"><button id="fitbtn" title="Frame everyone and keep them in view (F)">Fit</button><button id="followbtn" aria-pressed="true" title="Auto follow: keep the selected player, the selected group, or everyone in view; dragging the map turns it off (A)">Auto follow</button><button id="zoombtn" aria-pressed="true" title="Auto zoom: keep the group, or everyone, in frame; scroll to set how close (Z)">Auto zoom</button></span>
+      <div class="layers" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
+        <button @click="open = !open" :aria-expanded="open" title="What the map shows (L)" @keydown.window.l="if (!['INPUT', 'SELECT'].includes($event.target.tagName)) open = !open">Layers ▾</button>
+        <div class="lpanel" x-show="open" x-cloak>
+          <h5>Overlays</h5>
+          <label title="Where the players (or the selected player or group) spent their time, or where an event happened, up to the playhead (H)"><input type="checkbox" x-model="$store.v.heat"> Heatmap
+            <select x-model="$store.v.heatKind" aria-label="Heatmap of" @click.stop><option value="time">time spent</option><option value="deaths">deaths</option><option value="kills">kills</option><option value="xp">XP gained</option><option value="taken">damage taken</option><option value="dealt">damage dealt</option></select></label>
+          <label title="The painted roads and the guards' patrol paths: the network the SDK's routes prefer (R)"><input type="checkbox" x-model="$store.v.roads"> Roads</label>
+          <label title="Where the server lets players walk, shaded by height over the ground; a building's rooms and storeys show (N)"><input type="checkbox" x-model="$store.v.nav"> Navmesh</label>
+          <h5>On the map</h5>
+          <label title="A short fading trail behind each player; a selected player's whole route is always drawn"><input type="checkbox" x-model="$store.v.trails"> Trails</label>
+          <label title="Dashed lines from each party member to its leader"><input type="checkbox" x-model="$store.v.groups"> Group lines</label>
+          <label title="A red line from each player to their target, with its health"><input type="checkbox" x-model="$store.v.targets"> Target lines</label>
+          <label title="Deaths, achievements, levels and quests where they happened"><input type="checkbox" x-model="$store.v.marks"> Event markers</label>
+          <label title="The creatures around the players: hostile red, neutral yellow, friendly green, dead grey"><input type="checkbox" x-model="$store.v.units"> Creatures</label>
+          <label title="How close a player can come before a hostile creature attacks: its detection range, a yard less for each level the nearest player is above it (5 to 45 yd), as the server works it out"><input type="checkbox" x-model="$store.v.aggro"> Aggro radii</label>
+          <label title="A pulsing ring on players in combat, and the damage and healing as it happens: dealt (yellow, over the target), taken (red), healed (green)"><input type="checkbox" x-model="$store.v.combat"> Combat</label>
+        </div>
+      </div></div>
+    <div class="hint">drag to pan · scroll to zoom · F fit · A follow · Z zoom · L layers · H heatmap · R roads · N navmesh</div></div>
   <aside>
     <div class="tabs" role="tablist">
       <button role="tab" @click="$store.v.tab = 'feed'" :aria-selected="$store.v.tab === 'feed'">Feed</button>

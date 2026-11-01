@@ -132,6 +132,33 @@ func CreatureRadii(ids []int) map[int]float64 {
 	return out
 }
 
+var detect = map[int]float64{}
+
+// CreatureDetection resolves creature entries to their detection range in yards (creature_template.detection_range,
+// 20 for most): the aggro radius against a player of their own level, a yard less for each level the player is above
+// them (Creature::GetAggroRange), cached.
+func CreatureDetection(ids []int) map[int]float64 {
+	nameMu.Lock()
+	defer nameMu.Unlock()
+	var missing []int
+	for _, id := range ids {
+		if _, ok := detect[id]; !ok {
+			missing = append(missing, id)
+			detect[id] = 20
+		}
+	}
+	if len(missing) > 0 {
+		for _, r := range MustRows(World(), "SELECT entry, detection_range FROM creature_template WHERE entry IN ("+idList(missing)+")") {
+			detect[atoi(r[0])] = atof(r[1])
+		}
+	}
+	out := make(map[int]float64, len(ids))
+	for _, id := range ids {
+		out[id] = detect[id]
+	}
+	return out
+}
+
 var quests = map[int]string{}
 
 // QuestTitles resolves quest ids to titles ("" when unknown), cached.

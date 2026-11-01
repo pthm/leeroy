@@ -18,17 +18,18 @@ const saved = (() => { try { return JSON.parse(localStorage.getItem("azview") ||
 const V = {
   t: 0, sel: null, grp: null, tab: "feed", sort: "score", bygroup: true,
   cats: Object.fromEntries(B.cats.map((c) => [c.key, c.on])),
-  metric: "dmg", range: "all", chart: "total", per: "0", heat: false, roads: false, nav: false,
+  metric: "dmg", range: "all", chart: "total", per: "0", heat: false, heatKind: "time", roads: false, nav: false,
+  trails: true, groups: true, targets: true, marks: true, units: true, aggro: false, combat: true,
   ...saved,
 };
 V.sel = V.grp = null; V.t = 0;
-const PERSIST = ["tab", "sort", "bygroup", "cats", "metric", "range", "chart", "per", "heat", "roads", "nav"];
+const PERSIST = ["tab", "sort", "bygroup", "cats", "metric", "range", "chart", "per", "heat", "heatKind", "roads", "nav", "trails", "groups", "targets", "marks", "units", "aggro", "combat"];
 document.addEventListener("alpine:init", () => {
   Alpine.store("v", V);
   Alpine.effect(() => { // any change to what the panels show: save it and refresh them
     const s = Alpine.store("v"), keep = Object.fromEntries(PERSIST.map((k) => [k, JSON.parse(JSON.stringify(s[k]))]));
     try { localStorage.setItem("azview", JSON.stringify(keep)); } catch {}
-    s.sel; s.grp; s.heat; s.roads; s.nav; panelsNow(); dirty = true;
+    s.sel; s.grp; for (const k of PERSIST) s[k]; panelsNow(); dirty = true;
   });
 });
 const store = () => window.Alpine?.store("v") ?? V;
@@ -94,6 +95,8 @@ async function need(t) {
     const overlap = from <= have.to && to >= have.from;
     for (const [n, a] of Object.entries(d.s)) { player(n, d.cls?.[n]); const got = a.map(rel); S[n] = overlap ? merge(S[n] ?? [], got) : got; }
     for (const [n, a] of Object.entries(d.u)) { const got = a.map(rel); U[n] = overlap ? merge(U[n] ?? [], got) : got; }
+    if (!overlap) HITS.length = 0;
+    for (const h of d.hits ?? []) addHit(rel(h));
     if (!overlap) for (const n of Object.keys(S)) if (!(n in d.s)) S[n] = [];
     have = overlap ? { from: Math.min(from, have.from), to: Math.max(to, have.to) } : { from, to };
     trim(); dirty = true; updateMaps();
@@ -123,6 +126,7 @@ es.addEventListener("s", (m) => { const d = JSON.parse(m.data), s = rel(d.s); pl
   if (have.to >= s.t - 10000) { ins(S[d.n] ??= [], s); have.to = Math.max(have.to, s.t); }
   if (R[d.n]?.length) R[d.n].push([s.t, s.x, s.y, s.m]); });
 es.addEventListener("u", (m) => { const d = JSON.parse(m.data), u = rel(d.u); live(u.t); if (have.to >= u.t - 10000) ins(U[d.n] ??= [], u); });
+es.addEventListener("hit", (m) => { addHit(rel(JSON.parse(m.data))); dirty = true; });
 es.addEventListener("mark", (m) => { const e = rel(JSON.parse(m.data)); ins(MARKS, e); live(e.t); });
 es.addEventListener("tick", (m) => { const [tt, k] = JSON.parse(m.data); ins(TICKS, { t: tt - B.start, ev: k }); });
 es.addEventListener("data", () => { lastLive = performance.now(); panelsDue = true; });
@@ -218,15 +222,60 @@ function drawDetail(xa, ya, xb, yb) {
   if (missing.length || fading) dirty = true; // more to ask for, or a tile still fading in: draw again next frame
 }
 const smooth = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+// ---------- combat and aggro ----------
+// HITS: damage and heals involving a player, {t, a (amount), k (d dealt, t taken, h healed), n (the player)}, in time
+// order: from /samples and /live. Drawn as combat text rising over the player (dealt: over their target) for 1.5 s.
+const HITS = [], HIT_MS = 1500;
+const addHit = (h) => { ins(HITS, h); if (HITS.length > 20000) HITS.splice(0, HITS.length - 15000); };
+function drawCombatText() {
+  const by = {};
+  cx.font = "bold 12px system-ui"; cx.textAlign = "center"; cx.lineWidth = 3; cx.strokeStyle = "#000c";
+  for (let i = upto(HITS, t) - 1; i >= 0 && t - HITS[i].t < HIT_MS; i--) {
+    const h = HITS[i], pp = at(h.n, t); if (!pp || pp.s.m !== M.id) continue;
+    const k = (by[h.n + h.k] = (by[h.n + h.k] ?? 0) + 1); if (k > 4) continue; // the latest four of each, per player
+    let x = pp.x, y = pp.y;
+    if (h.k === "d" && pp.s.tg && pp.s.tg[2] === M.id) [x, y] = pp.s.tg; // dealt: over what they hit
+    const [sx, sy] = scr(x, y), age = (t - h.t) / HIT_MS, jitter = ((Math.round(h.t / 97) % 5) - 2) * 7;
+    cx.globalAlpha = Math.max(0, 1 - age * age);
+    cx.fillStyle = h.k === "t" ? "#ff5050" : h.k === "h" ? "#50ff70" : "#ffe040";
+    const label = (h.k === "t" ? "-" : h.k === "h" ? "+" : "") + Math.round(h.a);
+    cx.strokeText(label, sx + jitter, sy - 14 - 26 * age); cx.fillText(label, sx + jitter, sy - 14 - 26 * age);
+  }
+  cx.globalAlpha = 1;
+  if (HITS.length && t - HITS[upto(HITS, t) - 1]?.t < HIT_MS) dirty = true; // still rising
+}
+// Aggro radii: around each hostile creature alive, how close a player can come before it attacks, as the server
+// works it out (Creature::GetAggroRange): its detection range, a yard less for each level the nearest player is
+// above it, at least 5 yd and at most 45.
+function drawAggro() {
+  const placed = [...P.keys()].map((n) => at(n, t)).filter((pp) => pp && pp.s.m === M.id && pp.s.a);
+  if (!placed.length) return;
+  const seen = new Set();
+  for (const n of P.keys()) {
+    const a = U[n]; if (!a) continue;
+    const u = a[upto(a, t) - 1]; if (!u || t - u.t > 5000 || u.m !== M.id) continue;
+    for (const [name, lvl, x, y, , state, , detect] of u.u) {
+      if ((state & 3) !== 0 || state & 4 || !detect) continue; // hostile and alive only
+      const key = `${name}/${Math.round(x)}/${Math.round(y)}`; if (seen.has(key)) continue; seen.add(key);
+      let near = placed[0], nd = Infinity;
+      for (const pp of placed) { const d = Math.hypot(pp.x - x, pp.y - y); if (d < nd) { nd = d; near = pp; } }
+      const radius = Math.max(5, Math.min(45, detect - ((near.s.l ?? lvl) - lvl)));
+      const [sx, sy] = scr(x, y), rp = radius * yd(), close = nd <= radius;
+      cx.beginPath(); cx.arc(sx, sy, rp, 0, 7);
+      cx.fillStyle = close ? "#ff30301f" : "#ff303010"; cx.fill();
+      cx.lineWidth = close ? 1.5 : 1; cx.strokeStyle = close ? "#ff4040b0" : "#ff404055"; cx.stroke();
+    }
+  }
+}
 // ---------- overlays ----------
 // The heatmap (/heat: one image of the map's visited area, where the players spent their time up to the playhead) is
 // fetched again when the map or the selection changes, or the playhead has moved 20 s (live: every 5 s).
 let heat = null, heatKey = "", heatT = -Infinity, heatAt = 0, heatLoading = false;
 function drawHeat() {
-  const s = store(), key = `${M.id}|${s.sel ?? ""}|${s.grp ?? ""}`, now = performance.now();
+  const s = store(), key = `${M.id}|${s.sel ?? ""}|${s.grp ?? ""}|${s.heatKind}`, now = performance.now();
   if (!heatLoading && (key !== heatKey || Math.abs(t - heatT) > 20000 || (liveFollow && now - heatAt > 5000))) {
     heatLoading = true; const tt = t;
-    fetch(`heat?m=${M.id}&t=${Math.round(B.start + tt)}&sel=${encodeURIComponent(s.sel ?? "")}&grp=${s.grp ?? ""}`).then((r) => r.json()).then((h) => {
+    fetch(`heat?m=${M.id}&kind=${s.heatKind}&t=${Math.round(B.start + tt)}&sel=${encodeURIComponent(s.sel ?? "")}&grp=${s.grp ?? ""}`).then((r) => r.json()).then((h) => {
       if (!h.png) { heat = null; return; }
       const im = new Image(); im.onload = () => { heat = { ...h, im }; dirty = true; }; im.src = h.png;
     }).catch(() => {}).finally(() => { heatLoading = false; heatKey = key; heatT = tt; heatAt = performance.now(); });
@@ -293,8 +342,10 @@ const groupMembers = () => { const s = store(); if (s.grp == null) return null; 
   return new Set([...P.keys()].filter((n) => at(n, t)?.s.grp === g)); };
 const focusSet = () => { const s = store(); return s.sel ? new Set([s.sel]) : groupMembers(); };
 let markerHits = [];
+let combatShown = false;
 function drawMap() {
   const r = cv.getBoundingClientRect(), s = store(), sel = s.sel;
+  combatShown = false;
   // the camera: on the followed player; or on the middle of the players it keeps in frame (the selected group, or
   // everyone), with auto zoom easing towards a fit of them (at least 80 yd across, 45 yd of room around), times zoomBias
   let centre = null;
@@ -330,8 +381,9 @@ function drawMap() {
   }
   // creatures around the players: hostile red, neutral yellow, friendly green, dead grey; named when zoomed in
   const UNIT_COLOR = ["#e04040", "#e8c040", "#40c050"], drawn = new Set();
+  if (s.aggro) drawAggro();
   cx.font = "11px system-ui"; cx.textAlign = "left";
-  for (const n of P.keys()) {
+  if (s.units) for (const n of P.keys()) {
     const a = U[n]; if (!a) continue;
     const u = a[upto(a, t) - 1]; if (!u || t - u.t > 5000 || u.m !== M.id) continue;
     for (const [name, lvl, x, y, hp, state, rad] of u.u) {
@@ -382,7 +434,7 @@ function drawMap() {
     if (i >= 0) for (const run of runs(route, 0, i, pp?.s.m === M.id ? pp : null)) fadeLine(p?.color ?? "#888", run, BEHIND, 0.35, [3, 1.8]);
   }
   // with nobody selected, a short trail behind everyone, fading out with age
-  if (!sel) for (const p of P.values()) {
+  if (!sel && s.trails) for (const p of P.values()) {
     const a = S[p.name], pp = at(p.name, t); if (!a || !pp || pp.s.m !== M.id) continue;
     const i = upto(a, t) - 1; let from = i; while (from > 0 && t - a[from - 1].t <= TRAIL) from--;
     const pts = runs(a.map((q) => [q.t, q.x, q.y, q.m]), from, i, pp).at(-1); if (!pts || pts.length < 2) continue;
@@ -390,7 +442,7 @@ function drawMap() {
   }
   // targets: a thin red line from each player to what they're targeting, and a health bar over it
   const bars = new Map(), focus = focusSet();
-  for (const n of P.keys()) {
+  if (s.targets) for (const n of P.keys()) {
     if (focus && !focus.has(n)) continue;
     const pp = at(n, t), tg = pp?.s.tg; if (!tg || pp.s.m !== M.id || tg[2] !== M.id || t - pp.s.t > 3000) continue;
     const [ax, ay] = scr(pp.x, pp.y), [bx, by] = scr(tg[0], tg[1]);
@@ -405,7 +457,7 @@ function drawMap() {
   }
   // groups: dashed line from each member to its leader
   const groups = new Map();
-  for (const n of P.keys()) { const pp = at(n, t); if (pp?.s.grp && pp.s.m === M.id) (groups.get(pp.s.grp) ?? groups.set(pp.s.grp, []).get(pp.s.grp)).push([n, pp]); }
+  if (s.groups) for (const n of P.keys()) { const pp = at(n, t); if (pp?.s.grp && pp.s.m === M.id) (groups.get(pp.s.grp) ?? groups.set(pp.s.grp, []).get(pp.s.grp)).push([n, pp]); }
   cx.setLineDash([4, 4]); cx.lineWidth = 1.5; cx.strokeStyle = "#fffc";
   for (const members of groups.values()) {
     const head = members.find(([n, pp]) => n === pp.s.ld) ?? members[0], [hx, hy] = scr(head[1].x, head[1].y);
@@ -415,7 +467,7 @@ function drawMap() {
   // event markers up to now (kept, with where they were drawn, for the hover tooltip)
   markerHits = [];
   cx.font = "bold 13px system-ui"; cx.textAlign = "center"; cx.strokeStyle = "#000"; cx.lineWidth = 1;
-  for (let i = 0, end = upto(MARKS, t); i < end; i++) {
+  for (let i = 0, end = s.marks ? upto(MARKS, t) : 0; i < end; i++) {
     const e = MARKS[i]; if (e.m !== M.id || e.x == null || (focus && !focus.has(e.n))) continue;
     const [sx, sy] = scr(e.x, e.y); if (sx < -10 || sy < -10 || sx > r.width + 10 || sy > r.height + 10) continue;
     const [g, c] = GLYPH[e.ev]; cx.fillStyle = css(c);
@@ -427,6 +479,11 @@ function drawMap() {
   for (const p of P.values()) {
     const pp = at(p.name, t); if (!pp || pp.s.m !== M.id) continue;
     const [sx, sy] = scr(pp.x, pp.y), dead = !pp.s.a, ghost = pp.s.g, r = playerR();
+    if (s.combat && pp.s.c && !dead) { // in combat: a pulsing red ring
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 160);
+      cx.beginPath(); cx.arc(sx, sy, r + 4 + 3 * pulse, 0, 7); cx.lineWidth = 2; cx.strokeStyle = `rgba(255, 64, 64, ${0.35 + 0.45 * pulse})`; cx.stroke();
+      combatShown = true;
+    }
     cx.beginPath(); cx.arc(sx, sy, r, 0, 7);
     cx.fillStyle = ghost ? "#fff4" : p.color; cx.fill();
     cx.lineWidth = sel === p.name ? 3 : 1.5; cx.strokeStyle = pp.s.c ? css("--death") : "#000"; cx.stroke();
@@ -438,6 +495,8 @@ function drawMap() {
     names.push([lx, ly, w]);
     cx.strokeText(label, lx, ly); cx.fillText(label, lx, ly);
   }
+  if (s.combat) drawCombatText();
+  if (combatShown) dirty = true; // the rings pulse: keep drawing
 }
 // sizes are true to the game's when zoomed in far enough (a creature's bounding radius, a player's 0.306 yd: a human
 // male's), with a floor so they stay visible further out

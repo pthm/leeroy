@@ -118,12 +118,12 @@ reads the files every 250 ms (starting over if one shrinks). The page asks for w
 | Endpoint | |
 |---|---|
 | `/` | the page, with the players, map names, labels, marks and seek bar ticks |
-| `/samples?from=&to=` | every player's samples and units samples in a window (unix ms), as the map draws them: position, state, group and leader, and the target with where it is; each creature with its size |
+| `/samples?from=&to=` | every player's samples and units samples in a window (unix ms), as the map draws them: position, level, state, group and leader, and the target with where it is; each creature with its size and detection range; and the damage and heals involving a player (combat text) |
 | `/route?n=` | a player's whole route, `[t, x, y, map]` per sample |
-| `/live` | new data as server-sent events: `s` (a sample), `u` (units), `mark`, `tick`, `data` (anything else) |
+| `/live` | new data as server-sent events: `s` (a sample), `u` (units), `hit` (combat text), `mark`, `tick`, `data` (anything else) |
 | `/panel/roster`, `/panel/pane` | the roster, and the feed or stats, as HTML for a moment and the UI state (`viewerQuery` in `viewer.js`) |
 | `/tile/<map>/<gx>/<gy>.png` | map tiles |
-| `/heat?m=&t=&sel=&grp=` | the heatmap: where the players (or the selected one or group) spent their time on a map up to t, as one image of the visited area (3 yd a pixel) and where it lies |
+| `/heat?m=&t=&kind=&sel=&grp=` | the heatmap: where the players (or the selected one or group) spent their time on a map up to t, or where they died, killed, gained XP, took or dealt damage (`kind`: time, deaths, kills, xp, taken, dealt), as one image of the visited area (3 yd a pixel) and where it lies |
 | `/nav/<map>/<level>/<gx>/<gy>/<sx>/<sy>.png` | a continent's navmesh (`world.NavTile`): the walkable floors of a square (level 0) or a sub-square, for the navmesh overlay |
 | `/roads/<map>/<gx>/<gy>`, `/patrols?m=&gx=&gy=` | the road network the SDK's routes prefer (`azworld roads`, `route`): a square's painted roads (from `data/roads`) as an amber image, and the friendly NPCs' patrol paths crossing it |
 
@@ -195,14 +195,20 @@ everywhere: the map follows it, the feed and the stats narrow to it.
   it keeps a selected group, or everyone, centred, and with Auto zoom (Z, on by default) zoomed to fit them. Auto follow (A, on by default) is that camera: off, the map stays where you put it; dragging the map turns it off, and clicking a card or a group header turns it back on; scrolling
   then sets how much closer or further than a snug fit (remembered), instead of zooming freely. Drag to pan (which
   stops the camera following); Fit (F) goes back to framing everyone and resets the auto zoom offset. A picker chooses the map (Auto: the followed player's, else where most players are).
-- **Overlays** (map bar toggles, remembered): **Heatmap** (H) shows where the players spent their time up to the
-  playhead (each step between position samples adds its seconds along its line; smoothed, on a log scale, in the
-  inferno colours over a slightly dimmed map), narrowed to the selected player or group; **Roads** (R) shows the
-  painted roads (amber) and the guards' and travellers' patrol paths (dashed); **Navmesh** (N) shows where the server
-  lets players walk on a continent, in the instances' floor-plan style: each pixel the lowest walkable floor (a
-  building's ground floor, not its roof) shaded by its height over the terrain (raised floors warm, cellars and caves
-  slate blue, the open ground faint), floors with another storey over them (indoors) opaque so a building's rooms show,
-  walls and drops darkened, the storeys above outlined.
+- **Layers** (the map bar's Layers menu, L; remembered). Overlays: **Heatmap** (H) of where the players (or the
+  selected player or group) spent their time up to the playhead, or where they died, killed, gained XP, or took or
+  dealt damage (each step between position samples adds its seconds along its line; an event adds its count or amount
+  at the player's position then; smoothed, in the inferno colours over a slightly dimmed map, time on a log scale and
+  events on a square root); **Roads** (R): the painted roads (amber) and the guards' and travellers' patrol paths
+  (dashed); **Navmesh** (N): where the server lets players walk on a continent, in the instances' floor-plan style
+  (each pixel the lowest walkable floor, a building's ground floor and not its roof, shaded by its height over the
+  terrain: raised floors warm, cellars and caves slate blue, the open ground faint; floors with another storey over
+  them opaque, so a building's rooms show; walls and drops darkened; the storeys above outlined). On the map, each
+  toggleable: trails, group lines, target lines, event markers, creatures, **aggro radii** (off by default: around
+  each hostile creature, how close a player can come before it attacks, as the server works it out in
+  `Creature::GetAggroRange`: its `detection_range`, a yard less for each level the nearest player is above it, 5 to
+  45 yd; brighter when a player is inside), and **combat** (a pulsing red ring on players in combat, and combat text:
+  damage dealt in yellow over the target, taken in red, healing in green, rising and fading over 1.5 s).
 - **Seek bar**: play/pause, speed (1x to 300x), Live (follow the newest data), ticks for deaths, achievements, levels,
   quests and chat; hover for the time and the events there. Keys: Space plays, Left/Right seek 10 s (Shift: 60 s), F fits the map, Z toggles auto zoom.
 - **Feed**: one list with filter pills for events (deaths, kills, achievements, levels, quests, loot, zones, groups,

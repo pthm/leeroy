@@ -32,10 +32,24 @@ type Heat struct {
 	PNG string  `json:"png"` // a data: URL; "" when nobody has been on the map
 }
 
-// HeatAt is where the players (all, or only those named) spent their time on map m up to t: each step between two
-// position samples adds its seconds along its line, smoothed, on a log scale, in the inferno colour scheme
-// (transparent where nobody went, through purple and red to pale yellow where they spent the most time).
-func (s *Store) HeatAt(m int, t float64, only map[string]bool) Heat {
+// heatKinds are what a heatmap can count: time spent (each step between position samples adds its seconds along its
+// line), or events where they happened (the player's position then), each weighted: one, or its amount.
+var heatKinds = map[string]struct {
+	ev     string
+	who    func(Ev) string // whose position; "" skips
+	weight func(Ev) float64
+}{
+	"deaths": {"death", func(e Ev) string { return S(e, "n") }, func(Ev) float64 { return 1 }},
+	"kills":  {"kill", func(e Ev) string { return S(e, "n") }, func(Ev) float64 { return 1 }},
+	"xp":     {"xp", func(e Ev) string { return S(e, "n") }, func(e Ev) float64 { return N(e, "amount") }},
+	"taken":  {"dmg", unitField("dst"), func(e Ev) float64 { return N(e, "amount") }},
+	"dealt":  {"dmg", unitField("src"), func(e Ev) float64 { return N(e, "amount") }},
+}
+
+// HeatAt is where the players (all, or only those named) spent their time on map m up to t, or where an event kind
+// happened (heatKinds), smoothed, on a log scale, in the inferno colour scheme (transparent where nothing happened,
+// through purple and red to pale yellow where the most did).
+func (s *Store) HeatAt(m int, t float64, only map[string]bool, kind string) Heat {
 	at := func(x Sample) float64 { return x.T }
 	x0, x1, y0, y1 := math.Inf(-1), math.Inf(1), math.Inf(-1), math.Inf(1) // north (max x) .. south, west (max y) .. east
 	for _, p := range s.players {
@@ -61,8 +75,20 @@ func (s *Store) HeatAt(m int, t float64, only map[string]bool) Heat {
 			grid[r*w+c][0] += v
 		}
 	}
+	hk, events := heatKinds[kind]
+	if events { // each event at its player's position then
+		list := s.byEv[hk.ev]
+		for _, e := range list[:uptoEv(list, t)] {
+			n := hk.who(e)
+			if p := s.byName[n]; p != nil && (only == nil || only[n]) {
+				if pp, ok := p.At(N(e, "t")); ok && pp.M == m {
+					add(pp.X, pp.Y, hk.weight(e))
+				}
+			}
+		}
+	}
 	for _, p := range s.players {
-		if only != nil && !only[p.Name] {
+		if events || only != nil && !only[p.Name] {
 			continue
 		}
 		tr := p.Track[:upto(p.Track, t, at)]
@@ -83,8 +109,12 @@ func (s *Store) HeatAt(m int, t float64, only map[string]bool) Heat {
 			}
 		}
 	}
-	grid = blur(grid, w, h, 2)
-	grid = blur(grid, w, h, 2) // twice: close to a gaussian
+	r := 2
+	if events {
+		r = 4 // events are points: spread wider than paths
+	}
+	grid = blur(grid, w, h, r)
+	grid = blur(grid, w, h, r) // twice: close to a gaussian
 	top := 0.0
 	for _, v := range grid {
 		top = math.Max(top, v[0])
@@ -95,6 +125,9 @@ func (s *Store) HeatAt(m int, t float64, only map[string]bool) Heat {
 			continue
 		}
 		f := math.Log1p(v[0]*20) / math.Log1p(top*20)
+		if events {
+			f = math.Sqrt(v[0] / top) // events are sparse: a log scale would light up only the worst spot
+		}
 		if f < 0.04 {
 			continue
 		}
@@ -155,7 +188,8 @@ func inferno(f float64) color.NRGBA {
 	return color.NRGBA{c[0], c[1], c[2], 255}
 }
 
-// heat serves HeatAt for ?m, t (unix ms) and the selection (sel, grp) as in the panels.
+// heat serves HeatAt for ?m, t (unix ms), kind (time, deaths, kills, xp, taken, dealt) and the selection (sel, grp) as
+// in the panels.
 func (v *server) heat(w http.ResponseWriter, r *http.Request) {
 	q := queryOf(r)
 	m, _ := strconv.Atoi(r.URL.Query().Get("m"))
@@ -167,7 +201,7 @@ func (v *server) heat(w http.ResponseWriter, r *http.Request) {
 			only[n] = true
 		}
 	}
-	h := v.s.HeatAt(m, q.T, only)
+	h := v.s.HeatAt(m, q.T, only, r.URL.Query().Get("kind"))
 	v.s.mu.RUnlock()
 	writeJSON(w, h)
 }

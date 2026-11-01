@@ -90,6 +90,7 @@ type Store struct {
 	items   map[int]world.ItemName
 	names   map[int]string  // creature names
 	radii   map[int]float64 // creature sizes (bounding radius, yd)
+	detect  map[int]float64 // creature detection ranges (the aggro radius at an equal level, yd)
 	zones   map[int]string  // area names
 	agents  map[string]any  // name -> meta.json
 	subs    map[chan liveMsg]bool
@@ -104,7 +105,7 @@ type liveMsg struct {
 
 func NewStore() *Store {
 	return &Store{byName: map[string]*Player{}, byEv: map[string][]Ev{}, lastGrp: map[string]string{}, npcSaid: map[string]Ev{},
-		items: map[int]world.ItemName{}, names: map[int]string{}, radii: map[int]float64{}, zones: map[int]string{}, agents: map[string]any{}, subs: map[chan liveMsg]bool{}}
+		items: map[int]world.ItemName{}, names: map[int]string{}, radii: map[int]float64{}, detect: map[int]float64{}, zones: map[int]string{}, agents: map[string]any{}, subs: map[chan liveMsg]bool{}}
 }
 
 // insert puts v into s, sorted by t; appending is the usual case.
@@ -529,9 +530,9 @@ func (s *Store) resolve(evs []Ev) {
 	}
 	items := world.ItemNames(loot)
 	var names map[int]string
-	var radii map[int]float64
+	var radii, detect map[int]float64
 	if len(units) > 0 {
-		names, radii = world.CreatureNames(units), world.CreatureRadii(units)
+		names, radii, detect = world.CreatureNames(units), world.CreatureRadii(units), world.CreatureDetection(units)
 	}
 	s.mu.Lock()
 	for id, it := range items {
@@ -541,6 +542,7 @@ func (s *Store) resolve(evs []Ev) {
 	for _, id := range units {
 		s.names[id] = names[id] // "" for an unknown entry: asked once
 		s.radii[id] = radii[id]
+		s.detect[id] = detect[id]
 	}
 	s.mu.Unlock()
 }
@@ -579,6 +581,11 @@ func (s *Store) broadcast(evs []Ev) {
 		case kind == "units" && p != nil:
 			msgs = append(msgs, s.liveJSON("u", map[string]any{"n": p.Name, "u": s.mapUnits(unitsOf(e))}))
 		default:
+			if (kind == "dmg" || kind == "heal") && N(e, "amount") > 0 {
+				for _, h := range mapHits(e) {
+					msgs = append(msgs, s.liveJSON("hit", h))
+				}
+			}
 			if markKinds[kind] {
 				msgs = append(msgs, s.liveJSON("mark", s.mapMark(e)))
 			}
@@ -615,7 +622,7 @@ func (s *Store) liveJSON(typ string, v any) liveMsg {
 
 // mapSample is a sample as the map draws it: where, state, group and leader, and the target with where it is.
 func (s *Store) mapSample(p *Player, a Sample) map[string]any {
-	out := map[string]any{"t": a.T, "x": a.X, "y": a.Y, "m": a.M, "a": a.Alive, "g": a.Ghost, "c": a.Combat}
+	out := map[string]any{"t": a.T, "x": a.X, "y": a.Y, "m": a.M, "a": a.Alive, "g": a.Ghost, "c": a.Combat, "l": a.Lvl}
 	if a.Grp != 0 {
 		out["grp"], out["ld"] = a.Grp, s.LeaderAt(a.Grp, a.T)
 	}
@@ -631,7 +638,8 @@ func (s *Store) mapSample(p *Player, a Sample) map[string]any {
 	return out
 }
 
-// mapUnits is a units sample as the map draws it: [name, level, x, y, health %, state, radius in yd] per creature.
+// mapUnits is a units sample as the map draws it: [name, level, x, y, health %, state, radius in yd, detection range
+// in yd] per creature.
 func (s *Store) mapUnits(u UnitsSample) map[string]any {
 	rows := make([][]any, len(u.U))
 	for i, r := range u.U {
@@ -639,9 +647,35 @@ func (s *Store) mapUnits(u UnitsSample) map[string]any {
 		if name == "" {
 			name = strconv.Itoa(int(r.Entry))
 		}
-		rows[i] = []any{name, r.Lvl, r.X, r.Y, r.HP, r.State, math.Round(s.radii[int(r.Entry)]*100) / 100}
+		rows[i] = []any{name, r.Lvl, r.X, r.Y, r.HP, r.State, math.Round(s.radii[int(r.Entry)]*100) / 100, s.detect[int(r.Entry)]}
 	}
 	return map[string]any{"t": u.T, "m": u.M, "u": rows}
+}
+
+// mapHits is a damage or heal event as the map's combat text: per player it concerns, the amount and how (d: dealt, by
+// the player, shown over their target; t: taken; h: healed), and that player.
+func mapHits(e Ev) []map[string]any {
+	unit := func(k string) (string, bool) {
+		u, _ := e[k].(map[string]any)
+		return S(u, "n"), u != nil && Truthy(u["pl"])
+	}
+	src, srcPl := unit("src")
+	dst, dstPl := unit("dst")
+	t, a := N(e, "t"), N(e, "amount")
+	var out []map[string]any
+	if S(e, "ev") == "heal" {
+		if dstPl {
+			out = append(out, map[string]any{"t": t, "a": a, "k": "h", "n": dst})
+		}
+		return out
+	}
+	if dstPl {
+		out = append(out, map[string]any{"t": t, "a": a, "k": "t", "n": dst})
+	}
+	if srcPl {
+		out = append(out, map[string]any{"t": t, "a": a, "k": "d", "n": src})
+	}
+	return out
 }
 
 // mapMark is a marked event with where it happened (its player's position then) and its line for the tooltip.

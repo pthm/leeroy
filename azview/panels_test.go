@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
+	"image/png"
 	"strings"
 	"testing"
 )
@@ -128,15 +130,32 @@ func TestHeatAt(t *testing.T) {
 		lines = append(lines, fmt.Sprintf(`{"t":%d,"ev":"pos","n":"A","x":%d,"y":0,"m":0,"alive":1}`, i*1000, max(0, i-30)), fmt.Sprintf(`{"t":%d,"ev":"pos","n":"B","x":500,"y":500,"m":0,"alive":1}`, i*1000))
 	}
 	s := storeOf(t, strings.Join(lines, "\n"))
-	h := s.HeatAt(0, 60000, nil)
+	h := s.HeatAt(0, 60000, nil, "time")
 	if h.PNG == "" || h.X0 < 530 || h.Y0 < 530 || h.W < 150 {
 		t.Fatalf("both players' ground, padded: %+v", h)
 	}
-	a := s.HeatAt(0, 60000, map[string]bool{"A": true})
+	a := s.HeatAt(0, 60000, map[string]bool{"A": true}, "time")
 	if a.X0 > 100 || a.W > 30 {
 		t.Fatalf("only A's ground: %+v", a)
 	}
-	if none := s.HeatAt(1, 60000, nil); none.PNG != "" {
+	if none := s.HeatAt(1, 60000, nil, "time"); none.PNG != "" {
 		t.Fatal("nobody on map 1")
+	}
+}
+
+// A death heatmap is where the deaths were, not the paths.
+func TestHeatDeaths(t *testing.T) {
+	s := storeOf(t, `{"t":0,"ev":"pos","n":"A","x":0,"y":0,"m":0,"alive":1}
+{"t":1000,"ev":"pos","n":"A","x":300,"y":0,"m":0,"alive":1}
+{"t":2000,"ev":"pos","n":"A","x":300,"y":300,"m":0,"alive":0}
+{"t":2000,"ev":"death","n":"A","killer":{"id":6,"n":"Kobold"}}`)
+	h := s.HeatAt(0, 3000, nil, "deaths")
+	img, _ := png.Decode(base64.NewDecoder(base64.StdEncoding, strings.NewReader(strings.TrimPrefix(h.PNG, "data:image/png;base64,"))))
+	at := func(x, y float64) uint32 { // alpha at a world point
+		_, _, _, a := img.At(int((h.Y0-y)/h.Res), int((h.X0-x)/h.Res)).RGBA()
+		return a
+	}
+	if at(300, 300) == 0 || at(0, 0) != 0 {
+		t.Fatalf("heat at the death (%d), none where A only walked (%d)", at(300, 300), at(0, 0))
 	}
 }

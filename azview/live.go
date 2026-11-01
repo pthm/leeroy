@@ -273,7 +273,13 @@ func (v *server) samples(w http.ResponseWriter, r *http.Request) {
 		}
 		cls[p.Name] = p.Cls
 	}
-	writeJSON(w, map[string]any{"s": out, "u": units, "cls": cls})
+	hits := []any{}
+	for _, e := range s.meter[uptoEv(s.meter, from-1):uptoEv(s.meter, to)] {
+		for _, h := range mapHits(e) {
+			hits = append(hits, h)
+		}
+	}
+	writeJSON(w, map[string]any{"s": out, "u": units, "cls": cls, "hits": hits})
 }
 
 // route is a player's whole route: [t, x, y, map] per sample.
@@ -291,7 +297,8 @@ func (v *server) route(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
-// live streams new data as server-sent events: s (a sample), u (units), mark, tick, data (anything else arrived).
+// live streams new data as server-sent events: s (a sample), u (units), hit (combat text), mark, tick, data (anything
+// else arrived).
 func (v *server) live(w http.ResponseWriter, r *http.Request) {
 	fl, _ := w.(http.Flusher)
 	w.Header().Set("content-type", "text/event-stream")

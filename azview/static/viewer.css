@@ -178,3 +178,18 @@ input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px;
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--line); background: var(--panel); }
 .filters label { cursor: pointer; white-space: nowrap; }
 .filters .only { margin-left: auto; }
+
+/* the map bar's layers menu */
+.mapbar .seg { display: inline-flex; gap: 0; margin: 0; }
+.mapbar .seg button { border-radius: 0; margin-left: -1px; }
+.mapbar .seg button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.mapbar .seg button:last-child { border-radius: 0 6px 6px 0; }
+.layers { position: relative; }
+.layers > button[aria-expanded="true"] { border-color: var(--accent); }
+.lpanel { position: absolute; top: calc(100% + 6px); left: 0; z-index: 6; min-width: 250px; padding: 8px 12px 10px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--panel); box-shadow: 0 6px 18px #000a; display: grid; gap: 5px; }
+.lpanel h5 { margin: 6px 0 2px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--quiet); }
+.lpanel h5:first-child { margin-top: 0; }
+.lpanel label { display: flex; align-items: center; gap: 8px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.lpanel select { margin-left: auto; padding-top: 1px; padding-bottom: 1px; font-size: 12px; }
+[x-cloak] { display: none !important; }
