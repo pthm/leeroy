@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"math/bits"
 	"sort"
 	"strings"
 	"sync"
@@ -209,13 +210,14 @@ func findItem(w *client.WorldClient, key uint64) *types.Item {
 
 // ---------- spells ----------
 
-func spellOf(w *client.WorldClient, id uint32) *types.Spell {
+func (b *Bot) spellOf(id uint32) *types.Spell {
+	w := b.world
 	sp := spellInfo(id)
 	if sp == nil {
 		return nil
 	}
 	return &types.Spell{ID: id, Name: sp.Name, Rank: sp.Rank, Level: sp.Level, CastMS: sp.CastMS, CooldownMS: sp.Cooldown,
-		CategoryCooldownMS: sp.CategoryCooldown, GCDMS: sp.GCD, Range: sp.Range, Cost: spellCost(sp, baseMana(w)),
+		CategoryCooldownMS: sp.CategoryCooldown, GCDMS: sp.GCD, Range: sp.Range, Cost: spellCost(sp, w.GetObject(w.CharGUID()), b.agent),
 		PowerType: name(powerNames, uint8(sp.PowerType)), Known: w.KnowsSpell(id),
 		Description: spellText(func(b *spelltext.Book) string { return b.DescriptionWith(id, scaling(w)) }),
 		Aura:        spellText(func(b *spelltext.Book) string { return b.TooltipWith(id, scaling(w)) })}
@@ -236,22 +238,54 @@ func spellText(f func(*spelltext.Book) string) string {
 	return ""
 }
 
-// unitFieldBaseMana: UNIT_FIELD_BASE_MANA (OBJECT_END + 0x0072), your mana without intellect
-const unitFieldBaseMana = 0x0078
+// unitFieldBaseMana: UNIT_FIELD_BASE_MANA (OBJECT_END + 0x0072), your mana without intellect; the power cost fields
+// (OBJECT_END + 0x007D and 0x0084) hold an int and a float per school
+const (
+	unitFieldBaseMana      = 0x0078
+	unitFieldPowerCostMod  = 0x0083
+	unitFieldPowerCostMult = 0x008A
+)
 
-func baseMana(w *client.WorldClient) uint32 {
-	if me := w.GetObject(w.CharGUID()); me != nil {
-		return me.Value(unitFieldBaseMana)
+// spellCost: what a cast costs you, worked out as SpellInfo::CalcPowerCost does: the flat cost plus a percentage of
+// base mana (max power for rage and energy), your school's flat cost modifier, the talents' and auras' cost spell mods
+// ((cost + flat) x (100 + pct)%), then your school's cost multiplier. In get_power() units (rage x10).
+func spellCost(sp *spellRec, me *client.WorldObject, s *agentState) uint32 {
+	cost, school := float32(sp.Cost), uint16(bits.TrailingZeros32(sp.school)%32)
+	if me != nil && sp.costPct > 0 {
+		switch {
+		case sp.PowerType == 0:
+			cost += float32(sp.costPct * me.Value(unitFieldBaseMana) / 100)
+		case sp.PowerType <= 4: // rage, focus, energy, happiness
+			cost += float32(sp.costPct * me.Value(client.UnitFieldMaxPower1+uint16(sp.PowerType)) / 100)
+		}
 	}
-	return 0
+	if me != nil {
+		cost += float32(int32(me.Value(unitFieldPowerCostMod + school)))
+	}
+	flat, pct := s.costMods(sp)
+	cost = float32(int32(max(0, (cost+float32(flat))*(1+float32(pct)/100))))
+	if me != nil {
+		cost = float32(int32(cost * (1 + math.Float32frombits(me.Value(unitFieldPowerCostMult+school)))))
+	}
+	return uint32(max(cost, 0))
 }
 
-// spellCost: a spell's flat cost, or its percentage of base mana (what the client shows for most 3.3.5 spells)
-func spellCost(sp *spellRec, base uint32) uint32 {
-	if sp.Cost == 0 && sp.costPct > 0 {
-		return sp.costPct * base / 100
+// costMods: the cost spell mods on a spell's family bits, as the client adds them up (one family's spells only).
+// ponytail: the server sends a total per bit, so a mod whose mask covers two of a spell's bits counts twice here;
+// keep the mods' own masks (from the talent and aura spells) if a cost ever reads double.
+func (s *agentState) costMods(sp *spellRec) (flat, pct int32) {
+	if s == nil || sp.family == 0 {
+		return 0, 0
 	}
-	return sp.Cost
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for bit := uint8(0); bit < 96; bit++ {
+		if sp.familyFlags[bit/32]&(1<<(bit%32)) != 0 {
+			flat += s.mods[spellMod{false, spellModCost, bit}]
+			pct += s.mods[spellMod{true, spellModCost, bit}]
+		}
+	}
+	return flat, pct
 }
 
 // ---------- quests ----------

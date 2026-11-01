@@ -33,6 +33,8 @@ const (
 	smsgCooldownEvent     = 0x135
 	smsgClearCooldown     = 0x1DE
 	smsgModifyCooldown    = 0x491
+	smsgSetFlatSpellMod   = 0x266
+	smsgSetPctSpellMod    = 0x267
 	msgChannelStart       = 0x139
 	msgChannelUpdate      = 0x13A
 	msgCorpseQuery        = 0x216
@@ -80,7 +82,17 @@ type agentState struct {
 	area        uint32
 	resFrom     uint64                 // who offered to resurrect us (SMSG_RESURRECT_REQUEST)
 	timers      map[uint32]mirrorTimer // breath, fatigue, fire
+	mods        map[spellMod]int32     // SMSG_SET_FLAT/PCT_SPELL_MODIFIER: the talents' and auras' total per mod
 }
+
+// spellMod: one of the server's spell modifier totals (Player::AddSpellMod): flat or percent, the SpellModOp, and the
+// bit of the spells' SpellFamilyFlags it applies to
+type spellMod struct {
+	pct     bool
+	op, bit uint8
+}
+
+const spellModCost = 14 // SPELLMOD_COST
 
 // mirrorTimer: SMSG_START_MIRROR_TIMER as received; value and scale in ms (scale < 0 counts down)
 type mirrorTimer struct {
@@ -108,7 +120,7 @@ func (t mirrorTimer) view(id uint32) types.MirrorTimer {
 
 func (b *Bot) setupAgentAPI() {
 	s := &agentState{cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, onEvent: map[uint32]cdRule{}, pushed: map[uint32]time.Time{}, earned: map[uint32]bool{},
-		criteria: map[uint32]uint64{}, timers: map[uint32]mirrorTimer{}}
+		criteria: map[uint32]uint64{}, timers: map[uint32]mirrorTimer{}, mods: map[spellMod]int32{}}
 	w := b.world
 	b.agent = s
 	s.itemCD = func(item uint64, entry, spell uint32) (cdRule, bool) {
@@ -165,7 +177,7 @@ func (b *Bot) setupAgentAPI() {
 
 	// ---------- spells ----------
 	e.Func("spells.info", "(id) → Spell?", "a spell's name, rank, cast time, cooldown, range and cost; nil if unknown", func(id uint32) any {
-		if sp := spellOf(w, id); sp != nil {
+		if sp := b.spellOf(id); sp != nil {
 			return *sp
 		}
 		return nil
@@ -567,6 +579,10 @@ func (s *agentState) onPacket(me uint64, op uint16, data []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch op {
+	case smsgSetFlatSpellMod, smsgSetPctSpellMod:
+		if len(data) >= 6 {
+			s.mods[spellMod{op == smsgSetPctSpellMod, data[1], data[0]}] = int32(binary.LittleEndian.Uint32(data[2:]))
+		}
 	case smsgSpellStart, smsgSpellGo:
 		item := readPackedGUID(r) // the item for item casts, else the caster
 		if readPackedGUID(r) != me {
@@ -825,6 +841,9 @@ type spellRec struct {
 	attrsEx2         uint32  // AttributesEx2 (auto-repeat 0x20)
 	dispel           uint32  // 1 magic, 2 curse, 3 disease, 4 poison
 	facing           uint32  // FacingCasterFlags: 1 = the target must be in front of you (SPELL_FACING_FLAG_INFRONT)
+	family           uint32  // SpellFamilyName (a class's spells share one), and its SpellFamilyFlags: spell mods pick spells by these bits
+	familyFlags      [3]uint32
+	school           uint32 // SchoolMask
 	casterState      uint32  // the aura state you need (Victory Rush: victory_rush), 0 = none
 	targetState      uint32  // the aura state the target needs (Execute: health_below_20)
 	Range            float32 `json:"range"` // max range against hostile targets, yards (melee spells ~5)
@@ -863,7 +882,7 @@ func loadSpells() {
 			spells[f(0)] = &spellRec{Name: str(f(136)), Rank: str(f(153)), Category: f(1), Cooldown: f(29),
 				CategoryCooldown: f(30), GCDCategory: f(205), GCD: f(206), PowerType: f(41), Cost: f(42),
 				Range: ranges[f(46)], CastMS: castTimes[f(28)], Level: f(38), costPct: f(204), attrs: f(4), attrsEx2: f(6), dispel: f(2),
-				facing: f(19), casterState: f(20), targetState: f(21)}
+				facing: f(19), casterState: f(20), targetState: f(21), family: f(208), familyFlags: [3]uint32{f(209), f(210), f(211)}, school: f(225)}
 			// the client's own Opening spells: SPELL_EFFECT_OPEN_LOCK (Effect[3] 71, MiscValue[3] 110 = lock type),
 			// hidden and unlogged (attributes 0x80|0x100); the lowest id for each lock type
 			for k := 0; k < 3; k++ {

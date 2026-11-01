@@ -25,7 +25,7 @@ func (b *Bot) spellCheck(id uint32, guid uint64) types.SpellCheck {
 	if sp == nil {
 		return fail("spell_data_unavailable")
 	}
-	cost := spellCost(sp, baseMana(w))
+	cost := spellCost(sp, w.GetObject(w.CharGUID()), b.agent)
 	d.PowerNeeded = &cost
 	if b.agent != nil {
 		ms := cdMS(b.agent.cooldownLeft(id))

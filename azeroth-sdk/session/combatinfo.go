@@ -263,7 +263,7 @@ func (b *Bot) setupCombatInfo() {
 			}
 			var best *types.Spell
 			for _, id := range spellsNamed(n) {
-				sp := spellOf(w, id)
+				sp := b.spellOf(id)
 				if sp == nil || !sp.Known || (want != "" && !strings.EqualFold(sp.Rank, want)) {
 					continue
 				}

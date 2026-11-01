@@ -1632,8 +1632,8 @@ func (b *Bot) CanCast(spellID uint32, targetGUID uint64) bool {
 	}
 	// Enough power? Base cost from Spell.dbc, in the same units as GetPower (rage/runic x10). It used to be
 	// a warrior-only table checked against the mana-only world.Power(), so rage abilities never passed.
-	if sp := spellInfo(spellID); sp != nil && sp.Cost > 0 && sp.PowerType == uint32(b.GetPowerType()) {
-		if cur, _ := b.GetPower(); cur < sp.Cost {
+	if sp := spellInfo(spellID); sp != nil && sp.PowerType == uint32(b.GetPowerType()) {
+		if cur, _ := b.GetPower(); cur < spellCost(sp, b.world.GetObject(b.world.CharGUID()), b.agent) {
 			return false
 		}
 	}

@@ -402,7 +402,7 @@ type Spell struct {
 	CategoryCooldownMS uint32  `json:"category_cooldown_ms"`
 	GCDMS              uint32  `json:"gcd_ms"`
 	Range              float32 `json:"range" doc:"yards against hostile targets (melee ~5)"`
-	Cost               uint32  `json:"cost" doc:"what a cast costs you now, in power_type (most mana costs are a share of your base mana)"`
+	Cost               uint32  `json:"cost" doc:"what a cast costs you now, in power_type (most mana costs are a share of your base mana), with your talents' and auras' cost modifiers as the server applies them"`
 	PowerType          string  `json:"power_type"`
 	Known              bool    `json:"known"`
 	Description        string  `json:"description,omitempty" doc:"what it does, with its numbers filled in as the client's tooltip shows them, attack power and spell power scaling from your character sheet (talents aren't added)"`

@@ -721,7 +721,7 @@ Everything in [Item](#item), plus:
 | `category_cooldown_ms` | number |  |
 | `gcd_ms` | number |  |
 | `range` | number | yards against hostile targets (melee ~5) |
-| `cost` | number | what a cast costs you now, in power_type (most mana costs are a share of your base mana) |
+| `cost` | number | what a cast costs you now, in power_type (most mana costs are a share of your base mana), with your talents' and auras' cost modifiers as the server applies them |
 | `power_type` | string |  |
 | `known` | bool |  |
 | `description?` | string | what it does, with its numbers filled in as the client's tooltip shows them, attack power and spell power scaling from your character sheet (talents aren't added) |
