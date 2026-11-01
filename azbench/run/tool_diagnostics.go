@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pthm/leeroy/azeroth-sdk/types"
@@ -17,6 +18,7 @@ type pendingTool struct {
 	background   bool
 }
 type toolDiagnostics struct {
+	mu      sync.Mutex // observe and finish (the transcript's goroutine) against busy (stopAgent)
 	runtime string
 	pending map[string]pendingTool
 	emit    func(types.Diagnostic)
@@ -109,7 +111,20 @@ func errorCode(m map[string]any) string {
 	}
 	return stringValue(object(m["error"])["code"])
 }
+
+// busy: a tool call started and its output isn't in the transcript yet
+func (d *toolDiagnostics) busy() bool {
+	if d == nil {
+		return false
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return len(d.pending) > 0
+}
+
 func (d *toolDiagnostics) observe(m map[string]any) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	at := time.Now().UnixMilli()
 	if s, ok := m["timestamp"].(string); ok {
 		if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
@@ -198,6 +213,8 @@ func (d *toolDiagnostics) observe(m map[string]any) {
 	}
 }
 func (d *toolDiagnostics) finish(at int64) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	ids := make([]string, 0, len(d.pending))
 	for id := range d.pending {
 		ids = append(ids, id)

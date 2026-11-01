@@ -39,6 +39,7 @@ type player struct {
 	agentEnd  time.Time     // when its agent must stop: the run's clock
 	result    []byte        // the judge's final line
 	agentDone chan struct{} // closed after transcript drain, usage snapshot and exit diagnostics
+	tools     *toolDiagnostics
 	diagMu    sync.Mutex
 	diagSeq   uint64
 	diagInit  bool
@@ -343,7 +344,7 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 	if err != nil {
 		return err
 	}
-	cmd := p.agentCmd(text, resume)
+	cmd := agentCommand(p, text, resume)
 	cmd.Stdin = nil
 	pr, stamp := io.Pipe()
 	cmd.Stdout, cmd.Stderr = stamp, stamp
@@ -367,6 +368,7 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 	p.mu.Lock()
 	p.agent = cmd
 	p.agentDone = done
+	p.tools = observer
 	p.mu.Unlock()
 	p.r.savePids()
 	state := types.StateStart
@@ -374,7 +376,14 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 		state = types.StateResume
 	}
 	p.harness(types.DiagnosticDetails{Component: "agent", State: state, Runtime: p.a.Runtime, ToolCoverage: true})
-	stop := time.AfterFunc(time.Until(end), func() { syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) })
+	stop := time.AfterFunc(time.Until(end), func() {
+		p.mu.Lock()
+		current := p.agent == cmd
+		p.mu.Unlock()
+		if current {
+			p.stopAgent()
+		}
+	})
 	go func() {
 		defer close(done)
 		cmd.Wait()
@@ -560,21 +569,36 @@ func (p *player) conversation() string {
 	return ""
 }
 
-// stopAgent ends the agent's process group.
+// stopAgent is the one way an agent stops (pause, restart, the goal's wrap-up, the end of the run). Killing the
+// runtime mid tool call loses the call's output (Codex then logs "custom tool call output is missing" on every later
+// request), so its tool processes stop first and the runtime gets up to 3 s to record their output; then the runtime
+// gets SIGINT, which Codex, Claude Code and opencode take as an interrupt, and SIGTERM and SIGKILL after 5 s each.
 func (p *player) stopAgent() {
 	p.mu.Lock()
 	cmd := p.agent
 	done := p.agentDone
+	tools := p.tools
 	p.agent = nil
 	p.mu.Unlock()
 	defer p.r.savePids()
 	if alive(cmd) {
-		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
-		for i := 0; i < 50 && alive(cmd); i++ {
-			time.Sleep(100 * time.Millisecond)
+		if procs := toolProcs(cmd.Process.Pid); len(procs) > 0 {
+			for _, pid := range procs {
+				syscall.Kill(pid, syscall.SIGTERM)
+			}
+			for end := time.Now().Add(toolGrace); alive(cmd) && tools.busy() && time.Now().Before(end); {
+				time.Sleep(50 * time.Millisecond)
+			}
 		}
-		if alive(cmd) {
-			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		cmd.Process.Signal(os.Interrupt) // the leader only: Codex's launcher passes it on to its binary
+		for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGKILL} {
+			for i := 0; i < 50 && alive(cmd); i++ {
+				time.Sleep(100 * time.Millisecond)
+			}
+			if !alive(cmd) {
+				break
+			}
+			syscall.Kill(-cmd.Process.Pid, sig)
 		}
 	}
 	if done != nil {
@@ -584,6 +608,47 @@ func (p *player) stopAgent() {
 			p.logf("agent transcript/usage snapshot did not finish within 10s")
 		}
 	}
+}
+
+// how long stopAgent waits for the runtime to record its stopped tools' output
+var toolGrace = 3 * time.Second
+
+// agentCommand builds the agent's process (a variable for the test)
+var agentCommand = (*player).agentCmd
+
+// runtimeProcs: the runtimes' own programs (Codex is a node launcher, its binary and a helper)
+var runtimeProcs = []string{"node", "codex", "codex-code-mode-host", "claude", "opencode"}
+
+// toolProcs: the agent's tool processes: every process under the runtime (root) that isn't one of the runtime's own,
+// with what runs under it. A tool call's shell may have exec'd its command, so they're told apart by the runtime's
+// names, not by being shells.
+func toolProcs(root int) []int {
+	out, err := exec.Command("ps", "-A", "-o", "pid=,ppid=,comm=").Output()
+	if err != nil {
+		return nil
+	}
+	kids, names := map[int][]int{}, map[int]string{}
+	for _, line := range strings.Split(string(out), "\n") {
+		var pid, ppid int
+		var comm string
+		if n, _ := fmt.Sscan(line, &pid, &ppid, &comm); n == 3 {
+			kids[ppid] = append(kids[ppid], pid)
+			names[pid] = filepath.Base(comm)
+		}
+	}
+	var tools []int
+	var walk func(pid int, tool bool)
+	walk = func(pid int, tool bool) {
+		for _, k := range kids[pid] {
+			t := tool || !slices.Contains(runtimeProcs, names[k])
+			if t {
+				tools = append(tools, k)
+			}
+			walk(k, t)
+		}
+	}
+	walk(root, false)
+	return tools
 }
 
 // stopSession: calm the character (out of combat), then stop the daemon, which logs out. The log is copied also

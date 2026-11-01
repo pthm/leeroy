@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -114,4 +115,60 @@ func TestSavePids(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(dir, "pids")); len(b) != 0 {
 		t.Fatalf("pids after stop: %q", b)
 	}
+}
+
+// stopAgent during a tool call (sleep 60): the tool stops first and the runtime records its output before it's
+// interrupted, well inside the 5 s it would get before a SIGTERM.
+func TestStopAgentKeepsToolOutput(t *testing.T) {
+	dir := t.TempDir()
+	r := &Runner{repo: dir, dir: dir}
+	r.ctx, r.cancel = context.WithCancel(context.Background())
+	defer r.cancel()
+	p := &player{r: r, a: config.Agent{Name: "a1", Char: "Aone", Runtime: "codex"}, dir: dir, ws: dir}
+	r.players = []*player{p}
+	agentCommand = func(*player, string, string) *exec.Cmd {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestAgentHelper$")
+		cmd.Env = append(os.Environ(), "AZBENCH_AGENT_HELPER=1")
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		return cmd
+	}
+	defer func() { agentCommand = (*player).agentCmd }()
+	if err := p.startAgent("go", "", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	p.mu.Lock()
+	cmd, tools := p.agent, p.tools
+	p.mu.Unlock()
+	for end := time.Now().Add(10 * time.Second); !tools.busy() || len(toolProcs(cmd.Process.Pid)) == 0; time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(end) {
+			t.Fatal("the tool call didn't start")
+		}
+	}
+	start := time.Now()
+	p.stopAgent()
+	if took := time.Since(start); took > 3*time.Second {
+		t.Fatalf("stop took %v", took)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "agent.jsonl"))
+	completed, interrupted := strings.Index(string(b), `"item.completed"`), strings.Index(string(b), `"turn.interrupted"`)
+	if completed < 0 || interrupted < completed {
+		t.Fatalf("transcript:\n%s", b)
+	}
+}
+
+// TestAgentHelper is the runtime for TestStopAgentKeepsToolOutput: one tool call (sleep 60), its output, then it
+// waits for an interrupt.
+func TestAgentHelper(t *testing.T) {
+	if os.Getenv("AZBENCH_AGENT_HELPER") != "1" {
+		return
+	}
+	ints := make(chan os.Signal, 1)
+	signal.Notify(ints, os.Interrupt)
+	fmt.Println(`{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"sleep 60"}}`)
+	sleep := exec.Command("sleep", "60")
+	sleep.Run()
+	fmt.Printf(`{"type":"item.completed","item":{"id":"item_1","type":"command_execution","exit_code":%d,"status":"failed"}}`+"\n", sleep.ProcessState.ExitCode())
+	<-ints
+	fmt.Println(`{"type":"turn.interrupted"}`)
+	os.Exit(0)
 }

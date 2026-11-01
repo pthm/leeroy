@@ -59,9 +59,12 @@ judge (in the supervisor), the prompt (`prompt.md`: who it plays, the goal, how 
 players, the notice, the rules) and the agent in its workspace until the clock runs out. `meta.json` is written once the runtime
 reports its model.
 
-When a judge is done the supervisor stops that agent (its whole process group), calms the character (stops its
-scripts and waits up to 90 s for it to leave combat: a character dropped mid-fight stays in the world and can die
-there) and logs it out. At the end: `team.json`, `report.json` and `replay.html`.
+When a judge is done the supervisor stops that agent, calms the character (stops its scripts and waits up to 90 s
+for it to leave combat: a character dropped mid-fight stays in the world and can die there) and logs it out. Every
+stop (the end, a pause, a restart) stops an agent the same way: its tool processes first, so the runtime records
+their output (up to 3 s; a runtime killed mid tool call loses it, and Codex then logs "custom tool call output is
+missing" on every later request), then SIGINT to the runtime, which takes it as an interrupt, and SIGTERM and
+SIGKILL to its process group after 5 s each. At the end: `team.json`, `report.json` and `replay.html`.
 
 An agent that exits with 2 or more minutes left (a Codex usage limit, a conversation that ended) is reported on
 stderr and in `alerts.log`, with the runtime's last error; bring it back with `azbench restart`. A session that
