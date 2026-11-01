@@ -133,12 +133,12 @@ func runReplay(args []string) {
 			}
 		}
 	}
-	// with transcripts (a bench run): player chat once, from the server log, instead of every agent's received copy
+	// with transcripts (a bench run): player chat, damage and heals from the server log; see ServerEvents
 	runChars := map[string]bool{}
 	for _, t := range transcripts {
 		runChars[t.Name] = true
 	}
-	keep := ClientChatFilter()
+	keep := ClientChatFilter(exists(ServerLog()))
 	var all []ev
 	for _, f := range logFiles {
 		b, err := os.ReadFile(f)
@@ -153,7 +153,7 @@ func runReplay(args []string) {
 	}
 	if len(runChars) > 0 {
 		if b, err := os.ReadFile(ServerLog()); err == nil {
-			all = append(all, ServerChat(string(b), runChars)...)
+			all = append(all, ServerEvents(string(b), runChars, map[string]string{})...)
 		}
 	}
 	for _, t := range transcripts {

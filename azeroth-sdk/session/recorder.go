@@ -132,12 +132,20 @@ func (b *Bot) startRecording() {
 
 	me := w.CharGUID()
 	// party changes: {grp (the server's group id, 0 = none), leader, members (names, including self)}. The server
-	// sends the list at login, before recording starts, so the current state is recorded first.
+	// sends the list at login, before recording starts, so the current state is recorded first. It also resends the
+	// list unchanged on many updates (about 50 times for each real change), so only changes are recorded.
+	var lastGroup map[string]any
+	record := func(g map[string]any) {
+		if !reflect.DeepEqual(g, lastGroup) {
+			lastGroup = g
+			b.Record("group", g)
+		}
+	}
 	onGroup := func(st client.GroupState) {
 		observed := observedGroup(me, st)
 		b.lua.RecordObservation("group_state", types.DiagnosticDetails{Group: &observed})
 		if !st.InGroup {
-			b.Record("group", map[string]any{"grp": 0, "members": []string{}})
+			record(map[string]any{"grp": 0, "members": []string{}})
 			return
 		}
 		members, leader := []string{b.config.CharacterName}, ""
@@ -150,7 +158,7 @@ func (b *Bot) startRecording() {
 				leader = m.Name
 			}
 		}
-		b.Record("group", map[string]any{"grp": st.GroupGUID & 0xFFFFFFFF, "leader": leader, "members": members})
+		record(map[string]any{"grp": st.GroupGUID & 0xFFFFFFFF, "leader": leader, "members": members})
 	}
 	onGroup(w.GroupState())
 	w.AddGroupListHook(onGroup)

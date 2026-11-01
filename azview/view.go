@@ -7,7 +7,6 @@ package main
 import (
 	_ "embed"
 	"encoding/json"
-	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -233,40 +232,57 @@ func RunSources(dir string) (records []string, transcripts []Transcript) {
 	return records, transcripts
 }
 
-// ServerChat is player chat from the server's recorder log: one event per message, n = sender, to = channel/party/
-// whisper target. (Every agent's client log has its own copy of each message it received, with no sender name.)
-func ServerChat(text string, chars map[string]bool) []Ev {
+// ServerEvents is what the server's recorder log has better than the agents' own records, for the run's characters:
+//   - player chat, one event per message, n = sender, to = channel/party/whisper target (every agent's client log has
+//     its own copy of each message it received, with no sender name)
+//   - damage and heals, every one involving a player (client logs have only melee and spell damage, no heals)
+//   - targets: a "tgt" event each time a character's target (the pos samples' tgt) changes, tgt absent for none.
+//     lastTgt holds each character's current target across calls, for a log read in pieces.
+func ServerEvents(text string, chars map[string]bool, lastTgt map[string]string) []Ev {
 	var out []Ev
 	for _, l := range lines(text) {
-		if !strings.Contains(l, `"ev":"chat"`) {
+		pos := strings.Contains(l, `"ev":"pos"`)
+		if !pos && !strings.Contains(l, `"ev":"chat"`) && !strings.Contains(l, `"ev":"dmg"`) && !strings.Contains(l, `"ev":"heal"`) {
 			continue
 		}
 		var e Ev
-		if json.Unmarshal([]byte(l), &e) == nil && e != nil && chars[S(e, "n")] {
-			out = append(out, e)
+		if json.Unmarshal([]byte(l), &e) != nil || e == nil || !chars[S(e, "n")] {
+			continue
 		}
+		if !pos {
+			out = append(out, e)
+			continue
+		}
+		n := S(e, "n")
+		tgt, _ := json.Marshal(e["tgt"])
+		if string(tgt) == lastTgt[n] {
+			continue
+		}
+		lastTgt[n] = string(tgt)
+		t := Ev{"t": e["t"], "ev": "tgt", "n": n, "p": e["p"]}
+		if e["tgt"] != nil {
+			t["tgt"] = e["tgt"]
+		}
+		out = append(out, t)
 	}
 	return out
 }
 
-var playerChat = map[float64]bool{1: true, 2: true, 3: true, 4: true, 6: true, 7: true, 9: true, 10: true, 17: true}
+// player chat (say, party, raid, guild, officer, yell, whisper and its echo, emote, channel, raid leader and warning,
+// party leader) and the achievement broadcast (the achievement event has it)
+var playerChat = map[float64]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 9: true, 10: true, 17: true, 39: true, 40: true, 48: true, 51: true}
 
-// ClientChatFilter keeps client events minus player chat (that comes from ServerChat), and NPC speech once per
-// (speaker, text, 2 s), not once per listener.
-func ClientChatFilter() func(Ev) bool {
-	seen := map[string]bool{}
+// ClientChatFilter keeps client events minus player chat (that comes from ServerEvents). NPC speech is kept once per
+// listener: the page merges the copies and knows who heard it. With the server log (server), damage comes from there too.
+// ponytail: the server log's existence stands in for "it covers this run"; check its time range if old runs lose damage.
+func ClientChatFilter(server bool) func(Ev) bool {
 	return func(e Ev) bool {
-		if S(e, "ev") != "chat" {
-			return true
-		}
-		if playerChat[N(e, "type")] { // say, party, raid, guild, yell, whisper (+ echo), emote, channel
+		switch {
+		case server && S(e, "ev") == "dmg":
 			return false
+		case S(e, "ev") == "chat":
+			return !playerChat[N(e, "type")]
 		}
-		k := fmt.Sprintf("%v|%v|%d", e["from"], e["msg"], int64(math.Floor(N(e, "t")/2000)))
-		if seen[k] {
-			return false
-		}
-		seen[k] = true
 		return true
 	}
 }
@@ -282,11 +298,23 @@ func TrackRow(p Ev, t0 float64) []any {
 		p["money"], p["alive"], p["ghost"], p["combat"], p["zone"], p["m"], grp}
 }
 
-// NameUnits fills in creature names the client couldn't resolve (SDK recordings carry only entry ids).
+// NameUnits fills in what SDK recordings carry only as ids: creature names, quest titles, achievement titles and points.
 func NameUnits(events []Ev) {
 	var refs []map[string]any
-	var ids []int
+	var ids, questIDs []int
+	var questEvs []Ev
 	for _, e := range events {
+		switch S(e, "ev") {
+		case "quest":
+			if S(e, "title") == "" {
+				questEvs = append(questEvs, e)
+				questIDs = append(questIDs, int(N(e, "id")))
+			}
+		case "achievement":
+			if a, ok := world.Achievements()[int(N(e, "id"))]; ok && S(e, "title") == "" {
+				e["title"], e["points"] = a.Title, a.Points
+			}
+		}
 		for _, k := range []string{"src", "dst", "victim", "killer", "target", "tgt"} {
 			u, ok := e[k].(map[string]any)
 			if !ok || Truthy(u["pl"]) || Truthy(u["n"]) || !Truthy(u["id"]) {
@@ -294,6 +322,12 @@ func NameUnits(events []Ev) {
 			}
 			refs = append(refs, u)
 			ids = append(ids, int(N(u, "id")))
+		}
+	}
+	if len(questEvs) > 0 {
+		titles := world.QuestTitles(questIDs)
+		for _, e := range questEvs {
+			e["title"] = titles[int(N(e, "id"))]
 		}
 	}
 	if len(refs) == 0 {
@@ -316,7 +350,13 @@ func Page(title, mapURL string, data any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	s := strings.Replace(page, "__TITLE__", title, 1)
+	tmpl := page
+	if f := os.Getenv("AZVIEW_PAGE"); f != "" { // working on the page: read it from disk on every request
+		if b, err := os.ReadFile(f); err == nil {
+			tmpl = string(b)
+		}
+	}
+	s := strings.Replace(tmpl, "__TITLE__", title, 1)
 	s = strings.Replace(s, "__MAP__", mapURL, 1)
 	return strings.Replace(s, "__DATA__", string(b), 1), nil
 }

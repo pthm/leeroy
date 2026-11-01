@@ -55,13 +55,15 @@ func runLive(args []string) {
 		transcriptOf[t.Path] = t.Name
 		files = append(files, t.Path)
 	}
-	// with a run: player chat from the server log (once, with sender names), not each agent's received copy
+	// with a run: player chat (once, with sender names), damage and heals from the server log; see ServerEvents
 	runChars := map[string]bool{}
 	for _, t := range transcripts {
 		runChars[t.Name] = true
 	}
-	keep := ClientChatFilter()
-	if _, err := os.Stat(serverLog); len(runChars) > 0 && err == nil {
+	_, err := os.Stat(serverLog)
+	keep := ClientChatFilter(err == nil)
+	lastTgt := map[string]string{} // each character's target as last seen in the server log
+	if len(runChars) > 0 && err == nil {
 		files = append(files, serverLog)
 	}
 	port := "8800"
@@ -119,7 +121,7 @@ func runLive(args []string) {
 				if name, ok := transcriptOf[f]; ok {
 					got = TranscriptEvents(lines, name)
 				} else if f == serverLog && len(runChars) > 0 {
-					got = ServerChat(lines, runChars)
+					got = ServerEvents(lines, runChars, lastTgt)
 				} else {
 					for _, e := range ParseLines(lines) {
 						if len(runChars) == 0 || keep(e) {

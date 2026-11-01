@@ -105,6 +105,50 @@ func CreatureNames(ids []int) map[int]string {
 	return out
 }
 
+var quests = map[int]string{}
+
+// QuestTitles resolves quest ids to titles ("" when unknown), cached.
+func QuestTitles(ids []int) map[int]string {
+	nameMu.Lock()
+	defer nameMu.Unlock()
+	var missing []int
+	for _, id := range ids {
+		if _, ok := quests[id]; !ok {
+			missing = append(missing, id)
+			quests[id] = ""
+		}
+	}
+	if len(missing) > 0 {
+		for _, r := range MustRows(World(), "SELECT ID, LogTitle FROM quest_template WHERE ID IN ("+idList(missing)+")") {
+			quests[atoi(r[0])] = r[1]
+		}
+	}
+	out := make(map[int]string, len(ids))
+	for _, id := range ids {
+		out[id] = quests[id]
+	}
+	return out
+}
+
+// Achievement is an achievement's title and points, from Achievement.dbc.
+type Achievement struct {
+	Title  string
+	Points int
+}
+
+// Achievements reads Achievement.dbc once (empty without extracted client data).
+var Achievements = sync.OnceValue(func() map[int]Achievement {
+	out := map[int]Achievement{}
+	d, err := ReadDBC("Achievement.dbc")
+	if err != nil {
+		return out
+	}
+	for r := 0; r < d.Rows(); r++ {
+		out[int(d.U(r, 0))] = Achievement{Title: d.S(r, 4), Points: int(d.U(r, 39))} // fields: id, ..., title (enUS) 4, ..., points 39
+	}
+	return out
+})
+
 // ItemName is an item's name and quality (0 poor ... 5 legendary).
 type ItemName struct {
 	Name string `json:"name"`
