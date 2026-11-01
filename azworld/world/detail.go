@@ -25,8 +25,8 @@ import (
 // minimap's baked lighting; the buildings, trees and the rest are drawn over it from their models (drawModels).
 
 // DetailVersion changes when detail tiles do (2: the models drawn, 3: textured, 4: detail everywhere, sharp terrain
-// lighting), so browsers don't keep old ones.
-const DetailVersion = 4
+// lighting, 5: water), so browsers don't keep old ones.
+const DetailVersion = 5
 
 // MaxDetail is the finest detail level: a square cut into 2^4 x 2^4 sub-squares, 0.13 yd a pixel.
 const MaxDetail = 4
@@ -395,7 +395,14 @@ func drawModels(out *image.RGBA, p *paint, xN, yW, res float64) {
 	}
 	var tris []prep
 	bx0, bx1, by0, by1 := x0-float64(Z)*res, x0, y0-float64(Z)*res, y0
+	var water []waterTri
 	modelsIn(m, bx0, bx1, by0, by1, func(pl *placed) {
+		for k, w := range pl.water {
+			if max(w[0][0], w[1][0], w[2][0]) >= float32(bx0) && min(w[0][0], w[1][0], w[2][0]) <= float32(bx1) &&
+				max(w[0][1], w[1][1], w[2][1]) >= float32(by0) && min(w[0][1], w[1][1], w[2][1]) <= float32(by1) {
+				water = append(water, waterTri{w, pl.waterType[k]})
+			}
+		}
 		pl.trisIn(bx0, bx1, by0, by1, func(t int32) {
 			tri := pl.tris[t]
 			mat := pl.mats[pl.triMat[t]]
@@ -436,7 +443,8 @@ func drawModels(out *image.RGBA, p *paint, xN, yW, res float64) {
 			tris = append(tris, q)
 		})
 	})
-	if len(tris) == 0 {
+	waterZ, waterT := waterLayer(m, water, xN, yW, res, n)
+	if len(tris) == 0 && waterZ == nil {
 		return
 	}
 	// in bands of rows, in parallel: each band draws every triangle's part in its rows
@@ -520,7 +528,10 @@ func drawModels(out *image.RGBA, p *paint, xN, yW, res float64) {
 					px[k] = uint8(math.Min(255, float64(px[k])*f))
 				}
 			}
-			if leafTop[i] > surface(i) { // foliage over it, at most 60% opaque
+			if wi := r*n + c; waterZ != nil && waterZ[wi] > surface(i)+0.02 { // under water: the water over it
+				blendWater(px, waterT[wi], float64(waterZ[wi]-surface(i)))
+			}
+			if leafTop[i] > surface(i) && (waterZ == nil || leafTop[i] > waterZ[r*n+c]) { // foliage over it, at most 60% opaque
 				a := float64(leafCol[i][3]) / 255 * leafOpacity
 				for k := 0; k < 3; k++ {
 					px[k] = uint8(float64(px[k])*(1-a) + float64(leafCol[i][k])*a)
@@ -603,6 +614,90 @@ func terrainShade(m uint32, x0, y0, res float64, W, rad int) (sharp, blurred []f
 		blurred[i] = v[0]
 	}
 	return sharp, blurred
+}
+
+type waterTri struct {
+	v  [3][3]float32
+	ty int8
+}
+
+// waterLayer is the liquid surface's height at each pixel of an n x n tile (-inf: none) and its type: the terrain's
+// water (lakes, rivers, the sea: the server's map files, every yard or so) and the WMOs' (Stormwind's canals). nil if
+// there's none.
+func waterLayer(m uint32, wmo []waterTri, xN, yW, res float64, n int) ([]float32, []int8) {
+	z := make([]float32, n*n)
+	ty := make([]int8, n*n)
+	for i := range z {
+		z[i] = float32(math.Inf(-1))
+	}
+	any := false
+	step := max(1, int(math.Round(1/res)))
+	for r := 0; r < n; r += step {
+		for c := 0; c < n; c += step {
+			_, w, _ := Sample(m, xN-(float64(r)+float64(step)/2)*res, yW-(float64(c)+float64(step)/2)*res)
+			if math.IsNaN(w) {
+				continue
+			}
+			any = true
+			for rr := r; rr < min(n, r+step); rr++ {
+				for cc := c; cc < min(n, c+step); cc++ {
+					z[rr*n+cc] = float32(w)
+				}
+			}
+		}
+	}
+	for _, t := range wmo {
+		var R, C, H [3]float64
+		for k, v := range t.v {
+			R[k], C[k], H[k] = (xN-float64(v[0]))/res, (yW-float64(v[1]))/res, float64(v[2])
+		}
+		r0, r1 := max(0, int(math.Floor(min(R[0], R[1], R[2])))), min(n-1, int(math.Ceil(max(R[0], R[1], R[2]))))
+		c0, c1 := max(0, int(math.Floor(min(C[0], C[1], C[2])))), min(n-1, int(math.Ceil(max(C[0], C[1], C[2]))))
+		d := (C[1]-C[2])*(R[0]-R[2]) + (R[2]-R[1])*(C[0]-C[2])
+		if r0 > r1 || c0 > c1 || math.Abs(d) < 1e-9 {
+			continue
+		}
+		for r := r0; r <= r1; r++ {
+			for c := c0; c <= c1; c++ {
+				pr, pc := float64(r)+0.5, float64(c)+0.5
+				l1 := ((C[1]-C[2])*(pr-R[2]) + (R[2]-R[1])*(pc-C[2])) / d
+				l2 := ((C[2]-C[0])*(pr-R[2]) + (R[0]-R[2])*(pc-C[2])) / d
+				l3 := 1 - l1 - l2
+				if l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6 {
+					continue
+				}
+				if h := float32(l1*H[0] + l2*H[1] + l3*H[2]); h > z[r*n+c] {
+					z[r*n+c], ty[r*n+c] = h, t.ty
+					any = true
+				}
+			}
+		}
+	}
+	if !any {
+		return nil, nil
+	}
+	return z, ty
+}
+
+// waterColor is each liquid's colour and how opaque it is at most: water, ocean, magma, slime.
+var waterColor = [4]struct {
+	rgb [3]float64
+	max float64
+}{{[3]float64{38, 82, 104}, 0.85}, {[3]float64{24, 58, 86}, 0.9}, {[3]float64{235, 100, 25}, 0.97}, {[3]float64{80, 150, 40}, 0.9}}
+
+// blendWater lays a liquid over a pixel, more opaque the deeper it is (the bed shows through the shallows), with a
+// pale edge where it laps the shore.
+func blendWater(px []uint8, ty int8, depth float64) {
+	w := waterColor[max(0, min(3, int(ty)))]
+	a := math.Min(w.max, 0.4+0.11*depth)
+	rgb := w.rgb
+	if depth < 0.35 && ty < 2 { // the shore's edge
+		e := 0.3 * (1 - depth/0.35)
+		rgb = [3]float64{rgb[0]*(1-e) + 205*e, rgb[1]*(1-e) + 220*e, rgb[2]*(1-e) + 225*e}
+	}
+	for k := 0; k < 3; k++ {
+		px[k] = uint8(float64(px[k])*(1-a) + rgb[k]*a)
+	}
 }
 
 func lum(c [3]float64) float64 { return 0.3*c[0] + 0.59*c[1] + 0.11*c[2] }

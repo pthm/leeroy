@@ -23,6 +23,8 @@ type placed struct {
 	tris                   [][3]uint32
 	triMat                 []int32
 	mats                   []placedMat
+	water                  [][3][3]float32 // a WMO's liquid surface, two triangles a tile, world coordinates
+	waterType              []int8          // per water triangle: 0 water, 1 ocean, 2 magma, 3 slime
 }
 
 type placedMat struct {
@@ -61,7 +63,7 @@ func modelFile(name string, wmo bool) *clientdata.Model {
 
 // place is a model put into the world by transform tw, or nil.
 func place(m *clientdata.Model, tw func(pathfinding.Vector3) pathfinding.Vector3) *placed {
-	if m == nil || len(m.Tris) == 0 {
+	if m == nil || len(m.Tris) == 0 && len(m.Liquids) == 0 {
 		return nil
 	}
 	p := &placed{uv: m.UV, tris: m.Tris, triMat: m.TriMat, xMin: math.MaxFloat32, yMin: math.MaxFloat32, xMax: -math.MaxFloat32, yMax: -math.MaxFloat32}
@@ -73,6 +75,26 @@ func place(m *clientdata.Model, tw func(pathfinding.Vector3) pathfinding.Vector3
 	}
 	for _, mt := range m.Materials {
 		p.mats = append(p.mats, placedMat{tex: texOf(mt.Texture), alphaTest: mt.AlphaTest})
+	}
+	for _, l := range m.Liquids { // a WMO's water: each tile's corners, moved into the world like its vertices
+		at := func(x, y int) [3]float32 {
+			w := tw(pathfinding.Vector3{X: l.Corner[0] + float32(x)*clientdata.LiquidTile, Y: l.Corner[1] + float32(y)*clientdata.LiquidTile, Z: l.Heights[y*l.XVerts+x]})
+			return [3]float32{w.X, w.Y, w.Z}
+		}
+		for y := 0; y < l.YVerts-1; y++ {
+			for x := 0; x < l.XVerts-1; x++ {
+				ty := l.Tiles[y*(l.XVerts-1)+x]
+				if ty < 0 {
+					continue
+				}
+				a, b, c, d := at(x, y), at(x+1, y), at(x+1, y+1), at(x, y+1)
+				p.water = append(p.water, [3][3]float32{a, b, c}, [3][3]float32{a, c, d})
+				p.waterType = append(p.waterType, ty, ty)
+				for _, v := range [4][3]float32{a, b, c, d} {
+					p.xMin, p.xMax, p.yMin, p.yMax = min(p.xMin, v[0]), max(p.xMax, v[0]), min(p.yMin, v[1]), max(p.yMax, v[1])
+				}
+			}
+		}
 	}
 	p.cells = map[[2]int32][]int32{}
 	for t, tri := range m.Tris {

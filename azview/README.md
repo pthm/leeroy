@@ -159,7 +159,10 @@ server's own transform (`pathfinding.PlacementWorld`; checked against the vmaps 
 Each pixel is the highest surface's texture, lit by its face's slope from the north-west, outlined where it drops to
 a wall, casting a short shadow (the sun 45 degrees up, at most 10 yd). Foliage (alpha-tested textures) is a layer of
 its own, at most 60% opaque (`leafOpacity`), so the roads under Elwynn's canopy still show. A model is loaded the first
-time a tile needs it (Stormwind's city: ~1 s), then kept. Detail tiles need the
+time a tile needs it (Stormwind's city: ~1 s), then kept. Water is a layer between: the terrain's (lakes, rivers, the
+sea: its level from the server's map files) and the WMOs' (Stormwind's canals: each building group's liquid tiles),
+laid over the ground and whatever models are under its surface, more opaque the deeper it is, pale where it laps the
+shore; lava and slime in their own colours. Models above it (bridges, boats, the trees on the bank) are drawn over it. Detail tiles need the
 game client: `$WOW_CLIENT`, else `~/Downloads/ChromieCraft_3.3.5a`; without it the minimap is upscaled as before.
 
 The page requests tiles with `?v=<tileVersion>` (3 with client data, 1 without). Tiles are cached for a day, so the

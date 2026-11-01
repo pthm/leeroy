@@ -51,3 +51,18 @@ func TestMipsOfThin(t *testing.T) {
 		}
 	}
 }
+
+// A WMO's water triangle fills the pixels under it at its height; deeper water hides more of the bed.
+func TestWaterLayer(t *testing.T) {
+	tri := waterTri{[3][3]float32{{100, 100, 5}, {100, 90, 5}, {90, 90, 5}}, 0} // a right triangle, x and y 90..100
+	z, ty := waterLayer(9999, []waterTri{tri}, 100, 100, 1, 16)                   // no terrain on map 9999
+	if z == nil || z[1*16+8] != 5 || ty[1*16+8] != 0 || z[8*16+1] > -1e30 {
+		t.Fatalf("water under the triangle's half only: %v", z[:32])
+	}
+	shallow, deep := []uint8{200, 200, 200, 255}, []uint8{200, 200, 200, 255}
+	blendWater(shallow, 0, 0.5)
+	blendWater(deep, 0, 5)
+	if deep[0] >= shallow[0] {
+		t.Fatalf("deep water hides more of a pale bed: shallow %v deep %v", shallow, deep)
+	}
+}
