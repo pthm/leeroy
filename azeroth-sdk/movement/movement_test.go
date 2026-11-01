@@ -554,28 +554,17 @@ func parseMovingTestData(path string) (events []logEvent, first, last navigation
 }
 
 func TestMovementController_LadderTurningPoints_SimilarToManualLog(t *testing.T) {
-	// Locate the manual test data file. Try common locations relative to workspace and $HOME.
-	candidates := []string{
-		"~/Downloads/moving_test_data.txt",
-		"../moving_test_data.txt",
-		"../../moving_test_data.txt",
-		"testdata/moving_test_data.txt",
-	}
+	// The manual test data: $MOVING_TEST_DATA, else testdata/ or a parent directory.
+	candidates := []string{os.Getenv("MOVING_TEST_DATA"), "testdata/moving_test_data.txt", "../moving_test_data.txt", "../../moving_test_data.txt"}
 	var dataPath string
-	for _, c := range candidates {
-		p := c
-		if strings.HasPrefix(p, "~/") {
-			if home, err := os.UserHomeDir(); err == nil {
-				p = filepath.Join(home, strings.TrimPrefix(p, "~/"))
-			}
-		}
-		if _, err := os.Stat(p); err == nil {
+	for _, p := range candidates {
+		if _, err := os.Stat(p); p != "" && err == nil {
 			dataPath = p
 			break
 		}
 	}
 	if dataPath == "" {
-		t.Skip("moving_test_data.txt not found in expected locations; place it under ~/Downloads or adjust test")
+		t.Skip("moving_test_data.txt not found: set MOVING_TEST_DATA or put it in testdata/")
 	}
 
 	logEvents, first, last, err := parseMovingTestData(dataPath)
