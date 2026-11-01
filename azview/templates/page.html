@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<link rel="stylesheet" href="static/viewer.css">
+<script src="static/htmx.min.js"></script>
+<script src="static/idiomorph-ext.min.js"></script>
+<script defer src="static/viewer.js"></script>
+<script defer src="static/alpine.min.js"></script>
+</head>
+<body x-data hx-ext="morph">
+<main>
+  <section id="roster">
+    <div class="rhead"><b>Players</b> <span class="muted">· {{len .Boot.Players}}</span>
+      <label class="muted" title="Sort by"><select aria-label="Sort by" x-model="$store.v.sort">
+        <option value="score">score</option><option value="level">level</option><option value="hp">health</option><option value="name">name</option><option value="cls">class</option></select></label>
+      <label class="muted" title="Group players by party"><input type="checkbox" x-model="$store.v.bygroup"> groups</label></div>
+    <div class="rlist" id="rlist" hx-get="panel/roster" hx-trigger="panels from:body" hx-vals="js:{...viewerQuery()}" hx-swap="morph:innerHTML" hx-sync="this:queue last"></div>
+    <div class="rlegend"><span style="--c:var(--death)">in combat</span><span style="--c:#6b6a66">dead</span><span class="lg-ghost" style="--c:#8fb8ff">ghost</span><span style="--c:var(--accent)">selected</span></div>
+  </section>
+  <div id="mapwrap"><canvas id="map"></canvas>
+    <div class="mapbar"><select id="mapsel" aria-label="Map"></select><button id="fitbtn" title="Frame everyone and keep them in view (F)">Fit</button>
+      <button id="zoombtn" aria-pressed="true" title="Auto zoom: keep the group, or everyone, in frame; scroll to set how close (Z)">Auto zoom</button></div>
+    <div class="hint">drag to pan · scroll to zoom · F to fit · Z for auto zoom</div></div>
+  <aside>
+    <div class="tabs" role="tablist">
+      <button role="tab" @click="$store.v.tab = 'feed'" :aria-selected="$store.v.tab === 'feed'">Feed</button>
+      <button role="tab" @click="$store.v.tab = 'stats'" :aria-selected="$store.v.tab === 'stats'">Stats</button>
+    </div>
+    <div id="panebar">
+      <div class="filters" x-show="$store.v.tab === 'feed'">
+        {{range .Cats}}<button class="pill" style="--c:{{.Color}}" :aria-pressed="!!$store.v.cats.{{.Key}}" @click="$store.v.cats.{{.Key}} = !$store.v.cats.{{.Key}}">{{.Label}}</button>{{end}}
+      </div>
+      <div class="filters" x-show="$store.v.tab === 'stats'" x-cloak>
+        <select aria-label="Metric" x-model="$store.v.metric">{{range .Metrics}}<optgroup label="{{.Group}}">{{range .Items}}<option value="{{.Key}}">{{.Label}}</option>{{end}}</optgroup>{{end}}</select>
+        <select aria-label="Time range" x-model="$store.v.range">{{range .Ranges}}<option value="{{.Key}}">{{.Label}}</option>{{end}}</select>
+      </div>
+    </div>
+    <div class="pane" id="pane" hx-get="panel/pane" hx-trigger="panels from:body" hx-vals="js:{...viewerQuery()}" hx-swap="morph:innerHTML" hx-sync="this:queue last"></div>
+  </aside>
+</main>
+<footer>
+  <button id="play" aria-label="Play">▶</button>
+  <button id="live" aria-pressed="true" title="Follow the newest data">● Live</button>
+  <select id="speed" aria-label="Speed"><option value="1">1×</option><option value="10">10×</option><option value="30" selected>30×</option><option value="60">60×</option><option value="300">300×</option></select>
+  <div id="clock">0:00 / 0:00</div>
+  <div class="tlwrap"><canvas id="timeline"></canvas><div id="tltip" hidden></div></div>
+</footer>
+<div id="tip" class="tip" hidden></div>
+<script type="application/json" id="boot">{{.BootJSON}}</script>
+</body>
+</html>
