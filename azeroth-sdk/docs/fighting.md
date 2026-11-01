@@ -10,6 +10,9 @@ Spells, attacks and fights, and looking back at a fight. The rest of the SDK is 
   line of sight, facing, and `unknown` checks. `usable` means no known local refusal; server acceptance is
   separate. Nominal DBC range excludes talents/hitboxes, so `nominal_range_exceeded` is advisory.
   `spells.usable` is the boolean convenience view; use `act.within_nominal_range` only for that estimate.
+- Facing: the server requires the target within 90 degrees either side of where you face only for spells flagged
+  for it in Spell.dbc (melee attacks, bolts, Smite). Heals, buffs and Taunt reach a target behind you.
+  `spells.check`'s `facing` says where the target is; its `unit_not_infront` refusal comes only for flagged spells.
 - `act.cast(id, guid, options)` holds one normal-priority movement lease, stops only owned movement, faces
   the target, and waits for the server. It performs at most two casts, retrying only a facing refusal.
   `data.check`, `data.attempts`, `data.corrections`, and `data.action` preserve what happened.

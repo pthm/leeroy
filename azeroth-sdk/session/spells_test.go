@@ -40,3 +40,18 @@ func TestClassSpellsAndCost(t *testing.T) {
 		t.Errorf("a flat cost wins: %d", got)
 	}
 }
+
+// With the game data: spells.check asks for facing only of spells whose FacingCasterFlags say so, as the server does
+func TestSpellFacingFlag(t *testing.T) {
+	dir, _ := filepath.Abs("../../data")
+	if _, err := os.Stat(filepath.Join(dir, "dbc", "Spell.dbc")); err != nil {
+		t.Skip("no game data in ../../data")
+	}
+	spellsDir = dir
+	spellsOnce = sync.Once{}
+	for id, want := range map[uint32]uint32{2050: 0, 635: 0, 355: 0, 1243: 0, 585: 1, 78: 1, 133: 1} { // Lesser Heal, Holy Light, Taunt, Fortitude; Smite, Heroic Strike, Fireball
+		if got := spellInfo(id).facing & 1; got != want {
+			t.Errorf("spell %d: facing %d, want %d", id, got, want)
+		}
+	}
+}

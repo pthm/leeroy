@@ -824,6 +824,7 @@ type spellRec struct {
 	attrs            uint32  // Attributes (passive 0x40, hidden 0x80)
 	attrsEx2         uint32  // AttributesEx2 (auto-repeat 0x20)
 	dispel           uint32  // 1 magic, 2 curse, 3 disease, 4 poison
+	facing           uint32  // FacingCasterFlags: 1 = the target must be in front of you (SPELL_FACING_FLAG_INFRONT)
 	casterState      uint32  // the aura state you need (Victory Rush: victory_rush), 0 = none
 	targetState      uint32  // the aura state the target needs (Execute: health_below_20)
 	Range            float32 `json:"range"` // max range against hostile targets, yards (melee spells ~5)
@@ -862,7 +863,7 @@ func loadSpells() {
 			spells[f(0)] = &spellRec{Name: str(f(136)), Rank: str(f(153)), Category: f(1), Cooldown: f(29),
 				CategoryCooldown: f(30), GCDCategory: f(205), GCD: f(206), PowerType: f(41), Cost: f(42),
 				Range: ranges[f(46)], CastMS: castTimes[f(28)], Level: f(38), costPct: f(204), attrs: f(4), attrsEx2: f(6), dispel: f(2),
-				casterState: f(20), targetState: f(21)}
+				facing: f(19), casterState: f(20), targetState: f(21)}
 			// the client's own Opening spells: SPELL_EFFECT_OPEN_LOCK (Effect[3] 71, MiscValue[3] 110 = lock type),
 			// hidden and unlogged (attributes 0x80|0x100); the lowest id for each lock type
 			for k := 0; k < 3; k++ {

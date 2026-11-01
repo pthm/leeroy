@@ -492,7 +492,7 @@ SpellCheck reports local readiness; the server remains authoritative.
 | `nominal_range_exceeded?` | bool | distance exceeds the DBC estimate; does not prove effective server range is exceeded |
 | `distance_yards?` | number |  |
 | `in_sight?` | bool |  |
-| `facing?` | bool |  |
+| `facing?` | bool | the target is within 90 degrees either side of where you face; only spells that need it (attacks, bolts; not heals, buffs or Taunt) fail unit_not_infront |
 | `target_valid?` | bool | target is observed; not a promise of spell eligibility |
 | `unknown` | string[] | checks for which evidence is unavailable; usable does not promise server acceptance |
 

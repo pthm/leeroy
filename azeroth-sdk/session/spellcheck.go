@@ -66,7 +66,7 @@ func (b *Bot) spellCheck(id uint32, guid uint64) types.SpellCheck {
 		nominal := float64(sp.Range)
 		d.RangeYards = &nominal
 		angle := math.Remainder(math.Atan2(float64(ty-y), float64(tx-x))-float64(o), 2*math.Pi)
-		facing := math.Abs(angle) <= math.Pi/2
+		facing := math.Abs(angle) <= math.Pi/2 // Unit::HasInArc(M_PI): 90 degrees either side
 		d.Facing = &facing
 		if sight, known := b.inSight(navigation.Point3D{X: tx, Y: ty, Z: tz + 1.5}); known {
 			d.InSight = &sight
@@ -83,7 +83,9 @@ func (b *Bot) spellCheck(id uint32, guid uint64) types.SpellCheck {
 		if d.InSight != nil && !*d.InSight {
 			return fail("line_of_sight")
 		}
-		if !facing {
+		// the server asks for facing only of spells flagged for it (Spell::CheckRange): attacks and bolts, not
+		// heals, buffs or Taunt
+		if !facing && sp.facing&1 != 0 {
 			return fail("unit_not_infront")
 		}
 	}

@@ -906,7 +906,7 @@ type SpellCheck struct {
 	NominalRangeExceeded *bool    `json:"nominal_range_exceeded,omitempty" doc:"distance exceeds the DBC estimate; does not prove effective server range is exceeded"`
 	DistanceYards        *float64 `json:"distance_yards,omitempty"`
 	InSight              *bool    `json:"in_sight,omitempty"`
-	Facing               *bool    `json:"facing,omitempty"`
+	Facing               *bool    `json:"facing,omitempty" doc:"the target is within 90 degrees either side of where you face; only spells that need it (attacks, bolts; not heals, buffs or Taunt) fail unit_not_infront"`
 	TargetValid          *bool    `json:"target_valid,omitempty" doc:"target is observed; not a promise of spell eligibility"`
 	Unknown              []string `json:"unknown" doc:"checks for which evidence is unavailable; usable does not promise server acceptance"`
 }
