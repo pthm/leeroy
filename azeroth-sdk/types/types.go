@@ -335,6 +335,7 @@ type Item struct {
 
 	GUID          GUID   `json:"guid,omitempty" doc:"an item you carry"`
 	Count         uint32 `json:"count,omitempty"`
+	Charges       uint32 `json:"charges,omitempty" doc:"uses left on its spell (a Bag of Marbles: 3 when new), apart from count; absent for an item without charges or with none left"`
 	Bag           uint8  `json:"bag,omitempty" doc:"255 = your own slots (equipped 0-18, bags 19-22, backpack 23-38); 19-22 = inside that bag"`
 	BagSlot       uint8  `json:"bag_slot"`
 	Equipped      bool   `json:"equipped,omitempty" doc:"worn: equipment slots 0-18, or a bag in bag slots 19-22"`

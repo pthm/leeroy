@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -256,5 +257,24 @@ func TestItemFindByNameOrEntry(t *testing.T) {
 	}
 	if _, err := b.lua.Eval(`items.find({})`); err == nil || !strings.Contains(err.Error(), "name_or_entry") {
 		t.Errorf("a table: %v", err)
+	}
+}
+
+// Item.charges: the first spell's charges, negative in the field for an item used up at 0 (Item::SetSpellCharges)
+func TestItemCharges(t *testing.T) {
+	b := testBot()
+	me := &client.WorldObject{GUID: b.world.CharGUID(), Values: map[uint16]uint32{}}
+	for i, ch := range []int32{-3, 0, 2} {
+		g := uint64(0x4000000000000a00 + i)
+		me.Values[fieldInvSlots+uint16(23+i)*2], me.Values[fieldInvSlots+uint16(23+i)*2+1] = uint32(g), uint32(g>>32)
+		b.world.PutObjectForTest(&client.WorldObject{GUID: g, Values: map[uint16]uint32{3: 1191, fieldItemStack: 1, fieldItemCharges + 1: uint32(ch)}})
+	}
+	b.world.PutObjectForTest(me)
+	var got []uint32
+	for _, it := range bagItems(b.world) {
+		got = append(got, it.Charges)
+	}
+	if !slices.Equal(got, []uint32{3, 0, 2}) {
+		t.Fatalf("charges: %v", got)
 	}
 }

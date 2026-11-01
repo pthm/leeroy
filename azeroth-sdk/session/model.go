@@ -185,6 +185,10 @@ func bagItems(w *client.WorldClient) []types.Item {
 		it.GUID, it.Count, it.Bag, it.BagSlot = types.GUID(guid), max(o.Value(fieldItemStack), 1), bag, slot
 		it.Equipped = bag == 255 && slot < 23 // worn gear and the bags in bag slots 19-22
 		it.Soulbound = o.Value(fieldItemFlags)&1 != 0
+		for f := uint16(fieldItemCharges); f < fieldItemCharges+5 && it.Charges == 0; f++ {
+			n := int32(o.Value(f))
+			it.Charges = uint32(max(n, -n))
+		}
 		it.Durability, it.MaxDurability = o.Value(fieldItemDur), o.Value(fieldItemMaxDur)
 		it.Broken = it.MaxDurability > 0 && it.Durability == 0
 		out = append(out, it)
