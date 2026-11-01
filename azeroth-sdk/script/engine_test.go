@@ -358,6 +358,30 @@ func TestExplainNonFunction(t *testing.T) {
 	}
 }
 
+// calling an API name that doesn't exist names it and the closest documented ones, in a task too; reading one still
+// gives nil
+func TestNoSuchFunction(t *testing.T) {
+	e := NewEngine(nolog, nil)
+	defer e.Close()
+	for _, n := range []string{"objects.find", "objects.nearby", "objects.use", "units.get"} {
+		e.Func(n, "() → bool", "test", func() bool { return true })
+	}
+	if _, err := e.Eval("local x = 1\nreturn objects.get()"); err == nil || !strings.Contains(err.Error(), "wow:2: no such function objects.get (closest: objects.use, objects.find, objects.nearby;") {
+		t.Fatalf("err = %v", err)
+	}
+	if v, err := e.Eval(`return objects.get == nil`); err != nil || v != true {
+		t.Fatalf("reading a missing name: %v %v", v, err)
+	}
+	if _, err := e.Eval("local f = objects.get\nlocal y = nil\ny()"); err == nil || strings.Contains(err.Error(), "objects.get") {
+		t.Fatalf("a nil call on another line named objects.get: %v", err)
+	}
+	e.DoString(`task.spawn("t", function() objects.nearbyy() end)`)
+	e.CallTick()
+	if ts := e.TasksHeld(); len(ts) != 1 || !strings.Contains(ts[0].Error, "no such function objects.nearbyy (closest: objects.nearby") {
+		t.Fatalf("task: %+v", ts)
+	}
+}
+
 // await and events.wait inside pcall in a task wait like anywhere else and return their result (they used to fault
 // with a nil pointer when the nested wait was resumed)
 func TestPcallAwait(t *testing.T) {

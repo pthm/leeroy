@@ -58,6 +58,7 @@ type Engine struct {
 	trampoline    *lua.LFunction
 	workspace     *os.Root
 	workspacePath string
+	missing       [2]string // where ("wow:3:") and the API name (objects.get) last read from a namespace that lacks it
 
 	// Lifecycle hooks run with the engine lock held; they must not reenter the engine.
 	nativeCall     *diagnosticCall // request currently being invoked, under mu
@@ -146,6 +147,11 @@ func NewEngine(logf func(format string, args ...any), bus *Bus) *Engine {
 	}
 	e.set("doc", func(L *lua.LState) int {
 		e.doc(L.CheckString(1), L.OptString(2, ""), L.OptString(3, ""))
+		if ns, _, ok := strings.Cut(L.CheckString(1), "."); ok {
+			if t, ok := L.GetGlobal(ns).(*lua.LTable); ok {
+				e.noteMissing(ns, t) // act, and namespaces of your own
+			}
+		}
 		return 0
 	})
 	e.set("help", func(L *lua.LState) int {
@@ -233,7 +239,7 @@ func (e *Engine) Eval(code string) (any, error) {
 	base := e.L.GetTop()
 	if err := e.L.CallByParam(lua.P{Fn: fn, NRet: lua.MultRet, Protect: true}); err != nil {
 		e.L.SetTop(base)
-		return nil, explain(err)
+		return nil, e.explain(err)
 	}
 	n := e.L.GetTop() - base
 	out := make([]any, n)
@@ -402,7 +408,25 @@ func (e *Engine) set(name string, fn lua.LGFunction) {
 		t = e.L.NewTable()
 		e.L.SetGlobal(ns, t)
 	}
+	e.noteMissing(ns, t)
 	e.L.SetField(t, field, e.L.NewFunction(fn))
+}
+
+// noteMissing makes reading a name the namespace lacks remember it (it still reads nil), so the "attempt to call a
+// non-function object" that usually follows can say which name. Tables with a metatable of their own are left alone.
+func (e *Engine) noteMissing(ns string, t *lua.LTable) {
+	if t.Metatable != lua.LNil {
+		return
+	}
+	mt := e.L.NewTable()
+	mt.RawSetString("__index", e.L.NewFunction(func(L *lua.LState) int {
+		if k, ok := L.Get(2).(lua.LString); ok {
+			e.missing = [2]string{L.Where(1), ns + "." + string(k)}
+		}
+		L.Push(lua.LNil)
+		return 1
+	}))
+	e.L.SetMetatable(t, mt)
 }
 
 // doc records a function's documentation for help() (and the generated reference).
@@ -517,12 +541,59 @@ func (e *Engine) recoverNative(L *lua.LState, name string) {
 	L.RaiseError("%s: %v", name, p)
 }
 
-// explain adds what Lua's terser errors usually mean here (it doesn't name what it tried to call)
-func explain(err error) error {
-	if strings.Contains(err.Error(), "attempt to call a non-function object") {
-		return fmt.Errorf("%w (the name called isn't a function: misspelled, or not in the API; help(\"units\") lists a namespace, api-reference.md all of them)", err)
+// explain adds what Lua's terser errors usually mean here (it doesn't name what it tried to call): the API name
+// last read on the failing line that doesn't exist, with the closest documented names
+func (e *Engine) explain(err error) error {
+	const call = "attempt to call a non-function object"
+	msg := err.Error()
+	if !strings.Contains(msg, call) {
+		return err
 	}
-	return err
+	if where, name := e.missing[0], e.missing[1]; name != "" && strings.Contains(msg, where+" "+call) {
+		ns, _, _ := strings.Cut(name, ".")
+		return errors.New(strings.Replace(msg, call, fmt.Sprintf("no such function %s (closest: %s; help(%q) lists the namespace)", name,
+			strings.Join(closest(name, e.docs, 3), ", "), ns), 1))
+	}
+	return fmt.Errorf("%w (the name called isn't a function: misspelled, or not in the API; help(\"units\") lists a namespace, api-reference.md all of them)", err)
+}
+
+// closest: the n documented names nearest name by edit distance
+func closest(name string, docs map[string]Doc, n int) []string {
+	type cand struct {
+		name string
+		d    int
+	}
+	var all []cand
+	for d := range docs {
+		all = append(all, cand{d, editDistance(name, d)})
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].d < all[j].d || all[i].d == all[j].d && all[i].name < all[j].name })
+	out := []string{}
+	for _, c := range all[:min(n, len(all))] {
+		out = append(out, c.name)
+	}
+	return out
+}
+
+// editDistance: Levenshtein, by bytes (API names are ASCII)
+func editDistance(a, b string) int {
+	prev := make([]int, len(b)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		cur := make([]int, len(b)+1)
+		cur[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev = cur
+	}
+	return prev[len(b)]
 }
 
 // Methods exposes name("Method", ...) calling any exported method of target.
@@ -944,7 +1015,7 @@ func (e *Engine) resume(t *Task, args []lua.LValue) {
 		if strings.Contains(msg, "context deadline exceeded") {
 			msg = strings.Replace(msg, "context deadline exceeded", fmt.Sprintf("ran %v without waiting: a loop in a task must wait(), await() or events.wait() on every pass", executionLimit), 1)
 		}
-		msg = explain(errors.New(msg)).Error()
+		msg = e.explain(errors.New(msg)).Error()
 		if t.trace != "" {
 			msg += "\n" + t.trace
 		}
