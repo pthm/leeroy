@@ -129,15 +129,20 @@ const MARKS = B.marks.map(rel), TICKS = B.ticks.map(([tt, k]) => ({ t: tt - B.st
 // samples and marks as they arrive; the newest data's time (dataEnd) and when anything last came (lastLive)
 let dataEnd = B.last - B.start, lastLive = -Infinity, dirty = true;
 const es = new EventSource("live");
-es.addEventListener("s", (m) => { const d = JSON.parse(m.data), s = rel(d.s); player(d.n, d.cls); live(s.t);
+es.addEventListener("s", (m) => { const d = JSON.parse(m.data), s = rel(d.s); player(d.n, d.cls); live(s.t, false);
   if (have.to >= s.t - 10000) { ins(S[d.n] ??= [], s); have.to = Math.max(have.to, s.t); }
   if (R[d.n]?.length) R[d.n].push([s.t, s.x, s.y, s.m]); });
-es.addEventListener("u", (m) => { const d = JSON.parse(m.data), u = rel(d.u); live(u.t); if (have.to >= u.t - 10000) ins(U[d.n] ??= [], u); });
+es.addEventListener("u", (m) => { const d = JSON.parse(m.data), u = rel(d.u); live(u.t, false); if (have.to >= u.t - 10000) ins(U[d.n] ??= [], u); });
 es.addEventListener("hit", (m) => { addHit(rel(JSON.parse(m.data))); dirty = true; });
 es.addEventListener("mark", (m) => { const e = rel(JSON.parse(m.data)); ins(MARKS, e); live(e.t); });
 es.addEventListener("tick", (m) => { const [tt, k] = JSON.parse(m.data); ins(TICKS, { t: tt - B.start, ev: k }); });
-es.addEventListener("data", () => { lastLive = performance.now(); panelsDue = rosterDue = true; });
-function live(tt) { dataEnd = Math.max(dataEnd, tt); lastLive = performance.now(); dirty = true; }
+es.addEventListener("data", (m) => { lastLive = performance.now(); shows(JSON.parse(m.data).t - B.start); });
+function live(tt, all = true) { dataEnd = Math.max(dataEnd, tt); lastLive = performance.now(); dirty = true; shows(tt, all); }
+// Watching live, the panels refresh when something new comes into view (the playhead, LIVE_LAG behind the clock,
+// reaches a sample or event that arrived), not every frame: SHOWS holds those times, oldest first.
+// Each [time, all]: a sample changes the roster (and Stats), an event (all) the feed too.
+const SHOWS = [];
+const shows = (tt, all = true) => { let i = SHOWS.length; while (i > 0 && SHOWS[i - 1][0] > tt) i--; SHOWS.splice(i, 0, [tt, all]); if (SHOWS.length > 5000) SHOWS.splice(0, 1000); };
 
 // ---------- map view ----------
 // World (x north, y west) -> map pixels at RES yards/px, origin at the corner of the 64x64 grid; tiles are 533-yard grid squares.
@@ -819,7 +824,15 @@ function frame(now) {
   if (liveFollow) t = running() ? Date.now() - B.start - LIVE_LAG : dataEnd;
   else if (playing) { t += (now - last) * speed; if (t >= duration()) { t = duration(); playing = false; liveFollow = running(); controls(); } }
   last = now;
-  if (t !== lastT) { lastT = t; dirty = true; panelsDue = rosterDue = true; need(t); }
+  if (t !== lastT) {
+    lastT = t; dirty = true; need(t);
+    if (!liveFollow) panelsDue = rosterDue = true; // playing back or seeking: everything at the playhead changes
+    else {
+      let k = 0;
+      for (; k < SHOWS.length && SHOWS[k][0] <= t; k++) { rosterDue = true; if (SHOWS[k][1] || store().tab === "stats") panelsDue = true; }
+      SHOWS.splice(0, k);
+    }
+  }
   if (dirty) { dirty = false; updateMaps(); drawMap(); drawTimeline(); $("clock").textContent = `${fmt(t)} / ${fmt(duration())}`; }
   panels(now);
   requestAnimationFrame(frame);

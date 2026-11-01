@@ -434,6 +434,9 @@ func (s *Store) Poll(src *Source) {
 		}
 		fd.Close()
 	}
+	if len(fresh) == 0 && len(live) == 0 { // nothing new: no lock, no sort (this runs 20 times a second)
+		return
+	}
 	SortByTime(fresh)
 	NameUnits(fresh)
 	s.resolve(fresh)
@@ -568,13 +571,14 @@ func (s *Store) Subscribe() (chan liveMsg, func()) {
 }
 
 // broadcast sends new events to subscribers (the caller holds the lock): samples for the map, marks and ticks for the
-// seek bar, and "data" when anything else arrived (the panels refresh).
+// seek bar, and "data" with the newest time when anything else arrived (the panels refresh when the playhead gets there).
 func (s *Store) broadcast(evs []Ev) {
 	if len(s.subs) == 0 || len(evs) == 0 {
 		return
 	}
 	var msgs []liveMsg
 	other := false
+	newest := 0.0 // the newest of the other events: when the playhead reaches it, the panels have something new
 	for _, e := range evs {
 		p := s.byName[S(e, "n")]
 		switch kind := S(e, "ev"); {
@@ -594,11 +598,11 @@ func (s *Store) broadcast(evs []Ev) {
 			if markKinds[kind] || kind == "chat" {
 				msgs = append(msgs, s.liveJSON("tick", []any{N(e, "t"), kind}))
 			}
-			other = true
+			other, newest = true, math.Max(newest, N(e, "t"))
 		}
 	}
 	if other {
-		msgs = append(msgs, liveMsg{"data", []byte("{}")})
+		msgs = append(msgs, s.liveJSON("data", map[string]any{"t": newest}))
 	}
 	for c := range s.subs {
 		for _, m := range msgs {

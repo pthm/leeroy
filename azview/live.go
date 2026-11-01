@@ -72,7 +72,7 @@ func runLive(args []string) {
 	s.Poll(src)
 	debug.FreeOSMemory() // the startup read's garbage
 	go func() {
-		for range time.Tick(250 * time.Millisecond) {
+		for range time.Tick(50 * time.Millisecond) { // ponytail: polling a dozen files' sizes; cheaper than a watcher dependency
 			s.Poll(src)
 		}
 	}()
