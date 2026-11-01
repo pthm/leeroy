@@ -149,8 +149,10 @@ function fit() {
 }
 // Auto zoom: while the camera keeps a set of players in frame (a selected group, or everyone with nobody followed),
 // it also zooms to fit them; scrolling then adjusts zoomBias, how much closer or further than a snug fit
-let autoZoom = saved.autoZoom ?? true, zoomBias = saved.zoomBias ?? 1, autoCam = true, follow = null;
-const saveZoom = () => { try { localStorage.setItem("azview", JSON.stringify({ ...JSON.parse(localStorage.getItem("azview") || "{}"), autoZoom, zoomBias })); } catch {} };
+// Auto follow (autoCam): the camera keeps the selected player (follow), the selected group, or everyone in view; off,
+// the map stays where it's put. Dragging turns it off, the button, A or Fit turn it back on.
+let autoZoom = saved.autoZoom ?? true, zoomBias = saved.zoomBias ?? 1, autoCam = saved.autoCam ?? true, follow = null;
+const saveZoom = () => { try { localStorage.setItem("azview", JSON.stringify({ ...JSON.parse(localStorage.getItem("azview") || "{}"), autoZoom, zoomBias, autoCam })); } catch {} };
 const tiles = new Map();
 function drawTiles(w, h) {
   const wx = (sx, sy) => [MAX - ((sy - view.oy) / view.s) * RES, MAX - ((sx - view.ox) / view.s) * RES];
@@ -174,8 +176,8 @@ function drawMap() {
   // everyone), with auto zoom easing towards a fit of them (at least 80 yd across, 45 yd of room around), times zoomBias
   let centre = null;
   const gm = s.grp != null ? groupMembers() : null;
-  const frame = follow ? null : gm ? [...gm] : autoCam ? [...P.keys()] : null;
-  if (follow) centre = at(follow, t);
+  const frame = !autoCam || follow ? null : gm ? [...gm] : [...P.keys()];
+  if (autoCam && follow) centre = at(follow, t);
   else if (frame) {
     const pts = frame.map((n) => at(n, t)).filter((pp) => pp && pp.s.m === M.id);
     if (pts.length) {
@@ -337,7 +339,7 @@ function wire() {
         return `<div class="ev"><span class="t">${fmt(ev.t)}</span><span class="g" style="color:var(${c})">${g}</span><span>${ev.html}</span></div>`; }).join("")
         + (evs.length > 6 ? `<div class="muted">+${evs.length - 6} more</div>` : "") + `<div class="muted hintline">click to jump there</div>` : null, e);
     }
-    if (Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) { follow = null; autoCam = false; }
+    if (autoCam && Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) { autoCam = false; controls(); } // panning stops following, keeps the selection
     view.ox += e.clientX - drag[0]; view.oy += e.clientY - drag[1]; drag = [e.clientX, e.clientY]; dirty = true;
   });
   cv.addEventListener("pointerup", (e) => {
@@ -352,11 +354,12 @@ function wire() {
   });
   cv.addEventListener("wheel", (e) => {
     e.preventDefault(); const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top, k = Math.exp(-e.deltaY * 0.0015);
-    if (autoZoom && !follow && (store().grp != null || autoCam)) { zoomBias = Math.max(0.1, Math.min(10, zoomBias * k)); saveZoom(); dirty = true; return; }
+    if (autoZoom && autoCam && !follow) { zoomBias = Math.max(0.1, Math.min(10, zoomBias * k)); saveZoom(); dirty = true; return; }
     view.ox = mx - (mx - view.ox) * k; view.oy = my - (my - view.oy) * k; view.s *= k; dirty = true;
   }, { passive: false });
   $("fitbtn").addEventListener("click", refit);
   $("zoombtn").addEventListener("click", toggleZoom);
+  $("followbtn").addEventListener("click", toggleFollow);
   $("mapsel").addEventListener("change", (e) => { mapMode = e.target.value; if (mapMode !== "auto") showMap(Number(mapMode)); updateMaps(); });
   // timeline
   tl.addEventListener("pointerdown", (e) => { seeking = true; tl.setPointerCapture(e.pointerId); seekFrom(e); });
@@ -372,6 +375,7 @@ function wire() {
     if (e.code === "Space") { e.preventDefault(); $("play").click(); }
     if (e.code === "KeyF" && !e.metaKey && !e.ctrlKey) refit();
     if (e.code === "KeyZ" && !e.metaKey && !e.ctrlKey) toggleZoom();
+    if (e.code === "KeyA" && !e.metaKey && !e.ctrlKey) toggleFollow();
     if (e.code === "ArrowRight") setT(t + (e.shiftKey ? 60000 : 10000));
     if (e.code === "ArrowLeft") setT(t - (e.shiftKey ? 60000 : 10000));
   });
@@ -394,17 +398,18 @@ function wire() {
   pane.addEventListener("mouseleave", () => tip(null));
   addEventListener("resize", () => { fit(); dirty = true; });
 }
-const refit = () => { follow = null; autoCam = true; zoomBias = 1; saveZoom(); fit(); dirty = true; };
+const refit = () => { follow = null; autoCam = true; zoomBias = 1; saveZoom(); fit(); controls(); dirty = true; };
+const toggleFollow = () => { autoCam = !autoCam; saveZoom(); controls(); dirty = true; };
 const toggleZoom = () => { autoZoom = !autoZoom; saveZoom(); controls(); };
 // one selection for everything: the roster highlights it, the map draws its route (and follows it, from a card), the
 // feed and stats narrow to it
 function select(n, followIt = true) {
   const s = store(); follow = followIt ? n : n === follow ? follow : null; s.sel = n; s.grp = null;
   if (n) loadRoute(n);
-  if (follow) { view.s = Math.max(view.s, 2.5); mapMode = "auto"; updateMaps(); }
-  dirty = true;
+  if (follow) { autoCam = true; view.s = Math.max(view.s, 2.5); mapMode = "auto"; updateMaps(); }
+  controls(); dirty = true;
 }
-function selectGroup(g) { const s = store(); s.grp = g; s.sel = null; follow = null; if (g != null) view.s = Math.max(view.s, 2); dirty = true; }
+function selectGroup(g) { const s = store(); s.grp = g; s.sel = null; follow = null; if (g != null) { autoCam = true; view.s = Math.max(view.s, 2); } controls(); dirty = true; }
 
 // ---------- map picker ----------
 // Auto shows the map the followed player is on, else the one most players are on; picking a map holds it.
@@ -416,7 +421,7 @@ function updateMaps() {
   const n = new Map();
   for (const name of P.keys()) { const pp = at(name, t); if (pp) { n.set(pp.s.m, (n.get(pp.s.m) ?? 0) + 1); SEEN_MAPS.add(pp.s.m); } }
   if (mapMode === "auto") {
-    const f = follow && at(follow, t);
+    const f = autoCam && follow && at(follow, t);
     let best = f ? f.s.m : undefined;
     if (best === undefined) for (const [m, c] of n) if (best === undefined || c > n.get(best) || (c === n.get(best) && m === M.id)) best = m;
     showMap(best);
@@ -463,7 +468,8 @@ const duration = () => Math.max(dataEnd, running() ? Date.now() - B.start - LIVE
 function setT(v) { t = Math.max(0, Math.min(duration(), v)); liveFollow = t >= duration() - 1500 && running(); playing = false; dirty = true; controls(); need(t); }
 function controls() {
   $("play").textContent = playing ? "❚❚" : "▶"; $("play").setAttribute("aria-label", playing ? "Pause" : "Play");
-  $("live").setAttribute("aria-pressed", liveFollow); $("zoombtn").setAttribute("aria-pressed", autoZoom); $("zoombtn").disabled = !!follow;
+  $("live").setAttribute("aria-pressed", liveFollow); $("zoombtn").setAttribute("aria-pressed", autoZoom); $("zoombtn").disabled = !!follow || !autoCam;
+  $("followbtn").setAttribute("aria-pressed", autoCam);
 }
 function frame(now) {
   if (liveFollow) t = running() ? Date.now() - B.start - LIVE_LAG : dataEnd;

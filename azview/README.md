@@ -163,7 +163,7 @@ everywhere: the map follows it, the feed and the stats narrow to it.
   targets, with health bars over the targets; dashed lines join group members to their leader; creatures around the
   players (hostile red, neutral yellow, friendly green, dead grey), named when zoomed in; death, achievement, level
   and quest markers (hover for what happened, click to jump there). The camera follows a selected player; otherwise
-  it keeps a selected group, or everyone, centred, and with Auto zoom (Z, on by default) zoomed to fit them; scrolling
+  it keeps a selected group, or everyone, centred, and with Auto zoom (Z, on by default) zoomed to fit them. Auto follow (A, on by default) is that camera: off, the map stays where you put it; dragging the map turns it off, and clicking a card or a group header turns it back on; scrolling
   then sets how much closer or further than a snug fit (remembered), instead of zooming freely. Drag to pan (which
   stops the camera following); Fit (F) goes back to framing everyone and resets the auto zoom offset. A picker chooses the map (Auto: the followed player's, else where most players are).
 - **Seek bar**: play/pause, speed (1x to 300x), Live (follow the newest data), ticks for deaths, achievements, levels,
