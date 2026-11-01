@@ -47,6 +47,14 @@ func name[T comparable](m map[T]string, k T) string {
 	return fmt.Sprint(k)
 }
 
+// nameAt: a list's name for an enum value, or the number
+func nameAt(l []string, i uint8) string {
+	if int(i) < len(l) {
+		return l[i]
+	}
+	return fmt.Sprint(i)
+}
+
 // facing: an orientation for Position.O, to 3 decimals
 func facing(o float32) *float64 {
 	f := math.Round(float64(o)*1000) / 1000

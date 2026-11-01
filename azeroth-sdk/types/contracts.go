@@ -56,6 +56,8 @@ var ActionPostconditions = map[string]string{
 	"summon.decline":          "the local pending summon was cleared after sending the decline",
 	"group.invite":            "the server acknowledged the invitation; membership is not implied",
 	"group.accept":            "server group membership is observed",
+	"group.promote":           "the server's group update names the member as leader",
+	"group.set_loot":          "the server's group update shows the requested method, threshold and master looter",
 	"group.leave":             "server group membership is absent",
 	"group.decline":           "no server confirmation is available; a sent decline returns unconfirmed",
 	"group.ready":             "no server confirmation is available; a sent response returns unconfirmed",

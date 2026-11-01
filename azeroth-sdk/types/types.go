@@ -507,6 +507,9 @@ type Talents struct {
 type Group struct {
 	Leader     string        `json:"leader"`
 	MeLeader   bool          `json:"me_leader" doc:"you lead the group"`
+	LootMethod string        `json:"loot_method" doc:"free_for_all, round_robin, master_loot, group_loot or need_before_greed (group.set_loot; the leader sets it)"`
+	Threshold  string        `json:"loot_threshold" doc:"the lowest quality the loot method applies to (uncommon, rare, epic, ...); below it the group loots round robin"`
+	MasterLoot GUID          `json:"master_looter,omitempty" doc:"with master_loot: who hands out the loot"`
 	Members    []GroupMember `json:"members" doc:"the others, not you"`
 	Spread     *float64      `json:"spread,omitempty" doc:"yards between the two of you farthest apart (you included), across the ground: how clustered the party is. Counts whoever's position is known and in your zone"`
 	SpreadPair []string      `json:"spread_pair,omitempty" doc:"who those two are"`

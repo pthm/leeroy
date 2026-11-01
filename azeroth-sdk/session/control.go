@@ -6,11 +6,13 @@ package session
 
 import (
 	"bytes"
+	"cmp"
 	_ "embed"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -231,7 +233,11 @@ func (b *Bot) setupControl() {
 				return nil
 			}
 			me := w.CharGUID()
-			g := types.Group{Members: []types.GroupMember{}, MeLeader: st.LeaderGUID == me}
+			g := types.Group{Members: []types.GroupMember{}, MeLeader: st.LeaderGUID == me, LootMethod: nameAt(lootMethods, st.LootMethod),
+				Threshold: nameAt(qualityNames, st.LootThresh)}
+			if st.LootMethod == client.LootMethodMasterLoot {
+				g.MasterLoot = types.GUID(st.LootMaster)
+			}
 			if g.MeLeader {
 				g.Leader = b.config.CharacterName
 			}
@@ -365,6 +371,7 @@ func (b *Bot) setupControl() {
 			return nil
 		}, nil)
 	})
+	b.setupGroupRules()
 	e.Func("group.invited_by", "() → string?", "who invited you, nil if no invite is pending", func() any {
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -655,6 +662,72 @@ func readPackedGUID(r *bytes.Reader) uint64 {
 	}
 	return g
 }
+
+// setupGroupRules: the leader's group.promote and group.set_loot.
+func (b *Bot) setupGroupRules() {
+	w, e := b.world, b.lua
+	e.Func("group.promote", "(guid) → Request", "make a party member (a guid from group.info) the leader: ok once the server's group update names them; not_leader unless you lead",
+		func(g uint64) map[string]any {
+			args := map[string]any{"member": gs(g)}
+			st := w.GroupState()
+			switch {
+			case !st.InGroup:
+				return b.refuse("group.promote", args, "not_in_group", "you aren't in a group")
+			case st.LeaderGUID != w.CharGUID():
+				return b.refuse("group.promote", args, "not_leader", "only the leader can promote")
+			case !slices.ContainsFunc(st.Members, func(m client.GroupMember) bool { return m.GUID == g }):
+				return b.refuse("group.promote", args, "not_a_member", "no such member in your group (group.info lists their guids)")
+			}
+			if err := w.GroupSetLeader(g); err != nil {
+				return b.refuse("group.promote", args, "failed", err.Error())
+			}
+			return b.request("group.promote", args, 5*time.Second, func() *script.Outcome {
+				if w.GroupState().LeaderGUID == g {
+					return script.Ok(nil)
+				}
+				return nil
+			}, nil)
+		})
+	e.Func("group.set_loot", "(method [, threshold = \"uncommon\" [, master = you]]) → Request", "set the group's loot rules (the leader only): method free_for_all, round_robin, master_loot, group_loot or need_before_greed; threshold the lowest quality it applies to, uncommon to artifact; master, with master_loot, the member who hands out loot. ok once the server's group update shows them",
+		func(method, threshold string, master uint64) map[string]any {
+			if threshold == "" {
+				threshold = "uncommon"
+			}
+			args := map[string]any{"method": method, "threshold": threshold}
+			m, q := slices.Index(lootMethods, method), slices.Index(qualityNames, threshold)
+			st := w.GroupState()
+			if m == int(client.LootMethodMasterLoot) {
+				master = cmp.Or(master, w.CharGUID())
+				args["master"] = gs(master)
+			} else {
+				master = 0
+			}
+			switch {
+			case m < 0:
+				return b.refuse("group.set_loot", args, "bad_method", "method: one of "+strings.Join(lootMethods, ", "))
+			case q < 2 || q > 6: // HandleLootMethodOpcode: ITEM_QUALITY_UNCOMMON to ITEM_QUALITY_ARTIFACT
+				return b.refuse("group.set_loot", args, "bad_threshold", "threshold: one of "+strings.Join(qualityNames[2:7], ", "))
+			case !st.InGroup:
+				return b.refuse("group.set_loot", args, "not_in_group", "you aren't in a group")
+			case st.LeaderGUID != w.CharGUID():
+				return b.refuse("group.set_loot", args, "not_leader", "only the leader sets the loot rules")
+			case master != 0 && master != w.CharGUID() && !slices.ContainsFunc(st.Members, func(x client.GroupMember) bool { return x.GUID == master }):
+				return b.refuse("group.set_loot", args, "not_a_member", "the master looter must be in your group")
+			}
+			if err := w.SetLootMethod(uint8(m), master, uint8(q)); err != nil {
+				return b.refuse("group.set_loot", args, "failed", err.Error())
+			}
+			return b.request("group.set_loot", args, 5*time.Second, func() *script.Outcome {
+				if st := w.GroupState(); int(st.LootMethod) == m && int(st.LootThresh) == q && (master == 0 || st.LootMaster == master) {
+					return script.Ok(nil)
+				}
+				return nil
+			}, nil)
+		})
+}
+
+// LootMethod (LootMgr.h)
+var lootMethods = []string{"free_for_all", "round_robin", "master_loot", "group_loot", "need_before_greed"}
 
 var equipErrors = map[byte]string{1: "You must reach a higher level to use that", 4: "Bag is full", 17: "You can't carry any more of those", 22: "Slot is empty",
 	23: "Item not found", 25: "Out of range", 29: "Not enough money", 38: "You are dead", 39: "You can't do that right now",

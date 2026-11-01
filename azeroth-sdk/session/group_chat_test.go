@@ -197,3 +197,16 @@ func TestGhostPlayerNotAlive(t *testing.T) {
 		}
 	}
 }
+
+// group.set_loot and group.promote refuse what the server would silently ignore: an unknown method, a threshold
+// below uncommon, and anyone not leading a group
+func TestGroupLootRefusals(t *testing.T) {
+	b := testBot()
+	b.setupGroupRules()
+	for call, code := range map[string]string{`group.set_loot("dice")`: "bad_method", `group.set_loot("group_loot", "common")`: "bad_threshold",
+		`group.set_loot("need_before_greed", "rare")`: "not_in_group", `group.promote("42")`: "not_in_group"} {
+		if _, err := b.lua.Eval(`r = result(` + call + `.id) assert(r.ok == false and r.error.code == "` + code + `", json.encode(r))`); err != nil {
+			t.Errorf("%s: %v", call, err)
+		}
+	}
+}
