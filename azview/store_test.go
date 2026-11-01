@@ -131,3 +131,17 @@ func TestPollTailsFiles(t *testing.T) {
 		t.Fatalf("the finished line should be read: %v", s.byEv["xp"])
 	}
 }
+
+// A teleport (the hearthstone, a graveyard) isn't interpolated: the player is where they were until the next sample.
+func TestAtHoldsOverTeleport(t *testing.T) {
+	s := storeOf(t, `{"t":1000,"ev":"pos","n":"A","x":0,"y":0,"m":0,"alive":1}
+{"t":2000,"ev":"pos","n":"A","x":800,"y":0,"m":0,"alive":1}
+{"t":3000,"ev":"pos","n":"A","x":805,"y":0,"m":0,"alive":1}`)
+	p := s.byName["A"]
+	if got, _ := p.At(1500); got.X != 0 {
+		t.Fatalf("800 yd in a second is a teleport: held at 0, got %v", got.X)
+	}
+	if got, _ := p.At(2500); got.X != 802.5 {
+		t.Fatalf("5 yd in a second is walking: interpolated, got %v", got.X)
+	}
+}

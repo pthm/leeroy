@@ -185,8 +185,10 @@ everywhere: the map follows it, the feed and the stats narrow to it.
   message, money, score and model. The border is the player's state: red in combat, grey dead, dashed blue a ghost;
   the selected one has a gold ring. Clicking a card selects and follows the player; clicking a group header selects
   the group.
-- **Map**: every player's position, with a short fading trail when nobody is selected; a selected player's whole
-  route (smoothed, fading with age, the part still ahead faint) on a dimmed map. Thin red lines from players to their
+- **Map**: every player's position (a teleport, faster than 40 yd/s between two samples: the hearthstone, a release to
+  the graveyard, isn't slid across: the dot jumps), with a short fading trail when nobody is selected; a selected player's whole
+  route (smoothed, fading with age, the part still ahead faint, broken at teleports rather than drawn across the map)
+  on a dimmed map. Thin red lines from players to their
   targets, with health bars over the targets; dashed lines join group members to their leader; creatures around the
   players (hostile red, neutral yellow, friendly green, dead grey), named when zoomed in; players and creatures are
   drawn at their size in the game once zoomed in far enough (a creature's bounding radius, from its model; a player's

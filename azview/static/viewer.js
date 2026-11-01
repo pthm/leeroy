@@ -76,12 +76,16 @@ const sampleT = (s) => s.t;
 // the index of the first element after t in a list sorted by time
 const upto = (a, t, at = sampleT) => { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (at(a[m]) <= t) lo = m + 1; else hi = m; } return lo; };
 const ins = (a, v) => { let i = a.length; while (i > 0 && a[i - 1].t > v.t) i--; a.splice(i, 0, v); };
-// where a player is at t: the last sample, moved towards the next (held over a gap of more than 5 s)
+// a jump between two samples: a gap of more than 5 s (logged out), another map, or faster than 40 yd/s (a teleport:
+// the hearthstone, released to a graveyard, a summon, a flight's end)
+const TELEPORT = 0.04; // yd per ms
+const jump = (t0, x0, y0, m0, t1, x1, y1, m1) => t1 - t0 > 5000 || m0 !== m1 || Math.hypot(x1 - x0, y1 - y0) > Math.max(30, (t1 - t0) * TELEPORT);
+// where a player is at t: the last sample, moved towards the next (held over a jump)
 function at(name, t) {
   const a = S[name]; if (!a) return null;
   const i = upto(a, t) - 1; if (i < 0) return null;
   const s = a[i], n = a[i + 1];
-  if (!n || n.t - s.t > 5000) return { s, x: s.x, y: s.y };
+  if (!n || jump(s.t, s.x, s.y, s.m, n.t, n.x, n.y, n.m)) return { s, x: s.x, y: s.y };
   const f = (t - s.t) / (n.t - s.t);
   return { s, x: s.x + (n.x - s.x) * f, y: s.y + (n.y - s.y) * f };
 }
@@ -545,10 +549,15 @@ function drawMap() {
     }
     cx.globalAlpha = 1;
   };
-  // points [t, x, y, m] from..to on this map as screen points, in runs split at gaps (logged out, teleports)
-  const runs = (pts, from, to, tail) => { const out = []; let cur = [], lastT = null;
-    for (let k = from; k <= to; k++) { const q = pts[k]; if (q[3] !== M.id || (lastT != null && q[0] - lastT > 5000)) { if (cur.length) out.push(cur); cur = []; }
-      if (q[3] === M.id) { cur.push([...scr(q[1], q[2]), q[0]]); lastT = q[0]; } }
+  // points [t, x, y, m] from..to on this map as screen points, in runs split at jumps (logged out, teleports: no line
+  // across the map from where they died to the graveyard, or hearthed from to the inn)
+  const runs = (pts, from, to, tail) => { const out = []; let cur = [], prev = null;
+    for (let k = from; k <= to; k++) {
+      const q = pts[k];
+      if (q[3] !== M.id || (prev && jump(prev[0], prev[1], prev[2], prev[3], q[0], q[1], q[2], q[3]))) { if (cur.length) out.push(cur); cur = []; }
+      if (q[3] === M.id) cur.push([...scr(q[1], q[2]), q[0]]);
+      prev = q;
+    }
     if (tail) cur.push([...scr(tail.x, tail.y), t]);
     if (cur.length) out.push(cur); return out; };
   cx.lineCap = cx.lineJoin = "round";

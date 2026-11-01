@@ -236,7 +236,7 @@ func upto[T any](a []T, t float64, at func(T) float64) int {
 func uptoEv(a []Ev, t float64) int { return upto(a, t, evT) }
 
 // At is where p is at t: the last sample at or before t, its position interpolated towards the next one (held over a
-// gap of more than 5 s: logged out, a teleport). False before p's first sample.
+// jump: a gap of more than 5 s, another map, or faster than 40 yd/s, a teleport). False before p's first sample.
 func (p *Player) At(t float64) (Sample, bool) {
 	i := upto(p.Track, t, func(x Sample) float64 { return x.T }) - 1
 	if i < 0 {
@@ -244,7 +244,7 @@ func (p *Player) At(t float64) (Sample, bool) {
 	}
 	a := p.Track[i]
 	if i+1 < len(p.Track) {
-		if b := p.Track[i+1]; b.T-a.T <= 5000 && b.T > a.T {
+		if b := p.Track[i+1]; b.T-a.T <= 5000 && b.T > a.T && b.M == a.M && math.Hypot(b.X-a.X, b.Y-a.Y) <= math.Max(30, (b.T-a.T)*0.04) {
 			f := (t - a.T) / (b.T - a.T)
 			a.X += (b.X - a.X) * f
 			a.Y += (b.Y - a.Y) * f
