@@ -111,6 +111,7 @@ func newServer(s *Store, title string) *server {
 	v.HandleFunc("GET /{$}", v.page)
 	v.Handle("GET /static/", http.FileServerFS(files()))
 	v.HandleFunc("GET /tile/{m}/{gx}/{gy}", v.tile)
+	v.HandleFunc("GET /detail/{m}/{level}/{gx}/{gy}/{sx}/{sy}", v.detail)
 	v.HandleFunc("GET /samples", v.samples)
 	v.HandleFunc("GET /route", v.route)
 	v.HandleFunc("GET /live", v.live)
@@ -148,7 +149,7 @@ func (v *server) page(w http.ResponseWriter, r *http.Request) {
 		start = float64(time.Now().UnixMilli())
 	}
 	boot := map[string]any{"start": start, "last": math.Max(lastT, start), "players": players, "maps": v.maps, "labels": v.labels,
-		"tileVersion": v.tileVersion, "marks": marks, "ticks": ticks, "cats": cats}
+		"tileVersion": v.tileVersion, "detail": v.detailMaps(), "maxDetail": world.MaxDetail, "marks": marks, "ticks": ticks, "cats": cats}
 	b, _ := json.Marshal(boot) // escapes < > &, so the data can't close its <script> tag
 	data := map[string]any{"Title": v.title, "Boot": map[string]any{"Players": players}, "BootJSON": template.JS(b),
 		"Cats": feedCats, "Metrics": metricGroups(), "Ranges": ranges}
@@ -181,6 +182,46 @@ func (v *server) tile(w http.ResponseWriter, r *http.Request) {
 	}
 	v.tileMu.Unlock()
 	w.Header().Set("content-type", "image/png")
+	w.Header().Set("cache-control", "max-age=86400")
+	w.Write(t)
+}
+
+// detailMaps are the maps with detail tiles (the continents, given the game client).
+func (v *server) detailMaps() []int {
+	out := []int{}
+	for _, m := range []uint32{0, 1, 530, 571} {
+		if world.HasDetail(m) {
+			out = append(out, int(m))
+		}
+	}
+	return out
+}
+
+// detail is a detail tile: part of a grid square finer than its minimap (world.DetailTile).
+func (v *server) detail(w http.ResponseWriter, r *http.Request) {
+	var n [5]int
+	for i, k := range []string{"level", "gx", "gy", "sx", "sy"} {
+		n[i], _ = strconv.Atoi(strings.TrimSuffix(r.PathValue(k), ".jpg"))
+	}
+	m, _ := strconv.Atoi(r.PathValue("m"))
+	key := fmt.Sprint("d", m, n)
+	v.tileMu.Lock()
+	t, ok := v.tiles[key]
+	v.tileMu.Unlock()
+	if !ok {
+		t = world.DetailTile(uint32(m), n[1], n[2], n[0], n[3], n[4]) // rendered outside the lock: tiles render in parallel
+		v.tileMu.Lock()
+		if len(v.tiles) > 4000 { // ponytail: drop the lot past ~120 MB; an LRU if zooming around a big area makes that churn
+			v.tiles = map[string][]byte{}
+		}
+		v.tiles[key] = t
+		v.tileMu.Unlock()
+	}
+	if t == nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("content-type", "image/jpeg")
 	w.Header().Set("cache-control", "max-age=86400")
 	w.Write(t)
 }

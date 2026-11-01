@@ -117,7 +117,7 @@ reads the files every 250 ms (starting over if one shrinks). The page asks for w
 | Endpoint | |
 |---|---|
 | `/` | the page, with the players, map names, labels, marks and seek bar ticks |
-| `/samples?from=&to=` | every player's samples and units samples in a window (unix ms), as the map draws them: position, state, group and leader, and the target with where it is |
+| `/samples?from=&to=` | every player's samples and units samples in a window (unix ms), as the map draws them: position, state, group and leader, and the target with where it is; each creature with its size |
 | `/route?n=` | a player's whole route, `[t, x, y, map]` per sample |
 | `/live` | new data as server-sent events: `s` (a sample), `u` (units), `mark`, `tick`, `data` (anything else) |
 | `/panel/roster`, `/panel/pane` | the roster, and the feed or stats, as HTML for a moment and the UI state (`viewerQuery` in `viewer.js`) |
@@ -144,6 +144,16 @@ Map tiles (one per 533-yard grid square) are rendered on demand and kept in memo
 - Otherwise: a shaded relief render of `data/maps` (heights, water, zone borders) with a fixed colour scale so tiles
   match.
 
+Zoomed in past the minimap's own resolution (a pixel per ~2 yd), the continents get detail tiles,
+`/detail/<map>/<level>/<gx>/<gy>/<sx>/<sy>.jpg`: the square cut into 2^level x 2^level (levels 1-4, down to 0.13 yd a
+pixel), each 256 px, rendered on demand from the game client (`azworld/world/detail.go`). A detail tile is the minimap,
+upscaled smoothly, plus the fine detail of the ground textures the game paints the terrain with (each chunk's texture
+layers and alpha maps from the client's ADT files): the texture render minus itself blurred to the minimap's
+resolution. The minimap keeps the colours, shading, buildings and water; the textures add the ground's grain and sharp
+road and path edges; where the two disagree a lot (a roof, water) less detail is added. The page uses the level whose
+pixels are about a screen pixel, and shows its part of a coarser tile while a finer one loads. Detail tiles need the
+game client: `$WOW_CLIENT`, else `~/Downloads/ChromieCraft_3.3.5a`; without it the minimap is upscaled as before.
+
 The page requests tiles with `?v=<tileVersion>` (3 with client data, 1 without). Tiles are cached for a day, so the
 version busts browser caches when the tile source changes.
 
@@ -161,7 +171,9 @@ everywhere: the map follows it, the feed and the stats narrow to it.
 - **Map**: every player's position, with a short fading trail when nobody is selected; a selected player's whole
   route (smoothed, fading with age, the part still ahead faint) on a dimmed map. Thin red lines from players to their
   targets, with health bars over the targets; dashed lines join group members to their leader; creatures around the
-  players (hostile red, neutral yellow, friendly green, dead grey), named when zoomed in; death, achievement, level
+  players (hostile red, neutral yellow, friendly green, dead grey), named when zoomed in; players and creatures are
+  drawn at their size in the game once zoomed in far enough (a creature's bounding radius, from its model; a player's
+  0.306 yd), never smaller than a few pixels; death, achievement, level
   and quest markers (hover for what happened, click to jump there). The camera follows a selected player; otherwise
   it keeps a selected group, or everyone, centred, and with Auto zoom (Z, on by default) zoomed to fit them. Auto follow (A, on by default) is that camera: off, the map stays where you put it; dragging the map turns it off, and clicking a card or a group header turns it back on; scrolling
   then sets how much closer or further than a snug fit (remembered), instead of zooming freely. Drag to pan (which

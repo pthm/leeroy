@@ -105,6 +105,33 @@ func CreatureNames(ids []int) map[int]string {
 	return out
 }
 
+var radii = map[int]float64{}
+
+// CreatureRadii resolves creature entries to their size: the bounding radius in yards of their first model, times its
+// scale, as the server uses it (0 when unknown), cached.
+func CreatureRadii(ids []int) map[int]float64 {
+	nameMu.Lock()
+	defer nameMu.Unlock()
+	var missing []int
+	for _, id := range ids {
+		if _, ok := radii[id]; !ok {
+			missing = append(missing, id)
+			radii[id] = 0
+		}
+	}
+	if len(missing) > 0 {
+		for _, r := range MustRows(World(), `SELECT m.CreatureID, i.BoundingRadius * m.DisplayScale FROM creature_template_model m
+			JOIN creature_model_info i ON i.DisplayID = m.CreatureDisplayID WHERE m.Idx = 0 AND m.CreatureID IN (`+idList(missing)+")") {
+			radii[atoi(r[0])] = atof(r[1])
+		}
+	}
+	out := make(map[int]float64, len(ids))
+	for _, id := range ids {
+		out[id] = radii[id]
+	}
+	return out
+}
+
 var quests = map[int]string{}
 
 // QuestTitles resolves quest ids to titles ("" when unknown), cached.

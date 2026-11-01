@@ -88,9 +88,10 @@ type Store struct {
 	lastGrp map[string]string
 	npcSaid map[string]Ev // speaker|text -> the latest NPC chat event, to merge each listener's copy into one
 	items   map[int]world.ItemName
-	names   map[int]string // creature names
-	zones   map[int]string // area names
-	agents  map[string]any // name -> meta.json
+	names   map[int]string  // creature names
+	radii   map[int]float64 // creature sizes (bounding radius, yd)
+	zones   map[int]string  // area names
+	agents  map[string]any  // name -> meta.json
 	subs    map[chan liveMsg]bool
 	last    float64 // the newest event
 }
@@ -103,7 +104,7 @@ type liveMsg struct {
 
 func NewStore() *Store {
 	return &Store{byName: map[string]*Player{}, byEv: map[string][]Ev{}, lastGrp: map[string]string{}, npcSaid: map[string]Ev{},
-		items: map[int]world.ItemName{}, names: map[int]string{}, zones: map[int]string{}, agents: map[string]any{}, subs: map[chan liveMsg]bool{}}
+		items: map[int]world.ItemName{}, names: map[int]string{}, radii: map[int]float64{}, zones: map[int]string{}, agents: map[string]any{}, subs: map[chan liveMsg]bool{}}
 }
 
 // insert puts v into s, sorted by t; appending is the usual case.
@@ -528,8 +529,9 @@ func (s *Store) resolve(evs []Ev) {
 	}
 	items := world.ItemNames(loot)
 	var names map[int]string
+	var radii map[int]float64
 	if len(units) > 0 {
-		names = world.CreatureNames(units)
+		names, radii = world.CreatureNames(units), world.CreatureRadii(units)
 	}
 	s.mu.Lock()
 	for id, it := range items {
@@ -538,6 +540,7 @@ func (s *Store) resolve(evs []Ev) {
 	}
 	for _, id := range units {
 		s.names[id] = names[id] // "" for an unknown entry: asked once
+		s.radii[id] = radii[id]
 	}
 	s.mu.Unlock()
 }
@@ -628,7 +631,7 @@ func (s *Store) mapSample(p *Player, a Sample) map[string]any {
 	return out
 }
 
-// mapUnits is a units sample as the map draws it: [name, level, x, y, health %, state] per creature.
+// mapUnits is a units sample as the map draws it: [name, level, x, y, health %, state, radius in yd] per creature.
 func (s *Store) mapUnits(u UnitsSample) map[string]any {
 	rows := make([][]any, len(u.U))
 	for i, r := range u.U {
@@ -636,7 +639,7 @@ func (s *Store) mapUnits(u UnitsSample) map[string]any {
 		if name == "" {
 			name = strconv.Itoa(int(r.Entry))
 		}
-		rows[i] = []any{name, r.Lvl, r.X, r.Y, r.HP, r.State}
+		rows[i] = []any{name, r.Lvl, r.X, r.Y, r.HP, r.State, math.Round(s.radii[int(r.Entry)]*100) / 100}
 	}
 	return map[string]any{"t": u.T, "m": u.M, "u": rows}
 }

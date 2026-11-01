@@ -165,6 +165,34 @@ function drawTiles(w, h) {
     const [sx, sy] = scr(GRID * (32 - gx), GRID * (32 - gy)), size = (GRID / RES) * view.s;
     cx.drawImage(im, sx, sy, size + 0.5, size + 0.5);
   }
+  drawDetail(xa, ya, xb, yb);
+}
+// Zoomed in past the minimap's own resolution (a pixel per ~2 yd), detail tiles: a square cut into 2^level x 2^level,
+// each 256 px (/detail, world.DetailTile). The level is the one whose pixels are about a screen pixel; a sub-square
+// whose tile hasn't come yet shows its part of a coarser one already here.
+const detail = new Map();
+function drawDetail(xa, ya, xb, yb) {
+  if (!B.detail?.includes(M.id)) return;
+  const L = Math.max(0, Math.min(B.maxDetail, Math.ceil(Math.log2(((GRID / RES) * view.s) / 256 * 0.9))));
+  if (!L) return;
+  const n = 1 << L, sub = GRID / n, size = (sub / RES) * view.s, idx = (v) => Math.floor((MAX - v) / sub);
+  cx.imageSmoothingEnabled = true;
+  for (let R = Math.max(0, idx(xa)); R <= Math.min(64 * n - 1, idx(xb)); R++) for (let C = Math.max(0, idx(ya)); C <= Math.min(64 * n - 1, idx(yb)); C++) {
+    const [sx, sy] = scr(MAX - R * sub, MAX - C * sub);
+    for (let l = L; l >= 1; l--) { // this level, or the part of a coarser one
+      const f = 1 << (L - l), r = Math.floor(R / f), c = Math.floor(C / f), m = 1 << l;
+      const key = `${M.id}/${l}/${Math.floor(r / m)}/${Math.floor(c / m)}/${r % m}/${c % m}`;
+      let im = detail.get(key);
+      if (!im && l === L) {
+        im = new Image(); im.onload = () => (dirty = true); im.src = `detail/${key}.jpg`; detail.set(key, im);
+        if (detail.size > 1500) detail.delete(detail.keys().next().value); // the oldest first
+      }
+      if (!im?.complete || !im.naturalWidth) continue;
+      const part = 256 / f;
+      cx.drawImage(im, (C % f) * part, (R % f) * part, part, part, sx, sy, size + 0.5, size + 0.5);
+      break;
+    }
+  }
 }
 const groupMembers = () => { const s = store(); if (s.grp == null) return null; const g = Number(s.grp);
   return new Set([...P.keys()].filter((n) => at(n, t)?.s.grp === g)); };
@@ -208,14 +236,14 @@ function drawMap() {
   for (const n of P.keys()) {
     const a = U[n]; if (!a) continue;
     const u = a[upto(a, t) - 1]; if (!u || t - u.t > 5000 || u.m !== M.id) continue;
-    for (const [name, lvl, x, y, hp, state] of u.u) {
+    for (const [name, lvl, x, y, hp, state, rad] of u.u) {
       const key = `${name}/${Math.round(x)}/${Math.round(y)}`; if (drawn.has(key)) continue; drawn.add(key);
-      const [sx, sy] = scr(x, y), dead = state & 4;
-      cx.beginPath(); cx.arc(sx, sy, dead ? 2.5 : 3.5, 0, 7);
+      const [sx, sy] = scr(x, y), dead = state & 4, r = Math.max(dead ? 2.5 : 3.5, (rad || 0.5) * yd());
+      cx.beginPath(); cx.arc(sx, sy, r, 0, 7);
       cx.fillStyle = dead ? "#777a" : UNIT_COLOR[state & 3] ?? "#aaa"; cx.fill();
       cx.lineWidth = 1; cx.strokeStyle = "#000a"; cx.stroke();
       if (view.s >= 4 && !dead) { const label = `${name} ${lvl}${hp < 100 ? ` ${hp}%` : ""}`;
-        cx.lineWidth = 3; cx.strokeStyle = "#000a"; cx.fillStyle = "#ddd"; cx.strokeText(label, sx + 6, sy + 4); cx.fillText(label, sx + 6, sy + 4); }
+        cx.lineWidth = 3; cx.strokeStyle = "#000a"; cx.fillStyle = "#ddd"; cx.strokeText(label, sx + r + 3, sy + 4); cx.fillText(label, sx + r + 3, sy + 4); }
     }
   }
   // routes are smoothed a little: each corner is cut with a curve through the midpoints of its two sides
@@ -300,19 +328,24 @@ function drawMap() {
   const names = [];
   for (const p of P.values()) {
     const pp = at(p.name, t); if (!pp || pp.s.m !== M.id) continue;
-    const [sx, sy] = scr(pp.x, pp.y), dead = !pp.s.a, ghost = pp.s.g;
-    cx.beginPath(); cx.arc(sx, sy, 6, 0, 7);
+    const [sx, sy] = scr(pp.x, pp.y), dead = !pp.s.a, ghost = pp.s.g, r = playerR();
+    cx.beginPath(); cx.arc(sx, sy, r, 0, 7);
     cx.fillStyle = ghost ? "#fff4" : p.color; cx.fill();
     cx.lineWidth = sel === p.name ? 3 : 1.5; cx.strokeStyle = pp.s.c ? css("--death") : "#000"; cx.stroke();
     if (dead && !ghost) { cx.strokeStyle = css("--death"); cx.lineWidth = 2; cx.beginPath(); cx.moveTo(sx - 5, sy - 5); cx.lineTo(sx + 5, sy + 5); cx.moveTo(sx + 5, sy - 5); cx.lineTo(sx - 5, sy + 5); cx.stroke(); }
     cx.font = "600 12px system-ui"; cx.textAlign = "left"; cx.lineWidth = 3; cx.strokeStyle = "#000b"; cx.fillStyle = "#fff";
     const label = p.name + (ghost ? " (ghost)" : ""), w = cx.measureText(label).width;
-    let lx = sx + 9, ly = sy - 7;
+    let lx = sx + r + 3, ly = sy - r - 1;
     for (let k = 0; k < 8; k++) { const hit = names.find(([x, y, pw]) => lx < x + pw + 4 && x < lx + w + 4 && Math.abs(y - ly) < 13); if (!hit) break; lx = hit[0]; ly = hit[1] + 14; }
     names.push([lx, ly, w]);
     cx.strokeText(label, lx, ly); cx.fillText(label, lx, ly);
   }
 }
+// sizes are true to the game's when zoomed in far enough (a creature's bounding radius, a player's 0.306 yd: a human
+// male's), with a floor so they stay visible further out
+const yd = () => view.s / RES; // screen pixels per yard
+const playerR = () => Math.max(5, PLAYER_RADIUS * yd());
+const PLAYER_RADIUS = 0.306; // ponytail: every race and gender alike; the models' radii are 0.2 to 0.5 yd
 const GLYPH = { death: ["✕", "--death"], achievement: ["★", "--ach"], level: ["▲", "--level"], quest: ["!", "--quest"] };
 
 // map interaction: drag pans (and stops the camera following), scroll zooms, a click selects a player or jumps to a marker
@@ -346,7 +379,7 @@ function wire() {
     drag = null;
     if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) return;
     const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
-    let best = null, bd = 14;
+    let best = null, bd = Math.max(14, playerR() + 4);
     for (const n of P.keys()) { const pp = at(n, t); if (!pp || pp.s.m !== M.id) continue;
       const [sx, sy] = scr(pp.x, pp.y), d = Math.hypot(sx - mx, sy - my); if (d < bd) { bd = d; best = n; } }
     const evs = markersAt(e); if (evs.length && bd >= 7) return setT(evs[0].t);
