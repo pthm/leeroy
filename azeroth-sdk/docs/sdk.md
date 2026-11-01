@@ -140,6 +140,7 @@ wow events --types chat --last 100               # chat history
 wow events --types damage,heal --last 200        # your combat log
 wow events --types result --match '"ok":false'   # failed actions
 wow events --since 1200                          # everything after seq 1200
+wow events --types result --last 1 --full        # the last result with its route whole
 wow wait 120                                     # block until an event you subscribe to (or 120 s)
 wow wait --types quest_complete,death 600        # block for these
 wow subscribe                                    # your subscription
@@ -147,6 +148,11 @@ wow subscribe +chat:channel,progress             # add types
 wow subscribe -task_finished                     # remove types
 wow subscribe death,stall,chat:whisper           # replace it
 ```
+
+Events in replies (`"events"`, `wow events`, `wow wait`) shorten a list of more than 8 points, such as a route's
+`waypoints`, to `{count, start, end, whole}`: its length, its first and last two points, and where to read it
+whole (`result(id)` for an action's result, or `--full`). Scripts, `result(id)` and `events.wait` in Lua get the
+whole list.
 
 **Your subscription** decides what `wow wait` (without `--types`) waits for. The default is `goal_met`, `maintenance`, `attention`, `death`,
 `stall`, `script_error`, `task_finished`, `party_invite`, `trade`, `gear_broken`, and chat from players to you

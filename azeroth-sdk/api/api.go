@@ -6,6 +6,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -129,6 +130,7 @@ var methods = map[string]method{
 	// text in the event, last = n most recent (default 50), limit = first n after since.
 	"events.query": typed(func(s Sessions, p struct {
 		Char string `json:"char"`
+		Full bool   `json:"full"`
 		script.Query
 	}) (any, error) {
 		e, err := engine(s, p.Char)
@@ -138,7 +140,7 @@ var methods = map[string]method{
 		if p.Last == 0 && p.Limit == 0 {
 			p.Last = 50
 		}
-		return e.Bus.Query(p.Query), nil
+		return compactEvents(e.Bus.Query(p.Query), p.Full), nil
 	}),
 	// events.subscribe: set what wakes the agent (events.wait without types) and what eval replies show in full;
 	// no types: just read it. Returns the subscription.
@@ -163,6 +165,7 @@ var methods = map[string]method{
 		Char    string  `json:"char"`
 		Timeout float64 `json:"timeout_s"`
 		Since   *uint64 `json:"since"`
+		Full    bool    `json:"full"`
 		script.Query
 	}) (any, error) {
 		e, err := engine(s, p.Char)
@@ -180,7 +183,7 @@ var methods = map[string]method{
 			p.Query.Since = *p.Since
 		}
 		evs := e.Bus.Wait(p.Query, time.Duration(p.Timeout*float64(time.Second)))
-		return map[string]any{"events": evs, "timed_out": len(evs) == 0, "seq": e.Bus.Seq()}, nil
+		return map[string]any{"events": compactEvents(evs, p.Full), "timed_out": len(evs) == 0, "seq": e.Bus.Seq()}, nil
 	}),
 	// events.harness: an event from the run's supervisor into the character's event stream (harnessEvents only)
 	"events.harness": typed(func(s Sessions, p struct {
@@ -266,12 +269,70 @@ func news(e *script.Engine) map[string]any {
 	}
 	out := map[string]any{"seq": now, "counts": counts}
 	if len(keep) > 0 {
-		out["important"] = keep
+		out["important"] = compactEvents(keep, false)
 	}
 	if len(evs) < int(now-since) {
 		out["note"] = "older events trimmed; wow events --since for the rest"
 	}
 	return out
+}
+
+// routeShown: a list of more points than this (a route's waypoints) is shortened in the events a reply shows
+const routeShown = 8
+
+// compactEvents shortens what replies show of events (unless full): every list of more than routeShown points
+// becomes {count, start, end} (its first and last two) and where to read it whole. The stream keeps them whole.
+func compactEvents(evs []script.Event, full bool) []script.Event {
+	if full {
+		return evs
+	}
+	out := make([]script.Event, len(evs))
+	for i, ev := range evs {
+		out[i] = ev
+		raw, err := json.Marshal(ev.Data)
+		if err != nil || !bytes.Contains(raw, []byte(`"x":`)) {
+			continue
+		}
+		var data any
+		json.Unmarshal(raw, &data)
+		whole := "wow events --full"
+		if m, ok := data.(map[string]any); ok && ev.Type == "result" && m["id"] != nil {
+			whole = fmt.Sprintf("result(%v)", m["id"])
+		}
+		out[i].Data = shortenRoutes(data, whole)
+	}
+	return out
+}
+
+func shortenRoutes(v any, whole string) any {
+	switch x := v.(type) {
+	case map[string]any:
+		for k, item := range x {
+			x[k] = shortenRoutes(item, whole)
+		}
+	case []any:
+		if len(x) > routeShown && points(x) {
+			return map[string]any{"count": len(x), "start": x[:2], "end": x[len(x)-2:], "whole": whole}
+		}
+		for i, item := range x {
+			x[i] = shortenRoutes(item, whole)
+		}
+	}
+	return v
+}
+
+// points: every element is a position ({x, y, ...})
+func points(list []any) bool {
+	for _, p := range list {
+		m, ok := p.(map[string]any)
+		if _, isNum := m["x"].(float64); !ok || !isNum {
+			return false
+		}
+		if _, isNum := m["y"].(float64); !isNum {
+			return false
+		}
+	}
+	return true
 }
 
 // session_ finds a character's session (char may be empty for a single-character daemon), or nil.

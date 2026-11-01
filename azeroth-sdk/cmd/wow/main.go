@@ -25,9 +25,9 @@ wow fights [n]                      your last fights: when, how long, outcome, e
 wow fight [id|last] [--map] [--at s] one fight: positioning, a map of everyone's movement, key moments, the timeline
 wow look [radius]                   a top-down text map of what's around you (world.look; radius in yards, default 40)
 wow tasks [--all]                   your running script tasks (state, status, what each waits for) and each name's latest failure; --all: finished ones too
-wow events [--types chat,quest_*] [--last 50] [--since seq] [--match text]
+wow events [--types chat,quest_*] [--last 50] [--since seq] [--match text] [--full]
                                     the event log (chat, combat, loot, quests, action results, errors, script logs)
-wow wait [--types chat:whisper,death] [--match text] [seconds]
+wow wait [--types chat:whisper,death] [--match text] [--full] [seconds]
                                     block until a matching event happens (default: your subscription), max $MAX_WAIT seconds (active runtime limit)
 wow subscribe [types | +types | -types]
                                     what wakes you (wow wait) and what replies show in full: show it, replace it,
@@ -35,6 +35,8 @@ wow subscribe [types | +types | -types]
 wow answer <id> <choice>            answer a script's ask() (an "attention" event)
 wow -w 20 'lua'                     sleep 20s first, then evaluate
 Every eval reply carries "events": what happened since your last call (counts by type, important ones in full).
+Events shown shorten a list of more than 8 points (a route's waypoints) to {count, start, end, whole}: result(id)
+or --full reads it whole.
 Subscribed chat, invites, trades, script questions, script errors and slow ticks are also printed to stderr
 ("wow: chat ...", "wow: script_errors ..."), so a reply piped through jq or cut can't hide them.
 Session: the azsdk daemon on port $WOW_PORT (default 8090).
@@ -127,7 +129,7 @@ func evalLua(code string) int {
 	return 0
 }
 
-// params turns --types a,b --last n --since n --limit n --match s [seconds] into the query object.
+// params turns --types a,b --last n --since n --limit n --match s --full [seconds] into the query object.
 func params(args []string) (*jqjson.Obj, bool) {
 	p := jqjson.NewObj()
 	for i := 0; i < len(args); i++ {
@@ -159,6 +161,8 @@ func params(args []string) (*jqjson.Obj, bool) {
 			}
 		case "--match":
 			p.Set("match", next())
+		case "--full":
+			p.Set("full", true)
 		default:
 			if !digits.MatchString(a) {
 				fmt.Fprintf(os.Stderr, "unknown option %s\n", a)
