@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/pthm/leeroy/azeroth-sdk/clientdata"
+	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
 )
 
 // Detail tiles: a continent's map finer than its minimap (256 px per 533-yard square, ~2 yd a pixel). The minimap has
@@ -19,6 +20,9 @@ import (
 // minimap, upscaled smoothly, plus the texture render's fine detail: the render minus itself blurred to the
 // minimap's resolution. Where the two disagree a lot (a building or water the textures don't have) less detail is
 // added, so roofs and water stay clean.
+
+// DetailVersion changes when detail tiles do (2: with the models drawn), so browsers don't keep old ones.
+const DetailVersion = 2
 
 // MaxDetail is the finest detail level: a square cut into 2^4 x 2^4 sub-squares, 0.13 yd a pixel.
 const MaxDetail = 4
@@ -261,9 +265,147 @@ func DetailTile(m uint32, gx, gy, level, sx, sy int) []byte {
 			o[0], o[1], o[2], o[3] = cl(mm[0]), cl(mm[1]), cl(mm[2]), 255
 		}
 	}
+	drawModels(out, m, xN, yW, res)
 	var buf bytes.Buffer
 	jpeg.Encode(&buf, out, &jpeg.Options{Quality: 85})
 	return buf.Bytes()
+}
+
+var vmaps = sync.OnceValue(func() *pathfinding.VMapManager { return pathfinding.NewVMapManager(filepath.Join(DataDir(), "vmaps")) })
+
+// shadowLen is how far a model's shadow reaches, yd: the sun is 45 degrees up, so a wall casts its height, up to this.
+const shadowLen = 10.0
+
+// drawModels draws the buildings, trees, rocks and fences over a detail tile from their models (the server's
+// collision geometry, data/vmaps), seen from above: each pixel the highest surface, lit by its face's slope from the
+// north-west (the minimap's light), outlined where it drops to a wall, casting a short shadow on what's below. The
+// colour is still the minimap's (a roof's tiles, a canopy's green): the models carry no textures.
+func drawModels(out *image.RGBA, m uint32, xN, yW, res float64) {
+	n := out.Rect.Dx()
+	zm := int(math.Ceil(shadowLen / res)) // margin: shadows cast from beyond the tile's edge
+	Z := n + 2*zm
+	top := make([]float32, Z*Z)
+	light := make([]float32, Z*Z)
+	face := make([]int32, Z*Z) // which triangle is on top, to colour it as one
+	nFaces := int32(0)
+	for i := range top {
+		top[i] = float32(math.Inf(-1))
+	}
+	x0, y0 := xN+float64(zm)*res, yW+float64(zm)*res                                   // the buffer's north-west corner
+	sun := [3]float64{1 / math.Sqrt(3.96), 1 / math.Sqrt(3.96), 1.4 / math.Sqrt(3.96)} // towards the sun: north-west, up
+	any := false
+	vmaps().Triangles(m, float32(x0-float64(Z)*res), float32(x0), float32(y0-float64(Z)*res), float32(y0), func(a, b, c pathfinding.Vector3) {
+		// pixel space: row from x (north at 0), column from y (west at 0)
+		var R, C, H [3]float64
+		for k, v := range [3]pathfinding.Vector3{a, b, c} {
+			R[k], C[k], H[k] = (x0-float64(v.X))/res, (y0-float64(v.Y))/res, float64(v.Z)
+		}
+		r0, r1 := max(0, int(math.Floor(min(R[0], R[1], R[2])))), min(Z-1, int(math.Ceil(max(R[0], R[1], R[2]))))
+		c0, c1 := max(0, int(math.Floor(min(C[0], C[1], C[2])))), min(Z-1, int(math.Ceil(max(C[0], C[1], C[2]))))
+		d := (C[1]-C[2])*(R[0]-R[2]) + (R[2]-R[1])*(C[0]-C[2])
+		if r0 > r1 || c0 > c1 || math.Abs(d) < 1e-9 {
+			return // off the buffer, or seen edge-on (a wall)
+		}
+		// the face's normal, up, in world axes (x north, y west, z up)
+		ux, uy, uz := float64(b.X-a.X), float64(b.Y-a.Y), float64(b.Z-a.Z)
+		vx, vy, vz := float64(c.X-a.X), float64(c.Y-a.Y), float64(c.Z-a.Z)
+		nx, ny, nz := uy*vz-uz*vy, uz*vx-ux*vz, ux*vy-uy*vx
+		if nz < 0 {
+			nx, ny, nz = -nx, -ny, -nz
+		}
+		l := float32(math.Max(0, (nx*sun[0]+ny*sun[1]+nz*sun[2])/math.Sqrt(nx*nx+ny*ny+nz*nz)))
+		nFaces++
+		for r := r0; r <= r1; r++ {
+			for c := c0; c <= c1; c++ {
+				pr, pc := float64(r)+0.5, float64(c)+0.5
+				l1 := ((C[1]-C[2])*(pr-R[2]) + (R[2]-R[1])*(pc-C[2])) / d
+				l2 := ((C[2]-C[0])*(pr-R[2]) + (R[0]-R[2])*(pc-C[2])) / d
+				l3 := 1 - l1 - l2
+				if l1 < 0 || l2 < 0 || l3 < 0 {
+					continue
+				}
+				if z := float32(l1*H[0] + l2*H[1] + l3*H[2]); z > top[r*Z+c] {
+					top[r*Z+c], light[r*Z+c], face[r*Z+c] = z, l, nFaces
+					any = true
+				}
+			}
+		}
+	})
+	if !any {
+		return
+	}
+	// what's below the models: the terrain, or a model's surface
+	ground := make([]float32, Z*Z)
+	for r := 0; r < Z; r++ {
+		for c := 0; c < Z; c++ {
+			h, _, _ := Sample(m, x0-(float64(r)+0.5)*res, y0-(float64(c)+0.5)*res)
+			ground[r*Z+c] = float32(h)
+		}
+	}
+	surface := func(i int) float32 { return max(top[i], ground[i]) }
+	// A model's colour is the minimap's, which is ~2 yd a pixel: blurred across a roof's edge. Each small face (a roof
+	// pane, a tower's cap) takes the mean of the minimap over it instead, so colours change where the faces do; big
+	// faces (a city's streets, a courtyard) keep the minimap's own variation.
+	type acc struct {
+		sum [3]float64
+		n   int
+	}
+	faces := make([]acc, nFaces+1)
+	mini := make([][3]float64, n*n)
+	for r := 0; r < n; r++ {
+		for c := 0; c < n; c++ {
+			i := (r+zm)*Z + c + zm
+			if top[i] > ground[i]+0.3 {
+				mm, _ := minimapAt(m, xN-(float64(r)+0.5)*res, yW-(float64(c)+0.5)*res)
+				mini[r*n+c] = mm
+				a := &faces[face[i]]
+				a.sum[0], a.sum[1], a.sum[2], a.n = a.sum[0]+mm[0], a.sum[1]+mm[1], a.sum[2]+mm[2], a.n+1
+			}
+		}
+	}
+	maxFace := int(150 / (res * res)) // pixels in 150 square yards
+	steps := int(shadowLen / res)
+	for r := 0; r < n; r++ {
+		for c := 0; c < n; c++ {
+			i := (r+zm)*Z + c + zm
+			model := top[i] > ground[i]+0.3
+			f := 1.0
+			if model {
+				f = 0.55 + 0.7*float64(light[i])                      // flat roofs about as the minimap has them
+				for _, j := range []int{i - 1, i + 1, i - Z, i + Z} { // a wall drops away beside it: outline
+					if surface(i)-surface(j) > 1.5 {
+						f *= 0.6
+						break
+					}
+				}
+			}
+			// shadow: something between this point and the sun (north-west, 45 degrees up)
+			h := surface(i)
+			for k := 1; k <= steps; k++ {
+				o := int(float64(k) / math.Sqrt2)
+				j := (r+zm-o)*Z + c + zm - o
+				if top[j] > h+float32(float64(k)*res)+0.3 {
+					f *= 0.68
+					break
+				}
+			}
+			if f != 1 {
+				p := out.Pix[r*out.Stride+c*4:]
+				if model { // a model's own colour, without the ground's texture
+					mm := mini[r*n+c]
+					if a := faces[face[i]]; a.n > 0 && a.n <= maxFace {
+						for k := range mm {
+							mm[k] = 0.8*a.sum[k]/float64(a.n) + 0.2*mm[k]
+						}
+					}
+					p[0], p[1], p[2] = uint8(mm[0]), uint8(mm[1]), uint8(mm[2])
+				}
+				for k := 0; k < 3; k++ {
+					p[k] = uint8(math.Min(255, float64(p[k])*f))
+				}
+			}
+		}
+	}
 }
 
 // boxBlur is a W x W image blurred by a (2r+1)-wide box, horizontally then vertically (running sums).

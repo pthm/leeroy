@@ -151,7 +151,12 @@ upscaled smoothly, plus the fine detail of the ground textures the game paints t
 layers and alpha maps from the client's ADT files): the texture render minus itself blurred to the minimap's
 resolution. The minimap keeps the colours, shading, buildings and water; the textures add the ground's grain and sharp
 road and path edges; where the two disagree a lot (a roof, water) less detail is added. The page uses the level whose
-pixels are about a screen pixel, and shows its part of a coarser tile while a finer one loads. Detail tiles need the
+pixels are about a screen pixel, and shows its part of a coarser tile while a finer one loads. Over that, the
+buildings, trees, rocks and fences are drawn from their models (the server's collision geometry in `data/vmaps`), seen
+from above: each pixel the highest surface, lit by its face's slope from the north-west, outlined where it drops to a
+wall, casting a short shadow (the sun 45 degrees up, at most 10 yd). The models have no textures, so a face takes the
+minimap's colour over it (a small face, a roof pane, one colour: the mean; a big one, a city street, the minimap's own
+variation). Detail tiles need the
 game client: `$WOW_CLIENT`, else `~/Downloads/ChromieCraft_3.3.5a`; without it the minimap is upscaled as before.
 
 The page requests tiles with `?v=<tileVersion>` (3 with client data, 1 without). Tiles are cached for a day, so the

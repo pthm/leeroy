@@ -184,7 +184,7 @@ function drawDetail(xa, ya, xb, yb) {
       const key = `${M.id}/${l}/${Math.floor(r / m)}/${Math.floor(c / m)}/${r % m}/${c % m}`;
       let im = detail.get(key);
       if (!im && l === L) {
-        im = new Image(); im.onload = () => (dirty = true); im.src = `detail/${key}.jpg`; detail.set(key, im);
+        im = new Image(); im.onload = () => (dirty = true); im.src = `detail/${key}.jpg?v=${B.detailVersion}`; detail.set(key, im);
         if (detail.size > 1500) detail.delete(detail.keys().next().value); // the oldest first
       }
       if (!im?.complete || !im.naturalWidth) continue;
