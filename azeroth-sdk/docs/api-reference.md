@@ -350,7 +350,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 |---|---|---|
 | `world.danger(x, y, z [, radius = 25]) → Request<DangerCheck>` | local observed hostile exposure from an arbitrary point, with navmesh floor and point-to-point LOS checks. Radius 1..40; 15s shared route deadline and admission limit. Missing evidence is unknown, never clear; observation coverage is limited to 80 yards around you. Completion: a bounded observed-state assessment completed; inspect data.state, including unknown. | [Request](#request), [DangerCheck](#dangercheck) |
 | `world.ground_z(x, y [, z]) → number?` | the height to stand at (x, y) on your map, for move.to; nil when the floor cannot be confirmed within the 60 ms spatial budget. With z (an NPC's spawn z from azworld) it finds the floor nearest that height: upstairs rooms, buildings, Stormwind's streets. Without it, the outdoor terrain (under any building) |  |
-| `world.in_sight(x, y, z) → bool?` | nothing solid (walls, rock, buildings) between your eyes and the point, as the server checks spells; nil when collision evidence is unavailable or its 60 ms budget expires |  |
+| `world.in_sight(x, y, z) → bool?` | nothing in the map's static world models (buildings, caves, tunnels) between your eyes (1.8 yards up) and 1.5 yards above the point, the geometry the server's spell check uses; it doesn't model doors and other game objects, which the server also counts, or each model's own eye height. Trees, fences and terrain block neither check. nil when collision evidence is unavailable or its 60 ms budget expires |  |
 | `world.look([radius = 40]) → string` | a top-down text map of what's around you, north up: the ground (higher, lower, no floor), hostile creatures by letter with their aggro range shaded, other creatures, players and lootable corpses, then a line for each: level, distance, direction, o'clock, height above or below you, aggro radius and whether you're inside it, line of sight. wow look prints it |  |
 | `world.los_spot(x, y, z [, range = 30, max_walk = 60]) → Request<LOSSpot>` | where to stand to cast at something you can't see: the shortest walk to a spot within range yards of the point that sees it and most of the 4 yards round it (view, 0..1: a sliver of a view past a corner is lost when the target steps aside), with 2 yards of range to spare when it can; walk there with move.to. route_unreachable if there's none within max_walk yards of walking. Completion: a walkable spot within range of the point and in its line of sight was found; route_unreachable when there's none within max_walk. | [Request](#request), [LOSSpot](#losspot) |
 | `world.path(x, y, z) → Request<PathCheck>` | await a supported navmesh route with static body clearance from your current 3D position; collision evidence includes state, segment, model and bounded replan outcome. Dynamic doors and lifts are outside this check. Deadline 15s including queueing, max leg 4096 yards / 1024 tiles, at most 16 pending queries and one active search per session. Identical successful searches are cached (128 entries). Task pause/stop/failure/return and session close cancel pending work. Failures include route_blocked, collision_unavailable, route_unreachable, route_timeout, route_limit, route_busy and not_available; partial data never authorizes movement. Completion: a complete supported navmesh route connects the requested floors with clear static body clearance; partial or unknown routes fail. | [Request](#request), [PathCheck](#pathcheck) |
@@ -1718,6 +1718,7 @@ DiagnosticDetails is an allowlist: arbitrary request arguments, results, error m
 | `duration_known?` | bool |  |
 | `quest_log?` | DiagnosticQuestLog |  |
 | `group?` | DiagnosticGroup |  |
+| `sight?` | DiagnosticSight |  |
 
 ### DiagnosticRoute
 
@@ -1785,6 +1786,17 @@ DiagnosticGroup records the server's roster, at most 40 members including self. 
 | `id` | GUID |  |
 | `leader` | GUID |  |
 | `members` | GUID[] |  |
+
+### DiagnosticSight
+
+DiagnosticSight: a spell the server refused for line of sight (sight_refused), with both ends as the client saw them and the SDK's own check (spells.check's in_sight) at that moment. Predicted true is a disagreement.
+
+| Field | Type | |
+|---|---|---|
+| `map` | number |  |
+| `caster` | [number, number, number] |  |
+| `target?` | [number, number, number] |  |
+| `predicted?` | bool |  |
 
 ### Attacking
 

@@ -316,15 +316,15 @@ func (b *Bot) setupAgentAPI() {
 		}
 		return nil
 	}
-	e.Func("world.in_sight", "(x, y, z) → bool?", "nothing solid (walls, rock, buildings) between your eyes and the point, as the server checks spells; nil when collision evidence is unavailable or its 60 ms budget expires",
+	e.Func("world.in_sight", "(x, y, z) → bool?", "nothing in the map's static world models (buildings, caves, tunnels) between your eyes (1.8 yards up) and 1.5 yards above the point, the geometry the server's spell check uses; it doesn't model doors and other game objects, which the server also counts, or each model's own eye height. Trees, fences and terrain block neither check. nil when collision evidence is unavailable or its 60 ms budget expires",
 		func(x, y, z float32) any { return los(navigation.Point3D{X: x, Y: y, Z: z + 1.5}) })
 	e.Func("units.in_sight", "(guid) → bool?", "line of sight to an observed unit; nil if the unit or collision evidence is unavailable (see world.in_sight)", func(g uint64) any {
-		o := w.GetObject(g)
-		if o == nil {
-			return nil
+		if o := w.GetObject(g); o != nil {
+			if s := b.sightOf(o); s != nil {
+				return *s
+			}
 		}
-		x, y, z := o.InterpolatedPosition()
-		return los(navigation.Point3D{X: x, Y: y, Z: z + 1.5})
+		return nil
 	})
 
 	// ---------- death ----------

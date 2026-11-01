@@ -116,7 +116,10 @@ Every character can wear lighter armor types than its own; heavier ones protect 
 - **Tagging:** the first player or group to damage a mob owns it: only they get its XP, loot and quest credit.
 - **Evading:** a mob that can't reach you, or that was pulled too far from home, runs back, heals and can't be
   hurt meanwhile.
-- **Line of sight:** spells need a clear line to the target; walls, rocks and rises block it.
+- **Line of sight:** the server checks it for spells on any other unit, friendly or hostile, when the cast starts:
+  a line from the caster's eyes to the target's (each at its model's height). Buildings, caves, tunnels and other
+  large world models block it, and so do game objects such as doors; trees, fences and other small doodads don't,
+  and neither does open terrain. <!-- Spell::CheckCast, WorldObject::IsWithinLOSInMap, Map::isInLineOfSight (ModelIgnoreFlags::M2; CheckGameObjectLoS = 1) -->
 - **What you see:** a mob's spell cast in progress, its buffs and debuffs, and how each of your attacks landed (hit,
   crit, miss, dodge, parry, block, resist). An **interrupt** (Kick, Shield Bash, Counterspell, stuns) stops a cast.
   **Crowd control** (Polymorph, Sap, Gouge, Hammer of Justice, Frost Nova, Psychic Scream) takes a mob out of a

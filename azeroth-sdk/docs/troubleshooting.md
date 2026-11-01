@@ -9,7 +9,7 @@ sdk.md.
 |---|---|---|
 | `move.to` with `no_path`, or ending `stuck` | no walkable route there (inside a building, wrong floor, under the map) | `world.path`, the point's z, `azworld route` |
 | distance to a target not dropping | blocked by terrain or out of reach | `path_distance`, `reachable`, `in_sight` |
-| cast `line_of_sight` | a wall, rock or rise in between (in caves, often the tunnel's bend) | `units.in_sight(guid)`; `act.approach` closes in until it's in sight |
+| cast `line_of_sight` | a wall or world model in between (in caves, often the tunnel's bend), or a door or other game object, which `in_sight` doesn't model | `units.in_sight(guid)`; `act.approach` closes in until it's in sight |
 | `out_of_range` | too far for that spell | `spells.info(id).range` |
 | `bad_targets` | not a valid target (dead, friendly, tapped by someone else) | the unit's `alive`, `reaction`, `tapped_by_other` |
 | `equipped_item_class*` | your weapon is broken or missing | `items.broken()` |

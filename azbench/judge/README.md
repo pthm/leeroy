@@ -163,6 +163,10 @@ was made), `preempted` (replaced_by_owner, preempted, cancelled, session_closed,
 agent's own task or session), or `failure`. `team.json`'s diagnostics give `failures`, `combat_outcomes` and
 `preempted` per agent.
 
+`sight_refused` counts the spells the server refused for line of sight, and `predicted_clear` those where the SDK's
+own `in_sight` said clear at that moment: the places its collision model is wrong. Each refusal is in the evidence
+with the map, caster and target positions and the prediction.
+
 `azbench status` shows up to three fresh active episodes, ranked by recorded action time and episode span.
 This is observed failed-action time, not an estimate of all time lost to a problem. The evidence view keeps
 the last 200 action, status, tool, quest/group observation and lifecycle records and reports how many were omitted. Task status is an

@@ -81,6 +81,16 @@ type DiagnosticDetails struct {
 	DurationKnown *bool                  `json:"duration_known,omitempty"`
 	QuestLog      *DiagnosticQuestLog    `json:"quest_log,omitempty"`
 	Group         *DiagnosticGroup       `json:"group,omitempty"`
+	Sight         *DiagnosticSight       `json:"sight,omitempty"`
+}
+
+// DiagnosticSight: a spell the server refused for line of sight (sight_refused), with both ends as the client saw
+// them and the SDK's own check (spells.check's in_sight) at that moment. Predicted true is a disagreement.
+type DiagnosticSight struct {
+	Map       uint32      `json:"map"`
+	Caster    [3]float32  `json:"caster"`              // x, y, z at the feet
+	Target    *[3]float32 `json:"target,omitempty"`    // nil when the target isn't observed
+	Predicted *bool       `json:"predicted,omitempty"` // nil when collision evidence is unavailable
 }
 
 // DiagnosticQuestLog is a complete observed client quest log, at most 25 entries. Removal from the log

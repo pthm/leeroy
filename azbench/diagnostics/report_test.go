@@ -274,3 +274,19 @@ func TestFailuresCountTopLevelCallsByClass(t *testing.T) {
 		t.Fatalf("nested=%d classes=%v", s.NestedCalls, got)
 	}
 }
+
+// sight_refused: counted, with the refusals the SDK predicted clear, and kept as evidence
+func TestSightRefusedCounts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "diagnostics.jsonl")
+	clear, blocked := true, false
+	var events []types.Diagnostic
+	for i, p := range []*bool{&clear, &blocked, nil} {
+		events = append(events, types.Diagnostic{Schema: 1, Seq: uint64(i + 1), T: int64(1000 * (i + 1)), Agent: "a1", Session: "s1", Kind: "sight_refused",
+			Details: types.DiagnosticDetails{SpellID: 2050, Sight: &types.DiagnosticSight{Map: 36, Predicted: p}}})
+	}
+	writeEvents(t, path, events)
+	s := Read("a1", path)
+	if s.SightRefused != (Sight{Count: 3, PredictedClear: 1}) || len(s.Evidence) != 3 {
+		t.Fatalf("%+v, %d evidence", s.SightRefused, len(s.Evidence))
+	}
+}

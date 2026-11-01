@@ -2,8 +2,10 @@ package session
 
 import (
 	"math"
+	"strconv"
 	"time"
 
+	"github.com/pthm/leeroy/azeroth-sdk/client"
 	"github.com/pthm/leeroy/azeroth-sdk/navigation"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
@@ -68,8 +70,8 @@ func (b *Bot) spellCheck(id uint32, guid uint64) types.SpellCheck {
 		angle := math.Remainder(math.Atan2(float64(ty-y), float64(tx-x))-float64(o), 2*math.Pi)
 		facing := math.Abs(angle) <= math.Pi/2 // Unit::HasInArc(M_PI): 90 degrees either side
 		d.Facing = &facing
-		if sight, known := b.inSight(navigation.Point3D{X: tx, Y: ty, Z: tz + 1.5}); known {
-			d.InSight = &sight
+		if sight := b.sightOf(obj); sight != nil {
+			d.InSight = sight
 		} else {
 			d.Unknown = append(d.Unknown, "in_sight")
 		}
@@ -91,4 +93,30 @@ func (b *Bot) spellCheck(id uint32, guid uint64) types.SpellCheck {
 	}
 	d.Usable = true
 	return d
+}
+
+// sightOf: line of sight from your eyes to a unit's (1.5 yards up), nil without collision evidence. spells.check uses
+// it for every target, friendly or hostile, as the server checks line of sight for both.
+func (b *Bot) sightOf(o *client.WorldObject) *bool {
+	x, y, z := o.InterpolatedPosition()
+	if clear, ok := b.inSight(navigation.Point3D{X: x, Y: y, Z: z + 1.5}); ok {
+		return &clear
+	}
+	return nil
+}
+
+// sightRefused records a server line_of_sight refusal (diagnostic sight_refused) with both ends and what sightOf
+// predicts, so the places where the SDK's model says clear and the server doesn't can be found.
+func (b *Bot) sightRefused(spell uint32, target uint64) {
+	x, y, z, _, m := b.world.Position()
+	s := types.DiagnosticSight{Map: m, Caster: [3]float32{x, y, z}}
+	if o := b.world.GetObject(target); o != nil && target != b.world.CharGUID() {
+		tx, ty, tz := o.InterpolatedPosition()
+		s.Target, s.Predicted = &[3]float32{tx, ty, tz}, b.sightOf(o)
+	}
+	b.lua.RecordObservation("sight_refused", types.DiagnosticDetails{SpellID: spell, Target: strconv.FormatUint(target, 10), Sight: &s})
+	if s.Predicted != nil && *s.Predicted {
+		b.log("[sight] the server refused spell %d for line of sight; the SDK predicted clear (map %d, from %.1f %.1f %.1f to %.1f %.1f %.1f)",
+			spell, m, x, y, z, s.Target[0], s.Target[1], s.Target[2])
+	}
 }

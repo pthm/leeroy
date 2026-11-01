@@ -660,7 +660,15 @@ func (b *Bot) setupActions() {
 			if err := b.world.CastSpellCount(spell, target, count); err != nil {
 				return b.refuse("spells.cast", args, "failed", err.Error())
 			}
-			return b.request("spells.cast", args, castTimeout(spell), nil, castMatch(spell, count))
+			h := b.request("spells.cast", args, castTimeout(spell), nil, castMatch(spell, count))
+			if id, ok := h["id"].(int); ok {
+				b.lua.Reqs.Observe(id, func(r map[string]any) {
+					if err, _ := r["error"].(map[string]any); err != nil && err["code"] == "line_of_sight" {
+						b.sightRefused(spell, target)
+					}
+				})
+			}
+			return h
 		})
 }
 

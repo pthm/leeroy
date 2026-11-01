@@ -101,12 +101,21 @@ type Summary struct {
 	Coverage        Coverage    `json:"coverage"`
 	ByOperation     []Aggregate `json:"by_operation"` // top-level calls only
 	NestedCalls     int         `json:"nested_calls"` // calls made inside another call, left out of by_operation
+	SightRefused    Sight       `json:"sight_refused"`
 	Tools           ToolSummary `json:"tools"`
 	Episodes        []Episode   `json:"episodes"`
 	Evidence        []Evidence  `json:"evidence"`
 	EvidenceOmitted int         `json:"evidence_omitted"`
 	Unavailable     []string    `json:"unavailable"`
 }
+
+// Sight counts the server's line_of_sight refusals (sight_refused) and those where the SDK's in_sight said clear: the
+// cases its collision model gets wrong. The evidence keeps the positions.
+type Sight struct {
+	Count          int `json:"count"`
+	PredictedClear int `json:"predicted_clear"`
+}
+
 // Class buckets a failed call's code: the server's combat outcome of an attack or spell (the call worked; the
 // attack missed), a call preempted by its own task or session (a newer request, a stopped task), or a failure.
 func Class(code string) string {
@@ -228,11 +237,17 @@ func Read(agent string, paths ...string) Summary {
 			sessions[stream] = true
 		}
 		streams[stream] = append(streams[stream], ev)
-		if ev.Kind == "action_finished" || ev.Kind == "task_status" || ev.Kind == "runtime_state" || ev.Kind == "tool_call" || ev.Kind == "quest_state" || ev.Kind == "group_state" || ev.Kind == "recovery_transition" || ev.Kind == "gear_state" || ev.Kind == "movement_owner" || ev.Kind == "route_finished" || ev.Kind == "character_state" {
+		if ev.Kind == "action_finished" || ev.Kind == "task_status" || ev.Kind == "runtime_state" || ev.Kind == "tool_call" || ev.Kind == "quest_state" || ev.Kind == "group_state" || ev.Kind == "recovery_transition" || ev.Kind == "gear_state" || ev.Kind == "movement_owner" || ev.Kind == "route_finished" || ev.Kind == "character_state" || ev.Kind == "sight_refused" {
 			s.Evidence = append(s.Evidence, Evidence{Ref: ev.ref, T: ev.T, Kind: ev.Kind, Task: ev.Task, TaskID: ev.TaskID, Call: ev.Call, ParentCall: ev.ParentCall, Op: ev.Op, Outcome: ev.Outcome, Code: ev.Code, Details: ev.Details})
 			if len(s.Evidence) > 200 {
 				s.Evidence = s.Evidence[1:]
 				s.EvidenceOmitted++
+			}
+		}
+		if ev.Kind == "sight_refused" {
+			s.SightRefused.Count++
+			if ev.Details.Sight != nil && ev.Details.Sight.Predicted != nil && *ev.Details.Sight.Predicted {
+				s.SightRefused.PredictedClear++
 			}
 		}
 		if ev.Kind == "runtime_state" {
