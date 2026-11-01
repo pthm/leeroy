@@ -203,6 +203,37 @@ func TestTaskControl(t *testing.T) {
 	}
 }
 
+// A Go panic in a native call fails the task with a Lua error naming the op and the Lua line that called it, logs
+// the Go stack, and leaves the engine running.
+func TestNativePanicRecovered(t *testing.T) {
+	var logged strings.Builder
+	e := NewEngine(func(f string, a ...any) { fmt.Fprintf(&logged, f+"\n", a...) }, nil)
+	e.Func("t.oops", "() → number", "", func() float64 { var p *struct{ n float64 }; return p.n })
+	e.Func("t.bad", "() → number", "", func() float64 { panic("t.bad: needs a target") })
+	if _, err := e.Eval("function heal()\n  local n = t.oops()\n  return n\nend\ntask.spawn(\"healer\", function()\n  wait(0.01)\n  heal()\nend)"); err != nil {
+		t.Fatal(err)
+	}
+	tick(e, 5)
+	ts := e.TasksHeld()
+	if len(ts) != 1 || ts[0].State != "failed" {
+		t.Fatalf("tasks: %+v", ts)
+	}
+	for _, want := range []string{"wow:2:", "t.oops: internal error (runtime error: invalid memory address", "  wow:2 in heal", "  wow:7"} {
+		if !strings.Contains(ts[0].Error, want) {
+			t.Errorf("missing %q in:\n%s", want, ts[0].Error)
+		}
+	}
+	if !strings.Contains(logged.String(), "t.oops: Go panic") || !strings.Contains(logged.String(), "TestNativePanicRecovered") {
+		t.Errorf("no Go stack in the log:\n%s", logged.String())
+	}
+	if _, err := e.Eval("return t.bad()"); err == nil || !strings.HasPrefix(err.Error(), "wow:1: t.bad: needs a target\n") {
+		t.Errorf("an SDK panic message: %v", err)
+	}
+	if v, err := e.Eval("return 7"); err != nil || v != 7.0 {
+		t.Fatalf("engine after the panic: %v, %v", v, err)
+	}
+}
+
 // A failing task says which file and line, and how it got there; wait() still works through the trampoline.
 func TestTaskErrorWhere(t *testing.T) {
 	dir := t.TempDir()

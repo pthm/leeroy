@@ -15,6 +15,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -442,6 +444,7 @@ func (e *Engine) registerFunc(name, sig, desc string, fn any, internal bool) {
 	e.natives[name] = v
 	need := contract.Required()
 	e.set(name, func(L *lua.LState) int {
+		defer e.recoverNative(L, name)
 		var diagnostic *diagnosticCall
 		if strings.Contains(sig, "→ Request") {
 			diagnostic = e.beginDiagnostic(L, name, nativeDiagnosticArgs(name, sig, L))
@@ -494,6 +497,26 @@ func (e *Engine) registerFunc(name, sig, desc string, fn any, internal bool) {
 	})
 }
 
+// recoverNative turns a Go panic in a native call into a Lua error naming the op, so the task's traceback has the Lua
+// line that called it. A runtime error (a bug in the SDK) also logs its Go stack to session.log.
+func (e *Engine) recoverNative(L *lua.LState, name string) {
+	p := recover()
+	if p == nil {
+		return
+	}
+	if _, ok := p.(*lua.ApiError); ok { // a Lua error raised on purpose
+		panic(p)
+	}
+	if _, ok := p.(runtime.Error); ok {
+		e.logf("[Lua] %s: Go panic: %v\n%s", name, p, debug.Stack())
+		L.RaiseError("%s: internal error (%v); its Go stack is in session.log", name, p)
+	}
+	if msg := fmt.Sprint(p); strings.HasPrefix(msg, name) {
+		L.RaiseError("%s", msg)
+	}
+	L.RaiseError("%s: %v", name, p)
+}
+
 // explain adds what Lua's terser errors usually mean here (it doesn't name what it tried to call)
 func explain(err error) error {
 	if strings.Contains(err.Error(), "attempt to call a non-function object") {
@@ -509,6 +532,7 @@ func (e *Engine) Methods(name, sig, desc string, target any) {
 	defer e.mu.Unlock()
 	e.doc(name, sig, desc)
 	e.set(name, func(L *lua.LState) int {
+		defer e.recoverNative(L, name+"(\""+L.CheckString(1)+"\")")
 		m := v.MethodByName(L.CheckString(1))
 		if !m.IsValid() {
 			L.RaiseError("no client method '%s'", L.CheckString(1))
