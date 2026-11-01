@@ -277,11 +277,16 @@ func (b *Bot) setupCombatInfo() {
 			}
 			return *best
 		})
-	e.Func("items.find", "(name) → Item?", "an observed carried item matched by its loaded name (any case); nil means no loaded-name match, not proof of inventory absence. count is the total among matching loaded items", func(n string) any {
+	e.Func("items.find", "(name_or_entry) → Item?", "an observed carried item matched by its exact loaded name (any case, not a part of it) or by its item entry; nil means no match among loaded items, not proof of inventory absence. count is the total among matching items", func(q any) any {
+		entry, byEntry := q.(float64)
+		name, byName := q.(string)
+		if !byEntry && !byName {
+			panic("items.find: name_or_entry must be an item name or a numeric item entry")
+		}
 		var found *types.Item
 		total := uint32(0)
 		for _, it := range bagItems(w) {
-			if strings.EqualFold(it.Name, n) {
+			if byName && strings.EqualFold(it.Name, name) || byEntry && float64(it.Entry) == entry {
 				total += it.Count
 				if found == nil {
 					it := it

@@ -233,3 +233,28 @@ func TestLootGameObjectRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// items.find matches the whole name (any case), not a part of it, or the item entry; count totals the stacks
+func TestItemFindByNameOrEntry(t *testing.T) {
+	b := testBot()
+	b.setupCombatInfo()
+	const potion = uint64(0x4000000000000901)
+	items.Lock()
+	items.proto[858] = &itemProto{Entry: 858, Name: "Lesser Healing Potion", allowClass: -1}
+	items.Unlock()
+	me := &client.WorldObject{GUID: b.world.CharGUID(), Values: map[uint16]uint32{}}
+	for i, g := range []uint64{potion, potion + 1} {
+		me.Values[fieldInvSlots+uint16(23+i)*2], me.Values[fieldInvSlots+uint16(23+i)*2+1] = uint32(g), uint32(g>>32)
+		b.world.PutObjectForTest(&client.WorldObject{GUID: g, Values: map[uint16]uint32{3: 858, fieldItemStack: 2}})
+	}
+	b.world.PutObjectForTest(me)
+	for q, want := range map[string]string{`858`: "4", `"lesser healing potion"`: "4", `"Healing Potion"`: "nil", `859`: "nil"} {
+		v, err := b.lua.Eval(`local it = items.find(` + q + `) return it and it.count or "nil"`)
+		if err != nil || fmt.Sprint(v) != want {
+			t.Errorf("items.find(%s) = %v %v, want %s", q, v, err, want)
+		}
+	}
+	if _, err := b.lua.Eval(`items.find({})`); err == nil || !strings.Contains(err.Error(), "name_or_entry") {
+		t.Errorf("a table: %v", err)
+	}
+}
