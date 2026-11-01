@@ -169,7 +169,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `items.roll(roll, choice) → Request<LootRollResult>` | roll on group loot (loot_roll_start event, items.rolls): need, greed, disenchant or pass. No choice before the countdown ends is a pass. Completion: the server echoed this player's vote for the requested roll. | [Request](#request), [LootRollResult](#lootrollresult) |
 | `items.rolls() → LootRoll[]` | group loot waiting for your roll (also in me.status().loot_rolls) | [LootRoll](#lootroll) |
 | `items.unequip(slot) → Request` | take off what you wear in a slot (head, chest, main_hand, off_hand, finger1, trinket2, ...) into your bags. Completion: the item is observed outside its equipped slot. | [Request](#request) |
-| `items.use(item [, guid]) → Request<CastDone>` | use an item you carry (entry or guid): food, drink, potions, quest items; optionally on a unit. Food and drink work out of combat, and you must sit still while they tick. Completion: a matching server item-use spell completion event was observed. | [Request](#request), [CastDone](#castdone) |
+| `items.use(item [, guid]) → Request<CastDone>` | use an item you carry (entry or guid): food, drink, potions, quest items; optionally on a unit or game object (guid). Food and drink work out of combat, and you must sit still while they tick. Completion: a matching server item-use spell completion event was observed. | [Request](#request), [CastDone](#castdone) |
 
 ### json
 

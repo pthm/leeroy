@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"encoding/binary"
 	"math"
 	"strings"
@@ -203,5 +204,19 @@ func TestLootResponse(t *testing.T) {
 	evs := b.lua.Bus.Wait(script.Query{Types: []string{"error"}}, time.Second)
 	if len(evs) != 1 || evs[0].Data.(types.ErrorEvent).Code != "being_looted" {
 		t.Fatalf("%v", evs)
+	}
+}
+
+// items.use on a game object (the Deadmines cannon) targets it as one, as objects.use does; a unit stays a unit
+func TestItemTargetFlag(t *testing.T) {
+	for guid, want := range map[uint64]uint32{0: 0, 0xF130000E5E000012: 0x2, client.GameObjectGUID(16398, 0x42): 0x800} {
+		var buf bytes.Buffer
+		writeTarget(&buf, guid)
+		if got := binary.LittleEndian.Uint32(buf.Bytes()); got != want {
+			t.Errorf("%x: flag %#x, want %#x", guid, got, want)
+		}
+		if guid != 0 && !bytes.Equal(buf.Bytes()[4:], packGUID(guid)) {
+			t.Errorf("%x: guid not packed after the flag", guid)
+		}
 	}
 }

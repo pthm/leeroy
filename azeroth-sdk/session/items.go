@@ -479,7 +479,7 @@ func (b *Bot) setupItems() {
 				return nil
 			}, func() error { return nil })
 		})
-	e.Func("items.use", "(item [, guid]) → Request<CastDone>", "use an item you carry (entry or guid): food, drink, potions, quest items; optionally on a unit. Food and drink work out of combat, and you must sit still while they tick",
+	e.Func("items.use", "(item [, guid]) → Request<CastDone>", "use an item you carry (entry or guid): food, drink, potions, quest items; optionally on a unit or game object (guid). Food and drink work out of combat, and you must sit still while they tick",
 		func(item, target uint64) map[string]any {
 			args := map[string]any{"item": gs(item)}
 			it := findItem(w, item)
@@ -755,8 +755,7 @@ func (b *Bot) setupItems() {
 			buf.WriteByte(count)
 			binary.Write(&buf, binary.LittleEndian, spell)
 			buf.WriteByte(0)
-			binary.Write(&buf, binary.LittleEndian, uint32(0x800)) // TARGET_FLAG_GAMEOBJECT
-			buf.Write(packGUID(guid))
+			writeTarget(&buf, guid)
 			b.agent.castSent(spell)
 			if err := w.SendPacketRaw(cmsgCastSpellOp, buf.Bytes()); err != nil {
 				return b.refuse("objects.use", args, "failed", err.Error())
@@ -1051,7 +1050,11 @@ func writeTarget(buf *bytes.Buffer, target uint64) {
 		binary.Write(buf, binary.LittleEndian, uint32(0)) // self
 		return
 	}
-	binary.Write(buf, binary.LittleEndian, uint32(0x2)) // TARGET_FLAG_UNIT
+	flag := uint32(0x2) // TARGET_FLAG_UNIT
+	if high := uint16(target >> 48); high == 0xF110 || high == 0xF111 {
+		flag = 0x800 // TARGET_FLAG_GAMEOBJECT
+	}
+	binary.Write(buf, binary.LittleEndian, flag)
 	buf.Write(packGUID(target))
 }
 
