@@ -100,7 +100,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 |---|---|---|
 | `death.accept_res() → Request` | accept a player's resurrection (after a resurrect_offered event): you come back where your body lies. Completion: the character is observed alive and no longer a ghost. | [Request](#request) |
 | `death.corpse() → Request<Corpse>` | observed corpse and reclaim timer; cached for 3 seconds, otherwise asks the server with a 5-second deadline. not_found means alive or an explicit absent-corpse reply; not_available means send failure; silence is timeout. Completion: a current server corpse location was observed; an explicit absence fails not_found. | [Request](#request), [Corpse](#corpse) |
-| `death.reclaim() → Request` | as a ghost within ~30 yd of your corpse, come back to life there. Completion: the character is observed alive and no longer a ghost. | [Request](#request) |
+| `death.reclaim() → Request` | as a ghost within 39 yd of your corpse, come back to life there, with half your health and mana. Completion: the character is observed alive and no longer a ghost. | [Request](#request) |
 | `death.release() → Request` | release your spirit: ok once you're a ghost at the graveyard. Completion: ghost state is observed, or the character is already a ghost. | [Request](#request) |
 | `death.spirit_res(npc_guid) → Request` | as a ghost next to a spirit healer: resurrect there (resurrection sickness from level 11, and your gear loses durability). Completion: the character is observed alive and no longer a ghost; healer cost is not sent by the server beforehand. | [Request](#request) |
 
@@ -195,7 +195,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `me.ghost() → bool` | released and walking back as a ghost |  |
 | `me.guid() → GUID` | your GUID |  |
 | `me.health() → Resource` | your health | [Resource](#resource) |
-| `me.home() → Home?` | nil until the server bind-point packet is observed; otherwise where your hearthstone takes you (use the Hearthstone item: items.use(6948), a 10 s cast with a 1 hour cooldown) | [Home](#home) |
+| `me.home() → Home?` | nil until the server bind-point packet is observed; otherwise where your hearthstone takes you (use the Hearthstone item: items.use(6948), a 10 s cast with a 30-minute cooldown) | [Home](#home) |
 | `me.in_combat() → bool` | the server's combat flag |  |
 | `me.level() → number` | your level |  |
 | `me.location() → Location` | where you are, by the game's own zone and area names | [Location](#location) |
@@ -411,7 +411,7 @@ Place is where something is in the world, measured from you: anything around you
 | `y` | number |  |
 | `z` | number |  |
 | `distance` | number | yards from you in a straight line |
-| `in_sight?` | bool | nothing solid (rock, walls) between you and it: a mob in a cave under you can be close but not in sight |
+| `in_sight?` | bool | no static world model (rock, walls) between your eyes and it, as world.in_sight checks: a mob in a cave under you can be close but not in sight |
 | `path_distance?` | number | how far you'd walk to reach it (often much more than distance, across cliffs, floors and caves); worked out nearest first within a time budget, so the farthest may lack it |
 | `reachable?` | bool | with path_distance: whether a walking route gets you there |
 | `bearing` | number | degrees from where you face: 0 ahead, 90 to your right, -90 to your left, ±180 behind |
@@ -447,16 +447,16 @@ Everything in [Unit](#unit), plus:
 | Field | Type | |
 |---|---|---|
 | `entry` | number | creature template id (azworld npc <entry>) |
-| `elite` | bool | much stronger than its level suggests: meant for groups |
+| `elite` | bool | an elite: several times the health and damage of a normal creature of its level, and double the XP |
 | `rank?` | string | normal, elite, rare, rare_elite or boss |
 | `type?` | string | beast, humanoid, undead, demon, elemental, giant, dragonkin, mechanical, critter, totem, ... (spells like Polymorph only work on some types). Known a moment after first sight |
 | `subname?` | string | the title under an NPC's name, e.g. Weapon Merchant |
 | `kill_credit?` | number[] | other creature entries killing this one counts as, for kill objectives (an objective's entry may be one of these) |
 | `skinnable?` | bool | a corpse that can be skinned |
-| `evading?` | bool | it's evading (resetting, unreachable): your attacks do nothing; leave it |
+| `evading?` | bool | it's evading (resetting, unreachable): your attacks do nothing until it's back |
 | `roles?` | string[] | what it offers: vendor, repair, trainer, quest_giver, flight_master, innkeeper, banker, spirit_healer, gossip |
 | `attackable` | bool | can be attacked at all (false for triggers, dummies, protected NPCs) |
-| `aggro_radius?` | number | hostile and alive: how close you can come before it attacks you on sight (the server's rule: 20 yd at your level, a yard more per level above you and a yard less per level below, at least 5) |
+| `aggro_radius?` | number | hostile and alive: how close you can come before it attacks you on sight: 20 yd at your level, a yard more per level above you and a yard less per level below, at least 5. The server's base is the creature's own detection range, 18 yd for most creatures, so this can be 2 yd more than the server's |
 | `in_aggro?` | bool | you're within its aggro_radius and in its sight: it attacks you now, or the moment it's free |
 | `lootable` | bool | a corpse with loot for you |
 | `tapped_by_other` | bool | someone else damaged it first: killing it gives you nothing |
@@ -851,7 +851,7 @@ GroupMember is a party member as the real client's party frames show them: healt
 | `position?` | MemberPosition |  |
 | `distance?` | number | yards from you |
 | `in_range` | bool | close enough to see (about 100 yd): units.get works on them |
-| `in_sight?` | bool | in range and nothing solid between you |
+| `in_sight?` | bool | in range and no static world model between you, as world.in_sight checks |
 | `path_distance?` | number | how far you'd walk to reach them (in range only) |
 | `reachable?` | bool |  |
 | `target?` | GUID | what they're targeting (in sight only) |
@@ -1108,7 +1108,7 @@ Everything in [Place](#place), plus:
 | `on` | string | who it's attacking: you, pet, or a group member's name |
 | `threat_pct?` | number | your threat on it as a share of the top (100 = it attacks you) |
 | `elite?` | bool |  |
-| `evading?` | bool | resetting: your attacks do nothing; leave it |
+| `evading?` | bool | resetting: your attacks do nothing until it's back |
 | `casting?` | Casting | interrupt it, or get out of the way |
 
 ### MobSummary
@@ -1137,7 +1137,7 @@ Everything in [Place](#place), plus:
 | `aggro_radius` | number |  |
 | `in_aggro` | bool | you're inside its aggro range and in its sight |
 | `margin` | number | yards to the edge of its aggro range (negative: you're inside) |
-| `pack` | number | other hostile creatures within 10 yd of it: what comes along if you pull it |
+| `pack` | number | other hostile creatures within 10 yd of it, the server's assistance radius (game.md, Assistance) |
 
 ### NearbyNPC
 
