@@ -6,12 +6,14 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/pthm/leeroy/azworld/world"
@@ -218,4 +220,30 @@ func (v *server) patrols(w http.ResponseWriter, r *http.Request) {
 		patrolMu.Unlock()
 	}
 	writeJSON(w, p)
+}
+
+// nav is a navmesh tile (world.NavTile): the walkable floors of a continent's square, or a sub-square at a level.
+func (v *server) nav(w http.ResponseWriter, r *http.Request) {
+	var n [5]int
+	for i, k := range []string{"level", "gx", "gy", "sx", "sy"} {
+		n[i], _ = strconv.Atoi(strings.TrimSuffix(r.PathValue(k), ".png"))
+	}
+	m, _ := strconv.Atoi(r.PathValue("m"))
+	key := fmt.Sprint("n", m, n)
+	v.tileMu.Lock()
+	t, ok := v.tiles[key]
+	v.tileMu.Unlock()
+	if !ok {
+		t = world.NavTile(uint32(m), n[1], n[2], n[0], n[3], n[4])
+		v.tileMu.Lock()
+		v.tiles[key] = t
+		v.tileMu.Unlock()
+	}
+	if t == nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("content-type", "image/png")
+	w.Header().Set("cache-control", "max-age=86400")
+	w.Write(t)
 }

@@ -116,6 +116,7 @@ func newServer(s *Store, title string) *server {
 	v.HandleFunc("GET /heat", v.heat)
 	v.HandleFunc("GET /roads/{m}/{gx}/{gy}", v.roadTile)
 	v.HandleFunc("GET /patrols", v.patrols)
+	v.HandleFunc("GET /nav/{m}/{level}/{gx}/{gy}/{sx}/{sy}", v.nav)
 	v.HandleFunc("GET /route", v.route)
 	v.HandleFunc("GET /live", v.live)
 	v.HandleFunc("GET /panel/{name}", v.panel)

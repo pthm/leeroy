@@ -18,17 +18,17 @@ const saved = (() => { try { return JSON.parse(localStorage.getItem("azview") ||
 const V = {
   t: 0, sel: null, grp: null, tab: "feed", sort: "score", bygroup: true,
   cats: Object.fromEntries(B.cats.map((c) => [c.key, c.on])),
-  metric: "dmg", range: "all", chart: "total", per: "0", heat: false, roads: false,
+  metric: "dmg", range: "all", chart: "total", per: "0", heat: false, roads: false, nav: false,
   ...saved,
 };
 V.sel = V.grp = null; V.t = 0;
-const PERSIST = ["tab", "sort", "bygroup", "cats", "metric", "range", "chart", "per", "heat", "roads"];
+const PERSIST = ["tab", "sort", "bygroup", "cats", "metric", "range", "chart", "per", "heat", "roads", "nav"];
 document.addEventListener("alpine:init", () => {
   Alpine.store("v", V);
   Alpine.effect(() => { // any change to what the panels show: save it and refresh them
     const s = Alpine.store("v"), keep = Object.fromEntries(PERSIST.map((k) => [k, JSON.parse(JSON.stringify(s[k]))]));
     try { localStorage.setItem("azview", JSON.stringify(keep)); } catch {}
-    s.sel; s.grp; s.heat; s.roads; panelsNow(); dirty = true;
+    s.sel; s.grp; s.heat; s.roads; s.nav; panelsNow(); dirty = true;
   });
 });
 const store = () => window.Alpine?.store("v") ?? V;
@@ -239,6 +239,31 @@ function drawHeat() {
   cx.drawImage(heat.im, sx, sy, heat.w * k, heat.h * k);
   cx.globalAlpha = 1;
 }
+// The navmesh (/nav, world.NavTile): a continent's walkable floors at the level matching the zoom, like the detail
+// tiles (level 0: a tile a square); a sub-square whose tile hasn't come shows its part of a coarser one.
+const navTiles = new Map();
+function drawNav(w, h) {
+  const wx = (sx, sy) => [MAX - ((sy - view.oy) / view.s) * RES, MAX - ((sx - view.ox) / view.s) * RES];
+  const [xa, ya] = wx(0, 0), [xb, yb] = wx(w, h);
+  const L = Math.max(0, Math.min(B.maxDetail, Math.ceil(Math.log2(((GRID / RES) * view.s) / 256 * 0.9))));
+  const n = 1 << L, sub = GRID / n, size = (sub / RES) * view.s, idx = (v) => Math.floor((MAX - v) / sub);
+  cx.imageSmoothingEnabled = view.s < 4; cx.globalAlpha = 0.9;
+  for (let R = Math.max(0, idx(xa)); R <= Math.min(64 * n - 1, idx(xb)); R++) for (let C = Math.max(0, idx(ya)); C <= Math.min(64 * n - 1, idx(yb)); C++) {
+    const [sx, sy] = scr(MAX - R * sub, MAX - C * sub);
+    for (let l = L; l >= 0; l--) {
+      const f = 1 << (L - l), rr = Math.floor(R / f), c = Math.floor(C / f), m = 1 << l;
+      const key = `${M.id}/${l}/${Math.floor(rr / m)}/${Math.floor(c / m)}/${rr % m}/${c % m}`;
+      let im = navTiles.get(key);
+      if (!im && l === L) { im = new Image(); im.onload = () => (dirty = true); im.src = `nav/${key}.png`; navTiles.set(key, im);
+        if (navTiles.size > 800) navTiles.delete(navTiles.keys().next().value); }
+      if (!im?.complete || !im.naturalWidth) continue;
+      const part = 256 / f;
+      cx.drawImage(im, (C % f) * part, (R % f) * part, part, part, sx, sy, size + 0.5, size + 0.5);
+      break;
+    }
+  }
+  cx.globalAlpha = 1;
+}
 // Roads: each grid square's painted roads (/roads, amber, from the client's ground textures) and the friendly NPCs'
 // patrol paths crossing it (/patrols, dashed): the network the SDK's routes prefer.
 const roadTiles = new Map(), patrolPaths = new Map();
@@ -291,6 +316,7 @@ function drawMap() {
   cx.imageSmoothingEnabled = view.s < 2;
   drawTiles(r.width, r.height);
   if (sel || s.grp != null) { cx.fillStyle = "#0000004d"; cx.fillRect(0, 0, r.width, r.height); } // dim the map so the selection stands out
+  if (s.nav && [0, 1, 530, 571].includes(M.id)) drawNav(r.width, r.height); // an instance is drawn from its navmesh already
   if (s.heat) drawHeat();
   if (s.roads) drawRoads(r.width, r.height);
   // labels
@@ -483,6 +509,7 @@ function wire() {
     if (e.code === "KeyA" && !e.metaKey && !e.ctrlKey) toggleFollow();
     if (e.code === "KeyH" && !e.metaKey && !e.ctrlKey) store().heat = !store().heat;
     if (e.code === "KeyR" && !e.metaKey && !e.ctrlKey) store().roads = !store().roads;
+    if (e.code === "KeyN" && !e.metaKey && !e.ctrlKey) store().nav = !store().nav;
     if (e.code === "ArrowRight") setT(t + (e.shiftKey ? 60000 : 10000));
     if (e.code === "ArrowLeft") setT(t - (e.shiftKey ? 60000 : 10000));
   });
