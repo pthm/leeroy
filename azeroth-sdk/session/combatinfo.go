@@ -22,6 +22,7 @@ import (
 
 const (
 	fieldAuraState    = 0x3D // UNIT_FIELD_AURASTATE
+	fieldRangedAttack = 0x40 // UNIT_FIELD_RANGEDATTACKTIME: the ranged weapon's delay, ms
 	unitFlagSkinnable = 0x04000000
 	spellStuck        = 7355 // what the client's "Character stuck" casts: hearths you home
 	smsgHighestThreat = 0x482

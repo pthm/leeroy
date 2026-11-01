@@ -122,6 +122,28 @@ func TestGCDOncePerCast(t *testing.T) {
 	gcd("interrupted", fort, 0)
 }
 
+// Throw and Shoot have no cooldown in Spell.dbc; the server gives them the ranged attack time as one, which is
+// what refuses a second Throw with not_ready (Player::AddSpellAndCategoryCooldowns). Auto Shot is excluded.
+func TestRangedAttackCooldown(t *testing.T) {
+	dir, _ := filepath.Abs("../../data")
+	if _, err := os.Stat(filepath.Join(dir, "dbc", "Spell.dbc")); err != nil {
+		t.Skip("no game data in ../../data")
+	}
+	spellsDir, spellsOnce = dir, sync.Once{}
+	le := binary.LittleEndian
+	const me = uint64(0x2A)
+	s := &agentState{cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, onEvent: map[uint32]cdRule{},
+		pushed: map[uint32]time.Time{}, rangedMS: func() int32 { return 2300 }}
+	for spell, want := range map[uint32]float64{2764: 2300, 3018: 2300, 5019: 2300, 75: 0, 1243: 0} { // Throw, Shoot (bow, wand), Auto Shot, Fortitude
+		p := append(append(packGUID(me), packGUID(me)...), 0)
+		s.onPacket(me, smsgSpellGo, le.AppendUint32(le.AppendUint32(p, spell), 0))
+		s.gcdUntil = time.Time{}
+		if ms := cdMS(s.cooldownLeft(spell)); ms > want || ms < want-50 {
+			t.Errorf("%d: %v ms, want %v", spell, ms, want)
+		}
+	}
+}
+
 // SMSG_INITIAL_SPELLS on login and on every far teleport: the cast spell comes with category 0, a category sibling
 // with its own cooldown with its category (Player::AddSpellAndCategoryCooldowns); categories come back too.
 func TestCooldownsRestored(t *testing.T) {

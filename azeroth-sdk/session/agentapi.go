@@ -66,10 +66,11 @@ type agentState struct {
 	cd        map[uint32]time.Time // spell -> ready at
 	catCD     map[uint32]time.Time // spell category -> ready at
 	gcdUntil  time.Time
-	gcdSpell  uint32 // the spell whose SPELL_START started the GCD; its SPELL_GO doesn't restart it
+	gcdSpell  uint32            // the spell whose SPELL_START started the GCD; its SPELL_GO doesn't restart it
 	onEvent   map[uint32]cdRule // spell -> the cooldown SMSG_COOLDOWN_EVENT starts (potions used in combat)
 	// itemCD: an item cast's cooldown, by the item's guid, or its entry when that's 0
 	itemCD      func(item uint64, entry, spell uint32) (cdRule, bool)
+	rangedMS    func() int32         // the ranged attack time, ms
 	pushed      map[uint32]time.Time // SMSG_SPELL_COOLDOWN: sent before the SPELL_GO, it wins over Spell.dbc
 	corpse      []float32            // x, y, z, map, the corpse's own map (an instance when it differs)
 	corpseAt    time.Time
@@ -133,6 +134,12 @@ func (b *Bot) watchAgentState() *agentState {
 		}
 		return cdRule{}, false
 	}
+	s.rangedMS = func() int32 {
+		if o := w.GetObject(w.CharGUID()); o != nil {
+			return int32(o.Value(fieldRangedAttack))
+		}
+		return 0
+	}
 	spellsDir = b.config.DataDir
 	go loadSpells() // ~50MB; don't stall the packet goroutine on first use
 	w.AddPacketHook(func(op uint16, data []byte) { s.onPacket(w.CharGUID(), op, data) })
@@ -188,7 +195,7 @@ func (b *Bot) setupAgentAPI() {
 		return nil
 	})
 	// AC doesn't push cooldowns for normal casts (the real client reads them from Spell.dbc), so they're tracked here.
-	e.Func("spells.cooldown", "(id) → ms", "milliseconds until it's ready (its cooldown, category cooldown and the global cooldown); 0 = ready, -1 = not until an event (a potion used in combat: until you leave combat)", func(id uint32) float64 {
+	e.Func("spells.cooldown", "(id) → ms", "milliseconds until it's ready (its cooldown, category cooldown and the global cooldown; for Throw, Shoot and a wand, the ranged weapon's attack time since the last shot); 0 = ready, -1 = not until an event (a potion used in combat: until you leave combat)", func(id uint32) float64 {
 		if left := s.cooldownLeft(id); left > 0 {
 			return cdMS(left)
 		}
@@ -610,6 +617,12 @@ func (s *agentState) onPacket(me uint64, op uint16, data []byte) {
 			s.castSpell = 0
 		}
 		c := dbcRule(sp)
+		// a ranged weapon spell with no cooldown of its own (Throw, Shoot, a wand's shots) gets the ranged attack time
+		// as its cooldown (Player::AddSpellAndCategoryCooldowns: category 76, or auto-repeat but Auto Shot)
+		// ponytail: the server takes the unhasted delay (field / m_modAttackSpeedPct); the field is hasted
+		if sp != nil && c.rec <= 0 && c.catrec <= 0 && (sp.Category == 76 || autoRepeat(spell) && spell != 75) && s.rangedMS != nil {
+			c.rec = s.rangedMS()
+		}
 		if item != me && s.itemCD != nil {
 			if ic, ok := s.itemCD(item, 0, spell); ok {
 				ic.onEvent = ic.onEvent || c.onEvent
@@ -830,25 +843,25 @@ func guidAt(o *client.WorldObject, f uint16) uint64 {
 // --- Spell.dbc (copied to <data-dir>/dbc by the setup) ---
 
 type spellRec struct {
-	Name             string  `json:"name"`
-	Rank             string  `json:"rank"`
-	Category         uint32  `json:"category"`
-	Cooldown         uint32  `json:"cooldown_ms"`
-	CategoryCooldown uint32  `json:"category_cooldown_ms"`
-	GCDCategory      uint32  `json:"gcd_category"`
-	GCD              uint32  `json:"gcd_ms"`
-	PowerType        uint32  `json:"power_type"`
-	Cost             uint32  `json:"cost"`    // rage/runic are x10, as in get_power()
-	CastMS           uint32  `json:"cast_ms"` // base cast time (0 = instant)
-	Level            uint32  `json:"level"`   // the level you can learn it at (base level)
-	costPct          uint32  // ManaCostPercentage: most 3.3.5 spells cost a percentage of base mana, with Cost 0
-	attrs            uint32  // Attributes (passive 0x40, hidden 0x80)
-	attrsEx2         uint32  // AttributesEx2 (auto-repeat 0x20)
-	dispel           uint32  // 1 magic, 2 curse, 3 disease, 4 poison
-	facing           uint32  // FacingCasterFlags: 1 = the target must be in front of you (SPELL_FACING_FLAG_INFRONT)
-	family           uint32  // SpellFamilyName (a class's spells share one), and its SpellFamilyFlags: spell mods pick spells by these bits
+	Name             string `json:"name"`
+	Rank             string `json:"rank"`
+	Category         uint32 `json:"category"`
+	Cooldown         uint32 `json:"cooldown_ms"`
+	CategoryCooldown uint32 `json:"category_cooldown_ms"`
+	GCDCategory      uint32 `json:"gcd_category"`
+	GCD              uint32 `json:"gcd_ms"`
+	PowerType        uint32 `json:"power_type"`
+	Cost             uint32 `json:"cost"`    // rage/runic are x10, as in get_power()
+	CastMS           uint32 `json:"cast_ms"` // base cast time (0 = instant)
+	Level            uint32 `json:"level"`   // the level you can learn it at (base level)
+	costPct          uint32 // ManaCostPercentage: most 3.3.5 spells cost a percentage of base mana, with Cost 0
+	attrs            uint32 // Attributes (passive 0x40, hidden 0x80)
+	attrsEx2         uint32 // AttributesEx2 (auto-repeat 0x20)
+	dispel           uint32 // 1 magic, 2 curse, 3 disease, 4 poison
+	facing           uint32 // FacingCasterFlags: 1 = the target must be in front of you (SPELL_FACING_FLAG_INFRONT)
+	family           uint32 // SpellFamilyName (a class's spells share one), and its SpellFamilyFlags: spell mods pick spells by these bits
 	familyFlags      [3]uint32
-	school           uint32 // SchoolMask
+	school           uint32  // SchoolMask
 	casterState      uint32  // the aura state you need (Victory Rush: victory_rush), 0 = none
 	targetState      uint32  // the aura state the target needs (Execute: health_below_20)
 	Range            float32 `json:"range"` // max range against hostile targets, yards (melee spells ~5)
