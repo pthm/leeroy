@@ -7,7 +7,7 @@
 A benchmark for multi-agent cooperation and long-horizon problem solving. Teams of AI agents (Claude Code, Codex)
 each play a World of Warcraft 3.3.5a character on a private AzerothCore server, in the same world at the same time,
 through a headless client they program in Lua. A judge scores what they achieve; every run is recorded and can be
-watched live or replayed.
+watched live or afterwards in the viewer.
 
 ## The problem
 
@@ -66,7 +66,7 @@ theirs to discover and build. The docs they get describe how the game and the SD
     ▲
   azbench: one supervisor per run: sessions, agents, and a judge per player that reads the character
            database every 15 s → score samples, standings, report card
-  azview: live view / replay from the recordings → map, routes, chat, combat, agent transcripts, scores
+  azview: the viewer (live or finished runs) from the recordings → map, routes, chat, combat, agent transcripts, scores
   azworld: world queries (NPCs, quests, items, routes, maps) from the world database and the game data
 ```
 
@@ -80,7 +80,7 @@ sandboxed: they can write only in their workspace, read the docs and source, and
 | [`bench/`](bench/README.md) | The benchmark's configs and data: scenarios and matrices (YAML), specs and places, what agents get (`agent/`: task docs and their tools), agent `workspaces/` and `runs/` |
 | [`azbench/`](azbench) | `azbench`: runs the benchmark from those configs (one supervisor per run: sessions, judges, agents; pause, resume, restart), the judge and report card, and the agents' `standings` |
 | [`azeroth-sdk/`](azeroth-sdk/README.md) | `azsdk`: the Go headless client and daemon the agents drive, plus the Lua API docs and example scripts. Only a game client: no database access |
-| [`azview/`](azview/README.md) | `azview`: the viewer (live and replay) and movement audit, from the recordings |
+| [`azview/`](azview/README.md) | `azview`: the viewer (live or finished runs) and movement audit, from the recordings |
 | [`azworld/`](azworld/README.md) | `azworld`: world queries for agents, from the server's databases and the game data; `azworld setup` builds the `wowbench` schema they read |
 | `data/` | Client data copied out of the server (maps, navmesh, DBC files), shared by all of the above (gitignored) |
 
@@ -92,7 +92,7 @@ commands below run from the repo root.
 ```sh
 # server
 git clone --depth 1 https://github.com/azerothcore/azerothcore-wotlk.git server/azerothcore
-cp -r server/recorder/mod-recorder server/azerothcore/modules/   # replays (see below)
+cp -r server/recorder/mod-recorder server/azerothcore/modules/   # server-side recording (see below)
 docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml build   # ~10-20 min
 docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml up -d   # first boot downloads client data + imports DBs
 
@@ -131,7 +131,7 @@ persistent script library). It can read and write only there, read the client an
 - `agent.jsonl`: the transcript;
 - `session.log`;
 
-and for the whole run `team.json`, `report.json` (the report card) and `replay.html`
+and for the whole run `team.json` and `report.json` (the report card)
 ([bench/README.md](bench/README.md#run-directories)).
 
 Goals: `level:<n>`, `item:<entry>`, `quality:<n>` (3 = rare), `money:<copper>`, `quests:<n>`, `quest:<id>`,
@@ -151,14 +151,12 @@ quests, achievements, loot):
   player to `server/azerothcore/env/dist/logs/recorder.jsonl`.
 
 Viewers ([`azview/`](azview/README.md)):
-- `bin/azview live [log ...] [--run bench/runs/<ts>-team] [--port 8800] [--since 60]`: live view at
-  http://localhost:8800/ that tails the logs (default: the server log; `--run` reads a team run's records and agent
-  transcripts); the playhead follows the newest data until you seek back.
-- `bin/azview replay bench/runs/<id>`: a self-contained `replay.html` for a finished run (the run's own
-  records if it has them, else the server log; `--log`, `--chars`, `--from`, `--to` to choose).
+- `bin/azview live [log ...] [--run bench/runs/<ts>-team] [--port 8800] [--since 60]`: the viewer at
+  http://localhost:8800/, for a running or finished run (default: the server log; `--run` reads a run's records and
+  agent transcripts); the playhead follows the newest data until you seek back.
 - `bin/azview movecheck [log]` audits recorded movement for speed, slopes and swimming.
 
-Both viewers show the game's minimap (when client data is extracted, else a terrain map rendered from `data/maps`),
+The viewer shows the game's minimap (when client data is extracted, else a terrain map rendered from `data/maps`),
 every player's route, a seek bar with key events marked,
 and panels synced to the playhead: players, events, chat, combat, agent (API calls), scores (chart + leaderboard)
 and groups (current parties, leader, how spread out they are; dashed lines on the map). Colours follow WoW's

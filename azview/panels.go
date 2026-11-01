@@ -39,9 +39,8 @@ func (s *Store) Panel(name string, q Query) (string, any) {
 		if q.Tab == "stats" {
 			return "stats.html", s.Stats(q)
 		}
-		return "feed.html", s.Feed(q)
 	}
-	return "todo.html", map[string]any{"Name": name}
+	return "feed.html", s.Feed(q)
 }
 
 // comma is a number with thousands separators.

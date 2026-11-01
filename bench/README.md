@@ -69,7 +69,7 @@ the wrap-up) copies the agent's notes (`NOTES.md` and the other `.md` files it w
 `<run>/<agent>/`, and stops an agent the same way: its tool processes first, so the runtime records
 their output (up to 3 s; a runtime killed mid tool call loses it, and Codex then logs "custom tool call output is
 missing" on every later request), then SIGINT to the runtime, which takes it as an interrupt, and SIGTERM and
-SIGKILL to its process group after 5 s each. At the end: `team.json`, `report.json` and `replay.html`.
+SIGKILL to its process group after 5 s each. At the end: `team.json` and `report.json`; `bin/azview live --run <run dir>` replays it.
 
 An agent that exits with 2 or more minutes left (a Codex usage limit, a conversation that ended) is reported on
 stderr and in `alerts.log`, with the runtime's last error; bring it back with `azbench restart`. A session that
@@ -146,7 +146,6 @@ and whether the character is alive, dead or a ghost, and where.
 | `pids` | the process groups of the supervisor's running sessions and agents (empty once they stop) |
 | `paused` | the run was paused |
 | `team.json`, `report.json` | the results and the report card ([judge](../azbench/judge/README.md#azbench-report)) |
-| `replay.html` | the replay |
 
 `team.json`:
 

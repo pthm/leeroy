@@ -45,7 +45,7 @@ type Options struct {
 	Repo     string
 	BasePort int  // default 8090
 	DryRun   bool // print the plan and the first prompt, start nothing
-	Quiet    bool // no report/replay at the end (a matrix cell: the matrix reports)
+	Quiet    bool // no report at the end (a matrix cell: the matrix reports)
 	Dir      string
 }
 
@@ -106,8 +106,7 @@ func (r *Runner) minutesLeft() float64 {
 }
 
 // Run starts every player, waits for them all (up to 5 minutes), starts the clock, and supervises until every
-// judge is done or the run is paused (SIGINT/SIGTERM or azbench pause). At the end: report.json, team.json and
-// the replay.
+// judge is done or the run is paused (SIGINT/SIGTERM or azbench pause). At the end: report.json and team.json.
 func (r *Runner) Run(quiet bool) error {
 	return r.run(false, "", quiet)
 }
@@ -421,15 +420,10 @@ func (r *Runner) stopAll() {
 	wg.Wait()
 }
 
-// finish: the report card and team.json (judge report), and the replay.
+// finish: the report card and team.json (judge report). bin/azview live --run <dir> shows a finished run.
 func (r *Runner) finish() {
 	r.noteOpenrouter(true)
 	judge.Report(r.dir)
-	cmd := exec.Command(filepath.Join(r.repo, "bin/azview"), "replay", r.dir)
-	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
-	if cmd.Run() != nil {
-		r.logf("no replay")
-	}
 }
 
 // Plan describes the run without starting it (--dry-run): the players and the first agent's prompt.

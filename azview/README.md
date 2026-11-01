@@ -1,21 +1,24 @@
 # azview
 
-The LEEROY viewer: watch a run live, build a self-contained replay of a finished one, and audit recorded movement.
-It reads recordings (below) and, for maps and names, the extracted game data and the world database (via
-`azworld`'s package).
+The LEEROY viewer: watch a run, live or finished, and audit recorded movement. It reads recordings (below) and, for
+maps and names, the extracted game data and the world database (via `azworld`'s package).
 
 | Command | What it does |
 |---|---|
-| `bin/azview live` | tails recorder logs and serves the viewer page |
-| `bin/azview replay` | builds a self-contained `replay.html` for a finished run |
+| `bin/azview live` | reads a run's recordings (following them as they grow) and serves the viewer |
 | `bin/azview movecheck` | audits recorded movement for speed, slopes and swimming |
 
 | File | |
 |---|---|
 | `main.go` | the subcommands |
-| `live.go`, `replay.go`, `movecheck.go` | each command |
-| `view.go` | shared: recorder logs, run sources, agent transcripts, `meta.json`, chat filtering, the page |
-| `replay.html` | the viewer page, shared by both (embedded; data and map are filled in by `live` or `replay`) |
+| `live.go` | the server: the page, tiles, samples, routes, the live stream and the panels |
+| `store.go` | the run in memory: samples, units and events by player and time, read from the logs as they grow |
+| `format.go` | events as lines of HTML (the feed, tooltips, the roster) |
+| `roster.go`, `feed.go`, `stats.go`, `panels.go` | the panels, rendered on the server |
+| `view.go` | recorder logs, run sources, agent transcripts, `meta.json`, chat filtering |
+| `movecheck.go` | the movement audit |
+| `templates/` | the page and the panels (`html/template`) |
+| `static/` | the client (`viewer.js`: the map, seek bar and playback), styles, and vendored htmx 2.0.11, idiomorph 0.7.4 (htmx's morph swap) and Alpine 3.17.5 |
 
 The server-side writer, `mod-recorder`, is an AzerothCore module in `server/recorder/mod-recorder/`. Build
 everything with `./build.sh` (binaries in `bin/`); all commands run from the repo root.
@@ -40,7 +43,7 @@ Every line has:
 
 Units (attacker, target, killer, victim) are objects: `{"id", "n", "pl": 1}` for a player (`id` = guid counter), or
 `{"id", "n", "lvl"}` for a creature (`id` = creature entry). Client-side records may lack a creature's name; the
-viewers fill it in from `acore_world.creature_template`.
+viewer fills it in from `acore_world.creature_template`.
 
 | `ev` | Fields | Server | Client |
 |---|---|---|---|
@@ -71,7 +74,7 @@ viewers fill it in from `acore_world.creature_template`.
 Two more kinds come from elsewhere:
 - `score`: the judge's `--record <file>` appends each judge sample (`value`, `level`, `rate`,
   `recent_rate`, `best_window`, `pace`, `score`) to the run's record file. The viewer charts them.
-- `say`: not in any log. The viewers turn each agent's transcript into `say` events (below).
+- `say`: not in any log. The viewer turns each agent's transcript into `say` events (below).
 
 Client-side differences worth knowing: `pos` has `zone` 0 and no `area` or `tgt`, and `chat` from other players
 appears once per listening agent, without a sender guid.
@@ -91,13 +94,7 @@ AzerothCore picks up modules in `modules/` at build time, so the worldserver ima
 after changing `recorder.cpp`: copy again, rebuild). The module is optional: without it `azbench run`
 still records every run client-side.
 
-## Viewers
-
-Both viewers serve the same page (`replay.html`) and read area names, labels, item names and creature names from
-the database (127.0.0.1:3306 or `$LEEROY_DB_ADDR`, user `worldreader`, the `wowbench` schema from `bin/azworld setup`),
-so the server must be up.
-
-### azview live
+## The viewer
 
 ```sh
 bin/azview live [log.jsonl ...] [--run <run or team dir>] [--port 8800] [--chars A,B] [--since 60m]
@@ -105,53 +102,50 @@ bin/azview live [log.jsonl ...] [--run <run or team dir>] [--port 8800] [--chars
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `log.jsonl ...` | the server log | Recorder files to tail, any mix of server and client-side |
-| `--run <dir>` | | A bench run dir or team dir: its record files plus each agent's transcript |
+| `log.jsonl ...` | the server log | Recorder files to read, any mix of server and client-side |
+| `--run <dir>` | | A bench run dir or team dir, running or finished: its record files plus each agent's transcript, from the run's start |
 | `--port` | 8800 | HTTP port |
 | `--chars A,B` | everyone | Only these characters |
-| `--since` | `60m` | How far back to load, in minutes (`m` suffix optional) |
+| `--since` | `60m` | Without `--run`: how far back to read, in minutes (`m` suffix optional) |
 
-Without files or `--run` it tails `server/azerothcore/env/dist/logs/recorder.jsonl`. It polls the files every 500 ms
-(starting over if one shrinks) and streams new events to the browser as server-sent events (`/stream`). The playhead
-follows the newest data until you seek back; the Live button returns to it. `AZVIEW_PAGE=<path to replay.html>` serves
-the page from disk on every request instead of the built-in copy, for working on it: edit, then reload the browser.
+It reads area names, labels, item names and creature names from the database (127.0.0.1:3306 or `$LEEROY_DB_ADDR`,
+user `worldreader`, the `wowbench` schema from `bin/azworld setup`), so the server must be up.
+
+The run lives on the server (`store.go`): every position sample, "units" sample and event, by player and time. It
+reads the files every 250 ms (starting over if one shrinks). The page asks for what it shows at the playhead:
+
+| Endpoint | |
+|---|---|
+| `/` | the page, with the players, map names, labels, marks and seek bar ticks |
+| `/samples?from=&to=` | every player's samples and units samples in a window (unix ms), as the map draws them: position, state, group and leader, and the target with where it is |
+| `/route?n=` | a player's whole route, `[t, x, y, map]` per sample |
+| `/live` | new data as server-sent events: `s` (a sample), `u` (units), `mark`, `tick`, `data` (anything else) |
+| `/panel/roster`, `/panel/pane` | the roster, and the feed or stats, as HTML for a moment and the UI state (`viewerQuery` in `viewer.js`) |
+| `/tile/<map>/<gx>/<gy>.png` | map tiles |
+
+The map is a canvas drawn by `viewer.js` every frame from the samples around the playhead (a window from
+`/samples`, extended by `/live`). Live, the playhead trails the clock by 2.5 s so players are drawn between two samples
+(about 1 s apart) and glide. The panels are htmx fragments, morphed in place (idiomorph), refreshed when the playhead
+moves, data arrives or the UI state changes: at most 5 times a second, Stats once. UI state (the selection, tab,
+filters, metric, sort) is an Alpine store, kept in `localStorage`. `AZVIEW_DEV=<path to azview/>` serves the templates
+and static files from disk on every request instead of the built-in copies: edit, then reload the browser.
 
 With `--run`, and when the server log exists, these come from it for the run's characters (`ServerEvents`): player
 chat, once, with sender names, instead of each agent's received copy; damage and heals (in place of the client
 records' damage, which has no heals); and each change of target (a `tgt` event: the `pos` samples' `tgt`, or none). NPC
-chat from the client records is kept once per listening agent; the page merges the copies and knows who heard what.
-Quest titles and achievement names and points, which client records lack, are filled in from the world database and
-`data/dbc/Achievement.dbc`. Each agent's transcript is
+chat from the client records is kept once, with who heard it. Quest titles and achievement names and points, which
+client records lack, are filled in from the world database and `data/dbc/Achievement.dbc`. Each agent's transcript is
 `<run dir>/<agent>/agent.jsonl` (older team runs: a `<time>-<agent>/` dir beside it), and its character name is read
 from the `prompt.md` next to it.
 
-The map is served as tiles (`/tile/<map>/<gx>/<gy>.png`, one per 533-yard grid square), rendered on demand and kept
-in memory:
+Map tiles (one per 533-yard grid square) are rendered on demand and kept in memory:
 - With client data extracted (`data/minimap`, from `go run ./azeroth-sdk/cmd/clientdata ... extract data`): the
-  game's own minimap image for the square.
+  game's own minimap image for the square; for an instance, its floor plan from the navmesh.
 - Otherwise: a shaded relief render of `data/maps` (heights, water, zone borders) with a fixed colour scale so tiles
   match.
 
-The page requests tiles with `?v=<tileVersion>` (2 with client data, 1 without). Tiles are cached for a day, so the
+The page requests tiles with `?v=<tileVersion>` (3 with client data, 1 without). Tiles are cached for a day, so the
 version busts browser caches when the tile source changes.
-
-### azview replay
-
-```sh
-bin/azview replay <run or team dir> [--out replay.html] [--log <file>] [--chars A,B] [--from <ms|ISO>] [--to <ms|ISO>]
-```
-
-| Flag | Default | Meaning |
-|---|---|---|
-| `--out` | `<dir>/replay.html` (`./replay.html` without a dir) | Output file |
-| `--log` | the run's `record.jsonl` / `*.record.jsonl`, else the server log | One recorder file to read instead |
-| `--chars` | from `team.json` or `judge.json` | Characters to include |
-| `--from`, `--to` | from the run | Time window, ms or ISO date |
-
-The window defaults to the run's `go` file (team start) or the judge's start time, through the last judge result
-plus 5 s. The map is a single image of the box around every route on the most-visited map, embedded as a data URL:
-the terrain render, with the game's minimap colours where client data was extracted. `azbench run` builds one at the end
-of every run.
 
 ### The viewer page
 
@@ -171,9 +165,9 @@ everywhere: the map follows it, the feed and the stats narrow to it.
   and quest markers (hover for what happened, click to jump there). The camera follows a selected player; otherwise
   it keeps a selected group, or everyone, centred, and with Auto zoom (Z, on by default) zoomed to fit them; scrolling
   then sets how much closer or further than a snug fit (remembered), instead of zooming freely. Drag to pan (which
-  stops the camera following); Fit (F) goes back to framing everyone and resets the auto zoom offset. In live mode a picker chooses the map (Auto: the followed player's, else where most players are).
-- **Seek bar**: play/pause, speed (1x to 300x), ticks for deaths, achievements, levels, quests and chat; hover for the
-  time and the events there. Keys: Space plays, Left/Right seek 10 s (Shift: 60 s), F fits the map, Z toggles auto zoom.
+  stops the camera following); Fit (F) goes back to framing everyone and resets the auto zoom offset. A picker chooses the map (Auto: the followed player's, else where most players are).
+- **Seek bar**: play/pause, speed (1x to 300x), Live (follow the newest data), ticks for deaths, achievements, levels,
+  quests and chat; hover for the time and the events there. Keys: Space plays, Left/Right seek 10 s (Shift: 60 s), F fits the map, Z toggles auto zoom.
 - **Feed**: one list with filter pills for events (deaths, kills, achievements, levels, quests, loot, zones, groups,
   ...), chat, the agents' messages, combat (damage, heals, casts, XP; off by default), evals (`api`, off by default)
   and script errors. Chat reads as in game: `[Party] [Aldous]: ...`, whispers from the selected player's side
@@ -194,7 +188,7 @@ Colours follow WoW: class colours (players of the same class get `#1`, `#2`; `#2
 power bar colours, chat-type colours, item quality colours.
 
 **Runtime and model badges**: `azbench run` writes `meta.json` in each agent's run dir (`agent`, `char`, `runtime`,
-`model`, `spec`, `role`). The viewers read it beside each transcript and show the model as a badge coloured by
+`model`, `spec`, `role`). The viewer reads it beside each transcript and show the model as a badge coloured by
 runtime, like `opus-5-5` (the `claude-` prefix dropped), on the player's card; the card shows the spec in place of
 the class when set.
 

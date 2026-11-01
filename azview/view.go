@@ -1,11 +1,9 @@
-// Package recorder is the shared side of the run viewer (cmd replay: static replays; cmd live: the live viewer;
-// cmd movecheck): reading recorder-format logs (the server's mod-recorder log and azsdk -record files), agent
-// transcripts and bench run directories, and filling in the viewer page (replay.html). Map rendering, area names
-// and item/creature names come from azeroth-sdk/world.
+// Reading recorder-format logs (the server's mod-recorder log and azsdk -record files), agent transcripts and bench
+// run directories, for the viewer (live.go, store.go) and movecheck. Map rendering, area names and item/creature
+// names come from azworld/world.
 package main
 
 import (
-	_ "embed"
 	"encoding/json"
 	"math"
 	"os"
@@ -18,9 +16,6 @@ import (
 	"github.com/pthm/leeroy/azworld/world"
 )
 
-//go:embed replay.html
-var page string
-
 // Class names and colours by class id.
 var (
 	Class = []string{"", "Warrior", "Paladin", "Hunter", "Rogue", "Priest", "Death Knight", "Shaman", "Mage", "Warlock", "", "Druid"}
@@ -29,8 +24,6 @@ var (
 
 // Ev is one recorder event: {"t": ms, "ev": kind, "n": character, ...}.
 type Ev = map[string]any
-
-type ev = Ev
 
 // Repo is the repository root (the parent of data/).
 func Repo() string { return filepath.Dir(world.DataDir()) }
@@ -287,17 +280,6 @@ func ClientChatFilter(server bool) func(Ev) bool {
 	}
 }
 
-// TrackRow is one position sample as the viewer stores it:
-// [t, x, y, hp, hpmax, pw, pwmax, pt, lvl, xp, money, alive, ghost, combat, zone, map, group id (0 = none)]
-func TrackRow(p Ev, t0 float64) []any {
-	grp := p["grp"]
-	if grp == nil {
-		grp = 0.0
-	}
-	return []any{N(p, "t") - t0, p["x"], p["y"], p["hp"], p["hpmax"], p["pw"], p["pwmax"], p["pt"], p["lvl"], p["xp"],
-		p["money"], p["alive"], p["ghost"], p["combat"], p["zone"], p["m"], grp}
-}
-
 // NameUnits fills in what SDK recordings carry only as ids: creature names, quest titles, achievement titles and points.
 func NameUnits(events []Ev) {
 	var refs []map[string]any
@@ -342,21 +324,4 @@ func NameUnits(events []Ev) {
 // SortByTime sorts events by t, keeping the order of equal times.
 func SortByTime(evs []Ev) {
 	sort.SliceStable(evs, func(i, j int) bool { return N(evs[i], "t") < N(evs[j], "t") })
-}
-
-// Page is the viewer page with its title, map image (a data: URL, or "" for live tiles) and data filled in.
-func Page(title, mapURL string, data any) (string, error) {
-	b, err := json.Marshal(data) // escapes < > &, so the data can't close its <script> tag
-	if err != nil {
-		return "", err
-	}
-	tmpl := page
-	if f := os.Getenv("AZVIEW_PAGE"); f != "" { // working on the page: read it from disk on every request
-		if b, err := os.ReadFile(f); err == nil {
-			tmpl = string(b)
-		}
-	}
-	s := strings.Replace(tmpl, "__TITLE__", title, 1)
-	s = strings.Replace(s, "__MAP__", mapURL, 1)
-	return strings.Replace(s, "__DATA__", string(b), 1), nil
 }
