@@ -113,8 +113,14 @@ aside { display: grid; grid-template-rows: auto auto 1fr; min-height: 0; border-
 .tile span { color: var(--quiet); font-size: 11px; }
 .tile:hover { border-color: var(--quiet); }
 .tile.on { border-color: var(--accent); }
-#chart { width: 100%; height: 170px; display: block; cursor: crosshair; }
-#strip { width: 100%; display: block; cursor: crosshair; }
+/* the stats plots: SVG from the server; each cell has a hover target (.hov) with its values in data-tip */
+svg.chart, svg.strip { width: 100%; height: auto; display: block; cursor: crosshair; font: 11px system-ui; }
+svg .grid { stroke: var(--line); stroke-width: 1; }
+svg .ax { fill: var(--quiet); }
+svg .end, svg .name { font-weight: 600; }
+svg .off { fill: var(--line); }
+svg .hov { fill: transparent; }
+svg .hov:hover { fill: color-mix(in srgb, var(--ink) 10%, transparent); }
 .pane h4.ch { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .seg { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-weight: 400; }
 .seg select { padding-top: 2px; padding-bottom: 2px; font-size: 12px; }

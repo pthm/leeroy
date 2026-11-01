@@ -74,3 +74,48 @@ func TestFeedPanel(t *testing.T) {
 		t.Error("nothing after the playhead")
 	}
 }
+
+func TestStatsPanel(t *testing.T) {
+	s := storeOf(t, party+`
+{"t":1300,"ev":"dmg","n":"A","src":{"id":1,"n":"A","pl":1},"dst":{"id":6,"n":"Kobold"},"amount":30}
+{"t":1400,"ev":"dmg","n":"A","src":{"id":1,"n":"A","pl":1},"dst":{"id":7,"n":"Wolf"},"amount":10}
+{"t":1500,"ev":"dmg","n":"C","src":{"id":3,"n":"C","pl":1},"dst":{"id":6,"n":"Kobold"},"amount":60}
+{"t":2000,"ev":"pos","n":"A","x":0,"y":3,"m":0,"alive":1,"combat":1,"grp":7,"hp":1234,"hpmax":2000,"lvl":12}
+{"t":3000,"ev":"pos","n":"A","x":0,"y":7,"m":0,"alive":1,"combat":1,"grp":7,"hp":1234,"hpmax":2000,"lvl":12}`)
+	s.Start = 0
+	q := Query{T: 3000, Tab: "stats", Metric: "dmg", Range: "all", Chart: "total", Sel: "A"}
+	got := render(t, s, "pane", q)
+	for _, want := range []string{"party <b>100</b>", `data-n="C"`, ">60<", ">40<", "60%", "40%", "<svg class=\"chart\"", "<svg class=\"strip\"", "A</span> by target", "Kobold", "Wolf", "75%"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("stats lacks %q", want)
+		}
+	}
+	if strings.Index(got, `data-n="C"`) > strings.Index(got, `data-n="A"`) {
+		t.Error("C (60) ranks above A (40)")
+	}
+	// A was in combat for 2 s (1000 -> 3000): 40 damage is 20/s; C has no samples in combat: 60/1 s
+	if !strings.Contains(got, "20.0/s") && !strings.Contains(got, ">20/s<") {
+		t.Errorf("A's DPS over their time in combat: %s", got)
+	}
+	defs := s.statDefs()
+	if r := s.compute(defs["distance"], 0, 3000, nil, false, "", nil); r.tot["A"] != 7 {
+		t.Errorf("A walked 3 + 4 yd, got %v", r.tot["A"])
+	}
+	if r := s.compute(defs["level"], 0, 3000, nil, false, "", nil); r.tot["A"] != 12 || r.tot["C"] != 3 {
+		t.Errorf("levels at the playhead: %v", r.tot)
+	}
+	if lo, hi := s.statRange("fight", 1600); lo != 1300 || hi != 1600 {
+		t.Errorf("the fight runs from the first hit: %v %v", lo, hi)
+	}
+	if lo, hi := s.statRange("fight", 20000); lo != 1300 || hi != 1500 {
+		t.Errorf("a fight over 10 s ago ends at its last hit: %v %v", lo, hi)
+	}
+	rate := render(t, s, "pane", Query{T: 3000, Tab: "stats", Metric: "combat", Range: "all", Chart: "rate"})
+	if !strings.Contains(rate, "Share") || !strings.Contains(rate, `data-stat="per"`) {
+		t.Errorf("a time metric's rate is a share, with a period picker: %s", rate)
+	}
+	group := render(t, s, "pane", Query{T: 3000, Tab: "stats", Metric: "dmg", Range: "all", Grp: 7})
+	if strings.Contains(group, `data-n="C"`) || !strings.Contains(group, "only group") {
+		t.Error("a selected group narrows the stats to its players")
+	}
+}

@@ -84,6 +84,7 @@ type Store struct {
 	marks   []Ev            // deaths, achievements, levels, quests: on the map and the seek bar
 	ticks   []Ev            // marks and chat: the seek bar
 	groups  []Ev            // group changes
+	meter   []Ev            // damage and heals: a fight is a run of them
 	lastGrp map[string]string
 	npcSaid map[string]Ev // speaker|text -> the latest NPC chat event, to merge each listener's copy into one
 	items   map[int]world.ItemName
@@ -197,6 +198,9 @@ func (s *Store) add(e Ev) bool {
 	}
 	s.events = insert(s.events, e, evT)
 	s.byEv[kind] = insert(s.byEv[kind], e, evT)
+	if (kind == "dmg" || kind == "heal") && N(e, "amount") > 0 {
+		s.meter = insert(s.meter, e, evT)
+	}
 	if feedKinds[kind] {
 		s.feed = insert(s.feed, e, evT)
 	}

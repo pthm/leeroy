@@ -36,11 +36,12 @@ window.viewerQuery = () => { const s = store();
   return { t: Math.round(B.start + t), sel: s.sel ?? "", grp: s.grp ?? "", tab: s.tab, sort: s.sort, bygroup: s.bygroup ? 1 : 0,
     cats: Object.keys(s.cats).filter((k) => s.cats[k]).join(","), metric: s.metric, range: s.range, chart: s.chart, per: s.per }; };
 
-// panels refresh at most 5 times a second, when the playhead moved, data arrived or what they show changed
+// panels refresh at most 5 times a second (Stats once), when the playhead moved, data arrived or what they show changed
 let panelsDue = true, lastPanels = 0;
 const panelsNow = () => { panelsDue = true; lastPanels = 0; };
 function panels(now) {
-  if (!panelsDue || now - lastPanels < 200 || !window.htmx || holding) return;
+  // ponytail: Stats recomputes its window on the server each time; once a second keeps that cheap on a long run
+  if (!panelsDue || now - lastPanels < (store().tab === "stats" ? 1000 : 200) || !window.htmx || holding) return;
   panelsDue = false; lastPanels = now; htmx.trigger(document.body, "panels");
 }
 let holding = false; // a button is down on a list: don't swap it under the pointer (a click needs press and release on one element)
@@ -318,6 +319,14 @@ const markersAt = (e) => { const r = cv.getBoundingClientRect(), mx = e.clientX 
   return markerHits.filter(([x, y]) => Math.hypot(x - mx, y - my) < 9).map(([, , ev]) => ev).sort((a, b) => b.t - a.t); };
 const tip = (html, ev) => { const el = $("tip"); if (!html) { el.hidden = true; return; } el.innerHTML = html; el.hidden = false;
   el.style.left = Math.min(innerWidth - el.offsetWidth - 8, ev.clientX + 14) + "px"; el.style.top = Math.max(8, ev.clientY - el.offsetHeight - 10) + "px"; };
+// a plot's tooltip from its plain text: a title line (a player's name first is coloured), then label<TAB>value[<TAB>swatch]
+const whoHTML = (n) => P.has(n) ? `<span class="who" style="color:${P.get(n).color}">${esc(n)}</span>` : esc(n);
+function tipHTML(text) {
+  const [title, ...rows] = text.split("\n"), [first, ...rest] = title.split(" · ");
+  return `<div class="t">${[whoHTML(first), ...rest.map(esc)].join(" · ")}</div>` + (rows.map((r) => { const [a, b, c] = r.split("\t");
+    return `<div class="tr"><span>${c ? `<span class="sw" style="background:${esc(c)}"></span>` : ""}${whoHTML(a)}</span><b>${esc(b)}</b></div>`; }).join("")
+    || `<div class="muted">${title.includes("–") ? "logged out" : "nothing"}</div>`);
+}
 function wire() {
   cv.addEventListener("pointerleave", () => tip(null));
   cv.addEventListener("pointerdown", (e) => { drag = down = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); });
@@ -379,6 +388,10 @@ function wire() {
     if (el.matches(".row")) setT(Number(el.dataset.t) - B.start);
   });
   document.addEventListener("change", (e) => { const k = e.target.dataset?.stat; if (k) store()[k] = e.target.value; });
+  // the stats plots' hover targets carry their tooltip
+  const pane = $("pane");
+  pane.addEventListener("mousemove", (e) => { const h = e.target.closest?.("[data-tip]"); tip(h ? tipHTML(h.dataset.tip) : null, e); });
+  pane.addEventListener("mouseleave", () => tip(null));
   addEventListener("resize", () => { fit(); dirty = true; });
 }
 const refit = () => { follow = null; autoCam = true; zoomBias = 1; saveZoom(); fit(); dirty = true; };

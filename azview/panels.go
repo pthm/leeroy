@@ -36,9 +36,10 @@ func (s *Store) Panel(name string, q Query) (string, any) {
 	case "roster":
 		return "roster.html", s.Roster(q)
 	case "pane":
-		if q.Tab != "stats" {
-			return "feed.html", s.Feed(q)
+		if q.Tab == "stats" {
+			return "stats.html", s.Stats(q)
 		}
+		return "feed.html", s.Feed(q)
 	}
 	return "todo.html", map[string]any{"Name": name}
 }
