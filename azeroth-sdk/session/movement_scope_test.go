@@ -141,3 +141,16 @@ func TestActFollowRequiresBoundAndBoundsAbsence(t *testing.T) {
   r=act.follow{name="missing",timeout_s=60};assert(not r.ok and r.error.code=="player_not_visible")
  `)
 }
+
+// until returning nil keeps following, like false; anything else ends it
+func TestActFollowUntilNil(t *testing.T) {
+	actWorld(t, actBase+`
+  units.players=function() return {} end
+  group={info=function() return nil end}
+  clock=0;now=function() clock=clock+100;return clock end
+ `, `
+  local calls=0
+  r=act.follow{name="missing",["until"]=function() calls=calls+1;if calls==3 then return "done" end end}
+  assert(r.ok and calls==3, json.encode(r))
+ `)
+}

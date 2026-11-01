@@ -408,9 +408,7 @@ function A.follow(o)
   local missing, req, dest
   while now() < deadline do
     if o["until"] then
-      local done=o["until"]()
-      if type(done)~="boolean" then error("act.follow: until must return boolean",2) end
-      if done then return A.ok("act.follow") end
+      if o["until"]() then return A.ok("act.follow") end -- nil, like false, keeps following
     end
     local p = A.player(o.name)
     if not p then
@@ -1236,7 +1234,7 @@ for name, d in pairs({
   go_to = { "{x, y [, z, map, tolerance = 4, vertical_tolerance = 3, tries = 3, unstuck = false, on_attacked = nil]} → ActResult", "walk to the requested map and floor; explicit z is never replaced by a floor query. Success requires horizontal and vertical tolerances; wrong_floor/wrong_map/unreachable include observed position and gaps. Without z, select a floor with ground_z or fail. tries is 1..32 for stuck retries; unstuck=true authorizes a last-resort hearth (unstuck_home). on_attacked stops to call your combat handler, then resumes" },
   travel = { "{points = {{x, y, z}, ...} [, map, tolerance = 4, vertical_tolerance = 3, validate = true, allow_partial = false, stop_on_danger = false, unstuck = false, on_attacked = nil]} → ActResult", "validate all 1..64 3D waypoints with world.route before moving, then go_to each while holding movement ownership. Named waypoints accept x,y,z,map. Report first failed waypoint, completed_waypoints and validation evidence. allow_partial=true may walk a known route_unreachable prefix but still returns failure for the requested destination. validate=false permits unverified 2D waypoints; allow_partial then is invalid. Exposure is checked before each leg and during movement; the latest 64 observations are retained. stop_on_danger=true stops on hostile or unknown evidence" },
   approach = { "{unit [, range = 4, timeout = 60]} → ActResult<Creature>", "move within range and verify facing; reuse a pending walk until the target moves; bounded by timeout" },
-  follow = { "{name [, distance = 5, until = fn, timeout_s = 600]} → ActResult", "requires until or timeout_s; check until each pass, fail timeout at the deadline (at most 600 seconds), or player_not_visible after 5 seconds of absence" },
+  follow = { "{name [, distance = 5, until = fn, timeout_s = 600]} → ActResult", "requires until or timeout_s; call until each pass: anything but nil or false ends the follow, fail timeout at the deadline (at most 600 seconds), or player_not_visible after 5 seconds of absence" },
   reach_npc = { "{npc_entry|npc_guid [, x, y, z]} → ActResult<Creature>", "find an NPC by exactly one of npc_entry or npc_guid (walking to x, y, z first) and stand next to it" },
   accept = { "{npc_entry|npc_guid, quest [, x, y, z]} → ActResult", "walk to a quest giver and accept the quest" },
   turn_in = { "{npc_entry|npc_guid, quest [, reward = 0, x, y, z]} → ActResult", "walk to the quest ender and turn the quest in" },
