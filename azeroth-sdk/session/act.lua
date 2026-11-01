@@ -17,6 +17,18 @@
 act = {}
 local A = act
 
+-- "a:number b:boolean" -> the set of names, and "a (number), b (boolean)" for errors
+local function option_fields(spec)
+  local allowed, text = {}, {}
+  for name, kind in spec:gmatch("([%w_]+):(%S+)") do allowed[name] = true; text[#text+1] = name .. " (" .. kind .. ")" end
+  return allowed, table.concat(text, ", ")
+end
+-- unknown_options raises "<op>: unknown option k; accepted fields: ..." for a key spec doesn't name
+local function unknown_options(op, o, spec)
+  local allowed, fields = option_fields(spec)
+  for k in pairs(o) do if not allowed[k] then error(op .. ": unknown option " .. tostring(k) .. "; accepted fields: " .. fields, 3) end end
+end
+
 local function result(op, ok, data, code, message)
   if ok then return { ok = true, op = op, data = data } end
   return { ok = false, op = op, data = data, error = { code = code, message = message } }
@@ -50,9 +62,7 @@ move = move or {}
 function move.with_control(o)
   if not task.current() then error("move.with_control requires a task", 2) end
   if type(o) ~= "table" then error("move.with_control requires an options table", 2) end
-  for k in pairs(o) do
-    if k ~= "priority" and k ~= "queue_timeout_s" and k ~= "max_s" and k ~= "fn" then error("move.with_control: unknown option " .. tostring(k), 2) end
-  end
+  unknown_options("move.with_control", o, "fn:function priority:string queue_timeout_s:number max_s:number")
   if type(o.fn) ~= "function" then error("move.with_control: fn must return a completed action result", 2) end
   local priority, queue_s, max_s = o.priority or "normal", o.queue_timeout_s or 5, o.max_s or 600
   if priority ~= "normal" and priority ~= "urgent" and priority ~= "recovery" then error("move.with_control: invalid priority", 2) end
@@ -139,7 +149,7 @@ end
 function A.cast(id, guid, o)
   guid,o=guid or me.guid(),o or {}
   if type(o)~="table" then error("act.cast options must be a table",2) end
-  for k in pairs(o) do if k~="approach" and k~="max_move_yards" and k~="max_time_s" then error("act.cast: unknown option "..tostring(k),2) end end
+  unknown_options("act.cast", o, "approach:boolean max_move_yards:number max_time_s:number")
   if o.approach~=nil and type(o.approach)~="boolean" then error("act.cast: approach must be boolean",2) end
   local max_s,max_move=o.max_time_s or 30,o.max_move_yards or 10
   if type(max_s)~="number" or not(max_s>0 and max_s<=60) then error("act.cast: max_time_s must be >0..60",2) end
@@ -707,7 +717,7 @@ end
 function A.danger(o)
   if not task.current() then error("act.danger requires a task", 2) end
   if type(o) ~= "table" then error("act.danger requires {x,y,z,radius}", 2) end
-  for k in pairs(o) do if k~="x" and k~="y" and k~="z" and k~="radius" then error("act.danger: unknown option "..tostring(k),2) end end
+  unknown_options("act.danger", o, "x:number y:number z:number radius:number")
   local r = await(world.danger(o.x,o.y,o.z,o.radius or 25),16)
   return r.data or {state="unknown",hostiles={},reason=r.error and r.error.code or "not_available"}
 end
@@ -1030,23 +1040,22 @@ doc("task.keep", "(name, fn, ...) → id", "run fn as a task and run it again wh
 local takes_options = { go_to = true, travel = true, approach = true, follow = true, reach_npc = true, accept = true,
   turn_in = true, vendor = true, train = true, talk = true, use_object = true, rest = true, corpse_run = true,
   recover = true, spirit_res = true, loot_nearby = true, fly = true, make_room = true }
+-- accepted option fields and their types: unknown keys are refused with this list
 local npc_options = {
-  reach_npc = "npc_entry npc_guid x y z",
-  accept = "npc_entry npc_guid x y z quest",
-  turn_in = "npc_entry npc_guid x y z quest reward",
-  vendor = "npc_entry npc_guid x y z sell_junk repair buy",
-  train = "npc_entry npc_guid x y z spells continue_on_error",
-  talk = "npc_entry npc_guid x y z fn",
-  fly = "npc_entry npc_guid to",
+  reach_npc = "npc_entry:number npc_guid:string x:number y:number z:number",
+  accept = "npc_entry:number npc_guid:string x:number y:number z:number quest:number",
+  turn_in = "npc_entry:number npc_guid:string x:number y:number z:number quest:number reward:number",
+  vendor = "npc_entry:number npc_guid:string x:number y:number z:number sell_junk:boolean repair:boolean buy:table",
+  train = "npc_entry:number npc_guid:string x:number y:number z:number spells:table continue_on_error:boolean",
+  talk = "npc_entry:number npc_guid:string x:number y:number z:number fn:function",
+  fly = "npc_entry:number npc_guid:string to:number|string",
 }
 local function positive_int(v) return type(v) == "number" and v > 0 and v < math.huge and v == math.floor(v) end
 local function validate_npc_options(n, o)
-  local fields = npc_options[n]
-  if not fields then return end
+  if not npc_options[n] then return end
+  local allowed, fields = option_fields(npc_options[n])
   local function bad(why) error("act." .. n .. ": " .. why .. "; accepted fields: " .. fields, 3) end
   if type(o) ~= "table" then bad("an options table is required") end
-  local allowed = {}
-  for field in fields:gmatch("%S+") do allowed[field] = true end
   for k in pairs(o) do if not allowed[k] then bad("unknown option " .. tostring(k)) end end
   if (o.npc_entry ~= nil and o.npc_guid ~= nil) or (n ~= "fly" and o.npc_entry == nil and o.npc_guid == nil) then
     bad("supply exactly one of npc_entry or npc_guid")
@@ -1092,29 +1101,27 @@ local function validate_npc_options(n, o)
   elseif n == "fly" and not (positive_int(o.to) or (type(o.to) == "string" and o.to ~= "")) then bad("to must be a node ID or name") end
 end
 local helper_options = {
-  use_object = "entry count quest_id x y z radius max_attempts timeout_s",
-  loot_nearby = "dist make_room",
-  rest = "hp mana max_s safe",
+  use_object = "entry:number count:number quest_id:number x:number y:number z:number radius:number max_attempts:number timeout_s:number",
+  loot_nearby = "dist:number make_room:boolean",
+  rest = "hp:number mana:number max_s:number safe:boolean",
   make_room = "",
-  go_to = "x y z map tolerance vertical_tolerance tries unstuck on_attacked",
-  travel = "points map tolerance vertical_tolerance unstuck on_attacked validate allow_partial stop_on_danger",
-  approach = "unit range timeout",
-  follow = "name distance until timeout_s",
-  corpse_run = "safe timeout_s max_attempts",
-  spirit_res = "timeout_s max_attempts",
-  recover = "spirit rest safe allow_spirit_fallback timeout_s max_attempts",
+  go_to = "x:number y:number z:number map:number tolerance:number vertical_tolerance:number tries:number unstuck:boolean on_attacked:function",
+  travel = "points:table map:number tolerance:number vertical_tolerance:number unstuck:boolean on_attacked:function validate:boolean allow_partial:boolean stop_on_danger:boolean",
+  approach = "unit:string range:number timeout:number",
+  follow = "name:string distance:number until:function timeout_s:number",
+  corpse_run = "safe:boolean timeout_s:number max_attempts:number",
+  spirit_res = "timeout_s:number max_attempts:number",
+  recover = "spirit:boolean rest:boolean safe:boolean allow_spirit_fallback:boolean timeout_s:number max_attempts:number",
 }
 local function validate_helper_options(n, o)
   if n == "consume" then
     if o ~= "Food" and o ~= "Drink" then error('act.consume(kind): kind must be "Food" or "Drink"', 3) end
     return
   end
-  local fields = helper_options[n]
-  if fields == nil then return end
-  local function bad(why) error("act." .. n .. ": " .. why .. "; accepted fields: " .. fields, 3) end
+  if helper_options[n] == nil then return end
+  local allowed, fields = option_fields(helper_options[n])
+  local function bad(why) error("act." .. n .. ": " .. why .. "; accepted fields: " .. (fields == "" and "none" or fields), 3) end
   o = o or {}
-  local allowed = {}
-  for field in fields:gmatch("%S+") do allowed[field] = true end
   for k in pairs(o) do if not allowed[k] then bad("unknown option " .. tostring(k)) end end
   if n == "go_to" and (o.x == nil or o.y == nil) then bad("x and y are required") end
   if n == "approach" and (type(o.unit) ~= "string" or not o.unit:match("^%d+$")) then bad("unit must be a GUID string") end

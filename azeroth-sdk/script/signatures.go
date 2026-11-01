@@ -302,7 +302,7 @@ func checkOptions(L *lua.LState, name, sig string, v lua.LValue, fields []Parame
 	for _, p := range fields {
 		allowed[p.Name] = true
 		if t.RawGetString(p.Name) == lua.LNil && !p.Optional {
-			L.RaiseError("%s%s: missing required option %s; accepted fields are shown in the signature", name, sig, p.Name)
+			L.RaiseError("%s%s: missing required option %s; accepted fields: %s", name, sig, p.Name, optionFields(fields))
 		}
 		v := t.RawGetString(p.Name)
 		if v != lua.LNil {
@@ -321,9 +321,34 @@ func checkOptions(L *lua.LState, name, sig string, v lua.LValue, fields []Parame
 	}
 	t.ForEach(func(k, v lua.LValue) {
 		if !allowed[lua.LVAsString(k)] {
-			L.RaiseError("%s%s: unknown option %s; accepted fields are shown in the signature", name, sig, k.String())
+			L.RaiseError("%s%s: unknown option %s; accepted fields: %s", name, sig, k.String(), optionFields(fields))
 		}
 	})
+}
+
+// optionFields lists an options table's fields with the type their default implies: "items (table), money (number)"
+func optionFields(fields []Parameter) string {
+	out := make([]string, len(fields))
+	for i, p := range fields {
+		kind := ""
+		switch scalarDefault(p.Default).(type) {
+		case lua.LBool:
+			kind = "boolean"
+		case lua.LNumber:
+			kind = "number"
+		case lua.LString:
+			kind = "string"
+		default:
+			if strings.HasPrefix(p.Default, "{") {
+				kind = "table"
+			}
+		}
+		out[i] = p.Name
+		if kind != "" {
+			out[i] += " (" + kind + ")"
+		}
+	}
+	return strings.Join(out, ", ")
 }
 
 // DocumentActionPostconditions prevents new raw actions from silently bypassing

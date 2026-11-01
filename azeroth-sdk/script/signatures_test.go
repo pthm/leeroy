@@ -125,3 +125,14 @@ func TestNullableReturnDocumentsAbsence(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// an unknown option names the accepted fields and the types their defaults imply
+func TestUnknownOptionListsFields(t *testing.T) {
+	e := NewEngine(nolog, nil)
+	defer e.Close()
+	e.Func("t.offer", "{[items = {}, money = 0, note = \"\", rush = false, who]} → bool", "test", func(m map[string]any) bool { return true })
+	_, err := e.Eval(`t.offer{itms = {}}`)
+	if err == nil || !strings.Contains(err.Error(), "unknown option itms; accepted fields: items (table), money (number), note (string), rush (boolean), who") {
+		t.Fatal(err)
+	}
+}

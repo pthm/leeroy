@@ -21,6 +21,10 @@ func TestActOptionsValidatedBeforeMovement(t *testing.T) {
     }
     for _, f in ipairs(invalid) do local ok, err = pcall(f); assert(not ok and tostring(err):find("act%."), tostring(err)) end
     assert(#moves == 0)
+    local ok, err = pcall(function() act.rest{health = 0.5} end)
+    assert(not ok and tostring(err):find("act.rest: unknown option health; accepted fields: hp (number), mana (number), max_s (number), safe (boolean)", 1, true), tostring(err))
+    ok, err = pcall(function() act.cast(1, nil, {aproach = true}) end)
+    assert(not ok and tostring(err):find("accepted fields: approach (boolean)", 1, true), tostring(err))
     local r = act.travel{points={{1,2,0},{x=3,y=4,z=0}}, tolerance=1}
     assert(r.ok and #moves == 2)
   `)
