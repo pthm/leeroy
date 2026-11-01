@@ -163,7 +163,7 @@ func (b *Bot) setupCoreAPI() {
 	e.Func("me.in_combat", "() → bool", "the server's combat flag", b.InCombat)
 	e.Func("me.moving", "() → bool", "walking somewhere (move.to)", b.IsMoving)
 	e.Func("me.target", "() → GUID?", "your selected target, nil for none", func() types.GUID { return types.GUID(b.GetTargetGUID()) })
-	e.Func("me.stance", "() → number", "warrior stance / druid form index (0 = none)", b.GetStance)
+	e.Func("me.stance", "() → string?", "your shapeshift form, as the server sets it: battle_stance, defensive_stance, berserker_stance, cat, bear, dire_bear, travel, aquatic, moonkin, tree, flight, swift_flight, ghost_wolf, shadowform, stealth, ...; nil for none", b.stance)
 	e.Func("me.pet", "() → GUID?", "your pet, nil for none", func() types.GUID { return types.GUID(b.GetPetGUID()) })
 
 	e.Func("me.status", "() → Status", "what you'd see on screen, in one call: you (health, power, auras, cast, breath), your target and every mob in your fight, the NPCs, objects, players and mobs around you, your group, quests, what to improve (gear, untrained spells, talents, bag upgrades), your last minute of fighting, your tasks. Each part has a detail call",

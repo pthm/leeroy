@@ -206,7 +206,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `me.reputation() → Reputation[]` | your standing with each faction in your reputation list, by name | [Reputation](#reputation) |
 | `me.resting() → bool` | in an inn or city: rested XP builds up |  |
 | `me.spellbook() → Spellbook` | the class spells you could know at your level against the ones you do, and what's missing (learn them at your trainer) | [Spellbook](#spellbook) |
-| `me.stance() → number` | warrior stance / druid form index (0 = none) |  |
+| `me.stance() → string?` | your shapeshift form, as the server sets it: battle_stance, defensive_stance, berserker_stance, cat, bear, dire_bear, travel, aquatic, moonkin, tree, flight, swift_flight, ghost_wolf, shadowform, stealth, ...; nil for none |  |
 | `me.states() → string[]` | your aura states: defense (you dodged, parried or blocked: Revenge), health_below_20, ... (some abilities need one) |  |
 | `me.stats() → Stats?` | your character sheet: what gear, buffs and talents add up to; nil until the character object is observed | [Stats](#stats) |
 | `me.status() → Status` | what you'd see on screen, in one call: you (health, power, auras, cast, breath), your target and every mob in your fight, the NPCs, objects, players and mobs around you, your group, quests, what to improve (gear, untrained spells, talents, bag upgrades), your last minute of fighting, your tasks. Each part has a detail call | [Status](#status) |

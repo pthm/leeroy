@@ -1666,10 +1666,20 @@ func (b *Bot) PetAttack(target uint64) {
 	}
 }
 
-func (b *Bot) GetStance() int {
-	// Stance/form often in UNIT_FIELD_BYTES_1 or detectable via auras (battle stance etc).
-	// Return 0 (default) ; advanced detection can be added.
-	return 0
+// shapeshiftForms: SharedDefines ShapeshiftForm, the form byte of UNIT_FIELD_BYTES_2
+var shapeshiftForms = map[uint32]string{1: "cat", 2: "tree", 3: "travel", 4: "aquatic", 5: "bear", 8: "dire_bear",
+	13: "shadow_dance", 16: "ghost_wolf", 17: "battle_stance", 18: "defensive_stance", 19: "berserker_stance",
+	22: "metamorphosis", 27: "swift_flight", 28: "shadowform", 29: "flight", 30: "stealth", 31: "moonkin",
+	32: "spirit_of_redemption"}
+
+// stance: your shapeshift form (Unit::GetShapeshiftForm, byte 3 of UNIT_FIELD_BYTES_2), nil for none
+func (b *Bot) stance() any { return stanceOf(b.world.GetObject(b.world.CharGUID())) }
+
+func stanceOf(me *client.WorldObject) any {
+	if me == nil || me.Value(client.UnitFieldBytes2)>>24 == 0 {
+		return nil
+	}
+	return name(shapeshiftForms, me.Value(client.UnitFieldBytes2)>>24)
 }
 
 func (b *Bot) IsBehindTarget(targetGUID uint64) bool {

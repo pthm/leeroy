@@ -47,3 +47,15 @@ func TestSkillMetadataBoundsAndLocales(t *testing.T) {
 		t.Fatal("overflowed record count accepted")
 	}
 }
+
+// me.stance reads the form byte of UNIT_FIELD_BYTES_2 (sheath and PvP flags in the low bytes don't count)
+func TestStanceFromBytes2(t *testing.T) {
+	for v, want := range map[uint32]any{0: nil, 0x0101: nil, 18<<24 | 0x0101: "defensive_stance", 5 << 24: "bear", 99 << 24: "99"} {
+		if got := stanceOf(&client.WorldObject{Values: map[uint16]uint32{client.UnitFieldBytes2: v}}); got != want {
+			t.Errorf("%#x: %v, want %v", v, got, want)
+		}
+	}
+	if stanceOf(nil) != nil {
+		t.Error("no character: a form")
+	}
+}
