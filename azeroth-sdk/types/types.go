@@ -163,6 +163,7 @@ type Object struct {
 	Entry uint32 `json:"entry" doc:"game object template id"`
 	Name  string `json:"name" doc:"empty for a moment after it first comes into view"`
 	Type  string `json:"type" doc:"chest, door, button, goober (quest objects), questgiver, portal (use it: you're teleported), ship (boats and zeppelins), elevator, mailbox, fishing_pool (fish here), fishing_bobber, ... Mining veins and herbs are chests: see gather"`
+	State string `json:"state" doc:"the server's object state (GAMEOBJECT_BYTES_1): closed (ready: a door shut, a chest or button not yet used), open (active: a door open, a chest or button used) or alternate (the second active state, which some doors take when opened another way)"`
 	Place
 	Gather string `json:"gather,omitempty" doc:"the skill it takes: mining, herbalism, lockpicking, fishing or inscription"`
 	Skill  uint32 `json:"skill,omitempty" doc:"the skill level it needs"`

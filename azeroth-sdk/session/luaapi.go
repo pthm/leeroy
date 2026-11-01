@@ -60,6 +60,9 @@ func gs(g uint64) any { return types.GUID(g) }
 var goTypes = map[uint32]string{0: "door", 1: "button", 2: "questgiver", 3: "chest", 5: "generic", 6: "trap", 8: "spell_focus",
 	10: "goober", 11: "elevator", 15: "ship", 17: "fishing_bobber", 19: "mailbox", 22: "portal", 23: "meeting_stone", 25: "fishing_pool"}
 
+// GOState (SharedDefines.h): GO_STATE_ACTIVE, GO_STATE_READY, GO_STATE_ACTIVE_ALTERNATIVE
+var goStates = map[uint32]string{0: "open", 1: "closed", 2: "alternate"}
+
 // game object names by entry, from SMSG_GAMEOBJECT_QUERY_RESPONSE
 var goNames = struct {
 	m     map[uint32]string
@@ -93,7 +96,7 @@ func (b *Bot) object(o *client.WorldObject) types.Object {
 		go b.world.SendPacketRaw(cmsgGameObjectQuery, binary.LittleEndian.AppendUint64(body, o.GUID))
 	}
 	creatures.Unlock()
-	ob := types.Object{GUID: types.GUID(o.GUID), Entry: entry, Name: goName, Type: name(goTypes, (o.Value(fieldGOBytes1)>>8)&0xFF),
+	ob := types.Object{GUID: types.GUID(o.GUID), Entry: entry, Name: goName, Type: name(goTypes, (o.Value(fieldGOBytes1)>>8)&0xFF), State: name(goStates, o.Value(fieldGOBytes1)&0xFF),
 		Place: types.Place{X: round1(x), Y: round1(y), Z: round1(z), Distance: round1(float32(math.Sqrt(float64((x-mx)*(x-mx) + (y-my)*(y-my) + (z-mz)*(z-mz)))))}}
 	m := b.me3()
 	relate(m.x, m.y, m.z, m.o, &ob.Place)
@@ -253,6 +256,15 @@ func (b *Bot) setupCoreAPI() {
 				b.annotateObjects(ob)
 				return ob[0]
 			}
+		}
+		return nil
+	})
+
+	e.Func("objects.get", "(guid) → Object?", "one game object by GUID; nil if it's out of sight or not a game object (units.get takes units)", func(g uint64) any {
+		if o := w.GetObject(g); o != nil && (o.TypeID == client.ObjectTypeGameObj || g>>48 == 0xF110 || g>>48 == 0xF111) {
+			ob := []types.Object{b.object(o)}
+			b.annotateObjects(ob)
+			return ob[0]
 		}
 		return nil
 	})

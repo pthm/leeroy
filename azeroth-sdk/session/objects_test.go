@@ -1,11 +1,13 @@
 package session
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
 
+	"github.com/pthm/leeroy/azeroth-sdk/client"
 	"github.com/pthm/leeroy/azeroth-sdk/script"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
@@ -43,5 +45,22 @@ func TestOpeningSpellByLockType(t *testing.T) {
 		if got, ok := openingSpell("", lock); !ok || got != want {
 			t.Errorf("lock %d: spell %d, want %d", lock, got, want)
 		}
+	}
+}
+
+// objects.get reads a game object's state from GAMEOBJECT_BYTES_1's low byte; a unit's guid gives nil
+func TestObjectState(t *testing.T) {
+	b := testBot()
+	b.setupCoreAPI()
+	door := client.GameObjectGUID(13965, 3)
+	for state, want := range map[uint32]string{0: "open", 1: "closed", 2: "alternate"} {
+		b.world.PutObjectForTest(&client.WorldObject{GUID: door, TypeID: client.ObjectTypeGameObj, Entry: 13965, Values: map[uint16]uint32{fieldGOBytes1: state}})
+		if v, err := b.lua.Eval(`local o = objects.get("` + fmt.Sprint(door) + `") return o.state .. " " .. o.type`); err != nil || v != want+" door" {
+			t.Errorf("state %d: %v %v", state, v, err)
+		}
+	}
+	b.world.PutObjectForTest(&client.WorldObject{GUID: 0xF130000000000042, Values: map[uint16]uint32{}})
+	if v, err := b.lua.Eval(`return objects.get("` + fmt.Sprint(uint64(0xF130000000000042)) + `") == nil`); err != nil || v != true {
+		t.Errorf("a unit: %v %v", v, err)
 	}
 }
