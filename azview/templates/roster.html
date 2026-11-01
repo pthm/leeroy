@@ -1,0 +1,16 @@
+{{define "roster.html"}}{{range .Groups}}<div class="grp{{if .Sel}} sel{{end}}" id="g{{.ID}}">
+  <div class="ghead" data-g="{{.ID}}" title="Select this group: the map follows it, the feed and stats show only its players">Group of {{len .Cards}} <span>· {{.Spread}} yd apart</span></div>
+  {{range .Cards}}{{template "card" .}}{{end}}</div>
+{{end}}{{if .Rest}}{{if .RestLabel}}<div class="ghead">{{.RestLabel}} <span>· {{len .Rest}}</span></div>{{end}}
+{{range .Rest}}{{template "card" .}}{{end}}{{end}}{{if not .Count}}<div class="muted">No players yet.</div>{{end}}{{end}}
+
+{{define "card"}}<div class="pc {{.State}}{{if .Off}} off{{end}}{{if .Sel}} sel{{end}}" id="pc-{{.Name}}" data-n="{{.Name}}" title="{{.Name}}: {{if eq .State "combat"}}in combat{{else if .State}}{{.State}}{{else}}idle{{end}}">
+  <div class="pc-top">{{if .Leader}}★{{end}}<span class="dot" style="background:{{.Color}}"></span><span class="who" style="color:{{.Color}}">{{.Name}}</span><span class="spec">{{.What}}</span>{{if .Lvl}}<span class="lvl">{{.Lvl}}</span>{{end}}</div>
+  {{if .Off}}<div class="hpbar"><span>not logged in</span></div><div class="pwbar"></div><div class="pc-tgt none"><span>no target</span></div>
+  {{else}}<div class="hpbar" title="health"><i style="width:{{printf "%.1f" .HPPct}}%"></i><span>{{if .State | eq "dead"}}dead{{else if .State | eq "ghost"}}ghost{{else}}{{comma .HP}} / {{comma .HPMax}}{{end}}</span></div>
+  <div class="pwbar" title="{{.Power}} {{.PW}}/{{.PWMax}}"><i class="pw-{{.Power}}" style="width:{{printf "%.1f" .PwPct}}%"></i></div>
+  {{with .Target}}<div class="pc-tgt" title="target"><span>→ {{if .Player}}<span class="who">{{.Name}}</span>{{else}}{{.Name}}{{end}}{{if .Lvl}} <span class="muted">{{.Lvl}}</span>{{end}}</span>{{if or .Dead (and .HP (eq (deref .HP) 0))}}<b class="muted">dead</b>{{else if .HP}}<span class="tbar"><i style="width:{{deref .HP}}%;background:{{$.TargetHP}}"></i></span><b>{{deref .HP}}%</b>{{end}}</div>
+  {{else}}<div class="pc-tgt none"><span>{{if or (eq .State "dead") (eq .State "ghost")}}{{.State}}{{else}}no target{{end}}</span></div>{{end}}{{end}}
+  {{if .Say}}<div class="pc-say" title="{{.SayFull}}">“{{.Say}}”</div>{{else}}<div class="pc-say">–</div>{{end}}
+  <div class="pc-sub">{{if not .Off}}{{coins .Money}}{{end}}{{with .Score}}{{if or (index . "score") (index . "value")}}<span title="progress {{index . "value"}} · pace {{index . "pace"}} · {{printf "%.0f" (index . "recent_rate")}}/h now">score <b>{{index . "score"}}</b>/h</span>{{end}}{{end}}{{with .Agent}} <span class="rt rt-{{.runtime}}" title="{{.runtime}} · {{.model}}{{if .spec}} · {{.spec}}{{end}}">{{.short}}</span>{{end}}</div>
+</div>{{end}}

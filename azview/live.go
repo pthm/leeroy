@@ -40,7 +40,8 @@ func files() fs.FS {
 
 func templates() *template.Template {
 	return template.Must(template.New("").Funcs(template.FuncMap{
-		"fmt": Fmt, "money": Money,
+		"fmt": Fmt, "money": Money, "coins": Coins, "comma": comma,
+		"deref": func(p *int) int { return *p },
 	}).ParseFS(files(), "templates/*.html"))
 }
 

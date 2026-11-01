@@ -32,7 +32,23 @@ func queryOf(r *http.Request) Query {
 
 // Panel is the template and data for a panel; the caller holds the read lock.
 func (s *Store) Panel(name string, q Query) (string, any) {
+	switch name {
+	case "roster":
+		return "roster.html", s.Roster(q)
+	}
 	return "todo.html", map[string]any{"Name": name}
+}
+
+// comma is a number with thousands separators.
+func comma(n int) string {
+	s := strconv.Itoa(n)
+	if n < 0 {
+		return "-" + comma(-n)
+	}
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
 }
 
 // metric is a stat the Stats tab shows; stats.go has how each is counted.
