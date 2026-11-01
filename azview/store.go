@@ -381,6 +381,9 @@ type Source struct {
 	RunChars    map[string]bool
 	Chars       []string
 	Since       float64
+	Dir         string    // a bench run dir: scanned for agents that come up after the viewer started
+	scanned     time.Time // the last scan of Dir
+	goRead      bool      // Start is the run's go file (not the first event)
 	offsets     map[string]int64
 	partial     map[string]string
 	lastTgt     map[string]string
@@ -393,6 +396,9 @@ func (s *Store) Poll(src *Source) {
 		src.offsets, src.partial, src.lastTgt = map[string]int64{}, map[string]string{}, map[string]string{}
 		_, err := os.Stat(src.ServerLog)
 		src.keep = ClientChatFilter(err == nil && src.ServerLog != "")
+	}
+	if src.Dir != "" && time.Since(src.scanned) > 2*time.Second {
+		s.scan(src)
 	}
 	var fresh, live []Ev
 	for _, f := range src.Files {
@@ -695,38 +701,60 @@ func (s *Store) mapMark(e Ev) map[string]any {
 	return out
 }
 
+// scan adds what a run dir has that src doesn't yet: the record files and transcripts of agents whose sessions came up
+// since the last scan (a viewer started early in a run), their meta, the server log once there are characters, and
+// the go file. A record file's events from before Since are still dropped, so a late file reads from the start.
+func (s *Store) scan(src *Source) {
+	src.scanned = time.Now()
+	records, transcripts := RunSources(src.Dir)
+	have := map[string]bool{}
+	for _, f := range src.Files {
+		have[f] = true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, f := range records {
+		if !have[f] {
+			src.Files = append(src.Files, f)
+		}
+	}
+	for _, t := range transcripts {
+		if have[t.Path] {
+			continue
+		}
+		src.Transcripts[t.Path] = t.Name
+		src.RunChars[t.Name] = true
+		src.Files = append(src.Files, t.Path)
+		s.player(t.Name)
+	}
+	if _, err := os.Stat(src.ServerLog); err == nil && len(src.RunChars) > 0 && !have[src.ServerLog] {
+		src.Files = append(src.Files, src.ServerLog)
+	}
+	s.agents = AgentMeta(transcripts)
+	if !src.goRead {
+		if b, err := os.ReadFile(filepath.Join(src.Dir, "go")); err == nil {
+			if f, err := strconv.ParseFloat(strings.TrimSpace(string(b)), 64); err == nil {
+				s.Start, src.goRead = f*1000, true
+				if src.offsets == nil { // nothing read yet: start reading at the run
+					src.Since = s.Start - 60_000
+				}
+			}
+		}
+	}
+}
+
 // OpenRun is a store for a bench run dir (its record files, transcripts and, for chat, damage, heals and targets, the
 // server log), or for log files when dir is "" (default: the server log). It reads from the run's start (its go
 // file), else from sinceMin minutes ago. Call Poll to read.
 func OpenRun(dir string, files []string, sinceMin float64) (*Store, *Source) {
 	s, src := NewStore(), &Source{Transcripts: map[string]string{}, RunChars: map[string]bool{}, ServerLog: ServerLog()}
 	src.Since = float64(time.Now().UnixMilli()) - sinceMin*60_000
-	src.Files = files
-	var transcripts []Transcript
+	src.Files, src.Dir = files, dir
 	if dir != "" {
-		var records []string
-		records, transcripts = RunSources(dir)
-		src.Files = append(src.Files, records...)
-		if b, err := os.ReadFile(filepath.Join(dir, "go")); err == nil {
-			if f, err := strconv.ParseFloat(strings.TrimSpace(string(b)), 64); err == nil {
-				s.Start = f * 1000
-				src.Since = s.Start - 60_000
-			}
-		}
-	}
-	if len(src.Files) == 0 {
+		s.scan(src)
+	} else if len(src.Files) == 0 {
 		src.Files = []string{src.ServerLog}
 	}
-	for _, t := range transcripts {
-		src.Transcripts[t.Path] = t.Name
-		src.RunChars[t.Name] = true
-		src.Files = append(src.Files, t.Path)
-		s.player(t.Name)
-	}
-	if _, err := os.Stat(src.ServerLog); err == nil && len(src.RunChars) > 0 {
-		src.Files = append(src.Files, src.ServerLog)
-	}
-	s.agents = AgentMeta(transcripts)
 	for _, r := range world.MustRows(world.Bench(), "SELECT id, name FROM area") {
 		id, _ := strconv.Atoi(r[0])
 		s.zones[id] = r[1]

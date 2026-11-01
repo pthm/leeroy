@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func evs(t *testing.T, text string) []Ev {
@@ -129,6 +130,28 @@ func TestPollTailsFiles(t *testing.T) {
 	s.Poll(src)
 	if len(s.byEv["xp"]) != 1 || N(s.byEv["xp"][0], "amount") != 10 {
 		t.Fatalf("the finished line should be read: %v", s.byEv["xp"])
+	}
+}
+
+// A viewer started before every session is up finds the late agents (and the go file) on a later poll.
+func TestPollFindsLateAgents(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a1.record.jsonl"), []byte(`{"t":1000,"ev":"pos","n":"A","x":1,"y":1}`+"\n"), 0o644)
+	s := NewStore()
+	src := &Source{Dir: dir, Transcripts: map[string]string{}, RunChars: map[string]bool{}}
+	s.Poll(src)
+	if s.byName["A"] == nil || s.byName["B"] != nil {
+		t.Fatalf("want only A, got %v", s.byName)
+	}
+	os.WriteFile(filepath.Join(dir, "a2.record.jsonl"), []byte(`{"t":2000,"ev":"pos","n":"B","x":2,"y":2}`+"\n"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "a2"), 0o755)
+	os.WriteFile(filepath.Join(dir, "a2", "prompt.md"), []byte("Your character B is already logged in and waiting.\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "a2", "agent.jsonl"), nil, 0o644)
+	os.WriteFile(filepath.Join(dir, "go"), []byte("1.5\n"), 0o644)
+	src.scanned = time.Time{}
+	s.Poll(src)
+	if p := s.byName["B"]; p == nil || len(p.Track) != 1 || !src.RunChars["B"] || s.Start != 1500 {
+		t.Fatalf("want B with its sample and Start from go, got %+v %v %v", p, src.RunChars, s.Start)
 	}
 }
 
