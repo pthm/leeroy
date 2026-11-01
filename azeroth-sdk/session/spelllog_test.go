@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"slices"
 	"testing"
 	"time"
 
@@ -148,6 +149,26 @@ func TestThreatPct(t *testing.T) {
 	s.onPacket(me, smsgSpellDelayed, le.AppendUint32(packGUID(me), 500))
 	if left := time.Until(s.castUntil); math.Abs(left.Seconds()-1.5) > 0.1 {
 		t.Fatalf("own pushback: %v", left)
+	}
+}
+
+// units.engaged: a creature counts when one of ours is on its threat list or is its target, fleeing or targetless
+// included; the dead, friendly ones and those fighting only others don't
+func TestEngaged(t *testing.T) {
+	const me, pal, other = 0x2A, 0x2B, 0x99
+	ours := map[types.GUID]bool{me: true, pal: true}
+	mob := func(g uint64, target types.GUID, alive bool, reaction string) types.Creature {
+		return types.Creature{Unit: types.Unit{GUID: types.GUID(g), Target: target, Alive: alive, Reaction: reaction, Fleeing: g == 4}}
+	}
+	cs := []types.Creature{mob(1, me, true, "hostile"), mob(2, 0, true, "hostile"), mob(3, other, true, "hostile"),
+		mob(4, 0, true, "neutral"), mob(5, me, false, "hostile"), mob(6, me, true, "friendly")}
+	threat := map[uint64][]threatRef{2: {{pal, 50}}, 3: {{other, 90}}, 4: {{other, 90}, {pal, 40}, {me, 10}}}
+	var got []string
+	for _, e := range engagedWith(cs, threat, ours) {
+		got = append(got, fmt.Sprint(uint64(e.GUID), e.OnThreat, e.Fleeing))
+	}
+	if want := []string{"1 [] false", "2 [43] false", "4 [43 42] true"}; !slices.Equal(got, want) {
+		t.Fatalf("engaged: %q, want %q", got, want)
 	}
 }
 

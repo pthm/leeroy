@@ -58,7 +58,7 @@ func facing(o float32) *float64 {
 func (b *Bot) baseUnit(u UnitInfo) types.Unit {
 	t := types.Unit{GUID: types.GUID(u.GUID), Name: u.Name, Level: u.Level, Health: u.Health, MaxHealth: u.MaxHealth,
 		Place: types.Place{X: round1(u.PosX), Y: round1(u.PosY), Z: round1(u.PosZ), Distance: round1(u.Distance)}, Alive: u.IsAlive,
-		Target: types.GUID(u.Target), InCombat: u.Flags&0x80000 != 0} // UNIT_FLAG_IN_COMBAT
+		Target: types.GUID(u.Target), InCombat: u.Flags&0x80000 != 0, Fleeing: u.Flags&0x800000 != 0} // UNIT_FLAG_IN_COMBAT, UNIT_FLAG_FLEEING
 	if me := b.world.GetObject(b.world.CharGUID()); me != nil {
 		t.Reaction = factionReaction(u.Faction, me.Value(fieldUnitFaction))
 	}

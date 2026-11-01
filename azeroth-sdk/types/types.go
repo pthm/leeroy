@@ -97,6 +97,7 @@ type Unit struct {
 	Reaction string   `json:"reaction" doc:"toward you: hostile (attacks on sight), neutral (fights back) or friendly"`
 	Target   GUID     `json:"target" doc:"who it's targeting; null for nobody"`
 	InCombat bool     `json:"in_combat"`
+	Fleeing  bool     `json:"fleeing,omitempty" doc:"the server's fleeing flag (UNIT_FLAG_FLEEING): it runs in fear, or a creature runs at low health"`
 	Casting  *Casting `json:"casting,omitempty" doc:"the spell it's casting or channelling now (interrupt it, or get out of the way)"`
 	States   []string `json:"states,omitempty" doc:"the game's aura states: health_below_20 (Execute, Hammer of Wrath), health_below_35, defense (it dodged, parried or blocked: Revenge), frozen, bleeding, enrage, ..."`
 }
@@ -129,6 +130,12 @@ type Player struct {
 }
 
 // UnitRef names a unit in events and results.
+// Engaged is a creature in combat with you, your pet or your party (units.engaged).
+type Engaged struct {
+	Creature
+	OnThreat []GUID `json:"on_threat" doc:"you, your pet and party members on its threat list, highest threat first (the server sends a creature's threat list to everyone near it); empty when only its target is one of you"`
+}
+
 type UnitRef struct {
 	GUID   GUID   `json:"guid"`
 	Name   string `json:"name"`

@@ -153,8 +153,8 @@ func (b *Bot) attackOutcome(src, dst uint64, d types.Damage, hit func(src, dst u
 	hit(src, dst, "damage", d)
 }
 
-// threats: hostile living creatures attacking you, your pet or a party member.
-func (b *Bot) threats() []types.Creature {
+// ours: you, your pet and your party members
+func (b *Bot) ours() map[types.GUID]bool {
 	w := b.world
 	ours := map[types.GUID]bool{types.GUID(w.CharGUID()): true}
 	if p := b.GetPetGUID(); p != 0 {
@@ -163,10 +163,44 @@ func (b *Bot) threats() []types.Creature {
 	for _, m := range w.GroupState().Members {
 		ours[types.GUID(m.GUID)] = true
 	}
+	return ours
+}
+
+// threats: hostile living creatures attacking you, your pet or a party member.
+func (b *Bot) threats() []types.Creature {
+	ours := b.ours()
 	out := []types.Creature{}
 	for _, c := range b.creatures(b.GetNearbyUnits(60)) {
 		if c.Alive && c.Target != 0 && ours[c.Target] && c.Reaction != "friendly" {
 			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// engaged: living, unfriendly creatures in sight that have one of ours on their threat list or as their target.
+func (b *Bot) engaged() []types.Engaged {
+	cs := b.creatures(b.GetNearbyUnits(250))
+	b.annotateNearby(cs)
+	b.cinfo.mu.Lock()
+	defer b.cinfo.mu.Unlock()
+	return engagedWith(cs, b.cinfo.threat, b.ours())
+}
+
+func engagedWith(cs []types.Creature, threat map[uint64][]threatRef, ours map[types.GUID]bool) []types.Engaged {
+	out := []types.Engaged{}
+	for _, c := range cs {
+		if !c.Alive || c.Reaction == "friendly" {
+			continue
+		}
+		e := types.Engaged{Creature: c, OnThreat: []types.GUID{}}
+		for _, t := range threat[uint64(c.GUID)] {
+			if ours[types.GUID(t.guid)] {
+				e.OnThreat = append(e.OnThreat, types.GUID(t.guid))
+			}
+		}
+		if len(e.OnThreat) > 0 || ours[c.Target] {
+			out = append(out, e)
 		}
 	}
 	return out
@@ -230,6 +264,8 @@ func (b *Bot) setupCombatInfo() {
 		})
 	e.Func("units.threats", "() → Creature[]", "hostile creatures attacking you, your pet or anyone in your group, nearest first: what a tank has to pick up and a healer has to watch",
 		func() []types.Creature { cs := b.threats(); b.annotateNearby(cs); return cs })
+	e.Func("units.engaged", "() → Engaged[]", "living creatures in combat with you, your pet or your party, nearest first: each one that has one of you on its threat list (on_threat) or as its target, including those fleeing or targeting nobody. What the server has sent; it doesn't say whether a fight is over",
+		func() []types.Engaged { return b.engaged() })
 	e.Func("combat.threat", "(guid) → Threat[]", "a creature's threat table as the server sends it to everyone near: who it would attack, highest first, with each one's threat as a % of the one it attacks (pct = 100; to pull it off them another needs over 110% in melee range, 130% beyond). Empty when it isn't fighting or out of sight",
 		func(g uint64) []types.Threat {
 			ci.mu.Lock()
