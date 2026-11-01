@@ -152,11 +152,14 @@ layers and alpha maps from the client's ADT files): the texture render minus its
 resolution. The minimap keeps the colours, shading, buildings and water; the textures add the ground's grain and sharp
 road and path edges; where the two disagree a lot (a roof, water) less detail is added. The page uses the level whose
 pixels are about a screen pixel, and shows its part of a coarser tile while a finer one loads. Over that, the
-buildings, trees, rocks and fences are drawn from their models (the server's collision geometry in `data/vmaps`), seen
-from above: each pixel the highest surface, lit by its face's slope from the north-west, outlined where it drops to a
-wall, casting a short shadow (the sun 45 degrees up, at most 10 yd). The models have no textures, so a face takes the
-minimap's colour over it (a small face, a roof pane, one colour: the mean; a big one, a city street, the minimap's own
-variation). Detail tiles need the
+client's own models are drawn, textured, seen from above: every building, wall and bridge (WMO) and tree, fence, lamp
+and crate (M2) the ADTs place, and the doodads each building places (a city's trees and statues, an inn's lanterns),
+read from the client (`azeroth-sdk/clientdata`: `ParseADT`'s placements, `LoadWMO`, `LoadM2`) and placed with the
+server's own transform (`pathfinding.PlacementWorld`; checked against the vmaps in `azworld/world/placement_test.go`).
+Each pixel is the highest surface's texture, lit by its face's slope from the north-west, outlined where it drops to
+a wall, casting a short shadow (the sun 45 degrees up, at most 10 yd). Foliage (alpha-tested textures) is a layer of
+its own, at most 60% opaque (`leafOpacity`), so the roads under Elwynn's canopy still show. A model is loaded the first
+time a tile needs it (Stormwind's city: ~1 s), then kept. Detail tiles need the
 game client: `$WOW_CLIENT`, else `~/Downloads/ChromieCraft_3.3.5a`; without it the minimap is upscaled as before.
 
 The page requests tiles with `?v=<tileVersion>` (3 with client data, 1 without). Tiles are cached for a day, so the

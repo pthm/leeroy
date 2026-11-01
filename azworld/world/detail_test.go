@@ -2,6 +2,7 @@ package world
 
 import (
 	"bytes"
+	"image"
 	"image/jpeg"
 	"testing"
 )
@@ -37,5 +38,16 @@ func TestBoxBlur(t *testing.T) {
 	b := boxBlur(a, 3, 1)
 	if b[4][0] != 1 || b[0][0] != 9.0/4 {
 		t.Fatalf("middle: 9 over 9 cells, corner: 9 over 4: %v %v", b[4], b[0])
+	}
+}
+
+// A long thin texture halves down to a pixel high, never to nothing (a 4x0 level made a negative index and crashed).
+func TestMipsOfThin(t *testing.T) {
+	for _, r := range []image.Rectangle{image.Rect(0, 0, 32, 2), image.Rect(0, 0, 2, 64), image.Rect(0, 0, 256, 256)} {
+		for _, m := range mipsOf(image.NewRGBA(r)) {
+			if m.Rect.Dx() == 0 || m.Rect.Dy() == 0 {
+				t.Fatalf("%v: an empty mip level %v", r, m.Rect)
+			}
+		}
 	}
 }
