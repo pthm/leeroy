@@ -27,6 +27,8 @@ const (
 	cmsgItemQuery         = 0x056
 	smsgItemQuery         = 0x058
 	cmsgUseItem           = 0x0AB
+	cmsgOpenItem          = 0x0AC
+	cmsgSplitItem         = 0x10E
 	cmsgAutoStoreBagItem  = 0x10B
 	cmsgAutoEquipItemSlot = 0x10F
 	cmsgDestroyItem       = 0x111
@@ -596,6 +598,83 @@ func (b *Bot) setupItems() {
 			return script.Ok(nil)
 		}, func(ev script.Event) *script.Outcome { return failOn(ev, "items") })
 	})
+	e.Func("items.split", "(item, count) → Request<Item>", "split count off a stack you carry (entry or guid) into an empty bag slot, as dragging with shift does: ok with the new stack. bags_full when no slot is empty; tried_to_split_more_than_count and the server's other bag errors",
+		func(item uint64, count uint32) map[string]any {
+			args := map[string]any{"item": gs(item), "count": count}
+			it := findItem(w, item)
+			switch {
+			case it == nil:
+				return b.refuse("items.split", args, "item_not_found", "no such item in your bags")
+			case count == 0 || count >= it.Count:
+				return b.refuse("items.split", args, "bad_count", fmt.Sprintf("count must be 1 to %d: the stack has %d", int(it.Count)-1, it.Count))
+			}
+			free := emptySlots(w)
+			if len(free) == 0 {
+				return b.refuse("items.split", args, "bags_full", "no empty bag slot for the new stack")
+			}
+			dst := free[0]
+			pkt := binary.LittleEndian.AppendUint32([]byte{it.Bag, it.BagSlot, dst[0], dst[1]}, count)
+			if err := w.SendPacketRaw(cmsgSplitItem, pkt); err != nil {
+				return b.refuse("items.split", args, "failed", err.Error())
+			}
+			return b.request("items.split", args, 3*time.Second, func() *script.Outcome {
+				for _, x := range bagItems(w) {
+					if x.Bag == dst[0] && x.BagSlot == dst[1] && x.Entry == it.Entry && x.Count == count {
+						return script.Ok(x)
+					}
+				}
+				return nil
+			}, func(ev script.Event) *script.Outcome { return failOn(ev, "items") })
+		})
+	e.Func("items.open", "(item) → Request<Looted>", "open an item you carry (entry or guid) that holds loot (a clam, a sack, an unlocked lockbox), as right-clicking it does, and take what's inside. item_locked for a locked lockbox, cant_do_right_now for an item that holds nothing, bags_full",
+		func(item uint64) map[string]any {
+			args := map[string]any{"item": gs(item)}
+			it := findItem(w, item)
+			if it == nil {
+				return b.refuse("items.open", args, "item_not_found", "no such item in your bags")
+			}
+			if err := w.SendPacketRaw(cmsgOpenItem, []byte{it.Bag, it.BagSlot}); err != nil {
+				return b.refuse("items.open", args, "failed", err.Error())
+			}
+			// the loot window is taken as it opens (handleLootResponse); the opened item goes when it's empty
+			g, n := it.GUID, it.Count
+			got, last := types.Looted{Items: []types.Item{}}, time.Now()
+			var mu sync.Mutex
+			return b.request("items.open", args, 5*time.Second, func() *script.Outcome {
+				mu.Lock()
+				defer mu.Unlock()
+				if time.Since(last) < time.Second {
+					return nil
+				}
+				for _, x := range bagItems(w) {
+					if x.GUID == g && x.Count >= n && len(got.Items) == 0 && got.Money == 0 {
+						return nil
+					}
+				}
+				return script.Ok(got)
+			}, func(ev script.Event) *script.Outcome {
+				mu.Lock()
+				defer mu.Unlock()
+				switch d := ev.Data.(type) {
+				case types.ItemReceived:
+					if d.From != "loot" {
+						return nil
+					}
+					got.Items = append(got.Items, d.Item)
+				case types.Money:
+					got.Money += d.Amount
+				case types.ErrorEvent:
+					if d.Op != "items" && d.Op != "items.loot" {
+						return nil
+					}
+					return script.Fail(d.Code, d.Message, got)
+				default:
+					return nil
+				}
+				last = time.Now()
+				return nil
+			})
+		})
 	e.Func("items.loot", "(guid) → Request<Looted>", "loot a corpse within 5 yd: takes every item and the money (waits a moment for a fresh corpse to become lootable). A game object's guid fails with wrong_target_type: objects.use opens chests",
 		func(guid uint64) map[string]any {
 			args := map[string]any{"unit": gs(guid)}
@@ -1061,27 +1140,30 @@ func writeTarget(buf *bytes.Buffer, target uint64) {
 	buf.Write(packGUID(target))
 }
 
-func freeSlots(w *client.WorldClient) int {
+func freeSlots(w *client.WorldClient) int { return len(emptySlots(w)) }
+
+// emptySlots: every empty bag slot as (bag, slot): the backpack (255, 23-38) first, then the bags in slots 19-22
+func emptySlots(w *client.WorldClient) [][2]uint8 {
 	me := w.GetObject(w.CharGUID())
 	if me == nil {
-		return 0
+		return nil
 	}
-	n := 0
+	var out [][2]uint8
 	for slot := uint16(23); slot < 39; slot++ {
 		if guidAt(me, fieldInvSlots+slot*2) == 0 {
-			n++
+			out = append(out, [2]uint8{255, uint8(slot)})
 		}
 	}
 	for bag := uint16(19); bag < 23; bag++ {
 		if c := w.GetObject(guidAt(me, fieldInvSlots+bag*2)); c != nil {
 			for slot := uint16(0); uint32(slot) < c.Value(fieldContainerSize) && slot < 36; slot++ {
 				if guidAt(c, fieldContainerSlot+slot*2) == 0 {
-					n++
+					out = append(out, [2]uint8{uint8(bag), uint8(slot)})
 				}
 			}
 		}
 	}
-	return n
+	return out
 }
 
 // Wait for every stack and its money update. Any refused stack makes the aggregate fail.

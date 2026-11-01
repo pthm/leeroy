@@ -278,3 +278,25 @@ func TestItemCharges(t *testing.T) {
 		t.Fatalf("charges: %v", got)
 	}
 }
+
+// items.split refuses a count the stack can't give and a full backpack; empty slots list the backpack first
+func TestSplitRefusals(t *testing.T) {
+	b := testBot()
+	b.setupItems()
+	me := &client.WorldObject{GUID: b.world.CharGUID(), Values: map[uint16]uint32{}}
+	for slot := 23; slot < 39; slot++ {
+		g := uint64(0x4000000000000b00 + slot)
+		me.Values[fieldInvSlots+uint16(slot)*2], me.Values[fieldInvSlots+uint16(slot)*2+1] = uint32(g), uint32(g>>32)
+		b.world.PutObjectForTest(&client.WorldObject{GUID: g, Values: map[uint16]uint32{3: 4540, fieldItemStack: 5}})
+	}
+	b.world.PutObjectForTest(me)
+	for count, code := range map[string]string{"5": "bad_count", "0": "bad_count", "2": "bags_full"} {
+		if _, err := b.lua.Eval(`r = result(items.split(4540, ` + count + `).id) assert(r.ok == false and r.error.code == "` + code + `", json.encode(r))`); err != nil {
+			t.Errorf("count %s: %v", count, err)
+		}
+	}
+	me.Values[fieldInvSlots+30*2], me.Values[fieldInvSlots+30*2+1] = 0, 0
+	if s := emptySlots(b.world); len(s) != 1 || s[0] != [2]uint8{255, 30} {
+		t.Fatalf("empty slots: %v", s)
+	}
+}

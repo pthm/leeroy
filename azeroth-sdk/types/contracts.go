@@ -22,6 +22,8 @@ var ActionPostconditions = map[string]string{
 	"items.equip":       "the requested item is observed equipped in the requested slot",
 	"items.unequip":     "the item is observed outside its equipped slot",
 	"items.destroy":     "the requested inventory count decrease was observed",
+	"items.split":       "a stack of the requested count of the item is observed in the chosen empty slot",
+	"items.open":        "the opened item's loot (or its absence) was observed: it's gone or its stack shrank, or loot arrived, and a second passed with nothing more",
 	"items.loot":        "the loot interaction completed with the reported items and money",
 	"items.roll":        "the server echoed this player's vote for the requested roll",
 	"objects.use":       "matching opening cast completion or an observed game-object state change; quest progress is checked separately by act.use_object",
