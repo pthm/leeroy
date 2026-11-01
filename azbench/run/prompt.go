@@ -78,6 +78,10 @@ FACTION SCORE: every player on this server is on your faction (Alliance); the fa
 yours, is the sum of all players' scores. standings shows every player's score, rates, level and role, their damage
 dealt, damage taken and healing done (not scored), and the faction total.`,
 			"Do not stop early: keep improving your score until the time runs out."
+	case "achievement", "quest", "item", "quality":
+		return `You are scored on the time until the judge, which reads your character from the server database, sees
+the goal met: your score is 3600 / seconds to the goal (1 = met in an hour). If time runs out first, your score is 0.`,
+			"Do not stop until the goal is met: confirm it yourself with wow before finishing."
 	}
 	return `You are scored on the time until the judge, which reads your character from the server database, sees
 the goal met; if time runs out, your progress toward it is the score.`,

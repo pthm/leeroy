@@ -165,3 +165,38 @@ func TestTeamOpenrouterBilled(t *testing.T) {
 		t.Fatalf("openrouter = %v, want billed 3.75, estimated 3", team.Openrouter)
 	}
 }
+
+// Spec J1: a binary goal scores 3600 / time_to_goal_s on the card and in team.json, recomputed from a result saved
+// with the old rate score; an unmet one scores 0.
+func TestBinaryGoalScoredByTime(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "go"), nil, 0o600)
+	for _, a := range []struct{ agent, char, res string }{
+		{"a1", "Met", `{"char":"Met","goal":"achievement:628","met":true,"elapsed_s":7200,"score":2.1}`},
+		{"a2", "Unmet", `{"char":"Unmet","goal":"achievement:628","met":false,"elapsed_s":7200,"score":2.1}`},
+	} {
+		run := filepath.Join(dir, a.agent)
+		os.MkdirAll(run, 0o755)
+		os.WriteFile(filepath.Join(run, "meta.json"), []byte(`{"agent":"`+a.agent+`","char":"`+a.char+`","goal":"achievement:628"}`), 0o600)
+		os.WriteFile(filepath.Join(run, "judge.json"), []byte(a.res), 0o600)
+		os.WriteFile(filepath.Join(dir, a.agent+".out"), []byte(a.res+"\n"), 0o600)
+		os.WriteFile(filepath.Join(dir, a.agent+".record.jsonl"), []byte(`{"t":1000,"ev":"score","n":"`+a.char+`","value":1,"score":2.1}`+"\n"), 0o600)
+	}
+	Report(dir)
+	agents := readJSON(filepath.Join(dir, "report.json"))["agents"].([]any)
+	for i, want := range []struct{ score, ttg any }{{0.5, 7200.0}, {0.0, nil}} {
+		s := get(agents[i], "score")
+		if get(s, "score") != want.score || get(s, "time_to_goal_s") != want.ttg {
+			t.Fatalf("card %d score: %+v", i, s)
+		}
+	}
+	team := readJSON(filepath.Join(dir, "team.json"))
+	res := team["agents"].([]any)
+	if get(res[0], "char") != "Met" || get(res[0], "score") != 0.5 || get(res[0], "time_to_goal_s") != 7200.0 ||
+		get(res[1], "score") != 0.0 || team["faction_score"] != 0.5 {
+		t.Fatalf("team: %+v", team)
+	}
+	if timeScore(true, 63061) != 0.057 || timeScore(false, 10) != 0 || !binaryGoal("quest:64") || binaryGoal("level:10") {
+		t.Fatal("timeScore/binaryGoal")
+	}
+}

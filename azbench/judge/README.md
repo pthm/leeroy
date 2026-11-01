@@ -71,9 +71,10 @@ Computed for every goal from the value curve, in value per hour (`metrics.Curve`
 | `recent_rate` | over the last 10 minutes |
 | `best_window` | the best rate over any 15-minute window (before 15 minutes: value / max(elapsed, 10 min)) |
 | `pace` | time-average of the value so far (area under the curve / time) |
-| `score` | `(rate + best_window) / 2` |
+| `score` | `(rate + best_window) / 2`; for binary goals, `3600 / time_to_goal_s` (0 until met) |
 
-`score` is the headline for `score:` goals. Time spent trying a new strategy lowers `rate` but not `best_window`;
+Binary goals (`achievement`, `quest`, `item`, `quality`) are met or not, so their score is by time:
+`3600 / time_to_goal_s`, 1 for a goal met in an hour, 0 while unmet. `score` is the headline for `score:` goals. Time spent trying a new strategy lowers `rate` but not `best_window`;
 deaths and stalls cost through the time they lose.
 
 ## score.json
@@ -109,7 +110,8 @@ A sample (`--samples`, and the last one in the final result):
 {elapsed_s, level, xp, money, value, rate, recent_rate, best_window, pace, score, signals}
 ```
 
-The final line adds `char`, `goal`, `met`, `runtime` (if given) and `at` (ISO time). The board file has `char`,
+The final line adds `char`, `goal`, `met`, `runtime` (if given), `time_to_goal_s` (`elapsed_s` when met, else null)
+and `at` (ISO time). The board file has `char`,
 `level` (fractional), `progress` (the value), the rates, `elapsed_s`, `minutes_left` (on the run's clock), `money`, `avg_item_level`, and `role`,
 `runtime`, and `damage_dealt`, `damage_taken`, `healing_done`, `assist_share`, `contested_hits` when those flags are given.
 
@@ -134,7 +136,7 @@ run it at the end. Per agent:
 
 | Field | |
 |---|---|
-| `score` | the judge's last value and rates |
+| `score` | the judge's last value and rates; for binary goals, the time score and `time_to_goal_s` from its result |
 | `duty_cycle_pct`, `idle_gaps` | time with a script task running; the gaps without one |
 | `progress_per_hour_by_state`, `time_pct_by_state` | progress while the agent waited (`wow wait`, sleep), thought, was in a call, or had no script |
 | `wakes` | waits, early wakes per hour, what woke them and whether a script restart followed |

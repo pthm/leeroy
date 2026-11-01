@@ -22,7 +22,8 @@
 //	recent_rate  value per hour over the last 10 minutes
 //	pace         the time-average of value so far (area under the curve / time)
 //	best_window  the best rate over any 15-minute window
-//	score        (rate + best_window) / 2: the headline for score goals. Sustained progress counts, and so does
+//	score        binary goals (achievement, quest, item, quality): 3600 / time_to_goal_s, 0 until met.
+//	             Other goals: (rate + best_window) / 2, the headline for score goals. Sustained progress counts, and so does
 //	             finding a better strategy: time spent trying one lowers the rate but not the best window. Deaths
 //	             and stalls cost through the time they lose. For score goals, progress is the game's own rewards:
 //	             XP earned (score.json); gear, money and the rest are reported, not scored.
@@ -46,6 +47,20 @@ import (
 	"strings"
 	"time"
 )
+
+// binaryGoal: a goal that is met or not (an achievement, a quest, an item, an item quality). Its score is by time.
+func binaryGoal(goal string) bool {
+	kind, _, _ := strings.Cut(goal, ":")
+	return kind == "achievement" || kind == "quest" || kind == "item" || kind == "quality"
+}
+
+// timeScore is a binary goal's score: 3600 / time_to_goal_s (1 = met in an hour), 0 while unmet.
+func timeScore(met bool, elapsedS float64) float64 {
+	if !met {
+		return 0
+	}
+	return round3(3600 / math.Max(elapsedS, 1))
+}
 
 // failure is a judge error: a bad argument, or the database. Main prints it and exits 2; Run skips a failed poll.
 type failure string
@@ -263,8 +278,12 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		level, xp, money := num(lxm[0]), num(lxm[1]), num(lxm[2])
 		elapsedS := math.Floor(float64(nowMs()-start)/1000 + 0.5)
 		r := curve.Add(elapsedS/3600, value)
+		score := round1(r.Score)
+		if binaryGoal(goal) {
+			score = timeScore(value >= need, elapsedS)
+		}
 		rates := obj{{"rate", round1(r.Rate)}, {"recent_rate", round1(r.Recent)}, {"best_window", round1(r.BestWindow)},
-			{"pace", round1(r.Pace)}, {"score", round1(r.Score)}}
+			{"pace", round1(r.Pace)}, {"score", score}}
 		smp := append(append(obj{{"elapsed_s", elapsedS}, {"level", level}, {"xp", xp}, {"money", money}, {"value", value}}, rates...),
 			kv{"signals", sig})
 		if samples != "" {
@@ -304,7 +323,11 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 			if runtime != "" {
 				res = append(res, kv{"runtime", runtime})
 			}
-			res = append(append(res, smp...), kv{"at", time.Now().UTC().Format("2006-01-02T15:04:05.000Z")})
+			var ttg any // null when unmet
+			if value >= need {
+				ttg = elapsedS
+			}
+			res = append(append(res, smp...), kv{"time_to_goal_s", ttg}, kv{"at", time.Now().UTC().Format("2006-01-02T15:04:05.000Z")})
 			j, _ := json.Marshal(res)
 			return j, value >= need, true
 		}

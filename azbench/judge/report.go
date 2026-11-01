@@ -562,8 +562,19 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 	var final any
 	if len(score) > 0 {
 		l := score[len(score)-1]
-		final = obj{{"value", l["value"]}, {"rate", l["rate"]}, {"recent_rate", l["recent_rate"]},
+		f := obj{{"value", l["value"]}, {"rate", l["rate"]}, {"recent_rate", l["recent_rate"]},
 			{"best_window", l["best_window"]}, {"pace", l["pace"]}, {"score", l["score"]}}
+		res := readJSON(filepath.Join(ar.run, "judge.json"))
+		goal := str(meta["goal"])
+		if goal == "" {
+			goal = str(res["goal"])
+		}
+		if binaryGoal(goal) { // scored by time, from the judge's result (none yet: unmet so far)
+			timeScored(res)
+			f[len(f)-1].v = res["score"]
+			f = append(f, kv{"time_to_goal_s", res["time_to_goal_s"]})
+		}
+		final = f
 	}
 	var combat metrics.Combat
 	for _, e := range teamEvents[char] {
@@ -604,6 +615,17 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 			{"useful", co.Useful}, {"hits", co.Hits}, {"contested_hits", co.Contested}}},
 		{"time_use", obj{{"seconds", use.Seconds}, {"fighting_pct", use.FightingPct}, {"travelling_pct", use.TravellingPct},
 			{"idle_pct", use.IdlePct}, {"dead_pct", use.DeadPct}, {"with_group_pct", use.WithGroupPct}}},
+	}
+}
+
+// timeScored sets a binary goal's judge result's score and time_to_goal_s from met and elapsed_s, so results saved
+// before binary goals were scored by time read the same.
+func timeScored(res map[string]any) {
+	met := res["met"] == true
+	res["score"] = timeScore(met, fnum(res["elapsed_s"]))
+	res["time_to_goal_s"] = nil
+	if met {
+		res["time_to_goal_s"] = res["elapsed_s"]
 	}
 }
 
@@ -678,6 +700,9 @@ func teamResults(dir string, n int, cards []map[string]any) obj {
 			}
 		}
 		if last != nil {
+			if binaryGoal(str(last["goal"])) {
+				timeScored(last)
+			}
 			res = append(res, last)
 		}
 	}
@@ -718,7 +743,7 @@ func teamResults(dir string, n int, cards []map[string]any) obj {
 	if state != "completed" {
 		teamS = nil
 	}
-	team := obj{{"agents", agents}, {"faction_score", round1(faction)}, {"by_model", byModel(cards)}, {"team_s", teamS}, {"state", state}, {"diagnostics", teamDiagnostics(cards)}}
+	team := obj{{"agents", agents}, {"faction_score", round3(faction)}, {"by_model", byModel(cards)}, {"team_s", teamS}, {"state", state}, {"diagnostics", teamDiagnostics(cards)}}
 	// what OpenRouter billed for the run (the key's spend from start to finish), against the token-priced estimate
 	if or := readJSON(filepath.Join(dir, "openrouter.json")); or["start"] != nil && or["end"] != nil {
 		est, available := 0.0, true

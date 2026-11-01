@@ -143,7 +143,7 @@ and whether the character is alive, dead or a ghost, and where.
 
 | Field | |
 |---|---|
-| `agents` | each judge's result, best `score` first |
+| `agents` | each judge's result, best `score` first (with `time_to_goal_s`) |
 | `faction_score` | sum of every player's score (everyone is Alliance) |
 | `by_model` | per runtime and model (the same model on two harnesses is two rows): `players`, `score` (mean ± standard error), `best`, `total`, `cost_usd`, `cost_per_agent_hour` |
 | `team_s` | time until the last agent met the goal; null unless every agent did |
@@ -161,11 +161,23 @@ Goals are the judge's (see [judge](../azbench/judge/README.md)), and the prompt 
 | `money:<copper>` | hold n copper |
 | `item:<entry>` | own that item |
 | `quality:<n>` | own any item of quality n or better (3 = rare) |
+| `achievement:<id>` | earn that achievement (name and description looked up in `wowbench.achievement`; e.g. 628 = the Deadmines cleared) |
 | `achpoints:<n>` | earn as many achievement points as possible in the time |
 | `score:<n>` | progress as much as possible; scored on XP per hour (the n is a large number nobody reaches) |
 
-For `level`, `quests`, `quest`, `skill`, `money`, `item` and `quality` the agent is told it's scored on time until
-the judge sees the goal met, or its progress if time runs out. `score` and `achpoints` have no finish line.
+`achievement`, `quest`, `item` and `quality` are met or not, and scored by time:
+
+```
+score = 3600 / time_to_goal_s      (1 = met in an hour); 0 while unmet
+```
+
+`time_to_goal_s` is on the judge's result line, the report card's `score` and each agent in `team.json`; it's null
+while the goal is unmet, whose progress shows only in the result's `signals`. `azbench report` recomputes these from
+`met` and `elapsed_s`, so runs judged before this rule read the same way.
+
+For `level`, `quests`, `skill` and `money` the agent is told it's scored on time until the judge sees the goal met,
+or its progress if time runs out; their `score` is the rate score below. `score` and `achpoints` have no finish
+line.
 
 The judge polls the character database every 15 s (the server saves characters every 15 s, see
 `server/override.yml`), so the client can't fake progress. For `score:` goals, progress is XP earned since the start
