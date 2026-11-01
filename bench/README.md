@@ -128,6 +128,8 @@ and whether the character is alive, dead or a ghost, and where.
 | `<agent>/session.log` | the session log, copied from the workspace when the session stops |
 | `<agent>/NOTES.md`, `<agent>/*.md` | the agent's notes, copied from its workspace at every stop |
 | `<agent>/tasks.json` | the Lua tasks running when its session last stopped |
+| `<agent>/usage.json` | each runtime session's token totals, copied from the runtime's own logs at every stop |
+| `<agent>/codex-usage.jsonl` | Codex only: every request's `last_token_usage` and the account's `rate_limits`, with `timestamp` and `thread`, from the rollout logs at every stop |
 | `<agent>/sdk.rev` | the SDK revision its last start, resume or restart ran on (for `WHAT CHANGED`) |
 | `<agent>.record.jsonl` | the client-side event log for the viewer (positions, combat, chat, API calls) |
 | `<Char>.events.jsonl` | the character's event stream; the judge reads combat and cooperation from it |

@@ -865,16 +865,25 @@ func claudeLogUsage(session string) (in, out, cr, cw float64, ok bool) {
 // codexLogUsage: a Codex thread's totals from its rollout log (~/.codex/sessions/<y>/<m>/<d>/rollout-*-<thread>.jsonl):
 // the last token_count event. Codex counts cached input inside input_tokens.
 func codexLogUsage(thread string) (in, out, cr float64, ok bool) {
-	home, _ := os.UserHomeDir()
-	files, _ := filepath.Glob(filepath.Join(home, ".codex/sessions/*/*/*", "*"+thread+".jsonl"))
-	if thread == "" || len(files) == 0 {
+	f := codexRollout(thread)
+	if f == "" {
 		return 0, 0, 0, false
 	}
-	for _, e := range jsonl(files[0]) {
+	for _, e := range jsonl(f) {
 		if t := get(get(get(e, "payload"), "info"), "total_token_usage"); get(get(e, "payload"), "type") == "token_count" && t != nil {
 			cr = fnum(get(t, "cached_input_tokens"))
 			in, out, ok = fnum(get(t, "input_tokens"))-cr, fnum(get(t, "output_tokens")), true
 		}
 	}
 	return in, out, cr, ok
+}
+
+// codexRollout: a Codex thread's rollout log, or "" when there's none.
+func codexRollout(thread string) string {
+	home, _ := os.UserHomeDir()
+	files, _ := filepath.Glob(filepath.Join(home, ".codex/sessions/*/*/*", "*"+thread+".jsonl"))
+	if thread == "" || len(files) == 0 {
+		return ""
+	}
+	return files[0]
 }

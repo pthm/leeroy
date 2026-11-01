@@ -153,6 +153,7 @@ func SaveUsage(dir string) error {
 		}
 	}
 	seen := map[string]bool{}
+	var codex []map[string]any
 	for _, e := range jsonl(filepath.Join(dir, "agent.jsonl")) {
 		runtime, id := "claude", str(e["session_id"])
 		if e["type"] == "thread.started" {
@@ -177,6 +178,7 @@ func SaveUsage(dir string) error {
 		var ok bool
 		if runtime == "codex" {
 			in, out, cr, ok = codexLogUsage(id)
+			codex = append(codex, codexUsage(id)...)
 		} else {
 			in, out, cr, cw, ok = claudeLogUsage(id)
 		}
@@ -188,12 +190,38 @@ func SaveUsage(dir string) error {
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(dir, ".usage-*")
+	if err := writeAtomic(path, append(b, '\n')); err != nil {
+		return err
+	}
+	if len(codex) == 0 {
+		return nil
+	}
+	// codex-usage.jsonl: every token_count of every thread, kept like usage.json when the rollouts are gone
+	path = filepath.Join(dir, "codex-usage.jsonl")
+	var lines []byte
+	have := map[string]bool{}
+	for _, l := range jsonl(path) {
+		have[str(l["thread"])+" "+str(l["timestamp"])] = true
+		j, _ := json.Marshal(l)
+		lines = append(append(lines, j...), '\n')
+	}
+	for _, l := range codex {
+		if k := str(l["thread"]) + " " + str(l["timestamp"]); !have[k] {
+			have[k] = true
+			j, _ := json.Marshal(l)
+			lines = append(append(lines, j...), '\n')
+		}
+	}
+	return writeAtomic(path, lines)
+}
+
+func writeAtomic(path string, b []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".usage-*")
 	if err != nil {
 		return err
 	}
 	defer os.Remove(tmp.Name())
-	if _, err = tmp.Write(append(b, '\n')); err != nil {
+	if _, err = tmp.Write(b); err != nil {
 		tmp.Close()
 		return err
 	}
@@ -201,4 +229,17 @@ func SaveUsage(dir string) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
+}
+
+// codexUsage: a Codex thread's token_count events from its rollout log, each as {timestamp, thread,
+// last_token_usage, rate_limits}: the cost of each request and the account's quota as it went.
+func codexUsage(thread string) []map[string]any {
+	var out []map[string]any
+	for _, e := range jsonl(codexRollout(thread)) {
+		if p := get(e, "payload"); get(p, "type") == "token_count" {
+			out = append(out, map[string]any{"timestamp": e["timestamp"], "thread": thread,
+				"last_token_usage": get(get(p, "info"), "last_token_usage"), "rate_limits": get(p, "rate_limits")})
+		}
+	}
+	return out
 }

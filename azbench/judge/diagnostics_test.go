@@ -2,6 +2,7 @@ package judge
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -127,5 +128,37 @@ func TestMovedRunAndMissingRecorderStillReportAgent(t *testing.T) {
 	cov := get(a["diagnostics"], "coverage").(map[string]any)
 	if len(cov["missing_files"].([]any)) != 2 || cov["status"] != "unavailable" {
 		t.Fatalf("missing coverage: %+v", cov)
+	}
+}
+
+// Spec J5: each stop writes codex-usage.jsonl from the rollout's token_count events, and keeps its lines once the
+// rollout is gone.
+func TestCodexUsageFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := t.TempDir()
+	logs := filepath.Join(home, ".codex/sessions/2026/10/30")
+	os.MkdirAll(logs, 0755)
+	os.WriteFile(filepath.Join(dir, "agent.jsonl"), []byte(`{"type":"thread.started","thread_id":"abc-123"}`+"\n"), 0600)
+	tc := func(ts string, used float64) string {
+		return `{"timestamp":"` + ts + `","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":30},"last_token_usage":{"input_tokens":10,"output_tokens":3}},"rate_limits":{"primary":{"used_percent":` + fmt.Sprint(used) + `}}}}` + "\n"
+	}
+	rollout := filepath.Join(logs, "rollout-test-abc-123.jsonl")
+	os.WriteFile(rollout, []byte(tc("2026-10-30T21:00:00Z", 42)+`{"type":"other"}`+"\n"), 0600)
+	if err := SaveUsage(dir); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(rollout, []byte(tc("2026-10-30T21:00:00Z", 42)+tc("2026-10-30T22:00:00Z", 43)), 0600)
+	if err := SaveUsage(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", t.TempDir()) // the rollouts are gone
+	if err := SaveUsage(dir); err != nil {
+		t.Fatal(err)
+	}
+	lines := jsonl(filepath.Join(dir, "codex-usage.jsonl"))
+	if len(lines) != 2 || lines[0]["thread"] != "abc-123" || get(lines[0]["last_token_usage"], "input_tokens") != 10.0 ||
+		get(get(lines[1]["rate_limits"], "primary"), "used_percent") != 43.0 || lines[1]["timestamp"] != "2026-10-30T22:00:00Z" {
+		t.Fatalf("codex-usage.jsonl: %v", lines)
 	}
 }
