@@ -103,9 +103,10 @@ mkdir -p data/dbc && docker run --rm -v server_ac-client-data:/src:ro -v $PWD/da
    SpellRange.dbc SpellDuration.dbc SpellRadius.dbc SpellDescriptionVariables.dbc AreaTrigger.dbc Talent.dbc TalentTab.dbc TaxiNodes.dbc TaxiPath.dbc TaxiPathNode.dbc SkillLine.dbc SkillLineAbility.dbc Lock.dbc /dst/dbc/'
 ./build.sh && bin/azworld setup   # wowbench schema: achievements, areas, spawn zones, faction hostility, spells
 
-# optional, from a 3.3.5a game install: the game's minimap (viewer and `azworld map`) and its road textures (road
-# map for `azworld route`); ~150MB, a few seconds
-go run ./azeroth-sdk/cmd/clientdata -client ~/path/to/WoW_3.3.5a extract data
+# optional, from a 3.3.5a game install, into data/ (nothing reads the install afterwards): the game's minimap (viewer
+# and `azworld map`), its road textures (`azworld route`) and the terrain and model files the viewer's zoomed-in map
+# draws; ~5 GB for every continent, about 30 s (-maps 0 for Eastern Kingdoms only: ~1 GB)
+go run ./azeroth-sdk/cmd/clientdata -client <your 3.3.5a game dir> extract data
 
 # every tool, into bin/ (azbench run does this too)
 ./build.sh

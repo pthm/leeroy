@@ -107,6 +107,7 @@ bin/azview live [log.jsonl ...] [--run <run or team dir>] [--port 8800] [--chars
 | `--port` | 8800 | HTTP port |
 | `--chars A,B` | everyone | Only these characters |
 | `--since` | `60m` | Without `--run`: how far back to read, in minutes (`m` suffix optional) |
+| `--data <dir>` | `$LEEROY_DATA`, else the nearest `data/` | The extracted game data (maps, minimap, roads, `client/`) |
 
 It reads area names, labels, item names and creature names from the database (127.0.0.1:3306 or `$LEEROY_DB_ADDR`,
 user `worldreader`, the `wowbench` schema from `bin/azworld setup`), so the server must be up.
@@ -148,7 +149,7 @@ Map tiles (one per 533-yard grid square) are rendered on demand and kept in memo
 
 Zoomed in past the minimap's own resolution (a pixel per ~2 yd), the continents get detail tiles,
 `/detail/<map>/<level>/<gx>/<gy>/<sx>/<sy>.jpg`: the square cut into 2^level x 2^level (levels 1-4, down to 0.13 yd a
-pixel), each 256 px, rendered on demand from the game client (`azworld/world/detail.go`). A detail tile is the minimap,
+pixel), each 256 px, rendered on demand from the game files extracted into `data/client` (`azworld/world/detail.go`). A detail tile is the minimap,
 upscaled smoothly, plus the fine detail of the ground textures the game paints the terrain with (each chunk's texture
 layers and alpha maps from the client's ADT files): the texture render minus itself blurred to the minimap's
 resolution. The minimap keeps the colours, shading, buildings and water; the textures add the ground's grain and sharp
@@ -157,7 +158,7 @@ one fades in as you zoom, over the coarser (by how far between them the zoom is)
 quarter second, and a sub-square whose tile hasn't come yet shows its part of a coarser one already here. Over that, the
 client's own models are drawn, textured, seen from above: every building, wall and bridge (WMO) and tree, fence, lamp
 and crate (M2) the ADTs place, and the doodads each building places (a city's trees and statues, an inn's lanterns),
-read from the client (`azeroth-sdk/clientdata`: `ParseADT`'s placements, `LoadWMO`, `LoadM2`) and placed with the
+read from the extracted game files (`azeroth-sdk/clientdata`: `ParseADT`'s placements, `LoadWMO`, `LoadM2` over a `Dir`) and placed with the
 server's own transform (`pathfinding.PlacementWorld`; checked against the vmaps in `azworld/world/placement_test.go`).
 Each pixel is the highest surface's texture, lit by its face's slope from the north-west, outlined where it drops to
 a wall, casting a short shadow (the sun 45 degrees up, at most 10 yd). Foliage (alpha-tested textures) is a layer of
@@ -166,7 +167,8 @@ time a tile needs it (Stormwind's city: ~1 s), then kept. Water is a layer betwe
 sea: its level from the server's map files) and the WMOs' (Stormwind's canals: each building group's liquid tiles),
 laid over the ground and whatever models are under its surface, more opaque the deeper it is, pale where it laps the
 shore; lava and slime in their own colours. Models above it (bridges, boats, the trees on the bank) are drawn over it. Detail tiles need the
-game client: `$WOW_CLIENT`, else `~/Downloads/ChromieCraft_3.3.5a`; without it the minimap is upscaled as before.
+game files extracted (`clientdata -client <game dir> extract data` writes `data/client`); without them the minimap is
+upscaled as before.
 
 The page requests tiles with `?v=<tileVersion>` (3 with client data, 1 without). Tiles are cached for a day, so the
 version busts browser caches when the tile source changes.

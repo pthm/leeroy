@@ -7,7 +7,6 @@ import (
 	"image/jpeg"
 	"log"
 	"math"
-	"os"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
@@ -34,22 +33,15 @@ const MaxDetail = 4
 // texRepeat: each ground texture repeats 8 times across a chunk (33.3 yd), every 4.2 yd.
 const texRepeat = 8
 
-var client = sync.OnceValue(func() *clientdata.Client {
-	dir := os.Getenv("WOW_CLIENT")
-	if dir == "" { // ponytail: the install the repo's docs use; set WOW_CLIENT for another
-		dir = filepath.Join(os.Getenv("HOME"), "Downloads", "ChromieCraft_3.3.5a")
-	}
-	c, err := clientdata.OpenClient(dir)
-	if err != nil {
-		return nil
-	}
-	return c
-})
+// client is the game files the detail tiles read, extracted into the data dir (data/client) by
+// `clientdata -client <game dir> extract data`.
+func client() clientdata.Dir { return clientdata.Dir(filepath.Join(DataDir(), "client")) }
 
-// HasDetail reports whether detail tiles can be drawn for map m: a continent, with the game client and its minimap.
+// HasDetail reports whether detail tiles can be drawn for map m: a continent, with its game files and minimap
+// extracted.
 func HasDetail(m uint32) bool {
 	_, ok := clientdata.Maps[int(m)]
-	return ok && HasClientData() && client() != nil
+	return ok && HasClientData() && client().Has()
 }
 
 type groundTex struct {

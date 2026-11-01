@@ -17,6 +17,7 @@ import (
 )
 
 func main() {
+	os.Args = world.DataFlag(os.Args) // --data <dir>: the extracted game data, else $LEEROY_DATA or the nearest data/
 	if len(os.Args) > 1 && os.Args[1] == "setup" {
 		fs := flag.NewFlagSet("setup", flag.ExitOnError)
 		schema := fs.String("schema", "wowbench", "schema to (re)build; another name builds a copy to compare against")

@@ -3,7 +3,7 @@
 World queries for agents: where an NPC stands and what it sells or teaches, what a quest needs and where its targets
 are, where an item drops, gear upgrades, safe walking routes and map images, all as JSON. It reads the server's
 databases (`acore_world` and the derived `wowbench` schema) and the extracted game data in `data/` (maps, DBC files,
-and the client's minimap and road tiles when extracted). Agents run it as `azworld` (`bench/agent/bin/azworld`), and `azworld sql` for raw SQL;
+and, when extracted from a game install by `clientdata extract`, the client's minimap and road tiles and the terrain and model files in `data/client`). Agents run it as `azworld` (`bench/agent/bin/azworld`), and `azworld sql` for raw SQL;
 the agent-facing docs are in [`azeroth-sdk/docs/sdk.md`](../azeroth-sdk/docs/sdk.md) ("World data").
 
 ```sh
@@ -14,7 +14,7 @@ bin/azworld setup [-schema name]     # (re)build the wowbench schema; another na
 ```
 
 The database is on `$LEEROY_DB_ADDR` (default `127.0.0.1:3306`): queries run as the read-only `worldreader` user,
-`setup` as root. The data directory is `$LEEROY_DATA`, else the nearest `data/` with `maps/` above the working
+`setup` as root. The data directory is `--data <dir>`, else `$LEEROY_DATA`, else the nearest `data/` with `maps/` above the working
 directory or the binary.
 
 ## Package `world`

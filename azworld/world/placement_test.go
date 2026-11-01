@@ -52,9 +52,9 @@ func TestPlacementMatchesVmaps(t *testing.T) {
 			}
 		}
 		if strings.HasSuffix(strings.ToLower(p.Name), ".wmo") {
-			m, err = client().LoadWMO(p.Name)
+			m, err = clientdata.LoadWMO(client(), p.Name)
 		} else {
-			m, err = client().LoadM2(p.Name)
+			m, err = clientdata.LoadM2(client(), p.Name)
 		}
 		if err != nil {
 			t.Fatal(err)

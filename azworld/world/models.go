@@ -48,9 +48,9 @@ func modelFile(name string, wmo bool) *clientdata.Model {
 	}
 	var err error
 	if wmo {
-		m, err = client().LoadWMO(name)
+		m, err = clientdata.LoadWMO(client(), name)
 	} else {
-		m, err = client().LoadM2(name)
+		m, err = clientdata.LoadM2(client(), name)
 	}
 	if err != nil {
 		m = nil
