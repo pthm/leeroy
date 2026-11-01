@@ -584,10 +584,11 @@ func (p *player) extendAgent(end time.Time) {
 }
 
 // stop is how a player stops, whatever the reason (the end, a pause, a restart, the goal's wrap-up): its agent
-// (stopAgent), its notes copied into the run, then its session.
+// (stopAgent), its notes copied into the run, its running tasks recorded, then its session.
 func (p *player) stop() {
 	p.stopAgent()
 	p.copyNotes()
+	p.saveTasks()
 	p.stopSession()
 }
 

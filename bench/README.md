@@ -102,6 +102,11 @@ session logs out; SIGKILL after 30 s). A pid in `pids` counts only while its com
 workspace docs are refreshed, its session restarts on the current build and its conversation resumes. Its judge
 keeps running.
 
+A session restart loses the character's Lua tasks, so each stop records the running ones in `<agent>/tasks.json`.
+After each login, when its agent starts, the session runs `autorun.lua` from the workspace if there is one, and a
+resume or restart message ends with the tasks that were running, `autorun.lua`'s outcome, the tasks running now,
+and whether the character is alive, dead or a ghost, and where.
+
 ## Run directories
 
 `runs/<time>-<scenario>/`:
@@ -117,6 +122,7 @@ keeps running.
 | `<agent>/meta.json` | `agent`, `char`, `runtime`, `model`, `spec`, `role`, `goal`, `port` |
 | `<agent>/session.log` | the session log, copied from the workspace when the session stops |
 | `<agent>/NOTES.md`, `<agent>/*.md` | the agent's notes, copied from its workspace at every stop |
+| `<agent>/tasks.json` | the Lua tasks running when its session last stopped |
 | `<agent>/sdk.rev` | the SDK revision its last start, resume or restart ran on (for `WHAT CHANGED`) |
 | `<agent>.record.jsonl` | the client-side event log for the viewer (positions, combat, chat, API calls) |
 | `<Char>.events.jsonl` | the character's event stream; the judge reads combat and cooperation from it |

@@ -285,7 +285,7 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 	end := time.Now().Add(left)
 	var err error
 	if resume {
-		msg := replaceLeft(message, left) + p.changes()
+		msg := replaceLeft(message, left) + p.restored() + p.changes()
 		if conv := p.conversation(); conv != "" || p.a.Runtime == "none" {
 			err = p.startAgent(msg, conv, end)
 		} else {
@@ -293,6 +293,7 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 		}
 	} else {
 		p.changes() // the revision it starts on
+		p.autorun()
 		var text string
 		if text, err = prompt(r.s, r.b, p.a, r.repo); err == nil {
 			os.WriteFile(filepath.Join(p.dir, "prompt.md"), []byte(text), 0o644)

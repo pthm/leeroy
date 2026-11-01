@@ -72,6 +72,14 @@ A table written as `lib = lib or {}` keeps its old functions on reload (set `lib
 that uses `task.spawn` starts a second copy unless the file stops the first (`task.stop("name")`); `task.keep`
 replaces its own.
 
+### Session restarts
+
+A session restart (the run paused and resumed, or your session restarted) logs the character out and back in with
+a new Lua state: tasks, handlers and globals are gone; files in your workspace stay. After each login the session
+runs `autorun.lua` from your workspace, if there is one, as `wow -f autorun.lua` would. The message you get after a
+restart lists the tasks that were running when the session stopped, the outcome of `autorun.lua`, the tasks running
+now, and whether your character is alive, dead or a ghost, and where.
+
 ## Actions: requests and results
 
 Every raw action returns a **Request** at once, including an immediate refusal. It resolves to an
