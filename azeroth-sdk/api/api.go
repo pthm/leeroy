@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -181,7 +182,29 @@ var methods = map[string]method{
 		evs := e.Bus.Wait(p.Query, time.Duration(p.Timeout*float64(time.Second)))
 		return map[string]any{"events": evs, "timed_out": len(evs) == 0, "seq": e.Bus.Seq()}, nil
 	}),
+	// events.harness: an event from the run's supervisor into the character's event stream (harnessEvents only)
+	"events.harness": typed(func(s Sessions, p struct {
+		Char string          `json:"char"`
+		Type string          `json:"type"`
+		Data json.RawMessage `json:"data"`
+	}) (any, error) {
+		e, err := engine(s, p.Char)
+		if err != nil {
+			return nil, err
+		}
+		if !slices.Contains(harnessEvents, p.Type) {
+			return nil, fmt.Errorf("events.harness: %q is not one of %v", p.Type, harnessEvents)
+		}
+		var data map[string]any
+		if err := json.Unmarshal(p.Data, &data); err != nil {
+			return nil, fmt.Errorf("events.harness: data: %w", err)
+		}
+		return e.Emit(p.Type, data).Seq, nil
+	}),
 }
+
+// harnessEvents: the events the supervisor sends (events.harness)
+var harnessEvents = []string{"goal_met"}
 
 // The agent's position in each character's event stream: every eval reply says what happened since the last one.
 var (
@@ -196,7 +219,7 @@ var (
 	subs   = map[*script.Engine][]string{}
 )
 
-var defaultSubs = []string{"attention", "death", "stall", "script_error", "task_finished", "party_invite", "trade", "summon_request", "ready_check", "loot_roll_start",
+var defaultSubs = []string{"goal_met", "attention", "death", "stall", "script_error", "task_finished", "party_invite", "trade", "summon_request", "ready_check", "loot_roll_start",
 	"gear_broken", "chat:whisper", "chat:party", "chat:raid", "chat:say"}
 
 func subscribed(e *script.Engine) []string {
@@ -210,7 +233,7 @@ func subscribed(e *script.Engine) []string {
 
 // informational events eval replies always show in full (they don't wake the agent unless subscribed). Channel
 // chat is how players broadcast to each other, so it's shown even though it doesn't wake by default.
-var shown = []string{"level_up", "resurrected", "error", "notice", "party_changed", "quest_complete", "quest_turned_in",
+var shown = []string{"goal_met", "level_up", "resurrected", "error", "notice", "party_changed", "quest_complete", "quest_turned_in",
 	"chat:channel", "slow_tick"}
 
 // news summarises the events since the agent's last eval: {seq, counts by type, important events (last 20)}.

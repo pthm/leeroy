@@ -273,13 +273,14 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 	}
 	type res struct {
 		line []byte
+		met  bool
 		err  error
 	}
 	done := make(chan res, 1)
 	p.setState(types.JudgePlaying)
 	go func() {
-		line, _, err := judge.Run(r.ctx, o)
-		done <- res{line, err}
+		line, met, err := judge.Run(r.ctx, o)
+		done <- res{line, met, err}
 	}()
 	end := time.Now().Add(left)
 	var err error
@@ -309,10 +310,7 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 		} else {
 			p.setState(types.JudgeFailed)
 		}
-	}
-	p.stopAgent()
-	p.stopSession()
-	if j.err != nil {
+		p.stop()
 		return
 	}
 	p.mu.Lock()
@@ -327,6 +325,27 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 	}
 	p.setState(types.JudgeDone)
 	p.logf("done: %s", j.line)
+	if j.met {
+		r.wrapUp(p, time.Duration(r.s.WrapUpMinutes)*time.Minute)
+	}
+	p.stop()
+}
+
+// wrapUp: the judge recorded p's goal, so its score is final. The agent and session keep going for wrap (a loot roll
+// to finish, notes to write), and a goal_met event tells the agent, unless the run pauses first.
+func (r *Runner) wrapUp(p *player, wrap time.Duration) {
+	end := time.Now().Add(wrap)
+	p.extendAgent(end)
+	p.runtimeState("supervisor", types.StateWrapUp)
+	if err := notify(r.ctx, p.port, "goal_met", types.GoalMet{Goal: r.s.Goal,
+		Message: "The judge recorded your goal; your score is final.", EndsAt: end.UnixMilli()}); err != nil {
+		p.logf("goal_met: %v", err)
+	}
+	p.logf("goal met: stopping in %.0f min", wrap.Minutes())
+	select {
+	case <-time.After(wrap):
+	case <-r.ctx.Done():
+	}
 }
 
 // played: how much of a paused run was played, from its samples (the longest).
@@ -376,7 +395,7 @@ func (r *Runner) stopAll() {
 	var wg sync.WaitGroup
 	for _, p := range r.players {
 		wg.Add(1)
-		go func() { defer wg.Done(); p.stopAgent(); p.stopSession() }()
+		go func() { defer wg.Done(); p.stop() }()
 	}
 	wg.Wait()
 }

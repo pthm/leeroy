@@ -2029,6 +2029,16 @@ Energize: power (mana, rage, energy, runic power) given to you, or by you to ano
 | `items` | Item[] |  |
 | `message` | string |  |
 
+### GoalMet
+
+GoalMet: the benchmark's judge recorded the run's goal for this character (sent by the run's supervisor).
+
+| Field | Type | |
+|---|---|---|
+| `goal` | string | the run's goal, e.g. achievement:628 |
+| `message` | string |  |
+| `ends_at` | number | unix ms: when your agent and session stop |
+
 ### Kill
 
 | Field | Type | |
@@ -2222,6 +2232,7 @@ An event is an [Event](#event) whose `data` is the type below.
 | `flight_learned` | FlightLearned | you discovered a flight point |
 | `flight_start` | Flight | you took off: the server flies you, and move.to is refused until you land |
 | `gear_broken` | GearBroken | you revived with equipped items at 0 durability |
+| `goal_met` | GoalMet | the judge recorded the run's goal for you: your score is final |
 | `heal` | Damage | a heal involving you |
 | `home_changed` | Home | your hearthstone now takes you here (innkeeper.bind) |
 | `item_received` | ItemReceived | an item went into your bags |

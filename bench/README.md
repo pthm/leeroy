@@ -60,8 +60,12 @@ players, the notice, the rules) and the agent in its workspace until the clock r
 reports its model.
 
 When a judge is done the supervisor stops that agent, calms the character (stops its scripts and waits up to 90 s
-for it to leave combat: a character dropped mid-fight stays in the world and can die there) and logs it out. Every
-stop (the end, a pause, a restart) stops an agent the same way: its tool processes first, so the runtime records
+for it to leave combat: a character dropped mid-fight stays in the world and can die there) and logs it out. A judge
+that recorded the goal (its result line and score are written then, and final) first sends the session a `goal_met`
+event, which wakes the agent by default, and leaves agent and session playing for the scenario's `wrap_up_minutes`
+(default 5): a loot roll can finish and the agent can write its notes. Every stop (the end, a pause, a restart, after
+the wrap-up) copies the agent's notes (`NOTES.md` and the other `.md` files it wrote in its workspace) into
+`<run>/<agent>/`, and stops an agent the same way: its tool processes first, so the runtime records
 their output (up to 3 s; a runtime killed mid tool call loses it, and Codex then logs "custom tool call output is
 missing" on every later request), then SIGINT to the runtime, which takes it as an interrupt, and SIGTERM and
 SIGKILL to its process group after 5 s each. At the end: `team.json`, `report.json` and `replay.html`.
@@ -112,6 +116,7 @@ keeps running.
 | `<agent>/judge.json`, `<agent>.out` | the judge's final result |
 | `<agent>/meta.json` | `agent`, `char`, `runtime`, `model`, `spec`, `role`, `goal`, `port` |
 | `<agent>/session.log` | the session log, copied from the workspace when the session stops |
+| `<agent>/NOTES.md`, `<agent>/*.md` | the agent's notes, copied from its workspace at every stop |
 | `<agent>/sdk.rev` | the SDK revision its last start, resume or restart ran on (for `WHAT CHANGED`) |
 | `<agent>.record.jsonl` | the client-side event log for the viewer (positions, combat, chat, API calls) |
 | `<Char>.events.jsonl` | the character's event stream; the judge reads combat and cooperation from it |

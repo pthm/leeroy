@@ -20,6 +20,8 @@ type Scenario struct {
 	Description string `yaml:"description"`
 	Goal        string `yaml:"goal"`    // a judge goal: score:100000, level:10, quest:176, skill:164:75 ...
 	Minutes     int    `yaml:"minutes"` // default 60
+	// WrapUpMinutes: how long an agent and its session keep going after its judge records the goal; default 5
+	WrapUpMinutes int `yaml:"wrap_up_minutes"`
 	// starting conditions, applied in the database while the characters are offline
 	Start   *Place   `yaml:"start"` // a name from places.yaml, or {x, y, z, map, zone}; nil: where they are
 	Level   int      `yaml:"level"`
@@ -214,6 +216,9 @@ func (b *Bench) LoadScenario(f string) (*Scenario, error) {
 func (b *Bench) Check(s *Scenario) error {
 	if s.Minutes == 0 {
 		s.Minutes = 60
+	}
+	if s.WrapUpMinutes == 0 {
+		s.WrapUpMinutes = 5
 	}
 	if s.Channel == "" {
 		s.Channel = "General - Elwynn Forest"

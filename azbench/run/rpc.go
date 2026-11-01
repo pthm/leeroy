@@ -11,7 +11,26 @@ import (
 
 // eval runs Lua in a session (the daemon on port) and returns its result field.
 func eval(ctx context.Context, port int, code string) (json.RawMessage, error) {
-	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "script.eval", "params": map[string]any{"code": code}})
+	res, err := call(ctx, port, "script.eval", map[string]any{"code": code})
+	if err != nil {
+		return nil, err
+	}
+	var r struct {
+		Result json.RawMessage `json:"result"`
+	}
+	json.Unmarshal(res, &r)
+	return r.Result, nil
+}
+
+// notify puts a supervisor's event (goal_met, maintenance) in a session's event stream.
+func notify(ctx context.Context, port int, typ string, data any) error {
+	_, err := call(ctx, port, "events.harness", map[string]any{"type": typ, "data": data})
+	return err
+}
+
+// call is one JSON-RPC call to a session.
+func call(ctx context.Context, port int, method string, params any) (json.RawMessage, error) {
+	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://127.0.0.1:%d/rpc", port), bytes.NewReader(body))
@@ -21,10 +40,8 @@ func eval(ctx context.Context, port int, code string) (json.RawMessage, error) {
 	}
 	defer resp.Body.Close()
 	var r struct {
-		Result struct {
-			Result json.RawMessage `json:"result"`
-		} `json:"result"`
-		Error *struct{ Message string } `json:"error"`
+		Result json.RawMessage           `json:"result"`
+		Error  *struct{ Message string } `json:"error"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 		return nil, err
@@ -32,7 +49,7 @@ func eval(ctx context.Context, port int, code string) (json.RawMessage, error) {
 	if r.Error != nil {
 		return nil, fmt.Errorf("%s", r.Error.Message)
 	}
-	return r.Result.Result, nil
+	return r.Result, nil
 }
 
 // calm, before a session is stopped: get the character out of combat, then stop its scripts. A connection dropped in

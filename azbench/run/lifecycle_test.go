@@ -4,16 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/pthm/leeroy/azbench/config"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
 // A session that exits by itself pauses the run; one the supervisor stopped (no longer p.session) doesn't.
@@ -171,4 +175,77 @@ func TestAgentHelper(t *testing.T) {
 	<-ints
 	fmt.Println(`{"type":"turn.interrupted"}`)
 	os.Exit(0)
+}
+
+// the goal's wrap-up: a goal_met event to the session, the agent's stop moved past the run's clock, and it returns
+// after the wrap-up (or at a pause)
+func TestWrapUp(t *testing.T) {
+	dir := t.TempDir()
+	var got struct {
+		Method string
+		Params struct {
+			Type string
+			Data types.GoalMet
+		}
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		json.NewDecoder(req.Body).Decode(&got)
+		fmt.Fprintln(w, `{"jsonrpc":"2.0","id":1,"result":7}`)
+	}))
+	defer srv.Close()
+	port, _ := strconv.Atoi(srv.URL[strings.LastIndex(srv.URL, ":")+1:])
+	r := &Runner{dir: dir, s: &config.Scenario{Goal: "level:2"}}
+	r.ctx, r.cancel = context.WithCancel(context.Background())
+	defer r.cancel()
+	p := &player{r: r, a: config.Agent{Name: "a1", Char: "Aone"}, dir: dir, ws: dir, port: port}
+	fired := make(chan time.Time, 1)
+	p.agentEnd = time.Now().Add(50 * time.Millisecond)
+	p.agentStop = time.AfterFunc(50*time.Millisecond, func() { fired <- time.Now() })
+
+	start := time.Now()
+	r.wrapUp(p, 300*time.Millisecond)
+	if took := time.Since(start); took < 300*time.Millisecond {
+		t.Fatalf("wrap-up took %v", took)
+	}
+	if got.Method != "events.harness" || got.Params.Type != "goal_met" || got.Params.Data.Goal != "level:2" ||
+		got.Params.Data.EndsAt < start.Add(300*time.Millisecond).UnixMilli() {
+		t.Fatalf("notify: %+v", got)
+	}
+	select {
+	case at := <-fired:
+		if at.Sub(start) < 250*time.Millisecond {
+			t.Fatalf("the agent's stop fired %v into the wrap-up", at.Sub(start))
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the agent's stop never fired")
+	}
+	if ev := harnessEvents(t, filepath.Join(dir, "harness.jsonl")); len(ev) != 1 || ev[0].Details.State != types.StateWrapUp {
+		t.Fatalf("harness events: %+v", ev)
+	}
+	r.cancel() // a pause ends it at once
+	start = time.Now()
+	r.wrapUp(p, time.Minute)
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("wrap-up after a pause took %v", took)
+	}
+}
+
+// at a stop the agent's notes are copied into the run; the refreshed docs and the run's prompt.md aren't
+func TestCopyNotes(t *testing.T) {
+	ws, dir := t.TempDir(), t.TempDir()
+	for _, f := range []string{"NOTES.md", "RUN_STATE.md", "AGENTS.md", "CLAUDE.md", "game.md", "prompt.md", "main.lua"} {
+		os.WriteFile(filepath.Join(ws, f), []byte(f), 0o644)
+	}
+	os.WriteFile(filepath.Join(dir, "prompt.md"), []byte("the run's prompt"), 0o644)
+	(&player{ws: ws, dir: dir}).copyNotes()
+	got, _ := filepath.Glob(filepath.Join(dir, "*"))
+	for i := range got {
+		got[i] = filepath.Base(got[i])
+	}
+	if strings.Join(got, " ") != "NOTES.md RUN_STATE.md prompt.md" {
+		t.Fatalf("copied: %v", got)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "prompt.md")); string(b) != "the run's prompt" {
+		t.Fatalf("prompt.md: %s", b)
+	}
 }

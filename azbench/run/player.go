@@ -39,6 +39,7 @@ type player struct {
 	agentEnd  time.Time     // when its agent must stop: the run's clock
 	result    []byte        // the judge's final line
 	agentDone chan struct{} // closed after transcript drain, usage snapshot and exit diagnostics
+	agentStop *time.Timer   // stops the agent at agentEnd
 	tools     *toolDiagnostics
 	diagMu    sync.Mutex
 	diagSeq   uint64
@@ -136,9 +137,9 @@ func (p *player) daemon(extra ...string) (*exec.Cmd, error) {
 // sample, and an operator resumes it. A session the supervisor stops is no longer p.session when it exits.
 func (p *player) sessionExited(cmd *exec.Cmd) {
 	p.mu.Lock()
-	current := p.session == cmd
+	current, done := p.session == cmd, p.state == types.JudgeDone
 	p.mu.Unlock()
-	if !current || p.r.ctx.Err() != nil {
+	if !current || done || p.r.ctx.Err() != nil { // done: in the goal's wrap-up, its score already final
 		return
 	}
 	code := cmd.ProcessState.ExitCode()
@@ -384,6 +385,9 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 			p.stopAgent()
 		}
 	})
+	p.mu.Lock()
+	p.agentStop = stop
+	p.mu.Unlock()
 	go func() {
 		defer close(done)
 		cmd.Wait()
@@ -441,9 +445,9 @@ func stampLinesObserved(r io.Reader, w io.WriteCloser, observe func(map[string]a
 // Codex usage limit, say). Nothing else would notice: the judge keeps scoring an idle character.
 func (p *player) exited(cmd *exec.Cmd) {
 	p.mu.Lock()
-	left, current := time.Until(p.agentEnd), p.agent == cmd
+	left, current, done := time.Until(p.agentEnd), p.agent == cmd, p.state == types.JudgeDone
 	p.mu.Unlock()
-	if !current || left < 2*time.Minute || p.r.ctx.Err() != nil {
+	if !current || done || left < 2*time.Minute || p.r.ctx.Err() != nil {
 		return
 	}
 	why := ""
@@ -567,6 +571,39 @@ func (p *player) conversation() string {
 		}
 	}
 	return ""
+}
+
+// extendAgent keeps the agent past the run's clock until end (the goal's wrap-up).
+func (p *player) extendAgent(end time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if end.After(p.agentEnd) && p.agentStop != nil {
+		p.agentEnd = end
+		p.agentStop.Reset(time.Until(end))
+	}
+}
+
+// stop is how a player stops, whatever the reason (the end, a pause, a restart, the goal's wrap-up): its agent
+// (stopAgent), its notes copied into the run, then its session.
+func (p *player) stop() {
+	p.stopAgent()
+	p.copyNotes()
+	p.stopSession()
+}
+
+// copyNotes copies the notes the agent keeps in its workspace (NOTES.md and the other .md files it wrote) into
+// <run>/<agent>/, so the run has them as they were at each stop. prompt.md there is the run's, not the agent's.
+func (p *player) copyNotes() {
+	files, _ := filepath.Glob(filepath.Join(p.ws, "*.md"))
+	for _, f := range files {
+		name := filepath.Base(f)
+		if _, docs := workspaceFiles[name]; docs || name == "CLAUDE.md" || name == "prompt.md" {
+			continue
+		}
+		if b, err := os.ReadFile(f); err == nil {
+			os.WriteFile(filepath.Join(p.dir, name), b, 0o644)
+		}
+	}
 }
 
 // stopAgent is the one way an agent stops (pause, restart, the goal's wrap-up, the end of the run). Killing the

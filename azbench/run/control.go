@@ -92,8 +92,7 @@ func (r *Runner) restart(name, message string) error {
 	go func() {
 		p.logf("restarting")
 		p.runtimeState("supervisor", types.StateRestart)
-		p.stopAgent()
-		p.stopSession()
+		p.stop()
 		if err := p.workspace(); err != nil { // the docs as of this build
 			r.alert(p, "restart: "+err.Error())
 			return

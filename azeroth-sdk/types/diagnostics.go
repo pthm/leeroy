@@ -29,6 +29,7 @@ const (
 	StatePause   = "pause"   // supervisor
 	StateRestart = "restart" // supervisor
 	StateStop    = "stop"    // session, agent
+	StateWrapUp  = "wrap_up" // supervisor: the goal is met; the agent and session play on for the wrap-up
 
 	JudgeReady   = "ready"
 	JudgePlaying = "playing"

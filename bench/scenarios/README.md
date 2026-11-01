@@ -32,6 +32,7 @@ Unknown fields are errors, so a typo doesn't silently change a run.
 | `description` | for people |
 | `goal` | a judge goal: `score:100000` (XP per hour; "as much as possible"), `level:10`, `quest:176`, `achievement:628`, `quests:5`, `skill:164:75`, `money:<copper>`, `item:<entry>`, `quality:<0-5>`, `achpoints:<n>` ([judge](../../azbench/judge/README.md)) |
 | `minutes` | the run's length; default 60 |
+| `wrap_up_minutes` | how long an agent and its session keep going after its judge records the goal (its score is final; a `goal_met` event tells it); default 5 |
 | `start` | where every character starts: a name from [`places.yaml`](../places.yaml), `"x y z map zone"`, or `{x, y, z, map, zone}`. Omitted: where they are (new characters: their race's start) |
 | `level`, `money` | set before the run (money in copper) |
 | `setup` | for characters from earlier runs: `revive` (no ghost, corpse or resurrection sickness), `repair` (every item), `reset_talents` |

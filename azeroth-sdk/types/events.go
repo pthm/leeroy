@@ -194,6 +194,13 @@ type Notice struct {
 	Message string `json:"message"`
 }
 
+// GoalMet: the benchmark's judge recorded the run's goal for this character (sent by the run's supervisor).
+type GoalMet struct {
+	Goal    string `json:"goal" doc:"the run's goal, e.g. achievement:628"`
+	Message string `json:"message"`
+	EndsAt  int64  `json:"ends_at" doc:"unix ms: when your agent and session stop"`
+}
+
 type ErrorEvent struct {
 	Op      string `json:"op" doc:"items, items.loot, vendor.buy, vendor.sell, trainer.learn, group, quests, chat.whisper, chat.channel, chat.join"`
 	Code    string `json:"code"`
@@ -452,6 +459,7 @@ var EventTypes = map[string]EventType{
 	"slow_tick":            {SlowTick{}, "a tick took over 300 ms: a script's work held the game up (wow tasks shows each task's busy_ms)"},
 	"progress":             {Progress{}, "a periodic digest of your progress (events.watch{every_s = ...}; off by default)"},
 	"answer":               {Answer{}, "the agent answered (answer)"},
+	"goal_met":             {GoalMet{}, "the judge recorded the run's goal for you: your score is final"},
 }
 
 // Action results: the data of an ok result, per op (ops not listed have none).
