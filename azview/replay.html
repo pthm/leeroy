@@ -250,7 +250,7 @@ function addUnits(e) {
 if (LIVE) setInterval(() => { // names for new creature entries, in batches
   if (!wanted.size) return;
   const ids = [...wanted].slice(0, 200); ids.forEach((id) => { NAMES[id] = ""; wanted.delete(id); });
-  fetch(`creatures?ids=${ids.join(",")}`).then((r) => r.json()).then((m) => { Object.assign(NAMES, m); dirty = true; }).catch(() => {});
+  fetch(`creatures?ids=${ids.join(",")}`).then((r) => r.json()).then((m) => { Object.assign(NAMES, m); }).catch(() => {});
 }, 1000);
 D.events = D.events.filter((e) => e.ev !== "units" || (addUnits(e), false));
 // events by what reads them, so drawing never walks every event (a long run has hundreds of thousands)
@@ -1096,8 +1096,11 @@ function onlyChip() { return sel ? `<span class="only">only ${who(sel)} <button 
 const involves = (e, n) => e.n === n || e.from === n || [e.src, e.dst, e.victim, e.killer, e.target].some((u) => u?.pl && u.n === n);
 
 // ---------- playback ----------
-let liveFollow = LIVE; // live mode keeps the playhead at the newest data until you seek back
-let dirty = true, lastRender = 0; // live: new data marks the view dirty; it's redrawn at most 5 times a second
+let liveFollow = LIVE; // live mode keeps the playhead near the newest data until you seek back
+// live: the playhead trails the wall clock by LIVE_LAG, so players are drawn between two samples (about 1 s apart, then
+// up to 0.5 s in the server's poll) and glide instead of jumping to each new one; the map is redrawn every frame
+const LIVE_LAG = 2500;
+let lastRender = 0;
 // ---------- map picker (live) ----------
 // Auto shows the map the followed player is on, else the one most players are on; picking a map holds it.
 let mapMode = "auto", mapOptions = "";
@@ -1124,11 +1127,11 @@ function updateMaps() {
   if (opts !== mapOptions && document.activeElement !== $("mapsel")) { mapOptions = opts; $("mapsel").innerHTML = opts; }
 }
 $("mapsel").addEventListener("change", (e) => { mapMode = e.target.value; if (mapMode !== "auto") showMap(Number(mapMode)); updateMaps(); render(); });
-function setT(v) { t = Math.max(0, Math.min(D.duration, v)); liveFollow = LIVE && t >= D.duration - 1500; render(); }
+function setT(v) { t = Math.max(0, Math.min(D.duration, v)); liveFollow = LIVE && t >= D.duration - LIVE_LAG - 1500; render(); }
 let lastPanels = 0;
 function render() {
-  dirty = false; lastRender = performance.now();
-  const panels = !playing || lastRender - lastPanels > 200; // while playing, the side panels at most 5 times a second
+  lastRender = performance.now();
+  const panels = !(playing || liveFollow) || lastRender - lastPanels > 200; // while playing or live, the side panels at most 5 times a second
   updateMaps();
   $("clock").textContent = `${fmt(t)} / ${fmt(D.duration)}`;
   if (LIVE) $("live").setAttribute("aria-pressed", liveFollow);
@@ -1153,7 +1156,7 @@ addEventListener("keydown", (e) => {
 D.events.forEach(index);
 let last = performance.now();
 function frame(now) {
-  if (liveFollow) { if (dirty && now - lastRender > 200) { t = D.duration; render(); } }
+  if (liveFollow) { D.duration = Math.max(D.duration, Date.now() - D.start); t = Math.max(0, D.duration - LIVE_LAG); render(); }
   else if (playing) { t += (now - last) * speed; if (t >= D.duration) { t = D.duration; playing = false; $("play").textContent = "▶"; liveFollow = LIVE; } render(); }
   last = now; requestAnimationFrame(frame);
 }
@@ -1185,9 +1188,7 @@ else {
       if (e.ev === "score") addScore(D.events.at(-1));
     }
     D.duration = Math.max(D.duration, rel);
-    dirty = true;
   };
-  setInterval(() => { D.duration = Math.max(D.duration, Date.now() - D.start); dirty = true; }, 1000);
   $("live").hidden = false; $("mapsel").hidden = false;
   $("live").addEventListener("click", () => { liveFollow = true; playing = false; $("play").textContent = "▶"; render(); });
   fit(); render(); requestAnimationFrame(frame);
