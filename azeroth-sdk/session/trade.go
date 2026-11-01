@@ -140,7 +140,7 @@ func (b *Bot) setupTrade() {
 			items, ok := o["items"].([]any)
 			if o["items"] != nil && !ok {
 				if empty, yes := o["items"].(map[string]any); !yes || len(empty) != 0 {
-					panic("trade.offer: items must be an array")
+					panic("trade.offer: items must be an array of item entries or GUID strings, e.g. items = {858}")
 				}
 			}
 			if len(items) > 6 {
@@ -150,9 +150,10 @@ func (b *Bot) setupTrade() {
 			if o["money"] != nil && (!ok || money < 0 || money > 4294967295 || money != math.Trunc(money)) {
 				panic("trade.offer: money must be an unsigned integer")
 			}
-			for _, item := range items {
+			for i, item := range items {
 				if guidArg(item) == 0 {
-					panic("trade.offer: each item must be a valid item selector")
+					panic(fmt.Sprintf("trade.offer: items[%d] is %s; each item is an item entry or a carried item's GUID string, "+
+						"e.g. items = {858, \"4611686018427401257\"} (a stack goes whole: there's no count)", i+1, shapeOf(item)))
 				}
 			}
 			expected := []types.Item{}
@@ -346,6 +347,21 @@ func (t *tradeState) refused(info client.TradeStatusInfo) {
 }
 
 // guidArg: an item key from Lua (an entry number or a guid string)
+// shapeOf names what a script passed, for errors: a number or string is shown, a table by its kind
+func shapeOf(v any) string {
+	switch x := v.(type) {
+	case float64:
+		return fmt.Sprintf("the number %v", x)
+	case string:
+		return fmt.Sprintf("the string %q", x)
+	case []any:
+		return "a table (an array)"
+	case map[string]any:
+		return "a table"
+	}
+	return fmt.Sprintf("a %T", v)
+}
+
 func guidArg(v any) uint64 {
 	switch x := v.(type) {
 	case float64:

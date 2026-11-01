@@ -217,12 +217,15 @@ func checkNativeArgument(L *lua.LState, name, sig string, p Parameter, t reflect
 				bad("instance GUID strings must identify an item instance; use a number for an entry")
 			}
 		default:
-			bad("must be a numeric item entry or a decimal instance GUID string")
+			bad("must be a numeric item entry or a decimal instance GUID string, not a " + v.Type().String())
 		}
 	}
 	if p.Name == "guid" || strings.HasSuffix(p.Name, "_guid") {
 		s, ok := v.(lua.LString)
-		if !ok || len(s) == 0 {
+		if !ok {
+			bad("must be a GUID string (a unit's or object's guid field), not a " + v.Type().String())
+		}
+		if len(s) == 0 {
 			bad("must be a GUID string")
 		}
 		if _, err := strconv.ParseUint(string(s), 10, 64); err != nil {

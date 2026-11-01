@@ -136,3 +136,16 @@ func TestUnknownOptionListsFields(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// a GUID or item argument of the wrong shape says what it got
+func TestSelectorShapeNamesType(t *testing.T) {
+	e := NewEngine(nolog, nil)
+	defer e.Close()
+	e.Func("t.g", "(guid) → bool", "test", func(g uint64) bool { return true })
+	e.Func("t.i", "(item) → bool", "test", func(i uint64) bool { return true })
+	for code, want := range map[string]string{`t.g(12)`: "must be a GUID string (a unit's or object's guid field), not a number", `t.i({858, 1})`: "decimal instance GUID string, not a table"} {
+		if _, err := e.Eval(code); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: %v", code, err)
+		}
+	}
+}
