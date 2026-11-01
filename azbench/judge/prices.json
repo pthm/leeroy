@@ -1998,9 +1998,9 @@
   "cache_write": 0
  },
  "openrouter/minimax/minimax-m3.1-flash": {
-  "input": 0.075,
-  "output": 0.3,
-  "cache_read": 0.0075,
+  "input": 0.15,
+  "output": 0.6,
+  "cache_read": 0.015,
   "cache_write": 0
  },
  "openrouter/mistralai/codestral-2508": {
@@ -2604,15 +2604,15 @@
   "cache_write": 0
  },
  "openrouter/openai/gpt-oss-120b": {
-  "input": 0.15,
-  "output": 0.6,
-  "cache_read": 0.075,
+  "input": 0.026,
+  "output": 0.095,
+  "cache_read": 0,
   "cache_write": 0
  },
  "openrouter/openai/gpt-oss-20b": {
-  "input": 0.018,
-  "output": 0.09,
-  "cache_read": 0.009,
+  "input": 0.03,
+  "output": 0.13,
+  "cache_read": 0.03,
   "cache_write": 0
  },
  "openrouter/openai/gpt-oss-safeguard-20b": {
@@ -2916,9 +2916,9 @@
   "cache_write": 0
  },
  "openrouter/qwen/qwen3.8-27b": {
-  "input": 0.04,
-  "output": 2.3,
-  "cache_read": 0.02,
+  "input": 0.15,
+  "output": 1.875,
+  "cache_read": 0.0375,
   "cache_write": 0
  },
  "openrouter/qwen/qwen3.8-flash": {
@@ -3072,9 +3072,9 @@
   "cache_write": 0
  },
  "openrouter/tencent/hy3": {
-  "input": 0.0825,
-  "output": 0.33,
-  "cache_read": 0.020625,
+  "input": 0.132,
+  "output": 0.528,
+  "cache_read": 0.033,
   "cache_write": 0
  },
  "openrouter/tencent/hy3-preview": {
@@ -3084,9 +3084,9 @@
   "cache_write": 0
  },
  "openrouter/tencent/hy4-preview": {
-  "input": 0.7506,
-  "output": 2.2509,
-  "cache_read": 0.0378,
+  "input": 0.834,
+  "output": 2.501,
+  "cache_read": 0.042,
   "cache_write": 0
  },
  "openrouter/thedrummer/cydonia-24b-v4.1": {
@@ -3318,9 +3318,9 @@
   "cache_write": 0
  },
  "openrouter/z-ai/glm-5.3-flash": {
-  "input": 0.0149,
-  "output": 0.1543,
-  "cache_read": 0.0149,
+  "input": 0.0093,
+  "output": 0.1702,
+  "cache_read": 0.0093,
   "cache_write": 0
  },
  "openrouter/z-ai/glm-5.3-flashx": {
@@ -3366,9 +3366,9 @@
   "cache_write": 2.5
  },
  "openrouter/~deepseek/deepseek-flash-latest": {
-  "input": 0.0141,
-  "output": 0.11,
-  "cache_read": 0.013,
+  "input": 0.035,
+  "output": 0.5,
+  "cache_read": 0.005,
   "cache_write": 0
  },
  "openrouter/~deepseek/deepseek-pro-latest": {
@@ -3378,7 +3378,7 @@
   "cache_write": 0
  },
  "openrouter/~deepseek/deepseek-v4-flash-latest": {
-  "input": 0.0487,
+  "input": 0.0434,
   "output": 0.3,
   "cache_read": 0.035,
   "cache_write": 0
@@ -3444,9 +3444,9 @@
   "cache_write": 0
  },
  "openrouter/~z-ai/glm-flash-latest": {
-  "input": 0.0149,
-  "output": 0.1543,
-  "cache_read": 0.0149,
+  "input": 0.0093,
+  "output": 0.1702,
+  "cache_read": 0.0093,
   "cache_write": 0
  },
  "openrouter/~z-ai/glm-latest": {
