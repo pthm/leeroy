@@ -19,7 +19,7 @@ sdk.md.
 | `not_facing` from `move.face` / `move.turn` | a route is walking you (`move.to`, `act.go_to`) and faces you along its path | `me.moving()`; `move.stop` ends the route |
 | casting while dead (`caster_dead`) | a script still running after you died | `me.alive()`, or wait in your loop while dead |
 | `interrupted` | you moved or were hit mid-cast | `me.casting()` |
-| `miss`, `resist`, `immune`, `evade`, `reflect`, `dodge`, `parry`... | the spell went off but didn't land: power and cooldown are spent, so a retry may hit `not_ready` | `spells.cooldown(id)`; `immune`/`evade`: try another spell or target |
+| `miss`, `resist`, `immune`, `evade`, `reflect`, `dodge`, `parry`... | the spell went off but didn't land: power and cooldown are spent, so a retry may hit `not_ready` | `spells.cooldown(id)`; `immune`: the target is immune to that spell's school or effect; `evade`: it's evading (its `evading`) |
 | `bags_full`, loot left on corpses | no bag space | `items.free_slots()` |
 | `wrong_target_type` from `items.loot` | the GUID is a game object (a chest): game objects are opened and looted by `objects.use` | `objects.get(guid)` |
 | something attacks you while `move.to` / `act.go_to` walks | walking doesn't fight: the walk goes on and the attacker follows | `on_attacked` on `act.go_to` and `act.travel` (moving.md) |

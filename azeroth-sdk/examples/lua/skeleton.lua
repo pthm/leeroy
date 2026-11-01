@@ -20,7 +20,7 @@ function step()
   wait(G.every)
 end
 
-events.on("death", function() act.recover() end, "recover") -- release, run back to the corpse, rest
+events.on("death", function() log("died", me.position()) end, "died") -- runs for each death event, as its own task
 task.keep("main", function()                                -- runs again if it ends or fails
   while true do step() end
 end)

@@ -35,19 +35,19 @@ api-reference.md.
 
 ## Classes, specs and roles
 
-Each class has three talent trees (specs). In a group a character fills one of three roles:
+Each class has three talent trees (specs). Each spec's talents are built for one of three roles:
 
-- **Tank:** makes enemies attack them (threat, below) and survives that damage.
-- **Healer:** keeps themselves and the others alive.
-- **Damage (DPS):** kills the enemies.
+- **Tank:** abilities that add threat (below) or force a creature to attack them, and extra armor and avoidance.
+- **Healer:** stronger and cheaper healing.
+- **Damage (DPS):** more damage.
 
-| Class | Specs (role) | Armor | Power | Key stats |
-|---|---|---|---|---|
-| Warrior | Arms, Fury (DPS); Protection (Tank) | mail, plate from 40 | rage | Strength, Stamina; Agility; Armor for tanks |
-| Paladin | Retribution (DPS); Protection (Tank); Holy (Healer) | mail, plate from 40 | mana | Strength, Stamina; Intellect for healers |
-| Rogue | Assassination, Combat, Subtlety (DPS) | leather | energy | Agility, then Strength |
-| Priest | Shadow (DPS); Holy, Discipline (Healer) | cloth | mana | Intellect, Spirit, spell power |
-| Mage | Arcane, Fire, Frost (DPS) | cloth | mana | Intellect, spell power |
+| Class | Specs (role) | Armor | Power |
+|---|---|---|---|
+| Warrior | Arms, Fury (DPS); Protection (Tank) | mail, plate from 40 | rage |
+| Paladin | Retribution (DPS); Protection (Tank); Holy (Healer) | mail, plate from 40 | mana |
+| Rogue | Assassination, Combat, Subtlety (DPS) | leather | energy |
+| Priest | Shadow (DPS); Holy, Discipline (Healer) | cloth | mana |
+| Mage | Arcane, Fire, Frost (DPS) | cloth | mana |
 
 Every character can wear lighter armor types than its own; heavier ones protect more.
 
@@ -87,13 +87,16 @@ Every character can wear lighter armor types than its own; heavier ones protect 
 
 - **Kills** give XP by the mob's level against yours (its colour, or "con"):
 
-  | Mob level | Colour | Fight | XP |
-  |---|---|---|---|
-  | 5+ above you | red | very likely to kill you | high |
-  | 3-4 above | orange | it hits harder, you miss more | more |
-  | your level ±2 | yellow | even | normal |
-  | a few below | green | easy | less |
-  | far below | grey | trivial | none |
+  | Mob level | Colour | XP |
+  |---|---|---|
+  | 5+ above you | red | more (capped at 4 levels above) |
+  | 3-4 above | orange | more |
+  | your level ±2 | yellow | about normal |
+  | below that, down to the grey level | green | less |
+  | the grey level or below | grey | none |
+
+  A mob above your level misses you less and is missed, dodged and parried more; one below the reverse.
+  <!-- Formulas.cpp BaseGain (level difference capped at 4); Unit::MeleeSpellMissChance, RollMeleeOutcomeAgainst (weapon and defense skill: 5 per level) -->
 
   The grey level is 0 up to level 5; your level − 5 − (your level / 10, rounded down) from 6 to 39 (4 at level 10,
   13 at 20, 22 at 30); your level − 1 − (your level / 5) from 40 to 59; your level − 9 from 60. A mob at or below it
@@ -108,7 +111,7 @@ Every character can wear lighter armor types than its own; heavier ones protect 
   health in damage; otherwise nobody does. The first player whose damage or hostile spell hits it **tags** it
   (`tapped_by_other` for anyone else): only that player, or that player's group, is rewarded. A creature that evades
   loses its tag. <!-- Unit::DealDamage SetLootRecipient; Unit::AtTargetAttacked (3.0.8 tap on aggressive spell); Creature::IsDamageEnoughForLootingAndReward, ResetPlayerDamageReq (health / 2); CreatureAI::_EnterEvadeMode -->
-- **Elites** have several times the health and damage of a normal mob of their level and are meant for groups.
+- **Elites** have several times the health and damage of a normal mob of their level.
   **Rares** are named, wandering, higher-level mobs.
 - **Quests** give a fixed amount of XP on turn-in (less for quests far below your level), often money, and often
   an item, sometimes a choice of several.
@@ -208,8 +211,8 @@ Every character can wear lighter armor types than its own; heavier ones protect 
 - Quest items only drop while you have the quest, and only for whoever has loot rights to the corpse.
 - **In a group,** members near a kill all get kill credit for quests, quest drops go to members who need them, and
   quests can be shared. Each member turns in their own.
-- Some targets are a single named mob that respawns minutes after it dies, so several players on the same quest
-  wait for it or race for the tag.
+- Some targets are a single named mob that respawns minutes after it dies; only whoever tags it (and their group)
+  gets the kill.
 
 ## Money, bags and items
 

@@ -24,7 +24,8 @@ Quest givers, vendors, trainers, objects, your bags and gear. The rest of the SD
   of the quest giver's text), `quests.abandon`.
   `act.accept` and `act.turn_in` walk there first. A kill objective also counts the creatures whose
   `kill_credit` lists its entry (`units.nearby`, `units.get`). A turn-in fails at once with `incomplete` when the objectives
-  aren't done; a `quest_failed` event means an escort died or a timer ran out: abandon it and take it again.
+  aren't done; a `quest_failed` event means an escort died or a timer ran out; a failed quest stays failed until
+  it's abandoned (`quests.abandon`) and taken again.
 
 ## Items
 

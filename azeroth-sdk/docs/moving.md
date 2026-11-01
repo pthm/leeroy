@@ -17,7 +17,7 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   players and lootable corpses, then a line for each with level, distance, direction, height and aggro.
 - `wow status` lists the `danger` around you: up to five hostile creatures whose aggro range you're in or within 15
   yards of, nearest edge first, each with its `margin` (yards to the edge of its range; negative: you're inside) and
-  its `pack` (other hostiles within 10 yards of it: what comes along if you pull it). `mobs_nearby.in_aggro` counts
+  its `pack` (other hostiles within 10 yards of it, the server's assistance radius: game.md, "Assistance"). `mobs_nearby.in_aggro` counts
   the ones that have you in range now.
 
 ## Moving

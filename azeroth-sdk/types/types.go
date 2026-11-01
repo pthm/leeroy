@@ -118,13 +118,13 @@ type Control struct {
 type Creature struct {
 	Unit
 	Entry         uint32   `json:"entry" doc:"creature template id (azworld npc <entry>)"`
-	Elite         bool     `json:"elite" doc:"much stronger than its level suggests: meant for groups"`
+	Elite         bool     `json:"elite" doc:"an elite: several times the health and damage of a normal creature of its level, and double the XP"`
 	Rank          string   `json:"rank,omitempty" doc:"normal, elite, rare, rare_elite or boss"`
 	Type          string   `json:"type,omitempty" doc:"beast, humanoid, undead, demon, elemental, giant, dragonkin, mechanical, critter, totem, ... (spells like Polymorph only work on some types). Known a moment after first sight"`
 	Subname       string   `json:"subname,omitempty" doc:"the title under an NPC's name, e.g. Weapon Merchant"`
 	KillCredit    []uint32 `json:"kill_credit,omitempty" doc:"other creature entries killing this one counts as, for kill objectives (an objective's entry may be one of these)"`
 	Skinnable     bool     `json:"skinnable,omitempty" doc:"a corpse that can be skinned"`
-	Evading       bool     `json:"evading,omitempty" doc:"it's evading (resetting, unreachable): your attacks do nothing; leave it"`
+	Evading       bool     `json:"evading,omitempty" doc:"it's evading (resetting, unreachable): your attacks do nothing until it's back"`
 	Roles         []string `json:"roles,omitempty" doc:"what it offers: vendor, repair, trainer, quest_giver, flight_master, innkeeper, banker, spirit_healer, gossip"`
 	Attackable    bool     `json:"attackable" doc:"can be attacked at all (false for triggers, dummies, protected NPCs)"`
 	AggroRadius   float64  `json:"aggro_radius,omitempty" doc:"hostile and alive: how close you can come before it attacks you on sight: 20 yd at your level, a yard more per level above you and a yard less per level below, at least 5. The server's base is the creature's own detection range, 18 yd for most creatures, so this can be 2 yd more than the server's"`
@@ -731,7 +731,7 @@ type Danger struct {
 	AggroRadius float64 `json:"aggro_radius"`
 	InAggro     bool    `json:"in_aggro" doc:"you're inside its aggro range and in its sight"`
 	Margin      float64 `json:"margin" doc:"yards to the edge of its aggro range (negative: you're inside)"`
-	Pack        int     `json:"pack" doc:"other hostile creatures within 10 yd of it: what comes along if you pull it"`
+	Pack        int     `json:"pack" doc:"other hostile creatures within 10 yd of it, the server's assistance radius (game.md, Assistance)"`
 }
 
 // Status is what a player sees on screen, in one call (me.status, `wow status`): enough to decide what to do next.
@@ -789,7 +789,7 @@ type Hostile struct {
 	On        string   `json:"on" doc:"who it's attacking: you, pet, or a group member's name"`
 	ThreatPct *float64 `json:"threat_pct,omitempty" doc:"your threat on it as a share of the top (100 = it attacks you)"`
 	Elite     bool     `json:"elite,omitempty"`
-	Evading   bool     `json:"evading,omitempty" doc:"resetting: your attacks do nothing; leave it"`
+	Evading   bool     `json:"evading,omitempty" doc:"resetting: your attacks do nothing until it's back"`
 	Casting   *Casting `json:"casting,omitempty" doc:"interrupt it, or get out of the way"`
 }
 
