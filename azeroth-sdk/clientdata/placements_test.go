@@ -73,3 +73,24 @@ func TestLoadModels(t *testing.T) {
 		t.Fatal("the inn has geometry and materials")
 	}
 }
+
+// Stormwind's canals are the city WMO's liquid.
+func TestWMOLiquid(t *testing.T) {
+	c := testClient(t)
+	sw, err := c.LoadWMO(`WORLD\WMO\AZEROTH\BUILDINGS\STORMWIND\STORMWIND.WMO`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tiles := 0
+	for _, l := range sw.Liquids {
+		for _, ty := range l.Tiles {
+			if ty >= 0 {
+				tiles++
+			}
+		}
+	}
+	t.Logf("%d liquids, %d tiles", len(sw.Liquids), tiles)
+	if tiles < 100 {
+		t.Fatal("Stormwind has canals")
+	}
+}

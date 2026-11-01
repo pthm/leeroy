@@ -19,7 +19,20 @@ type Model struct {
 	Materials []Material
 	Doodads   []Doodad // a WMO's doodads (lamps, furniture, a city's trees), by set
 	Sets      []DoodadSet
+	Liquids   []Liquid // a WMO's water, lava or slime (Stormwind's canals), in its groups
 }
+
+// Liquid is a group's liquid: a grid of square tiles LiquidTile yd across from Corner (in the model's axes), the
+// surface height at each corner of the grid, and each tile's type (0 water, 1 ocean, 2 magma, 3 slime; -1 none).
+type Liquid struct {
+	Corner         [3]float32
+	XVerts, YVerts int
+	Heights        []float32 // XVerts * YVerts: index y*XVerts + x
+	Tiles          []int8    // (XVerts-1) * (YVerts-1): index y*(XVerts-1) + x
+}
+
+// LiquidTile is the side of a WMO liquid tile, yd: a 128th of a map grid square.
+const LiquidTile = 1600.0 / 3 / 128
 
 // Material is a texture and how it's drawn: AlphaTest cuts out pixels under half alpha (leaves, fences).
 type Material struct {
@@ -136,6 +149,10 @@ func (m *Model) addGroup(b []byte) {
 			for o := 0; o+12 <= len(body); o += 12 {
 				verts = append(verts, [3]float32{f32(body, o), f32(body, o+4), f32(body, o+8)})
 			}
+		case "MLIQ":
+			if l, ok := parseMLIQ(body); ok {
+				m.Liquids = append(m.Liquids, l)
+			}
 		case "MOTV":
 			if uv == nil { // the first set; a second is for blended materials
 				for o := 0; o+8 <= len(body); o += 8 {
@@ -158,6 +175,35 @@ func (m *Model) addGroup(b []byte) {
 		m.Tris = append(m.Tris, [3]uint32{base + a, base + b, base + c})
 		m.TriMat = append(m.TriMat, int32(mat))
 	}
+}
+
+// parseMLIQ reads a group's liquid: its header (vertex and tile counts, corner, material), a height per vertex (8
+// bytes each, the height last), then a flags byte per tile (the low 4 bits the type, 15 for none).
+func parseMLIQ(b []byte) (Liquid, bool) {
+	if len(b) < 30 {
+		return Liquid{}, false
+	}
+	l := Liquid{XVerts: int(le.Uint32(b)), YVerts: int(le.Uint32(b[4:])), Corner: [3]float32{f32(b, 16), f32(b, 20), f32(b, 24)}}
+	xt, yt := int(le.Uint32(b[8:])), int(le.Uint32(b[12:]))
+	nv := l.XVerts * l.YVerts
+	if l.XVerts < 2 || l.YVerts < 2 || xt != l.XVerts-1 || yt != l.YVerts-1 || 30+nv*8+xt*yt > len(b) {
+		return Liquid{}, false
+	}
+	for i := 0; i < nv; i++ {
+		l.Heights = append(l.Heights, f32(b, 30+i*8+4))
+	}
+	any := false
+	for _, f := range b[30+nv*8 : 30+nv*8+xt*yt] {
+		t := int8(f & 0xF)
+		if t == 0xF {
+			t = -1
+		} else {
+			t &= 3
+			any = true
+		}
+		l.Tiles = append(l.Tiles, t)
+	}
+	return l, any
 }
 
 // LoadM2 reads an M2 doodad and its first skin (the full-detail triangles). Batches with a texture the game fills in
