@@ -1,6 +1,9 @@
 package pathfinding
 
-import "context"
+import (
+	"context"
+	"sync"
+)
 
 // Triangles calls fn with every triangle, in world coordinates, of the models (buildings, trees, rocks, fences: the
 // server's collision geometry) whose bounds overlap the box on map mapID, loading the vmap tiles it covers. False if
@@ -36,10 +39,27 @@ func (vm *VMapManager) Triangles(mapID uint32, xMin, xMax, yMin, yMax float32, f
 	}
 	tree.dataMu.RUnlock()
 	for _, mi := range hits {
-		model, ok := tree.modelForInstanceContext(ctx, mi)
-		if !ok || model == nil {
-			continue
+		for _, t := range tree.worldTriangles(ctx, mi) {
+			if max(t[0].X, t[1].X, t[2].X) < xMin || min(t[0].X, t[1].X, t[2].X) > xMax ||
+				max(t[0].Y, t[1].Y, t[2].Y) < yMin || min(t[0].Y, t[1].Y, t[2].Y) > yMax {
+				continue
+			}
+			fn(t[0], t[1], t[2])
 		}
+	}
+	return true
+}
+
+// worldTris: each model instance's triangles in world coordinates, made once. ponytail: never freed; a session's
+// map browsing holds tens of MB, a sweep of a whole continent would hold its every model.
+var worldTris sync.Map // *ModelInstance -> [][3]Vector3
+
+func (tree *StaticMapTree) worldTriangles(ctx context.Context, mi *ModelInstance) [][3]Vector3 {
+	if v, ok := worldTris.Load(mi); ok {
+		return v.([][3]Vector3)
+	}
+	var out [][3]Vector3
+	if model, ok := tree.modelForInstanceContext(ctx, mi); ok && model != nil {
 		tree.dataMu.RLock()
 		pos, inv, scale := mi.iPos, mi.iInvRot, mi.spawn.iScale
 		tree.dataMu.RUnlock()
@@ -64,10 +84,11 @@ func (vm *VMapManager) Triangles(mapID uint32, xMin, xMax, yMin, yMax float32, f
 			}
 			for _, t := range g.Mesh {
 				if int(t.idx0) < len(wv) && int(t.idx1) < len(wv) && int(t.idx2) < len(wv) {
-					fn(wv[t.idx0], wv[t.idx1], wv[t.idx2])
+					out = append(out, [3]Vector3{wv[t.idx0], wv[t.idx1], wv[t.idx2]})
 				}
 			}
 		}
 	}
-	return true
+	worldTris.Store(mi, out) // a model that won't load is stored empty: not read again
+	return out
 }
