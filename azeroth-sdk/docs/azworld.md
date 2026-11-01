@@ -26,7 +26,15 @@ azworld upgrades --class priest --level 7 --near -9460,70 [--slot chest]   # gea
 
 `reaction` is relative to a new character of each side (`hostile` attacks on sight; `neutral` only fights back).
 Races: 1 Human, 3 Dwarf, 4 Night Elf, 7 Gnome; classes: 1 Warrior, 2 Paladin, 4 Rogue, 5 Priest, 8 Mage. Lists are
-capped at 15; counts like `drops_total` give the full size. Coordinates match `me.position()`.
+capped at 15; counts like `drops_total` give the full size. A quest's item objectives list at most 5 creatures in
+`dropped_by` and 5 objects in `from_objects`; `dropped_by_total` and `from_objects_total` count them all. Coordinates
+match `me.position()`.
+
+`spawns` has `count`, the spawns by zone and the first few points. A spawn that belongs to a world event (Hallow's
+End, Midsummer...) exists only while that event runs: its point names the event (`event`), and `event_only` counts
+such spawns. `azworld npc` lists `casts`: the spells its script casts, named and described from the game's spell data
+(`when`: `in_combat`, `out_of_combat`, `health_pct`...). The `comment` column of the `smart_scripts` table is free
+text written by the database's authors and can name a different spell than the one cast.
 
 Route planning returns a terrain proposal, with `status="unverified"`, `reason="navmesh_validation_required"`,
 `source="terrain_grid"`, and `validation_required=true`. Both forms require `--level N` (integer 1..255);

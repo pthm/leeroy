@@ -176,7 +176,7 @@ var timeoutHints = map[string]string{
 	"chat.whisper":     "no echo from the server: a notice may say why (level requirement, silenced)",
 	"chat.channel":     "no echo from the server: a notice may say why (level requirement)",
 	"chat.join":        "zone channels (id > 0) only join in their zone, and say nothing when you're already in them",
-	"death.reclaim":    "too far from your corpse (within ~30 yd)",
+	"death.reclaim":    "too far from your corpse (within 39 yd)",
 	"death.spirit_res": "stand within ~5 yd of the spirit healer",
 }
 

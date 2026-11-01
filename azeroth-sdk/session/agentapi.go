@@ -390,7 +390,7 @@ func (b *Bot) setupAgentAPI() {
 			return nil
 		}, nil)
 	})
-	e.Func("death.reclaim", "() → Request", "as a ghost within ~30 yd of your corpse, come back to life there", func() map[string]any {
+	e.Func("death.reclaim", "() → Request", "as a ghost within 39 yd of your corpse, come back to life there, with half your health and mana", func() map[string]any {
 		if !b.IsGhost() {
 			return b.refuse("death.reclaim", nil, "not_a_ghost", "release first (death.release)")
 		}

@@ -77,7 +77,7 @@ type Place struct {
 	Y            float64  `json:"y"`
 	Z            float64  `json:"z"`
 	Distance     float64  `json:"distance" doc:"yards from you in a straight line"`
-	InSight      *bool    `json:"in_sight,omitempty" doc:"nothing solid (rock, walls) between you and it: a mob in a cave under you can be close but not in sight"`
+	InSight      *bool    `json:"in_sight,omitempty" doc:"no static world model (rock, walls) between your eyes and it, as world.in_sight checks: a mob in a cave under you can be close but not in sight"`
 	PathDistance *float64 `json:"path_distance,omitempty" doc:"how far you'd walk to reach it (often much more than distance, across cliffs, floors and caves); worked out nearest first within a time budget, so the farthest may lack it"`
 	Reachable    *bool    `json:"reachable,omitempty" doc:"with path_distance: whether a walking route gets you there"`
 	Bearing      float64  `json:"bearing" doc:"degrees from where you face: 0 ahead, 90 to your right, -90 to your left, ±180 behind"`
@@ -533,7 +533,7 @@ type GroupMember struct {
 	Position     *MemberPosition `json:"position,omitempty"`
 	Distance     *float64        `json:"distance,omitempty" doc:"yards from you"`
 	InRange      bool            `json:"in_range" doc:"close enough to see (about 100 yd): units.get works on them"`
-	InSight      *bool           `json:"in_sight,omitempty" doc:"in range and nothing solid between you"`
+	InSight      *bool           `json:"in_sight,omitempty" doc:"in range and no static world model between you, as world.in_sight checks"`
 	PathDistance *float64        `json:"path_distance,omitempty" doc:"how far you'd walk to reach them (in range only)"`
 	Reachable    *bool           `json:"reachable,omitempty"`
 	Target       GUID            `json:"target,omitempty" doc:"what they're targeting (in sight only)"`

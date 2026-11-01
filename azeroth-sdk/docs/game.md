@@ -90,8 +90,8 @@ Every character can wear lighter armor types than its own; heavier ones protect 
   | Mob level | Colour | Fight | XP |
   |---|---|---|---|
   | 5+ above you | red | very likely to kill you | high |
-  | 2-4 above | orange | it hits harder, you miss more | more |
-  | your level ±1 | yellow | even | normal |
+  | 3-4 above | orange | it hits harder, you miss more | more |
+  | your level ±2 | yellow | even | normal |
   | a few below | green | easy | less |
   | far below | grey | trivial | none |
 
@@ -129,8 +129,9 @@ Every character can wear lighter armor types than its own; heavier ones protect 
 ## Death
 
 - At 0 health you die and leave a corpse. **Releasing** turns you into a ghost at the nearest graveyard.
-- As a ghost you can walk back and **reclaim** your corpse from within about 30 yards of it, at no cost beyond the
+- As a ghost you can walk back and **reclaim** your corpse from within 39 yards of it, at no cost beyond the
   death's own durability loss. Dying again soon after a death lengthens the wait before you can reclaim.
+  <!-- Corpse.h CORPSE_RECLAIM_RADIUS 39; MiscHandler.cpp HandleReclaimCorpseOpcode -->
 - A **spirit healer** at the graveyard revives you on the spot instead, at a further 25% durability loss and, from
   level 11, **Resurrection Sickness**: much lower stats for several minutes.
 - Ghosts can't fight, loot or earn exploration credit.

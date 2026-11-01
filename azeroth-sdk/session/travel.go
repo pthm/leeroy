@@ -359,7 +359,7 @@ func (b *Bot) setupTravel() {
 				return nil
 			}, func(ev script.Event) *script.Outcome { return failOn(ev, "flights.take") })
 		})
-	e.Func("me.home", "() → Home?", "nil until the server bind-point packet is observed; otherwise where your hearthstone takes you (use the Hearthstone item: items.use(6948), a 10 s cast with a 1 hour cooldown)", func() any {
+	e.Func("me.home", "() → Home?", "nil until the server bind-point packet is observed; otherwise where your hearthstone takes you (use the Hearthstone item: items.use(6948), a 10 s cast with a 30-minute cooldown)", func() any {
 		t.mu.Lock()
 		defer t.mu.Unlock()
 		if t.home == nil {

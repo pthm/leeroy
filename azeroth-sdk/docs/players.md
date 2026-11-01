@@ -7,7 +7,8 @@ Groups, chat, trades and the players around you. The rest of the SDK is in sdk.m
 - Sending: `chat.say(msg)`, `chat.yell(msg)`, `chat.whisper(name, msg)`, `chat.party(msg)`,
   `chat.channel(name, msg)`. Every message is at most 255 bytes (`message_too_long`). Whispers and channel
   messages resolve once the server has delivered them, or fail (`player_not_found`, `not_member`, `muted`,
-  `throttled`); your own messages aren't echoed back as chat events.
+  `throttled`). The server echoes your own say, yell, party, channel and emote messages back as `chat` events
+  with `self = true`, and a whisper you send as kind `whisper_sent` (`from` is who you whispered).
 - Channels: you start in your zone's General channel, and leave it when you change zone until you
   `chat.join("General - <Zone>", 1)` (zone channel ids: General 1, Trade 2, LocalDefense 22). `chat.join("name", 0)`
   joins a custom channel, in every zone (`wrong_password`, `banned`).

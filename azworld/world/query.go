@@ -59,15 +59,24 @@ func spawns(table string, id float64, near []float64, lim int) *obj {
 	if near != nil {
 		order = fmt.Sprintf("ORDER BY POW(s.x - %s, 2) + POW(s.y - %s, 2)", jsStr(near[0]), jsStr(at(near, 1)))
 	}
-	zones := q(fmt.Sprintf(`SELECT z.name zone, COUNT(*) n FROM wowbench.%s s LEFT JOIN wowbench.area z ON z.id = s.zone
-    WHERE s.id = %s GROUP BY s.zone ORDER BY n DESC LIMIT 5`, table, jsStr(id)))
-	points := q(fmt.Sprintf(`SELECT s.map, ROUND(s.x) x, ROUND(s.y) y, ROUND(s.z) z, a.name area FROM wowbench.%s s
-    LEFT JOIN wowbench.area a ON a.id = s.area WHERE s.id = %s %s LIMIT %d`, table, jsStr(id), order, lim))
-	count := 0.0
+	// a spawn listed under a game event with a positive entry exists only while that world event runs
+	events := "game_event_creature"
+	if table == "gameobject_spawn" {
+		events = "game_event_gameobject"
+	}
+	event := fmt.Sprintf(`(SELECT GROUP_CONCAT(g.description SEPARATOR ', ') FROM %s e JOIN game_event g ON g.eventEntry = e.eventEntry
+    WHERE e.guid = s.guid AND e.eventEntry > 0)`, events)
+	zones := q(fmt.Sprintf(`SELECT z.name zone, COUNT(*) n, COUNT(%s) event_only FROM wowbench.%s s LEFT JOIN wowbench.area z ON z.id = s.zone
+    WHERE s.id = %s GROUP BY s.zone ORDER BY n DESC LIMIT 5`, event, table, jsStr(id)))
+	points := q(fmt.Sprintf(`SELECT s.map, ROUND(s.x) x, ROUND(s.y) y, ROUND(s.z) z, a.name area, %s event FROM wowbench.%s s
+    LEFT JOIN wowbench.area a ON a.id = s.area WHERE s.id = %s %s LIMIT %d`, event, table, jsStr(id), order, lim))
+	count, eventOnly := 0.0, 0.0
 	for _, z := range zones {
 		count += z.n("n")
+		eventOnly += z.n("event_only")
+		z.set("event_only", or(z.get("event_only")))
 	}
-	return newObj("count", count, "zones", zones, "points", points)
+	return newObj("count", count, "event_only", or(eventOnly), "zones", zones, "points", points)
 }
 
 // at is a[i], NaN past the end (Number(undefined)).
@@ -310,8 +319,14 @@ var commands = []command{
             JOIN creature_template c ON c.lootid = l.Entry WHERE %s OR %s ORDER BY l.Chance DESC LIMIT 5`, cl.direct, cl.viaRef)), "creature_spawn", 3)
 			objs := withSpawns(q(fmt.Sprintf(`SELECT g.entry, g.name, l.Chance chance FROM gameobject_loot_template l JOIN gameobject_template g
             ON g.Data1 = l.Entry AND g.type IN (3, 25) WHERE %s LIMIT 5`, cl.direct)), "gameobject_spawn", 3)
+			// the lists stop at 5: the totals say how many sources there are in all
+			total := q1(fmt.Sprintf(`SELECT COUNT(DISTINCT c.entry) n FROM creature_loot_template l
+            JOIN creature_template c ON c.lootid = l.Entry WHERE %s OR %s`, cl.direct, cl.viaRef)).n("n")
+			objTotal := q1(fmt.Sprintf(`SELECT COUNT(DISTINCT g.entry) n FROM gameobject_loot_template l JOIN gameobject_template g
+            ON g.Data1 = l.Entry AND g.type IN (3, 25) WHERE %s`, cl.direct)).n("n")
 			needItems = append(needItems, newObj("item", it, "name", q1("SELECT name FROM item_template WHERE entry = "+jsStr(it)).get("name"),
-				"count", f("RequiredItemCount%d", i), "dropped_by", from, "from_objects", objs))
+				"count", f("RequiredItemCount%d", i), "dropped_by_total", total, "dropped_by", from,
+				"from_objects_total", or(objTotal), "from_objects", objs))
 		}
 		named := func(list []*obj) []*obj {
 			for _, r := range list {
@@ -379,6 +394,7 @@ var commands = []command{
 			"teaches", q("SELECT ts.SpellId spell, s.name, s.`rank`, ts.MoneyCost cost, ts.ReqLevel level FROM creature_default_trainer d\n"+
 				"            JOIN trainer_spell ts ON ts.TrainerId = d.TrainerId LEFT JOIN wowbench.spell s ON s.id = ts.SpellId\n"+
 				"            WHERE d.CreatureId = "+ids+" ORDER BY ts.ReqLevel LIMIT 80"),
+			"casts", npcCasts(ids),
 			"starts_quests", q("SELECT q.ID id, q.LogTitle name, q.QuestLevel level FROM creature_queststarter s JOIN quest_template q ON q.ID = s.quest WHERE s.id = "+ids),
 			"ends_quests", q("SELECT q.ID id, q.LogTitle name FROM creature_questender s JOIN quest_template q ON q.ID = s.quest WHERE s.id = "+ids))
 	}},
@@ -749,3 +765,31 @@ var spellBook = sync.OnceValue(func() *spelltext.Book {
 	}
 	return b
 })
+
+// smartEvents names the SmartAI event types that start a creature's casts (SmartScriptMgr.h SMART_EVENT_*).
+var smartEvents = map[float64]string{0: "in_combat", 1: "out_of_combat", 2: "health_pct", 3: "mana_pct", 4: "aggro",
+	5: "kill", 6: "death", 7: "evade", 8: "spell_hit", 9: "range", 10: "ooc_los", 12: "target_health_pct",
+	13: "victim_casting", 14: "friendly_health", 15: "friendly_is_cc", 16: "friendly_missing_buff", 23: "has_aura",
+	24: "target_buffed", 25: "reset", 26: "ic_los", 32: "damaged"}
+
+// npcCasts: the spells a creature's SmartAI script casts (cast, self cast, cross cast, invoker cast), named from
+// Spell.dbc. The script rows' comment column is free text written by the DB's authors and can name another spell.
+func npcCasts(ids string) []*obj {
+	rows := q(`SELECT DISTINCT s.action_param1 spell, sp.name, sp.rank, s.event_type FROM smart_scripts s
+        LEFT JOIN wowbench.spell sp ON sp.id = s.action_param1
+        WHERE s.source_type = 0 AND s.entryorguid = ` + ids + ` AND s.action_type IN (11, 85, 86, 134) ORDER BY spell`)
+	b := spellBook()
+	for _, r := range rows {
+		ev := r.n("event_type")
+		r.del("event_type")
+		if name, ok := smartEvents[ev]; ok {
+			r.set("when", name)
+		} else {
+			r.set("when", ev)
+		}
+		if b != nil {
+			r.set("description", b.Description(uint32(r.n("spell"))))
+		}
+	}
+	return rows
+}
