@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -160,7 +161,8 @@ var methods = map[string]method{
 		return subscribed(e), nil
 	}),
 	// events.wait: blocks until an event matching types/match (default: the subscription) arrives after since
-	// (default: now), or timeout_s
+	// (default: now), or timeout_s. A wake that is only chat (not a whisper, not naming the character) keeps collecting
+	// until 2 s of quiet, 8 s at most (wait).
 	"events.wait": typed(func(s Sessions, p struct {
 		Char    string  `json:"char"`
 		Timeout float64 `json:"timeout_s"`
@@ -172,6 +174,10 @@ var methods = map[string]method{
 		if err != nil {
 			return nil, err
 		}
+		name := ""
+		if b := session_(s, p.Char); b != nil {
+			name = b.Name()
+		}
 		if p.Timeout <= 0 || p.Timeout > 600 {
 			p.Timeout = 60
 		}
@@ -182,7 +188,7 @@ var methods = map[string]method{
 		if p.Since != nil {
 			p.Query.Since = *p.Since
 		}
-		evs := e.Bus.Wait(p.Query, time.Duration(p.Timeout*float64(time.Second)))
+		evs := wait(e.Bus, p.Query, time.Duration(p.Timeout*float64(time.Second)), name)
 		return map[string]any{"events": compactEvents(evs, p.Full), "timed_out": len(evs) == 0, "seq": e.Bus.Seq()}, nil
 	}),
 	// events.harness: an event from the run's supervisor into the character's event stream (harnessEvents only)
@@ -204,6 +210,44 @@ var methods = map[string]method{
 		}
 		return e.Emit(p.Type, data).Seq, nil
 	}),
+}
+
+// How long events.wait keeps collecting after a wake that is only chat: until chatQuiet passes with no more, at most
+// chatMax after the first. A burst of chat (a script's protocol messages, a conversation) is then one wake.
+var chatQuiet, chatMax = 2 * time.Second, 8 * time.Second
+
+// wait is events.wait: the events matching q, waiting up to timeout for the first. When they're all chat that is
+// neither a whisper nor names the character (name), it keeps collecting matching events until chatQuiet of quiet,
+// chatMax, the timeout, or an event that would wake at once.
+func wait(bus *script.Bus, q script.Query, timeout time.Duration, name string) []script.Event {
+	end := time.Now().Add(timeout)
+	evs := bus.Wait(q, timeout)
+	if !idleChat(evs, name) {
+		return evs
+	}
+	if c := time.Now().Add(chatMax); c.Before(end) {
+		end = c
+	}
+	for left := time.Until(end); left > 0; left = time.Until(end) {
+		q.Since = evs[len(evs)-1].Seq
+		more := bus.Wait(q, min(chatQuiet, left))
+		evs = append(evs, more...)
+		if !idleChat(more, name) {
+			break
+		}
+	}
+	return evs
+}
+
+// idleChat: evs is chat only, none of it a whisper or naming the character
+func idleChat(evs []script.Event, name string) bool {
+	for _, ev := range evs {
+		c, ok := ev.Data.(types.Chat)
+		if !ok || strings.Contains(c.Kind, "whisper") || name != "" && strings.Contains(strings.ToLower(c.Text), strings.ToLower(name)) {
+			return false
+		}
+	}
+	return len(evs) > 0
 }
 
 // harnessEvents: the events the supervisor sends (events.harness)

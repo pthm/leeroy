@@ -157,6 +157,9 @@ whole list.
 **Your subscription** decides what `wow wait` (without `--types`) waits for. The default is `goal_met`, `maintenance`, `attention`, `death`,
 `stall`, `script_error`, `task_finished`, `party_invite`, `trade`, `gear_broken`, and chat from players to you
 (`chat:whisper`, `chat:party`, `chat:raid`, `chat:say`). A session restart resets it to the default.
+When what wakes `wow wait` is only chat, it keeps collecting matching events until 2 s pass with none (8 s at most,
+and never past its timeout), so a burst of chat comes back as one reply. A whisper, a chat line containing your
+character's name, or any other event type returns at once. Your own chat never wakes it.
 
 **Every `wow` reply** carries `"events"`: what happened since your previous call, counted by type, with these in
 full: the types you subscribe to, failed actions and tasks, `goal_met`, `maintenance`, channel chat, level-ups, resurrections, errors, notices,
