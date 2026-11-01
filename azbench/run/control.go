@@ -89,6 +89,10 @@ func (r *Runner) restart(name, message string) error {
 		p.runtimeState("supervisor", types.StateRestart)
 		p.stopAgent()
 		p.stopSession()
+		if err := p.workspace(); err != nil { // the docs as of this build
+			r.alert(p, "restart: "+err.Error())
+			return
+		}
 		if !waitOffline(p.a.Char, 2*time.Minute) {
 			r.alert(p, "restart: still online")
 			return

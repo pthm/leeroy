@@ -77,11 +77,12 @@ bin/azbench resume bench/runs/<time>-fresh-split --message resume.md
 
 Each character logs back in, its judge continues from its samples (same baseline and curve; the pause doesn't
 count) and its agent's conversation is resumed (Claude `--resume <session id>`, Codex `exec resume <thread>`) with
-the message, where `$LEFT` is replaced with the minutes left. The workspaces' `AGENTS.md` are refreshed, so SDK and
-doc changes reach the agents.
+the message, where `$LEFT` is replaced with the minutes left. The workspaces' docs (`AGENTS.md`, the SDK docs and
+`example.lua`) are refreshed, so SDK and doc changes reach the agents.
 
-`azbench restart <run dir> <agent> --message <file>` does the same for one agent while the others play: its session
-restarts on the current build and its conversation resumes. Its judge keeps running.
+`azbench restart <run dir> <agent> --message <file>` does the same for one agent while the others play: its
+workspace docs are refreshed, its session restarts on the current build and its conversation resumes. Its judge
+keeps running.
 
 ## Run directories
 

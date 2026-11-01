@@ -184,10 +184,12 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 			defer wg.Done()
 			var err error
 			if resume {
-				if !waitOffline(p.a.Char, 2*time.Minute) {
-					err = fmt.Errorf("still online")
-				} else {
-					err = p.login(r.ctx)
+				if err = p.workspace(); err == nil { // the docs as of this build
+					if !waitOffline(p.a.Char, 2*time.Minute) {
+						err = fmt.Errorf("still online")
+					} else {
+						err = p.login(r.ctx)
+					}
 				}
 			} else {
 				err = p.prepare(r.ctx)
