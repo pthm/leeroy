@@ -78,13 +78,14 @@ type Store struct {
 	Start   float64 // the run's start (its go file), else the first event
 	players []*Player
 	byName  map[string]*Player
-	events  []Ev            // every event but pos and units
-	byEv    map[string][]Ev // the same by kind
-	feed    []Ev            // the events the feed lists
-	marks   []Ev            // deaths, achievements, levels, quests: on the map and the seek bar
-	ticks   []Ev            // marks and chat: the seek bar
-	groups  []Ev            // group changes
-	meter   []Ev            // damage and heals: a fight is a run of them
+	events  []Ev                 // every event but pos and units
+	byEv    map[string][]Ev      // the same by kind
+	rows    map[string][]statRow // the same with the fields the stats count read out (a map lookup each was most of their time)
+	feed    []Ev                 // the events the feed lists
+	marks   []Ev                 // deaths, achievements, levels, quests: on the map and the seek bar
+	ticks   []Ev                 // marks and chat: the seek bar
+	groups  []Ev                 // group changes
+	meter   []Ev                 // damage and heals: a fight is a run of them
 	lastGrp map[string]string
 	npcSaid map[string]Ev // speaker|text -> the latest NPC chat event, to merge each listener's copy into one
 	items   map[int]world.ItemName
@@ -104,7 +105,7 @@ type liveMsg struct {
 }
 
 func NewStore() *Store {
-	return &Store{byName: map[string]*Player{}, byEv: map[string][]Ev{}, lastGrp: map[string]string{}, npcSaid: map[string]Ev{},
+	return &Store{byName: map[string]*Player{}, byEv: map[string][]Ev{}, rows: map[string][]statRow{}, lastGrp: map[string]string{}, npcSaid: map[string]Ev{},
 		items: map[int]world.ItemName{}, names: map[int]string{}, radii: map[int]float64{}, detect: map[int]float64{}, zones: map[int]string{}, agents: map[string]any{}, subs: map[chan liveMsg]bool{}}
 }
 
@@ -200,6 +201,7 @@ func (s *Store) add(e Ev) bool {
 	}
 	s.events = insert(s.events, e, evT)
 	s.byEv[kind] = insert(s.byEv[kind], e, evT)
+	s.rows[kind] = insert(s.rows[kind], rowOf(e), func(r statRow) float64 { return r.T })
 	if (kind == "dmg" || kind == "heal") && N(e, "amount") > 0 {
 		s.meter = insert(s.meter, e, evT)
 	}

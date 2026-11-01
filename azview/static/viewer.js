@@ -38,13 +38,15 @@ window.viewerQuery = () => { const s = store();
     cats: Object.keys(s.cats).filter((k) => s.cats[k]).join(","), metric: s.metric, range: s.range, chart: s.chart, per: s.per,
     w: Math.round(document.getElementById("pane")?.clientWidth ?? 0) }; };
 
-// panels refresh at most 5 times a second (Stats once), when the playhead moved, data arrived or what they show changed
-let panelsDue = true, lastPanels = 0;
-const panelsNow = () => { panelsDue = true; lastPanels = 0; };
+// panels refresh at most 8 times a second (Stats 4), when the playhead moved, data arrived or what they show changed
+// (each its own trigger, so the roster keeps its pace on the Stats tab)
+let panelsDue = true, rosterDue = true, lastPanels = 0, lastRoster = 0;
+const panelsNow = () => { panelsDue = rosterDue = true; lastPanels = lastRoster = 0; };
 function panels(now) {
-  // ponytail: Stats recomputes its window on the server each time; once a second keeps that cheap on a long run
-  if (!panelsDue || now - lastPanels < (store().tab === "stats" ? 1000 : 200) || !window.htmx || holding) return;
-  panelsDue = false; lastPanels = now; htmx.trigger(document.body, "panels");
+  if (!window.htmx || holding) return;
+  if (rosterDue && now - lastRoster >= 125) { rosterDue = false; lastRoster = now; htmx.trigger(document.body, "roster"); }
+  // Stats recomputes its window on the server each time (~15 ms for a whole long run): four times a second
+  if (panelsDue && now - lastPanels >= (store().tab === "stats" ? 250 : 125)) { panelsDue = false; lastPanels = now; htmx.trigger(document.body, "pane"); }
 }
 let holding = false; // a button is down on a list: don't swap it under the pointer (a click needs press and release on one element)
 addEventListener("pointerdown", (e) => { if (e.target.closest?.("aside, #rlist")) holding = true; });
@@ -130,7 +132,7 @@ es.addEventListener("u", (m) => { const d = JSON.parse(m.data), u = rel(d.u); li
 es.addEventListener("hit", (m) => { addHit(rel(JSON.parse(m.data))); dirty = true; });
 es.addEventListener("mark", (m) => { const e = rel(JSON.parse(m.data)); ins(MARKS, e); live(e.t); });
 es.addEventListener("tick", (m) => { const [tt, k] = JSON.parse(m.data); ins(TICKS, { t: tt - B.start, ev: k }); });
-es.addEventListener("data", () => { lastLive = performance.now(); panelsDue = true; });
+es.addEventListener("data", () => { lastLive = performance.now(); panelsDue = rosterDue = true; });
 function live(tt) { dataEnd = Math.max(dataEnd, tt); lastLive = performance.now(); dirty = true; }
 
 // ---------- map view ----------
@@ -808,7 +810,7 @@ function frame(now) {
   if (liveFollow) t = running() ? Date.now() - B.start - LIVE_LAG : dataEnd;
   else if (playing) { t += (now - last) * speed; if (t >= duration()) { t = duration(); playing = false; liveFollow = running(); controls(); } }
   last = now;
-  if (t !== lastT) { lastT = t; dirty = true; panelsDue = true; need(t); }
+  if (t !== lastT) { lastT = t; dirty = true; panelsDue = rosterDue = true; need(t); }
   if (dirty) { dirty = false; updateMaps(); drawMap(); drawTimeline(); $("clock").textContent = `${fmt(t)} / ${fmt(duration())}`; }
   panels(now);
   requestAnimationFrame(frame);

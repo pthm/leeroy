@@ -130,7 +130,7 @@ reads the files every 250 ms (starting over if one shrinks). The page asks for w
 The map is a canvas drawn by `viewer.js` every frame from the samples around the playhead (a window from
 `/samples`, extended by `/live`). Live, the playhead trails the clock by 2.5 s so players are drawn between two samples
 (about 1 s apart) and glide. The panels are htmx fragments, morphed in place (idiomorph), refreshed when the playhead
-moves, data arrives or the UI state changes: at most 5 times a second, Stats once. UI state (the selection, tab,
+moves, data arrives or the UI state changes: at most 8 times a second, Stats 4. UI state (the selection, tab,
 filters, metric, sort) is an Alpine store, kept in `localStorage`. `AZVIEW_DEV=<path to azview/>` serves the templates
 and static files from disk on every request instead of the built-in copies: edit, then reload the browser.
 
