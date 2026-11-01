@@ -37,6 +37,9 @@ const (
 	smsgSetPctSpellMod    = 0x267
 	msgChannelStart       = 0x139
 	msgChannelUpdate      = 0x13A
+	cmsgCancelChannelling = 0x13B
+	cmsgCancelAutoRepeat  = 0x26D
+	smsgCancelAutoRepeat  = 0x29C
 	msgCorpseQuery        = 0x216
 	cmsgResurrectResponse = 0x15C
 	cmsgSpiritHealerAct   = 0x21C
@@ -85,6 +88,7 @@ type agentState struct {
 	resFrom     uint64                 // who offered to resurrect us (SMSG_RESURRECT_REQUEST)
 	timers      map[uint32]mirrorTimer // breath, fatigue, fire
 	mods        map[spellMod]int32     // SMSG_SET_FLAT/PCT_SPELL_MODIFIER: the talents' and auras' total per mod
+	repeatEnded time.Time              // the last SMSG_CANCEL_AUTO_REPEAT for you: the server stopped your auto-repeat spell
 }
 
 // spellMod: one of the server's spell modifier totals (Player::AddSpellMod): flat or percent, the SpellModOp, and the
@@ -169,6 +173,61 @@ func (b *Bot) setupAgentAPI() {
 		}
 		return nil
 	})
+	e.Func("spells.stop_casting", "() → Request", "stop the cast or channel in progress (me.casting), as the client's Escape does: ok once the server has ended it; not_casting when there's none; cast_finished when it went off first",
+		func() map[string]any {
+			spell := s.casting()
+			if spell == 0 {
+				return b.refuse("spells.stop_casting", nil, "not_casting", "no cast or channel in progress (me.casting)")
+			}
+			args := map[string]any{"spell": spell}
+			o := w.GetObject(w.CharGUID())
+			channel := o != nil && o.Value(client.UnitChannelSpell) == spell
+			var err error
+			if channel {
+				err = w.SendPacketRaw(cmsgCancelChannelling, binary.LittleEndian.AppendUint32(nil, spell)) // what the client sends for a channel
+			} else {
+				err = w.CancelCast(spell)
+			}
+			if err != nil {
+				return b.refuse("spells.stop_casting", args, "failed", err.Error())
+			}
+			// Spell::cancel answers with SMSG_SPELL_FAILURE (cast_failed), and a channel's update to 0
+			return b.request("spells.stop_casting", args, 2*time.Second, func() *script.Outcome {
+				if channel && s.casting() != spell {
+					return script.Ok(nil)
+				}
+				return nil
+			}, func(ev script.Event) *script.Outcome {
+				if c, ok := ev.Data.(types.Cast); ok && c.Spell == spell {
+					switch {
+					case ev.Type == "cast_failed":
+						return script.Ok(nil)
+					case ev.Type == "cast_done" && !channel:
+						return script.Fail("cast_finished", "it went off before the server took the stop", nil)
+					}
+				}
+				return nil
+			})
+		})
+	e.Func("spells.stop_auto_repeat", "() → Request", "stop your auto-repeating spell (a wand's Shoot, Auto Shot), as the client does: ok once the server says it stopped; not_repeating when the server sends no stop (none was running)",
+		func() map[string]any {
+			sent := time.Now()
+			if err := w.SendPacketRaw(cmsgCancelAutoRepeat, nil); err != nil {
+				return b.refuse("spells.stop_auto_repeat", nil, "failed", err.Error())
+			}
+			return b.request("spells.stop_auto_repeat", nil, 3*time.Second, func() *script.Outcome {
+				s.mu.Lock()
+				ended := s.repeatEnded.After(sent)
+				s.mu.Unlock()
+				switch {
+				case ended:
+					return script.Ok(nil)
+				case time.Since(sent) > 1500*time.Millisecond:
+					return script.Fail("not_repeating", "the server sent no stop: no auto-repeat spell was running", nil)
+				}
+				return nil
+			}, nil)
+		})
 	e.Func("me.location", "() → Location", "where you are, by the game's own zone and area names", func() types.Location {
 		s.mu.Lock()
 		z, a := s.zone, s.area
@@ -575,6 +634,16 @@ func (s *agentState) startCD(spell uint32, c cdRule, now time.Time) {
 	}
 }
 
+// casting: the spell of the cast or channel in progress, 0 for none
+func (s *agentState) casting() uint32 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.castSpell != 0 && time.Until(s.castUntil) > 0 {
+		return s.castSpell
+	}
+	return 0
+}
+
 func (s *agentState) castSent(spell uint32) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -729,6 +798,10 @@ func (s *agentState) onPacket(me uint64, op uint16, data []byte) {
 			if spell == s.gcdSpell { // interrupted while preparing: the server cancels its GCD (Spell::cancel)
 				s.gcdUntil, s.gcdSpell = time.Time{}, 0
 			}
+		}
+	case smsgCancelAutoRepeat: // Unit::InterruptSpell(CURRENT_AUTOREPEAT_SPELL) -> Player::SendAutoRepeatCancel
+		if readPackedGUID(r) == me {
+			s.repeatEnded = now
 		}
 	case smsgSpellDelayed: // caster, ms: pushback from a hit
 		if readPackedGUID(r) == me && s.castSpell != 0 {

@@ -2998,11 +2998,10 @@ func (w *WorldClient) CancelAura(spellID uint32) error {
 	return w.sendPacket(CmsgCancelAura, buf.Bytes())
 }
 
-// CancelCast sends CMSG_CANCEL_CAST (optional cast count; 0 is fine).
-func (w *WorldClient) CancelCast() error {
-	buf := new(bytes.Buffer)
-	_ = binary.Write(buf, binary.LittleEndian, uint8(0))
-	return w.sendPacket(CmsgCancelCast, buf.Bytes())
+// CancelCast sends CMSG_CANCEL_CAST (cast count, which the server skips, and the spell; 0 stops any cast, channel or
+// auto-repeat spell: Unit::InterruptNonMeleeSpells).
+func (w *WorldClient) CancelCast(spell uint32) error {
+	return w.sendPacket(CmsgCancelCast, binary.LittleEndian.AppendUint32([]byte{0}, spell))
 }
 
 // PetAction sends CMSG_PET_ACTION (petGUID, packed action, targetGUID).
