@@ -66,16 +66,7 @@ func (tree *StaticMapTree) worldTriangles(ctx context.Context, mi *ModelInstance
 		if scale == 0 {
 			scale = 1
 		}
-		// model space -> world: the inverse of intersectModelHeight's transform (rotation transposed, x and y
-		// flipped by the server's internal coordinates)
-		world := func(v Vector3) Vector3 {
-			p := Vector3{
-				(inv[0][0]*v.X + inv[1][0]*v.Y + inv[2][0]*v.Z) * scale,
-				(inv[0][1]*v.X + inv[1][1]*v.Y + inv[2][1]*v.Z) * scale,
-				(inv[0][2]*v.X + inv[1][2]*v.Y + inv[2][2]*v.Z) * scale,
-			}
-			return Vector3{pos.X - p.X, pos.Y - p.Y, pos.Z + p.Z}
-		}
+		world := toWorld(pos, inv, scale)
 		for gi := range model.groupModels {
 			g := &model.groupModels[gi]
 			wv := make([]Vector3, len(g.Vertices))
@@ -91,4 +82,27 @@ func (tree *StaticMapTree) worldTriangles(ctx context.Context, mi *ModelInstance
 	}
 	worldTris.Store(mi, out) // a model that won't load is stored empty: not read again
 	return out
+}
+
+// toWorld maps model coordinates to the world for an instance at pos (world), rotated by inv's transpose, scaled:
+// the inverse of intersectModelHeight's transform (x and y flipped by the server's internal coordinates).
+func toWorld(pos Vector3, inv [3][3]float32, scale float32) func(Vector3) Vector3 {
+	return func(v Vector3) Vector3 {
+		p := Vector3{
+			(inv[0][0]*v.X + inv[1][0]*v.Y + inv[2][0]*v.Z) * scale,
+			(inv[0][1]*v.X + inv[1][1]*v.Y + inv[2][1]*v.Z) * scale,
+			(inv[0][2]*v.X + inv[1][2]*v.Y + inv[2][2]*v.Z) * scale,
+		}
+		return Vector3{pos.X - p.X, pos.Y - p.Y, pos.Z + p.Z}
+	}
+}
+
+// PlacementWorld maps a model's own coordinates to the world for a model placed by an ADT (MDDF or MODF): pos and rot
+// as the ADT stores them (its x and z are the world's y and x from the map's far corner, y is height; rot in
+// degrees), the same transform the server's vmaps use for that placement.
+func PlacementWorld(pos, rot [3]float32, scale float32) func(Vector3) Vector3 {
+	if scale == 0 {
+		scale = 1
+	}
+	return toWorld(Vector3{VMAP_mid - pos[2], VMAP_mid - pos[0], pos[1]}, inverseRotationMatrix(Vector3{rot[0], rot[1], rot[2]}), scale)
 }
