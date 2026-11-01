@@ -1,0 +1,12 @@
+name: hardcore-warrior
+description: >
+  One new level-1 Human warrior in Northshire on Claude Code (Sonnet 5.5), levelling for 4 hours with the hardcore
+  rule: the first death ends the run. Scored on XP earned before the run ends, per hour of the full clock.
+goal: score:100000000
+hardcore: true
+minutes: 240
+require_fresh: true
+runtime: claude
+models: {claude: claude-sonnet-5-5}
+agents:
+  - {name: a55, char: Brannoc, class: warrior, spec: arms}

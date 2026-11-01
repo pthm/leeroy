@@ -30,6 +30,8 @@ type Scenario struct {
 	Channel string   `yaml:"channel"` // the zone channel joined at login; default General - Elwynn Forest
 	Hint    string   `yaml:"hint"`    // appended to the goal in the prompt
 	Notice  string   `yaml:"notice"`  // added to the prompt: text, or a .md file next to the YAML
+	// Hardcore: a character's first death ends its run (judge.Options.Hardcore), and the prompt says so
+	Hardcore bool `yaml:"hardcore"`
 	// RequireFresh refuses to start if any agent's workspace exists (a run for new agents)
 	RequireFresh bool              `yaml:"require_fresh"`
 	Models       map[string]string `yaml:"models"`   // runtime -> model (default: the runtime's own)
@@ -148,7 +150,7 @@ func ID(m map[string]int, s string) (int, error) {
 
 var (
 	nameRe  = regexp.MustCompile(`^[A-Za-z]{2,12}$`)
-	goalRe  = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|score):\d+|skill:\d+:\d+)$`)
+	goalRe  = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|zone|score):\d+|skill:\d+:\d+)$`)
 	agentRe = regexp.MustCompile(`^[a-z0-9-]{1,16}$`)
 )
 

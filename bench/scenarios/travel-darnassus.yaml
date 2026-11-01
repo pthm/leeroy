@@ -1,0 +1,14 @@
+name: travel-darnassus
+description: >
+  Smoke test for getting around: one new level-30 Human warrior in Northshire on Claude Code (Sonnet 5.5), with one
+  goal: reach Darnassus (zone 1657), on another continent. Level 30 so the way there is mostly travel, not fighting.
+  Scored on time to arrive.
+goal: zone:1657
+minutes: 90
+start: northshire
+level: 30
+require_fresh: true
+runtime: claude
+models: {claude: claude-sonnet-5-5}
+agents:
+  - {name: a54, char: Odric, class: warrior}

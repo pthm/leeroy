@@ -286,7 +286,8 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 	o := judge.Options{Char: p.a.Char, Goal: r.s.Goal, Timeout: time.Duration(r.s.Minutes) * time.Minute,
 		Every: 15 * time.Second, Samples: filepath.Join(p.dir, "samples.jsonl"),
 		Record: filepath.Join(r.dir, p.a.Name+".record.jsonl"), Board: filepath.Join(r.dir, "board"),
-		Events: filepath.Join(r.dir, p.a.Char+".events.jsonl"), Role: spec.Role, Runtime: p.a.Runtime}
+		Events: filepath.Join(r.dir, p.a.Char+".events.jsonl"), Role: spec.Role, Runtime: p.a.Runtime,
+		Hardcore: r.s.Hardcore}
 	if resume {
 		o.Resume = o.Samples
 	}

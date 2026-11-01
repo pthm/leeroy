@@ -20,6 +20,8 @@ bin/azbench run bench/scenarios/hogger-trio.yaml --minutes 60
 | `hogger-trio.yaml` | 120 | three new level-5 Claude Code agents a41-a43 in Goldshire (Protection Paladin, Holy Priest, Frost Mage) with one goal: "Wanted: Hogger" (quest 176) |
 | `deadmines.yaml` | 10080 | five new level-1 Codex (GPT-6.1 Sol) agents a44-a48 in Northshire, a dungeon party, with one goal: clear the Deadmines (`achievement:628`). A week on the clock; each stops when it has the achievement |
 | `deadmines-sonnet.yaml` | 10080 | the same party and goal on Claude Code with Sonnet 5.5, a49-a53 |
+| `travel-darnassus.yaml` | 90 | smoke test for getting around: a new level-30 Human warrior (a54, Sonnet) in Northshire, goal: reach Darnassus (`zone:1657`) on the other continent |
+| `hardcore-warrior.yaml` | 240 | a new level-1 Human Arms warrior (a55, Sonnet) levelling with `hardcore`: the first death ends the run |
 
 All but the smoke tests set `require_fresh`: they refuse to start if any agent's workspace exists.
 
@@ -31,7 +33,7 @@ Unknown fields are errors, so a typo doesn't silently change a run.
 |---|---|
 | `name` | the run directory is `runs/<time>-<name>/`; default the file name |
 | `description` | for people |
-| `goal` | a judge goal: `score:100000` (XP per hour; "as much as possible"), `level:10`, `quest:176`, `achievement:628`, `quests:5`, `skill:164:75`, `money:<copper>`, `item:<entry>`, `quality:<0-5>`, `achpoints:<n>` ([judge](../../azbench/judge/README.md)) |
+| `goal` | a judge goal: `score:100000` (XP per hour; "as much as possible"), `level:10`, `quest:176`, `achievement:628`, `quests:5`, `skill:164:75`, `money:<copper>`, `item:<entry>`, `quality:<0-5>`, `achpoints:<n>`, `zone:<id>` (in that zone, an AreaTable id) ([judge](../../azbench/judge/README.md)) |
 | `minutes` | the run's length; default 60 |
 | `wrap_up_minutes` | how long an agent and its session keep going after its judge records the goal (its score is final; a `goal_met` event tells it); default 5 |
 | `start` | where every character starts: a name from [`places.yaml`](../places.yaml), `"x y z map zone"`, or `{x, y, z, map, zone}`. Omitted: where they are (new characters: their race's start) |
@@ -39,6 +41,7 @@ Unknown fields are errors, so a typo doesn't silently change a run.
 | `setup` | for characters from earlier runs: `revive` (no ghost, corpse or resurrection sickness), `repair` (every item), `reset_talents` |
 | `channel` | the zone channel joined at login; default `General - Elwynn Forest` |
 | `hint` | appended to the goal in the prompt |
+| `hardcore` | a character's first death ends its run; the score is then the value per hour of the whole clock (binary goals: unmet, 0), and the prompt states the rule |
 | `notice` | added to the prompt: text, or a `.md` file next to the scenario (e.g. what changed since the agents' last run) |
 | `require_fresh` | refuse to start if any agent's workspace exists |
 | `runtime`, `race`, `provider` | defaults for agents without their own: `claude`, `human`, the runtime's own |

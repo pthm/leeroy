@@ -42,17 +42,18 @@ type Matrix struct {
 
 // Task is one row of a matrix: a goal, and optionally its own grid and starting conditions.
 type Task struct {
-	Key     string   `yaml:"key"`
-	Goal    string   `yaml:"goal"`
-	Minutes Ints     `yaml:"minutes"`
-	Races   []string `yaml:"races"`
-	Classes []string `yaml:"classes"`
-	Reps    int      `yaml:"reps"`
-	Level   int      `yaml:"level"`
-	Money   int      `yaml:"money"`
-	Start   *Place   `yaml:"start"`
-	Channel string   `yaml:"channel"`
-	Hint    string   `yaml:"hint"`
+	Key      string   `yaml:"key"`
+	Goal     string   `yaml:"goal"`
+	Minutes  Ints     `yaml:"minutes"`
+	Races    []string `yaml:"races"`
+	Classes  []string `yaml:"classes"`
+	Reps     int      `yaml:"reps"`
+	Level    int      `yaml:"level"`
+	Money    int      `yaml:"money"`
+	Start    *Place   `yaml:"start"`
+	Channel  string   `yaml:"channel"`
+	Hint     string   `yaml:"hint"`
+	Hardcore bool     `yaml:"hardcore"`
 }
 
 // Cell is one solo run of a matrix.
@@ -133,7 +134,7 @@ func pickS(a, b []string) []string {
 // Scenario is the solo run of one cell, for a character and agent named by the caller.
 func (b *Bench) CellScenario(m *Matrix, c Cell, agent, char string) (*Scenario, error) {
 	s := &Scenario{Name: fmt.Sprintf("%s-%s", m.Name, c.Key), Goal: c.Goal, Minutes: c.Minutes, Start: c.Task.Start,
-		Level: c.Task.Level, Money: c.Task.Money, Channel: c.Task.Channel, Hint: c.Task.Hint, RequireFresh: true,
+		Level: c.Task.Level, Money: c.Task.Money, Channel: c.Task.Channel, Hint: c.Task.Hint, Hardcore: c.Task.Hardcore, RequireFresh: true,
 		Models: m.Models, Runtime: m.Runtime, Provider: m.Provider,
 		Agents: []Agent{{Name: agent, Char: char, Race: fmt.Sprint(c.Race), Class: fmt.Sprint(c.Class)}}}
 	return s, b.Check(s)

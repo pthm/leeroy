@@ -3,6 +3,7 @@ package run
 import (
 	_ "embed"
 	"fmt"
+	"slices"
 	"strings"
 	"text/template"
 
@@ -50,6 +51,12 @@ func goalText(goal string, mins int) string {
 			name = "skill " + sk
 		}
 		return fmt.Sprintf("raise %s to %s: learn it from a trainer and practise it", name, lvl)
+	case "zone":
+		name := "zone " + n
+		if r, err := world.Rows(world.Bench(), "SELECT name FROM area WHERE id = ?", n); err == nil && len(r) > 0 {
+			name = r[0][0] + " (zone " + n + ")"
+		}
+		return "travel to " + name
 	case "quest":
 		title := ""
 		if r, err := world.Rows(world.World(), "SELECT LogTitle FROM quest_template WHERE ID = ?", n); err == nil && len(r) > 0 {
@@ -78,7 +85,7 @@ FACTION SCORE: every player on this server is on your faction (Alliance); the fa
 yours, is the sum of all players' scores. standings shows every player's score, rates, level and role, their damage
 dealt, damage taken and healing done (not scored), and the faction total.`,
 			"Do not stop early: keep improving your score until the time runs out."
-	case "achievement", "quest", "item", "quality":
+	case "achievement", "quest", "item", "quality", "zone":
 		return `You are scored on the time until the judge, which reads your character from the server database, sees
 the goal met: your score is 3600 / seconds to the goal (1 = met in an hour). If time runs out first, your score is 0.`,
 			"Do not stop until the goal is met: confirm it yourself with wow before finishing."
@@ -86,6 +93,19 @@ the goal met: your score is 3600 / seconds to the goal (1 = met in an hour). If 
 	return `You are scored on the time until the judge, which reads your character from the server database, sees
 the goal met; if time runs out, your progress toward it is the score.`,
 		"Do not stop until the goal is met: confirm it yourself with wow before finishing."
+}
+
+// hardcoreText: a hardcore run's scoring. The first death ends the run, so a binary goal is scored as before but a
+// death before it is a 0, and anything else is scored on what was earned by then over the whole clock.
+func hardcoreText(goal, score, stop string) (string, string) {
+	const rule = "HARDCORE: your run ends the first time your character dies; nothing after that counts.\n"
+	if kind, _, _ := strings.Cut(goal, ":"); slices.Contains([]string{"achievement", "quest", "item", "quality", "zone"}, kind) {
+		return rule + score + " Dying before the goal is a score of 0.", stop
+	}
+	return rule + `HOW YOU ARE SCORED: every 15 seconds the judge reads your character from the server database. Your
+progress is the XP you've earned since the start of the run, from any source (kills, quests, exploring). YOUR
+SCORE is that XP divided by the run's full length in hours, so it stops growing when you die.`,
+		"Do not stop early: keep earning XP until the time runs out, and stay alive."
 }
 
 // prompt renders an agent's task prompt.
@@ -107,6 +127,9 @@ func prompt(s *config.Scenario, b *config.Bench, a config.Agent, repo string) (s
 		return "", err
 	}
 	score, stop := scoreText(s.Goal)
+	if s.Hardcore {
+		score, stop = hardcoreText(s.Goal, score, stop)
+	}
 	var out strings.Builder
 	err = promptTmpl.Execute(&out, map[string]any{"Identity": identity, "GoalText": goalText(s.Goal, s.Minutes),
 		"Hint": strings.TrimSpace(s.Hint), "ScoreText": score, "StopText": stop, "Repo": repo,

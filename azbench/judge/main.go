@@ -6,6 +6,7 @@
 //	| money:<copper> | quests:<n> (quests turned in) | quest:<id> (that quest turned in)
 //	| skill:<id>:<n> (that skill line at n or more, e.g. skill:164:75 = Blacksmithing 75)
 //	| achievement:<id> (that achievement earned, e.g. 628 = Deadmines: Edwin VanCleef killed)
+//	| zone:<id> (the character is in that zone, an AreaTable id: e.g. 1657 = Darnassus)
 //	| achpoints:<n> (achievement points earned since the judge started; needs bin/azworld setup.
 //	  Use a large n to score "as many as possible" by the value at timeout)
 //	| score:<n> (composite: weighted change in every signal since the judge started; weights in score.json,
@@ -43,6 +44,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -51,7 +53,7 @@ import (
 // binaryGoal: a goal that is met or not (an achievement, a quest, an item, an item quality). Its score is by time.
 func binaryGoal(goal string) bool {
 	kind, _, _ := strings.Cut(goal, ":")
-	return kind == "achievement" || kind == "quest" || kind == "item" || kind == "quality"
+	return kind == "achievement" || kind == "quest" || kind == "item" || kind == "quality" || kind == "zone"
 }
 
 // timeScore is a binary goal's score: 3600 / time_to_goal_s (1 = met in an hour), 0 while unmet.
@@ -67,9 +69,9 @@ type failure string
 
 func fail(f string, a ...any) { panic(failure(fmt.Sprintf(f, a...))) }
 
-const usage = "usage: judge <character> <level|item|quality|money|quests|quest|achievement|achpoints|score>:<n> | skill:<id>:<n> [--timeout 4h] [--every 15s] [--samples f] [--resume f] [--record f] [--board dir] [--events f] [--role r] [--runtime r]\n       judge signals <character>"
+const usage = "usage: judge <character> <level|item|quality|money|quests|quest|achievement|achpoints|zone|score>:<n> | skill:<id>:<n> [--timeout 4h] [--every 15s] [--samples f] [--resume f] [--record f] [--board dir] [--events f] [--role r] [--runtime r] [--hardcore]\n       judge signals <character>"
 
-var goalRe = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|score):\d+|skill:\d+:\d+)$`)
+var goalRe = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|zone|score):\d+|skill:\d+:\d+)$`)
 
 func dur(s string) time.Duration {
 	m := regexp.MustCompile(`^(\d+)(s|m|h)$`).FindStringSubmatch(s)
@@ -127,9 +129,10 @@ func Main(args []string) (code int) {
 		}
 		return def
 	}
+	has := func(name string) bool { return slices.Contains(rest, "--"+name) }
 	o := Options{Char: args[0], Goal: args[1], Timeout: dur(flag("timeout", "4h")), Every: dur(flag("every", "15s")),
 		Samples: flag("samples", ""), Record: flag("record", ""), Board: flag("board", ""), Events: flag("events", ""),
-		Role: flag("role", ""), Runtime: flag("runtime", ""), Resume: flag("resume", "")}
+		Role: flag("role", ""), Runtime: flag("runtime", ""), Resume: flag("resume", ""), Hardcore: has("hardcore")}
 	res, met, err := Run(context.Background(), o)
 	if err != nil {
 		fail("%v", err)
@@ -151,6 +154,9 @@ type Options struct {
 	Events         string // the character's event stream: combat totals and, from its neighbours, cooperation
 	Role, Runtime  string // added to the board (and the runtime to the result)
 	Resume         string // samples.jsonl of a paused run: same baseline and curve; the clock resumes at the last one
+	// Hardcore: the first death ends the run, the goal unmet, and the score is the value per hour of the whole clock
+	// (a death freezes progress; a fast start that dies early doesn't score its rate)
+	Hardcore bool
 }
 
 // Run judges until the goal is met, the timeout passes or ctx is done, and returns the final result line (JSON)
@@ -199,6 +205,7 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		"quest":       "SELECT COUNT(*) FROM character_queststatus_rewarded WHERE quest = " + n + " AND guid = " + g,
 		"skill":       "SELECT COALESCE(MAX(value), 0) FROM character_skills WHERE skill = " + n + " AND guid = " + g,
 		"achievement": "SELECT COUNT(*) FROM character_achievement WHERE achievement = " + n + " AND guid = " + g,
+		"zone":        "SELECT COUNT(*) FROM characters WHERE zone = " + n + " AND name = '" + char + "'",
 		"achpoints":   "SELECT COALESCE(SUM(a.points), 0) FROM character_achievement ca JOIN wowbench.achievement a ON a.id = ca.achievement\n    WHERE ca.guid = " + g,
 	}[kind]
 
@@ -248,7 +255,7 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 	}
 	need, _ := strconv.ParseFloat(n, 64)
 	switch kind {
-	case "item", "quality", "quest", "achievement":
+	case "item", "quality", "quest", "achievement", "zone":
 		need = 1
 	case "skill":
 		need, _ = strconv.ParseFloat(parts[2], 64)
@@ -281,6 +288,10 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		score := round1(r.Score)
 		if binaryGoal(goal) {
 			score = timeScore(value >= need, elapsedS)
+		}
+		died := o.Hardcore && sig.get("deaths") > base["deaths"]
+		if o.Hardcore && !binaryGoal(goal) {
+			score = round1(value / timeout.Hours())
 		}
 		rates := obj{{"rate", round1(r.Rate)}, {"recent_rate", round1(r.Recent)}, {"best_window", round1(r.BestWindow)},
 			{"pace", round1(r.Pace)}, {"score", score}}
@@ -318,10 +329,13 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		if record != "" {
 			appendLine(record, append(obj{{"t", nowMs()}, {"ev", "score"}, {"n", char}, {"value", value}, {"level", level}}, rates...))
 		}
-		if value >= need || nowMs()-start > timeout.Milliseconds() {
+		if value >= need || died || nowMs()-start > timeout.Milliseconds() {
 			res := obj{{"char", char}, {"goal", goal}, {"met", value >= need}}
 			if runtime != "" {
 				res = append(res, kv{"runtime", runtime})
+			}
+			if o.Hardcore {
+				res = append(res, kv{"died", died})
 			}
 			var ttg any // null when unmet
 			if value >= need {

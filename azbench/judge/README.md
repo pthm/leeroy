@@ -41,10 +41,11 @@ bin/azbench judge Agentone level:10 --timeout 4h
 | `item:<entry>` | 1 once the character owns that item |
 | `quality:<0-5>` | 1 once it owns any item of that quality or better (3 = rare) |
 | `achievement:<id>` | 1 once the character has earned that achievement (e.g. 628 Deadmines: Edwin VanCleef killed) |
+| `zone:<id>` | 1 once the character is in that zone (an AreaTable id, e.g. 1657 Darnassus; the `wowbench.area` table) |
 | `achpoints:<n>` | achievement points earned since the judge started (needs the `wowbench` schema from `bin/azworld setup`) |
 | `score:<n>` | weighted change in the signals since the judge started (weights in `score.json`) |
 
-The goal is met when the value reaches n (1 for `quest`, `achievement`, `item`, `quality`). For "as much as possible", pass a large
+The goal is met when the value reaches n (1 for `quest`, `achievement`, `item`, `quality`, `zone`). For "as much as possible", pass a large
 n and read the value at timeout.
 
 | Flag | |
@@ -57,6 +58,7 @@ n and read the value at timeout.
 | `--events <file>` | the character's event stream (`azsdk -events`); its combat totals, and cooperation from every `<Char>.events.jsonl` beside it, go on the board |
 | `--role <DPS\|Tank\|Healer>` | added to the board |
 | `--runtime <name>` | added to the board and the result |
+| `--hardcore` | the first death (the `deaths` signal rising) ends the run unmet, with `died` in the result; non-binary goals score value / the whole clock's hours, so dying early doesn't keep a high rate |
 | `--resume <samples.jsonl>` | continue a paused run: same baseline and curve, and the clock resumes at the last sample |
 
 On exit it prints one JSON line and exits 0 if the goal was met, 1 if it timed out.
@@ -73,7 +75,7 @@ Computed for every goal from the value curve, in value per hour (`metrics.Curve`
 | `pace` | time-average of the value so far (area under the curve / time) |
 | `score` | `(rate + best_window) / 2`; for binary goals, `3600 / time_to_goal_s` (0 until met) |
 
-Binary goals (`achievement`, `quest`, `item`, `quality`) are met or not, so their score is by time:
+Binary goals (`achievement`, `quest`, `item`, `quality`, `zone`) are met or not, so their score is by time:
 `3600 / time_to_goal_s`, 1 for a goal met in an hour, 0 while unmet. `score` is the headline for `score:` goals. Time spent trying a new strategy lowers `rate` but not `best_window`;
 deaths and stalls cost through the time they lose.
 
