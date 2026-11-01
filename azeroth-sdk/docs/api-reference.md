@@ -234,7 +234,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 |---|---|---|
 | `objects.find(entry [, dist = 80]) → Object?` | the nearest game object with that entry; nil if none | [Object](#object) |
 | `objects.nearby([dist = 30]) → Object[]` | game objects within dist yards (chests, doors, quest objects, herbs...), nearest first | [Object](#object) |
-| `objects.use(guid [, spell]) → Request<ObjectActivation>` | use a game object within ~5 yd. Chests use Opening; herb, ore and locked nodes select Herb Gathering, Mining or Pick Lock from observed lock metadata. not_available while the object template is loading; unsupported_gathering requires an explicit spell. Plain objects require an observed state change. data.kind distinguishes cast completion from state_changed; neither establishes quest progress. Completion: matching opening cast completion or an observed game-object state change; quest progress is checked separately by act.use_object. | [Request](#request), [ObjectActivation](#objectactivation) |
+| `objects.use(guid [, spell]) → Request<ObjectActivation>` | use a game object within ~5 yd. Chests use the Opening spell for their lock's type; herb, ore and locked nodes select Herb Gathering, Mining or Pick Lock from observed lock metadata. not_available while the object template is loading; unsupported_gathering requires an explicit spell. Plain objects require an observed state change. data.kind distinguishes cast completion from state_changed; neither establishes quest progress. Completion: matching opening cast completion or an observed game-object state change; quest progress is checked separately by act.use_object. | [Request](#request), [ObjectActivation](#objectactivation) |
 
 ### quests
 

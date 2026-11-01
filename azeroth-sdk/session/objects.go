@@ -25,12 +25,13 @@ var lockSkills = map[uint32]struct {
 	skill uint32
 }{1: {"lockpicking", 633}, 2: {"herbalism", 182}, 3: {"mining", 186}, 19: {"fishing", 356}, 20: {"inscription", 773}}
 
-// The client uses the profession's opening spell for a node, not the
-// generic quest-container spell. An explicit objects.use spell still overrides it.
-func openingSpell(gather string) (uint32, bool) {
+// The client uses the profession's opening spell for a node, and for other locks the Opening spell for the
+// lock's type (Spell.dbc: 5 -> 3365, 12 -> 6477, 13 -> 6478, 17 -> 21651...). An explicit objects.use spell
+// still overrides it.
+func openingSpell(gather string, lock uint32) (uint32, bool) {
 	switch gather {
 	case "":
-		return spellOpening, true
+		return lockOpening(lock), true
 	case "herbalism":
 		return 2366, true
 	case "mining":
@@ -40,6 +41,18 @@ func openingSpell(gather string) (uint32, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// lockOpening: the spell for the first of the lock's types that has one; spellOpening for no lock or none
+func lockOpening(lock uint32) uint32 {
+	loadLocks()
+	loadSpells()
+	for _, r := range locks.m[lock] {
+		if s := openLock[r.index]; r.kind == 2 && s != 0 {
+			return s
+		}
+	}
+	return spellOpening
 }
 
 type lockReq struct{ kind, index, skill uint32 } // kind 1: item (index = entry), 2: lock type (index = LOCKTYPE_*)

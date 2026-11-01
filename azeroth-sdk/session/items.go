@@ -39,7 +39,7 @@ const (
 
 	fieldGOBytes1 = 0x11 // GAMEOBJECT_BYTES_1: state, type, art kit, anim progress
 	goTypeChest   = 3
-	spellOpening  = 6478 // "Opening": what the game client casts on locked chests and quest crates
+	spellOpening  = 6478 // "Opening" (lock type 13): what objects.use casts on a chest whose lock names no type with its own spell
 )
 
 type itemProto struct {
@@ -709,7 +709,7 @@ func (b *Bot) setupItems() {
 		})
 
 	// ---------- objects ----------
-	e.Func("objects.use", "(guid [, spell]) → Request<ObjectActivation>", "use a game object within ~5 yd. Chests use Opening; herb, ore and locked nodes select Herb Gathering, Mining or Pick Lock from observed lock metadata. not_available while the object template is loading; unsupported_gathering requires an explicit spell. Plain objects require an observed state change. data.kind distinguishes cast completion from state_changed; neither establishes quest progress",
+	e.Func("objects.use", "(guid [, spell]) → Request<ObjectActivation>", "use a game object within ~5 yd. Chests use the Opening spell for their lock's type; herb, ore and locked nodes select Herb Gathering, Mining or Pick Lock from observed lock metadata. not_available while the object template is loading; unsupported_gathering requires an explicit spell. Plain objects require an observed state change. data.kind distinguishes cast completion from state_changed; neither establishes quest progress",
 		func(guid uint64, spell uint32) map[string]any {
 			args := map[string]any{"object": gs(guid)}
 			o := w.GetObject(guid)
@@ -719,13 +719,13 @@ func (b *Bot) setupItems() {
 			if spell == 0 && (o.Value(fieldGOBytes1)>>8)&0xFF == goTypeChest {
 				ob := b.object(o)
 				creatures.Lock()
-				known := goNames.t[ob.Entry] != nil
+				t := goNames.t[ob.Entry]
 				creatures.Unlock()
-				if !known {
+				if t == nil {
 					return b.refuse("objects.use", args, "not_available", "object lock metadata is loading; inspect the object and retry")
 				}
 				var supported bool
-				spell, supported = openingSpell(ob.Gather)
+				spell, supported = openingSpell(ob.Gather, lockID(t.typ, t.data))
 				if !supported {
 					return b.refuse("objects.use", args, "unsupported_gathering", "specify the applicable spell explicitly")
 				}

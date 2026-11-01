@@ -833,11 +833,12 @@ var (
 	spellsDir  string
 	spellsOnce sync.Once
 	spells     map[uint32]*spellRec
+	openLock   map[uint32]uint32 // lock type (LOCKTYPE_*) -> the spell that opens it without a skill, see lockOpening
 )
 
 func loadSpells() {
 	spellsOnce.Do(func() {
-		spells = map[uint32]*spellRec{}
+		spells, openLock = map[uint32]*spellRec{}, map[uint32]uint32{}
 		b, err := os.ReadFile(filepath.Join(spellsDir, "dbc", "Spell.dbc"))
 		if err != nil || len(b) < 20 || string(b[:4]) != "WDBC" {
 			fmt.Fprintf(os.Stderr, "Spell.dbc not loaded (cooldowns/spell_info unavailable): %v\n", err)
@@ -862,6 +863,13 @@ func loadSpells() {
 				CategoryCooldown: f(30), GCDCategory: f(205), GCD: f(206), PowerType: f(41), Cost: f(42),
 				Range: ranges[f(46)], CastMS: castTimes[f(28)], Level: f(38), costPct: f(204), attrs: f(4), attrsEx2: f(6), dispel: f(2),
 				casterState: f(20), targetState: f(21)}
+			// the client's own Opening spells: SPELL_EFFECT_OPEN_LOCK (Effect[3] 71, MiscValue[3] 110 = lock type),
+			// hidden and unlogged (attributes 0x80|0x100); the lowest id for each lock type
+			for k := 0; k < 3; k++ {
+				if f(71+k) == 33 && f(4)&0x180 == 0x180 && (openLock[f(110+k)] == 0 || f(0) < openLock[f(110+k)]) {
+					openLock[f(110+k)] = f(0)
+				}
+			}
 		}
 	})
 }
