@@ -64,7 +64,9 @@ scripts and waits up to 90 s for it to leave combat: a character dropped mid-fig
 there) and logs it out. At the end: `team.json`, `report.json` and `replay.html`.
 
 An agent that exits with 2 or more minutes left (a Codex usage limit, a conversation that ended) is reported on
-stderr and in `alerts.log`, with the runtime's last error; bring it back with `azbench restart`.
+stderr and in `alerts.log`, with the runtime's last error; bring it back with `azbench restart`. A session that
+exits by itself (its world connection lost, the daemon crashed) is reported the same way and pauses the run: the
+judges stop at their last sample, so the clock doesn't run on a character nobody controls.
 
 ### Pause, resume and restart
 

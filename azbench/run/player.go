@@ -126,8 +126,24 @@ func (p *player) daemon(extra ...string) (*exec.Cmd, error) {
 		log.Close()
 		return nil, err
 	}
-	go func() { cmd.Wait(); log.Close() }()
+	go func() { cmd.Wait(); log.Close(); p.sessionExited(cmd) }()
 	return cmd, nil
+}
+
+// sessionExited: a session that ends by itself while the run plays (its world connection lost, the daemon crashed).
+// The judge would run the clock on a character nobody controls, so the run pauses: the judges stop at their last
+// sample, and an operator resumes it. A session the supervisor stops is no longer p.session when it exits.
+func (p *player) sessionExited(cmd *exec.Cmd) {
+	p.mu.Lock()
+	current := p.session == cmd
+	p.mu.Unlock()
+	if !current || p.r.ctx.Err() != nil {
+		return
+	}
+	code := cmd.ProcessState.ExitCode()
+	p.harness(types.DiagnosticDetails{Component: "session", State: types.StateStop, Runtime: p.a.Runtime, ExitCode: &code})
+	p.r.alert(p, fmt.Sprintf("session exited (code %d, see %s/session.log): pausing the run", code, p.ws))
+	p.r.pause()
 }
 
 func alive(c *exec.Cmd) bool {
@@ -567,22 +583,25 @@ func (p *player) stopAgent() {
 	}
 }
 
-// stopSession: calm the character (out of combat), then stop the daemon, which logs out.
+// stopSession: calm the character (out of combat), then stop the daemon, which logs out. The log is copied also
+// when the session had already exited.
 func (p *player) stopSession() {
 	p.mu.Lock()
 	cmd := p.session
 	p.session = nil
 	p.mu.Unlock()
-	if !alive(cmd) {
+	if cmd == nil {
 		return
 	}
-	calm(p.port)
-	syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
-	for i := 0; i < 400 && alive(cmd); i++ { // the logout takes ~20 s out of combat
-		time.Sleep(100 * time.Millisecond)
-	}
 	if alive(cmd) {
-		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		calm(p.port)
+		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		for i := 0; i < 400 && alive(cmd); i++ { // the logout takes ~20 s out of combat
+			time.Sleep(100 * time.Millisecond)
+		}
+		if alive(cmd) {
+			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
 	}
 	if b, err := os.ReadFile(filepath.Join(p.ws, "session.log")); err == nil {
 		os.WriteFile(filepath.Join(p.dir, "session.log"), b, 0o644)

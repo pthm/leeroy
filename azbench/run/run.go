@@ -351,8 +351,12 @@ func (r *Runner) count(state string) (n int) {
 // its character calmed out of combat and logged out.
 func (r *Runner) pause() {
 	r.mu.Lock()
+	already := r.paused
 	r.paused = true
 	r.mu.Unlock()
+	if already { // a signal, azbench pause and exited sessions can all ask
+		return
+	}
 	for _, p := range r.players {
 		p.runtimeState("supervisor", types.StatePause)
 	}
