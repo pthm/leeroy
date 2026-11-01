@@ -155,7 +155,9 @@ function fit() {
 // it also zooms to fit them; scrolling then adjusts zoomBias, how much closer or further than a snug fit
 // Auto follow (autoCam): the camera keeps the selected player (follow), the selected group, or everyone in view; off,
 // the map stays where it's put. Dragging turns it off, the button, A or Fit turn it back on.
-let autoZoom = saved.autoZoom ?? true, zoomBias = saved.zoomBias ?? 1, autoCam = saved.autoCam ?? true, follow = null;
+let autoZoom = saved.autoZoom ?? true, zoomBias = saved.zoomBias ?? 1, autoCam = saved.autoCam ?? true;
+// the player the camera follows: the selected one, while auto follow is on (however they were selected)
+const followed = () => (autoCam ? store().sel : null);
 const saveZoom = () => { try { localStorage.setItem("azview", JSON.stringify({ ...JSON.parse(localStorage.getItem("azview") || "{}"), autoZoom, zoomBias, autoCam })); } catch {} };
 const tiles = new Map();
 function drawTiles(w, h) {
@@ -351,8 +353,8 @@ function drawMap() {
   let centre = null;
   let gm = s.grp != null ? groupMembers() : null;
   if (gm && !gm.size) { s.grp = null; gm = null; } // the selected group has broken up (or isn't formed yet): back to everyone
-  const frame = !autoCam || follow ? null : gm ? [...gm] : [...P.keys()];
-  if (autoCam && follow) centre = at(follow, t);
+  const follow = followed(), frame = !autoCam || follow ? null : gm ? [...gm] : [...P.keys()];
+  if (follow) centre = at(follow, t);
   else if (frame) {
     const pts = frame.map((n) => at(n, t)).filter((pp) => pp && pp.s.m === M.id);
     if (pts.length) {
@@ -545,7 +547,7 @@ function wire() {
   });
   cv.addEventListener("wheel", (e) => {
     e.preventDefault(); const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top, k = Math.exp(-e.deltaY * 0.0015);
-    if (autoZoom && autoCam && !follow) { zoomBias = Math.max(0.1, Math.min(10, zoomBias * k)); saveZoom(); dirty = true; return; }
+    if (autoZoom && autoCam && !followed()) { zoomBias = Math.max(0.1, Math.min(10, zoomBias * k)); saveZoom(); dirty = true; return; }
     view.ox = mx - (mx - view.ox) * k; view.oy = my - (my - view.oy) * k; view.s *= k; dirty = true;
   }, { passive: false });
   $("fitbtn").addEventListener("click", refit);
@@ -577,7 +579,7 @@ function wire() {
   document.addEventListener("click", (e) => {
     const el = e.target.closest?.("[data-clear], .tile[data-metric], [data-chart], .mrow[data-n], .pc[data-n], .ghead[data-g], .row[data-t]"); if (!el) return;
     const s = store();
-    if (el.matches("[data-clear]")) { s.sel = s.grp = null; follow = null; return; }
+    if (el.matches("[data-clear]")) { s.sel = s.grp = null; return; }
     if (el.matches(".tile")) { s.metric = el.dataset.metric; return; }
     if (el.matches("[data-chart]")) { s.chart = el.dataset.chart; return; }
     if (el.matches(".mrow")) return select(s.sel === el.dataset.n ? null : el.dataset.n, false);
@@ -592,18 +594,21 @@ function wire() {
   pane.addEventListener("mouseleave", () => tip(null));
   addEventListener("resize", () => { fit(); dirty = true; });
 }
-const refit = () => { follow = null; autoCam = true; zoomBias = 1; saveZoom(); fit(); controls(); dirty = true; };
+// Fit: auto follow back on, the zoom reset to a snug fit of what it follows (the selection, or everyone)
+const refit = () => { autoCam = true; zoomBias = 1; saveZoom(); if (!store().sel) fit(); else view.s = Math.max(view.s, 2.5); controls(); dirty = true; };
 const toggleFollow = () => { autoCam = !autoCam; saveZoom(); controls(); dirty = true; };
 const toggleZoom = () => { autoZoom = !autoZoom; saveZoom(); controls(); };
-// one selection for everything: the roster highlights it, the map draws its route (and follows it, from a card), the
+// one selection for everything: the roster highlights it, the map draws its route (and the camera follows it while
+// auto follow is on; a card turns auto follow on), the
 // feed and stats narrow to it
 function select(n, followIt = true) {
-  const s = store(); follow = followIt ? n : n === follow ? follow : null; s.sel = n; s.grp = null;
+  const s = store(); s.sel = n; s.grp = null;
+  const follow = followIt && n; // from a card: follow them (auto follow on); from the map, the camera follows them if it's on
   if (n) loadRoute(n);
   if (follow) { autoCam = true; view.s = Math.max(view.s, 2.5); mapMode = "auto"; updateMaps(); }
   controls(); dirty = true;
 }
-function selectGroup(g) { const s = store(); s.grp = g; s.sel = null; follow = null; if (g != null) { autoCam = true; view.s = Math.max(view.s, 2); } controls(); dirty = true; }
+function selectGroup(g) { const s = store(); s.grp = g; s.sel = null; if (g != null) { autoCam = true; view.s = Math.max(view.s, 2); } controls(); dirty = true; }
 
 // ---------- map picker ----------
 // Auto shows the map the followed player is on, else the one most players are on; picking a map holds it.
@@ -615,7 +620,7 @@ function updateMaps() {
   const n = new Map();
   for (const name of P.keys()) { const pp = at(name, t); if (pp) { n.set(pp.s.m, (n.get(pp.s.m) ?? 0) + 1); SEEN_MAPS.add(pp.s.m); } }
   if (mapMode === "auto") {
-    const f = autoCam && follow && at(follow, t);
+    const f = followed() && at(followed(), t);
     let best = f ? f.s.m : undefined;
     if (best === undefined) for (const [m, c] of n) if (best === undefined || c > n.get(best) || (c === n.get(best) && m === M.id)) best = m;
     showMap(best);
@@ -662,7 +667,7 @@ const duration = () => Math.max(dataEnd, running() ? Date.now() - B.start - LIVE
 function setT(v) { t = Math.max(0, Math.min(duration(), v)); liveFollow = t >= duration() - 1500 && running(); playing = false; dirty = true; controls(); need(t); }
 function controls() {
   $("play").textContent = playing ? "❚❚" : "▶"; $("play").setAttribute("aria-label", playing ? "Pause" : "Play");
-  $("live").setAttribute("aria-pressed", liveFollow); $("zoombtn").setAttribute("aria-pressed", autoZoom); $("zoombtn").disabled = !!follow || !autoCam;
+  $("live").setAttribute("aria-pressed", liveFollow); $("zoombtn").setAttribute("aria-pressed", autoZoom); $("zoombtn").disabled = !!followed() || !autoCam;
   $("followbtn").setAttribute("aria-pressed", autoCam);
 }
 function frame(now) {

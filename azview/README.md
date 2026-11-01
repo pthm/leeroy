@@ -191,10 +191,12 @@ everywhere: the map follows it, the feed and the stats narrow to it.
   players (hostile red, neutral yellow, friendly green, dead grey), named when zoomed in; players and creatures are
   drawn at their size in the game once zoomed in far enough (a creature's bounding radius, from its model; a player's
   0.306 yd), never smaller than a few pixels; death, achievement, level
-  and quest markers (hover for what happened, click to jump there). The camera follows a selected player; otherwise
-  it keeps a selected group, or everyone, centred, and with Auto zoom (Z, on by default) zoomed to fit them. Auto follow (A, on by default) is that camera: off, the map stays where you put it; dragging the map turns it off, and clicking a card or a group header turns it back on; scrolling
-  then sets how much closer or further than a snug fit (remembered), instead of zooming freely. Drag to pan (which
-  stops the camera following); Fit (F) goes back to framing everyone and resets the auto zoom offset. A picker chooses the map (Auto: the followed player's, else where most players are).
+  and quest markers (hover for what happened, click to jump there). The camera (Auto follow, A, on by default)
+  follows the selected player, however they were selected (their card, their dot, a stats row); otherwise it keeps a
+  selected group, or everyone, centred, and with Auto zoom (Z, on by default) zoomed to fit them: scrolling then sets
+  how much closer or further than a snug fit (remembered), instead of zooming freely. Off, the map stays where you put
+  it. Dragging the map turns it off; clicking a card or a group header turns it back on, and so does Fit (F), which also
+  resets the zoom to fit what it follows. A picker chooses the map (Auto: the followed player's, else where most players are).
 - **Layers** (the map bar's Layers menu, L; remembered). Overlays: **Heatmap** (H) of where the players (or the
   selected player or group) spent their time up to the playhead, or where they died, killed, gained XP, or took or
   dealt damage (each step between position samples adds its seconds along its line; an event adds its count or amount
