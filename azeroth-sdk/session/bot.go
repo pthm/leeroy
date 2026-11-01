@@ -380,6 +380,7 @@ func (b *Bot) Run() BotResult {
 		}
 	}
 	b.wm = b.watchWorldMessages()
+	b.agent = b.watchAgentState()
 	b.world.AddPacketHook(func(op uint16, data []byte) {
 		if op == client.SmsgLootResponse {
 			b.handleLootResponse(data)

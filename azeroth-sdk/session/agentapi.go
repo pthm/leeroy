@@ -118,11 +118,12 @@ func (t mirrorTimer) view(id uint32) types.MirrorTimer {
 	return types.MirrorTimer{Timer: mirrorNames[id], State: state, SecondsLeft: math.Round(left/100) / 10, MaxS: float64(t.max / 1000)}
 }
 
-func (b *Bot) setupAgentAPI() {
+// watchAgentState goes on before login: the server sends SMSG_INITIAL_SPELLS (the cooldowns still running, the
+// Hearthstone's), the talents' spell modifiers and the world states while logging in.
+func (b *Bot) watchAgentState() *agentState {
 	s := &agentState{cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, onEvent: map[uint32]cdRule{}, pushed: map[uint32]time.Time{}, earned: map[uint32]bool{},
 		criteria: map[uint32]uint64{}, timers: map[uint32]mirrorTimer{}, mods: map[spellMod]int32{}}
 	w := b.world
-	b.agent = s
 	s.itemCD = func(item uint64, entry, spell uint32) (cdRule, bool) {
 		if o := w.GetObject(item); o != nil {
 			entry = o.Value(3)
@@ -135,7 +136,11 @@ func (b *Bot) setupAgentAPI() {
 	spellsDir = b.config.DataDir
 	go loadSpells() // ~50MB; don't stall the packet goroutine on first use
 	w.AddPacketHook(func(op uint16, data []byte) { s.onPacket(w.CharGUID(), op, data) })
-	e := b.lua
+	return s
+}
+
+func (b *Bot) setupAgentAPI() {
+	s, w, e := b.agent, b.world, b.lua
 
 	// ---------- me ----------
 	e.Func("me.stats", "() → Stats?", "your character sheet: what gear, buffs and talents add up to; nil until the character object is observed", func() any {

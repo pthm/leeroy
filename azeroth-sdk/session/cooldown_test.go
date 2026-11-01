@@ -196,3 +196,28 @@ func TestItemQueryCooldown(t *testing.T) {
 		t.Fatalf("%+v", it)
 	}
 }
+
+// A session restarted within the Hearthstone's cooldown: the server's SMSG_INITIAL_SPELLS at login brings it back
+// (the cast spell with category 0, its time as rec), and watchAgentState hooks it before login so it isn't missed.
+func TestHearthstoneCooldownAtLogin(t *testing.T) {
+	dir, _ := filepath.Abs("../../data")
+	if _, err := os.Stat(filepath.Join(dir, "dbc", "Spell.dbc")); err != nil {
+		t.Skip("no game data in ../../data")
+	}
+	spellsDir = dir
+	spellsOnce = sync.Once{}
+	le := binary.LittleEndian
+	b := testBot()
+	b.config.DataDir = dir
+	s := b.watchAgentState()
+	p := le.AppendUint16(le.AppendUint16([]byte{0}, 0), 1)
+	p = le.AppendUint16(le.AppendUint16(le.AppendUint32(p, 8690), 6948), 0)
+	p = le.AppendUint32(le.AppendUint32(p, 1200000), 0) // 20 minutes left
+	s.onPacket(b.world.CharGUID(), smsgInitialSpells, p)
+	if ms := cdMS(s.cooldownLeft(8690)); ms < 1199000 || ms > 1200000 {
+		t.Errorf("Hearthstone after login: %v ms", ms)
+	}
+	if ms := cdMS(s.itemCooldownLeft(8690, spellInfo(8690).Category)); ms < 1199000 || ms > 1200000 {
+		t.Errorf("Hearthstone item cooldown after login: %v ms", ms)
+	}
+}
