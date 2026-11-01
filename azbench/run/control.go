@@ -102,7 +102,7 @@ func (r *Runner) restart(name, message string) error {
 			return
 		}
 		left := time.Duration(r.minutesLeft() * float64(time.Minute))
-		msg := replaceLeft(message, left)
+		msg := replaceLeft(message, left) + p.changes()
 		if err := p.startAgent(msg, p.conversation(), time.Now().Add(left)); err != nil {
 			r.alert(p, "restart: "+err.Error())
 			return

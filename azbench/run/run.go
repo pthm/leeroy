@@ -275,13 +275,14 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 	end := time.Now().Add(left)
 	var err error
 	if resume {
-		msg := replaceLeft(message, left)
+		msg := replaceLeft(message, left) + p.changes()
 		if conv := p.conversation(); conv != "" || p.a.Runtime == "none" {
 			err = p.startAgent(msg, conv, end)
 		} else {
 			err = fmt.Errorf("no conversation to resume in %s/agent.jsonl", p.dir)
 		}
 	} else {
+		p.changes() // the revision it starts on
 		var text string
 		if text, err = prompt(r.s, r.b, p.a, r.repo); err == nil {
 			os.WriteFile(filepath.Join(p.dir, "prompt.md"), []byte(text), 0o644)

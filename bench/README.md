@@ -78,7 +78,11 @@ bin/azbench resume bench/runs/<time>-fresh-split --message resume.md
 Each character logs back in, its judge continues from its samples (same baseline and curve; the pause doesn't
 count) and its agent's conversation is resumed (Claude `--resume <session id>`, Codex `exec resume <thread>`) with
 the message, where `$LEFT` is replaced with the minutes left. The workspaces' docs (`AGENTS.md`, the SDK docs and
-`example.lua`) are refreshed, so SDK and doc changes reach the agents.
+`example.lua`) are refreshed, so SDK and doc changes reach the agents. When the SDK revision (the last commit under
+`azeroth-sdk` or `bench/agent`, plus a hash of their uncommitted changes) differs from the one in `<agent>/sdk.rev`,
+the message ends with a generated `WHAT CHANGED` section: the subjects of the commits since, and a line when there
+are uncommitted SDK changes (in a jj checkout git's `HEAD` is `@-`, so the working copy's changes count as uncommitted).
+Commit subjects are what agents read there, so they state what changed, not advice.
 
 `azbench restart <run dir> <agent> --message <file>` does the same for one agent while the others play: its
 workspace docs are refreshed, its session restarts on the current build and its conversation resumes. Its judge
@@ -98,6 +102,7 @@ keeps running.
 | `<agent>/judge.json`, `<agent>.out` | the judge's final result |
 | `<agent>/meta.json` | `agent`, `char`, `runtime`, `model`, `spec`, `role`, `goal`, `port` |
 | `<agent>/session.log` | the session log, copied from the workspace when the session stops |
+| `<agent>/sdk.rev` | the SDK revision its last start, resume or restart ran on (for `WHAT CHANGED`) |
 | `<agent>.record.jsonl` | the client-side event log for the viewer (positions, combat, chat, API calls) |
 | `<Char>.events.jsonl` | the character's event stream; the judge reads combat and cooperation from it |
 | `board/<Char>.json` | each judge's latest result (with `minutes_left`), read by `standings` |
