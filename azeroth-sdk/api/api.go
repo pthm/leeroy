@@ -204,7 +204,7 @@ var methods = map[string]method{
 }
 
 // harnessEvents: the events the supervisor sends (events.harness)
-var harnessEvents = []string{"goal_met"}
+var harnessEvents = []string{"goal_met", "maintenance"}
 
 // The agent's position in each character's event stream: every eval reply says what happened since the last one.
 var (
@@ -219,7 +219,7 @@ var (
 	subs   = map[*script.Engine][]string{}
 )
 
-var defaultSubs = []string{"goal_met", "attention", "death", "stall", "script_error", "task_finished", "party_invite", "trade", "summon_request", "ready_check", "loot_roll_start",
+var defaultSubs = []string{"goal_met", "maintenance", "attention", "death", "stall", "script_error", "task_finished", "party_invite", "trade", "summon_request", "ready_check", "loot_roll_start",
 	"gear_broken", "chat:whisper", "chat:party", "chat:raid", "chat:say"}
 
 func subscribed(e *script.Engine) []string {
@@ -233,7 +233,7 @@ func subscribed(e *script.Engine) []string {
 
 // informational events eval replies always show in full (they don't wake the agent unless subscribed). Channel
 // chat is how players broadcast to each other, so it's shown even though it doesn't wake by default.
-var shown = []string{"goal_met", "level_up", "resurrected", "error", "notice", "party_changed", "quest_complete", "quest_turned_in",
+var shown = []string{"goal_met", "maintenance", "level_up", "resurrected", "error", "notice", "party_changed", "quest_complete", "quest_turned_in",
 	"chat:channel", "slow_tick"}
 
 // news summarises the events since the agent's last eval: {seq, counts by type, important events (last 20)}.

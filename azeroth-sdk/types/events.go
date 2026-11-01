@@ -201,6 +201,12 @@ type GoalMet struct {
 	EndsAt  int64  `json:"ends_at" doc:"unix ms: when your agent and session stop"`
 }
 
+// Maintenance: an operator notice about the run (sent by the run's supervisor).
+type Maintenance struct {
+	At      int64  `json:"at" doc:"unix ms: when it takes effect"`
+	Message string `json:"message" doc:"what happens then, e.g. the run pauses"`
+}
+
 type ErrorEvent struct {
 	Op      string `json:"op" doc:"items, items.loot, vendor.buy, vendor.sell, trainer.learn, group, quests, chat.whisper, chat.channel, chat.join"`
 	Code    string `json:"code"`
@@ -460,6 +466,7 @@ var EventTypes = map[string]EventType{
 	"progress":             {Progress{}, "a periodic digest of your progress (events.watch{every_s = ...}; off by default)"},
 	"answer":               {Answer{}, "the agent answered (answer)"},
 	"goal_met":             {GoalMet{}, "the judge recorded the run's goal for you: your score is final"},
+	"maintenance":          {Maintenance{}, "an operator notice: what happens to the run (a pause, a server restart) and when"},
 }
 
 // Action results: the data of an ok result, per op (ops not listed have none).

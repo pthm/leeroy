@@ -8,6 +8,7 @@
 //	azbench resume <run dir> --message <file> [--minutes n]  continue a paused run
 //	azbench pause|status <run dir>                           control a running run
 //	azbench restart <run dir> <agent> --message <file>       bring one agent back mid-run
+//	azbench maintenance <run dir> <minutes> <message>        tell every agent what happens to the run, and when
 //	azbench judge <Char> <goal> [flags]                      score one character (judge/README.md)
 //	azbench report <run dir>                                 the report card and team.json
 //	azbench compare <run dir>...                             players of several runs by runtime and model
@@ -52,6 +53,6 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: azbench run|scenario|matrix|resume|pause|status|restart|judge|report|compare|signals|reset|gm|apidoc|prices|standings ...")
+	fmt.Fprintln(os.Stderr, "usage: azbench run|scenario|matrix|resume|pause|status|restart|maintenance|judge|report|compare|signals|reset|gm|apidoc|prices|standings ...")
 	os.Exit(2)
 }

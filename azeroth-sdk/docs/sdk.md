@@ -148,12 +148,12 @@ wow subscribe -task_finished                     # remove types
 wow subscribe death,stall,chat:whisper           # replace it
 ```
 
-**Your subscription** decides what `wow wait` (without `--types`) waits for. The default is `goal_met`, `attention`, `death`,
+**Your subscription** decides what `wow wait` (without `--types`) waits for. The default is `goal_met`, `maintenance`, `attention`, `death`,
 `stall`, `script_error`, `task_finished`, `party_invite`, `trade`, `gear_broken`, and chat from players to you
 (`chat:whisper`, `chat:party`, `chat:raid`, `chat:say`). A session restart resets it to the default.
 
 **Every `wow` reply** carries `"events"`: what happened since your previous call, counted by type, with these in
-full: the types you subscribe to, failed actions and tasks, `goal_met`, channel chat, level-ups, resurrections, errors, notices,
+full: the types you subscribe to, failed actions and tasks, `goal_met`, `maintenance`, channel chat, level-ups, resurrections, errors, notices,
 group changes, quest completions and slow ticks. Subscribed chat, invites, trades, questions from scripts, script
 errors and slow ticks also go to stderr, so piping a reply through `cut` or `jq` doesn't hide them.
 The log keeps the whole run, through session restarts, and reading it consumes nothing.

@@ -249,3 +249,40 @@ func TestCopyNotes(t *testing.T) {
 		t.Fatalf("prompt.md: %s", b)
 	}
 }
+
+// azbench maintenance: each session that's up gets a maintenance event with when it takes effect; a message is
+// required
+func TestMaintenance(t *testing.T) {
+	var got struct {
+		Method string
+		Params struct {
+			Type string
+			Data types.Maintenance
+		}
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		json.NewDecoder(req.Body).Decode(&got)
+		fmt.Fprintln(w, `{"jsonrpc":"2.0","id":1,"result":3}`)
+	}))
+	defer srv.Close()
+	port, _ := strconv.Atoi(srv.URL[strings.LastIndex(srv.URL, ":")+1:])
+	dir := t.TempDir()
+	r := &Runner{dir: dir, ctx: context.Background()}
+	up := &player{r: r, port: port, session: exec.Command("sleep", "60")}
+	up.session.Start()
+	defer up.session.Process.Kill()
+	r.players = []*player{up, {r: r, port: 1}} // the second has no session
+
+	if _, err := r.maintenance(time.Now(), " "); err == nil {
+		t.Fatal("no message accepted")
+	}
+	at := time.Now().Add(10 * time.Minute)
+	n, err := r.maintenance(at, "the run pauses for a deploy")
+	if err != nil || n != 1 {
+		t.Fatalf("sent %d: %v", n, err)
+	}
+	if got.Method != "events.harness" || got.Params.Type != "maintenance" || got.Params.Data.At != at.UnixMilli() ||
+		got.Params.Data.Message != "the run pauses for a deploy" {
+		t.Fatalf("notify: %+v", got)
+	}
+}

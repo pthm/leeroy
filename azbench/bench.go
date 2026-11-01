@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/pthm/leeroy/azbench/config"
 	"github.com/pthm/leeroy/azbench/judge"
@@ -160,6 +162,13 @@ func benchCommand(cmd string, args []string) bool {
 	case "restart":
 		pos := parse(2, "<run dir> <agent> --message <file>")
 		out, err := run.Control(pos[0], "POST", "/restart", map[string]string{"agent": pos[1], "message": readFile(*message)})
+		check(err)
+		fmt.Print(string(out))
+	case "maintenance":
+		pos := parse(3, "<run dir> <minutes> <message>")
+		mins, err := strconv.ParseFloat(pos[1], 64)
+		check(err)
+		out, err := run.Control(pos[0], "POST", "/maintenance", map[string]any{"minutes": mins, "message": strings.Join(pos[2:], " ")})
 		check(err)
 		fmt.Print(string(out))
 	case "reset":

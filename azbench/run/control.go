@@ -38,6 +38,20 @@ func (r *Runner) serveControl() func() {
 		}
 		fmt.Fprintln(w, `{"ok":true}`)
 	})
+	mux.HandleFunc("POST /maintenance", func(w http.ResponseWriter, req *http.Request) {
+		var q struct {
+			Minutes float64
+			Message string
+		}
+		json.NewDecoder(req.Body).Decode(&q)
+		n, err := r.maintenance(time.Now().Add(time.Duration(q.Minutes*float64(time.Minute))), q.Message)
+		if err != nil {
+			w.WriteHeader(400)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "sent": n})
+	})
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		r.logf("no control API: %v", err)
@@ -114,6 +128,30 @@ func (r *Runner) restart(name, message string) error {
 		p.logf("back, %.0f min left", left.Minutes())
 	}()
 	return nil
+}
+
+// maintenance sends every session that's up a maintenance event: what the operator will do (message) and when (at).
+// It returns how many got it.
+func (r *Runner) maintenance(at time.Time, message string) (int, error) {
+	if strings.TrimSpace(message) == "" {
+		return 0, fmt.Errorf("maintenance needs a message: what happens then")
+	}
+	r.logf("maintenance at %s: %s", at.Format("15:04:05"), message)
+	n := 0
+	for _, p := range r.players {
+		p.mu.Lock()
+		up := alive(p.session)
+		p.mu.Unlock()
+		if !up {
+			continue
+		}
+		if err := notify(r.ctx, p.port, "maintenance", types.Maintenance{At: at.UnixMilli(), Message: message}); err != nil {
+			r.alert(p, "maintenance: "+err.Error())
+			continue
+		}
+		n++
+	}
+	return n, nil
 }
 
 func replaceLeft(msg string, left time.Duration) string {

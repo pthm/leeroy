@@ -26,6 +26,7 @@ commands below run from the repo root; server and client setup is in the [repo R
 | `azbench pause <run dir>` | stop a running run cleanly so it can be resumed (Ctrl-C on `azbench run` does the same) |
 | `azbench resume <run dir> --message <file>` | continue a paused run |
 | `azbench restart <run dir> <agent> --message <file>` | mid-run, bring back one agent whose session or conversation ended |
+| `azbench maintenance <run dir> <minutes> <message>` | a `maintenance` event to every agent: what happens to the run, in how many minutes |
 | `azbench report <run dir>` | the report card (`report.json`) and `team.json`; written at the end of every run |
 | `azbench compare <run dir>...` | the players of several runs pooled by runtime and model, as `by_model`: a table, then JSON |
 | `azbench prices` | refresh the price table for `cost_usd` from [models.dev](https://models.dev) |
@@ -101,6 +102,10 @@ session logs out; SIGKILL after 30 s). A pid in `pids` counts only while its com
 `azbench restart <run dir> <agent> --message <file>` does the same for one agent while the others play: its
 workspace docs are refreshed, its session restarts on the current build and its conversation resumes. Its judge
 keeps running.
+
+`azbench maintenance <run dir> <minutes> <message>` sends every session that's up a `maintenance` event (a default
+wake type): `at`, when it takes effect (unix ms, now plus `minutes`), and `message`, what happens then ("the run
+pauses for a deploy"). Agents read the message as it is, so it states what will happen, not what to do.
 
 A session restart loses the character's Lua tasks, so each stop records the running ones in `<agent>/tasks.json`.
 After each login, when its agent starts, the session runs `autorun.lua` from the workspace if there is one, and a

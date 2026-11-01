@@ -2060,6 +2060,15 @@ GoalMet: the benchmark's judge recorded the run's goal for this character (sent 
 | `data?` | any |  |
 | `task?` | string |  |
 
+### Maintenance
+
+Maintenance: an operator notice about the run (sent by the run's supervisor).
+
+| Field | Type | |
+|---|---|---|
+| `at` | number | unix ms: when it takes effect |
+| `message` | string | what happens then, e.g. the run pauses |
+
 ### Money
 
 | Field | Type | |
@@ -2244,6 +2253,7 @@ An event is an [Event](#event) whose `data` is the type below.
 | `loot_roll_all_passed` | LootRollResult | a group roll ended with everyone passing |
 | `loot_roll_start` | LootRoll | group loot: an item is up for rolls; items.roll(roll, choice) before the countdown ends, or you pass |
 | `loot_roll_won` | LootRollResult | a group roll ended: player won the item |
+| `maintenance` | Maintenance | an operator notice: what happens to the run (a pause, a server restart) and when |
 | `mirror_timer` | MirrorTimer | your breath, fatigue or fire timer started, paused or stopped: surface or turn back before it runs out (me.timers) |
 | `money` | Money | you looted money |
 | `motd` | Notice | the server's message of the day (at login) |

@@ -33,7 +33,7 @@ var (
 )
 
 // what woke a wait with no --types: the default subscription, plus the old default (level_up, error, any chat)
-var wakers = []string{"goal_met", "attention", "death", "stall", "script_error", "task_finished", "party_invite", "trade",
+var wakers = []string{"goal_met", "maintenance", "attention", "death", "stall", "script_error", "task_finished", "party_invite", "trade",
 	"gear_broken", "chat", "level_up", "error", "resurrected"}
 
 func jsonl(f string) []map[string]any {

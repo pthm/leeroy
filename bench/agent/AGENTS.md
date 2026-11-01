@@ -77,7 +77,8 @@ standings                                        # the score, and the minutes le
    a finished fight) while you're doing something else.
 3. **You choose what wakes you.** `wow wait` blocks until an event in your subscription (`wow subscribe`): by
    default deaths, stalls (no XP for a while: `events.watch`), script errors, tasks ending, your scripts'
-   questions, invites, trades, broken gear, chat from players to you, and `goal_met` (the judge recorded your goal). `wow events` shows what led up to it.
+   questions, invites, trades, broken gear, chat from players to you, `goal_met` (the judge recorded your goal) and `maintenance` (an operator notice
+   about the run, with the time it takes effect). `wow events` shows what led up to it.
 4. **You change scripts while they run.** Globals persist until you replace them. A loop that reads a settings
    table, or calls functions you redefine with `wow -f`, picks up the change on its next pass (sdk.md,
    "Reloading and changing a running script"). Keep state you want to inspect in globals (`wow 'return state'`).
