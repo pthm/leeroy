@@ -79,6 +79,26 @@ func TestWatchStall(t *testing.T) {
 	}
 }
 
+// Spec J4: time with a Food or Drink aura doesn't count toward a no_xp stall.
+func TestWatchStallSkipsEating(t *testing.T) {
+	b := &Bot{lua: script.NewEngine(func(string, ...any) {}, nil)}
+	b.setupWatch()
+	defer b.lua.Close()
+	if _, err := b.lua.Eval(`return events.watch{stall_s = 1}`); err != nil {
+		t.Fatal(err)
+	}
+	food := types.AuraChange{Aura: types.Aura{Spell: 433, Name: "Food", Mine: true}}
+	b.emit("aura_gained", food)
+	if evs := b.lua.Bus.Wait(script.Query{Types: []string{"stall"}}, 11*time.Second); len(evs) != 0 {
+		t.Fatalf("stall while eating: %v", evs)
+	}
+	since := b.lua.Bus.Seq()
+	b.emit("aura_faded", food)
+	if evs := b.lua.Bus.Wait(script.Query{Since: since, Types: []string{"stall"}}, 11*time.Second); len(evs) == 0 {
+		t.Fatal("no stall after eating ended")
+	}
+}
+
 // actWorld: act.lua over a stubbed game (each stub returns a finished result, so await returns at once), running
 // body as a task until it sets done.
 func actWorld(t *testing.T, stubs, body string) *script.Engine {

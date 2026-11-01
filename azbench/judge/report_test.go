@@ -200,3 +200,20 @@ func TestBinaryGoalScoredByTime(t *testing.T) {
 		t.Fatal("timeScore/binaryGoal")
 	}
 }
+
+// Spec J4: stalls by reason; no_xp isn't a stall for a goal that isn't XP.
+func TestStallsByReason(t *testing.T) {
+	for goal, want := range map[string]any{"level:10": 2.0, "achievement:628": nil} {
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, "meta.json"), []byte(`{"agent":"a1","char":"Tester","goal":"`+goal+`"}`), 0o600)
+		os.WriteFile(filepath.Join(dir, "Tester.events.jsonl"), []byte(`{"t":1,"type":"stall","data":{"reason":"no_xp"}}
+{"t":2,"type":"stall","data":{"reason":"no_xp"}}
+{"t":3,"type":"stall","data":{"reason":"slow"}}
+`), 0o600)
+		Report(dir)
+		st := get(readJSON(filepath.Join(dir, "report.json"))["agents"].([]any)[0], "stalls")
+		if get(st, "no_xp") != want || get(st, "slow") != 1.0 {
+			t.Fatalf("%s: stalls %v", goal, st)
+		}
+	}
+}

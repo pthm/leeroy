@@ -115,7 +115,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `events.query{[since = 0, types = nil, match = nil, last = 50, limit = nil]} → {events}` | past events; types may end in * ("quest_*"), match searches the data; options may be omitted |  |
 | `events.seq() → seq` | the latest event's sequence number |  |
 | `events.wait(type or {types} [, timeout_s]) → event` | the next matching event, nil on timeout (tasks only) |  |
-| `events.watch{[stall_s = 180, below = 0, window_s = 300, every_s = 0]} → settings` | when to emit stall (no XP for stall_s seconds, or fewer than below XP/hour over the last window_s; 0 = off) and progress (a digest every every_s; 0 = off) events. Subscribe to them to be woken |  |
+| `events.watch{[stall_s = 180, below = 0, window_s = 300, every_s = 0]} → settings` | when to emit stall (no XP for stall_s seconds, not counting time eating, drinking or dead; or fewer than below XP/hour over the last window_s; 0 = off) and progress (a digest every every_s; 0 = off) events. Subscribe to them to be woken |  |
 
 ### flights
 
@@ -2156,8 +2156,8 @@ ResurrectOffer: another player cast a resurrection on you.
 
 | Field | Type | |
 |---|---|---|
-| `reason` | string | no_xp: none for stall_s seconds; slow: the rate over window_s fell below below |
-| `seconds?` | number | no_xp: seconds since the last XP |
+| `reason` | string | no_xp: none for stall_s seconds (time eating, drinking or dead doesn't count); slow: the rate over window_s fell below below |
+| `seconds?` | number | no_xp: seconds without XP, not counting time eating, drinking or dead |
 | `xp_per_hour` | number | over the last window_s |
 | `below?` | number |  |
 | `window_s?` | number |  |

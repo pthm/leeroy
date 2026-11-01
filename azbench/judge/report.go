@@ -524,14 +524,20 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 		}
 		tokOut = obj{{"input", tok.in}, {"output", out}, {"cache_read", tok.cr}, {"cache_write", tok.cw}}
 	}
-	deaths, stalls, restarts := 0, 0, 0
+	deaths, restarts := 0, 0
+	stalls := map[string]int{} // by reason
 	for _, e := range events {
 		switch e["type"] {
 		case "death":
 			deaths++
 		case "stall":
-			stalls++
+			stalls[str(get(e["data"], "reason"))]++
 		}
+	}
+	// no XP is no stall when the goal isn't XP (an achievement, an item): null then
+	var noXP any = stalls["no_xp"]
+	if goal, _, _ := strings.Cut(str(meta["goal"]), ":"); goal != "" && goal != "score" && goal != "level" {
+		noXP = nil
 	}
 	// the judge's count from the character database is the right one: the run's window only (no death after the
 	// clock), each death once (a relogin replays the death event of a character logged in dead)
@@ -605,7 +611,8 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 			{"script_starts_per_hour", perH(float64(len(starts)))},
 			{"warmup_progress_per_hour", obj{{"first_minute", rate(sinceStart["first_minute"])},
 				{"settled", rate(sinceStart["settled"])}}}}},
-		{"deaths", deaths}, {"deaths_per_hour", perH(float64(deaths))}, {"stalls", stalls},
+		{"deaths", deaths}, {"deaths_per_hour", perH(float64(deaths))},
+		{"stalls", obj{{"no_xp", noXP}, {"slow", stalls["slow"]}}},
 		{"calls", len(calls)}, {"think_s", obj{{"median", median(thinks)}}},
 		{"tokens", tokOut}, {"cost_usd", costOut},
 		{"combat", obj{{"damage_dealt", combat.DamageDealt}, {"damage_taken", combat.DamageTaken},

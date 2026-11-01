@@ -141,7 +141,8 @@ run it at the end. Per agent:
 | `progress_per_hour_by_state`, `time_pct_by_state` | progress while the agent waited (`wow wait`, sleep), thought, was in a call, or had no script |
 | `wakes` | waits, early wakes per hour, what woke them and whether a script restart followed |
 | `restarts` | restart calls, script starts per hour, progress in a script's first minute vs settled |
-| `deaths`, `stalls`, `calls`, `think_s` | |
+| `stalls` | the session's stall events by reason: `no_xp` (null when the goal isn't XP-based: anything but `score` and `level`) and `slow` |
+| `deaths`, `calls`, `think_s` | |
 | `tokens` | input, output (reasoning included), cache read and write, from the saved transcript and `usage.json`; the supervisor snapshots runtime-local usage after each agent attempt |
 | `cost_usd` | the tokens at the model's list price ([models.dev](https://models.dev), `prices.json`; `azbench prices` refreshes it), the same way for every runtime and plan. Claude Code's cache writes are its 1-hour ones (2x input) from Anthropic, the 5-minute rate through OpenRouter. Null when usage or pricing is unavailable |
 | `combat` | `metrics.Combat`: damage dealt and taken, healing, kills, party kills, deaths, XP |

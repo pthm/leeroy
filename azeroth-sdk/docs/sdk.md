@@ -129,8 +129,8 @@ log.
   after `since`); `match` searches the event's data, case-insensitively. `events.seq()` → the latest seq.
 - `events.emit(name, data)` → seq: an event of your own, of type `script.<name>`.
 - `events.watch{[stall_s = 180, below = 0, window_s = 300, every_s = 0]}`: when the session emits `stall` (no XP
-  for `stall_s` seconds, or fewer than `below` XP per hour over the last `window_s`; once, until XP comes again)
-  and `progress` (XP, XP per hour, kills and deaths every `every_s`; off by default).
+  for `stall_s` seconds, not counting time eating, drinking or dead; or fewer than `below` XP per hour over the
+  last `window_s`; once, until XP comes again) and `progress` (XP, XP per hour, kills and deaths every `every_s`; off by default).
 
 **From the shell:**
 

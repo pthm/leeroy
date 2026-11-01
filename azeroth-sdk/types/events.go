@@ -377,8 +377,8 @@ type EventType struct {
 }
 
 type Stall struct {
-	Reason    string  `json:"reason" doc:"no_xp: none for stall_s seconds; slow: the rate over window_s fell below below"`
-	Seconds   int     `json:"seconds,omitempty" doc:"no_xp: seconds since the last XP"`
+	Reason    string  `json:"reason" doc:"no_xp: none for stall_s seconds (time eating, drinking or dead doesn't count); slow: the rate over window_s fell below below"`
+	Seconds   int     `json:"seconds,omitempty" doc:"no_xp: seconds without XP, not counting time eating, drinking or dead"`
 	XPPerHour float64 `json:"xp_per_hour" doc:"over the last window_s"`
 	Below     float64 `json:"below,omitempty"`
 	WindowS   float64 `json:"window_s,omitempty"`

@@ -711,8 +711,8 @@ func (b *Bot) SetEventsFile(path string) { b.config.EventsFile = path }
 // setupWatch: the "stall" and "progress" events, so the agent can wait for its scripts to need it (subscribe to
 // stall) instead of waking for everything that happens. XP is the measure: kills, quests and exploring all give it.
 //
-//	stall    (types.Stall): no XP for stall_s, or the XP rate over the last window_s below `below`. Once, until
-//	         progress resumes.
+//	stall    (types.Stall): no XP for stall_s (time eating, drinking or dead doesn't count), or the XP rate over
+//	         the last window_s below `below`. Once, until progress resumes.
 //	progress (types.Progress): a digest every every_s (0 = off)
 func (b *Bot) setupWatch() {
 	type gain struct {
@@ -725,7 +725,8 @@ func (b *Bot) setupWatch() {
 		gains                          []gain         // ponytail: trimmed to the window each tick
 		period                         metrics.Combat // kills and deaths since the last digest
 		lastXP, lastDigest             = time.Now(), time.Now()
-		stalled                        string // the reason of the stall reported, until it's over
+		stalled                        string              // the reason of the stall reported, until it's over
+		eating                         = map[uint32]bool{} // Food and Drink auras on you (only you can cast them on you)
 	)
 	b.lua.Bus.Listen(func(ev script.Event) {
 		mu.Lock()
@@ -738,11 +739,19 @@ func (b *Bot) setupWatch() {
 					stalled = ""
 				}
 			}
+		case "aura_gained", "aura_faded":
+			if a, ok := ev.Data.(types.AuraChange); ok && a.Aura.Mine && (a.Aura.Name == "Food" || a.Aura.Name == "Drink" || a.Aura.Name == "Food & Drink") {
+				if ev.Type == "aura_gained" {
+					eating[a.Aura.Spell] = true
+				} else {
+					delete(eating, a.Aura.Spell)
+				}
+			}
 		}
 		period.Add(metrics.Event{Type: ev.Type, Data: ev.Data})
 	})
 	b.lua.Func("events.watch", "{[stall_s = 180, below = 0, window_s = 300, every_s = 0]} → settings",
-		"when to emit stall (no XP for stall_s seconds, or fewer than below XP/hour over the last window_s; 0 = off) and progress (a digest every every_s; 0 = off) events. Subscribe to them to be woken",
+		"when to emit stall (no XP for stall_s seconds, not counting time eating, drinking or dead; or fewer than below XP/hour over the last window_s; 0 = off) and progress (a digest every every_s; 0 = off) events. Subscribe to them to be woken",
 		func(o map[string]any) map[string]any {
 			mu.Lock()
 			defer mu.Unlock()
@@ -772,8 +781,12 @@ func (b *Bot) setupWatch() {
 				return
 			case <-ticker.C:
 			}
+			dead := b.world != nil && !b.IsAlive()
 			mu.Lock()
 			now := time.Now()
+			if dead || len(eating) > 0 { // the no_xp clock stops
+				lastXP = now
+			}
 			for len(gains) > 0 && now.Sub(gains[0].t).Seconds() > max(windowS, everyS) {
 				gains = gains[1:]
 			}
