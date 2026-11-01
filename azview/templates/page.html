@@ -36,7 +36,8 @@
           <label title="Dashed lines from each party member to its leader"><input type="checkbox" x-model="$store.v.groups"> Group lines</label>
           <label title="A red line from each player to their target, with its health"><input type="checkbox" x-model="$store.v.targets"> Target lines</label>
           <label title="Deaths, achievements, levels and quests where they happened"><input type="checkbox" x-model="$store.v.marks"> Event markers</label>
-          <label title="The creatures around the players: hostile red, neutral yellow, friendly green, dead grey"><input type="checkbox" x-model="$store.v.units"> Creatures</label>
+          <label title="The creatures around the players: hostile red, neutral yellow, friendly green, dead grey; hover one for its name, level and health"><input type="checkbox" x-model="$store.v.units"> Creatures
+            <select x-model="$store.v.unitNames" aria-label="Creature names" title="Which creatures are named on the map" @click.stop><option value="targets">names: targets</option><option value="hostile">names: hostile</option><option value="all">names: all</option><option value="off">names: none</option></select></label>
           <label title="How close a player can come before a hostile creature attacks: its detection range, a yard less for each level the nearest player is above it (5 to 45 yd), as the server works it out"><input type="checkbox" x-model="$store.v.aggro"> Aggro radii</label>
           <label title="A pulsing ring on players in combat, and the damage and healing as it happens: dealt (yellow, over the target), taken (red), healed (green)"><input type="checkbox" x-model="$store.v.combat"> Combat</label>
         </div>

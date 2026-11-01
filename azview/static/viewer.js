@@ -19,11 +19,11 @@ const V = {
   t: 0, sel: null, grp: null, tab: "feed", sort: "score", bygroup: true,
   cats: Object.fromEntries(B.cats.map((c) => [c.key, c.on])),
   metric: "dmg", range: "all", chart: "total", per: "0", heat: false, heatKind: "time", roads: false, nav: false,
-  trails: true, groups: true, targets: true, marks: true, units: true, aggro: false, combat: true,
+  trails: true, groups: true, targets: true, marks: true, units: true, unitNames: "targets", aggro: false, combat: true,
   ...saved,
 };
 V.sel = V.grp = null; V.t = 0;
-const PERSIST = ["tab", "sort", "bygroup", "cats", "metric", "range", "chart", "per", "heat", "heatKind", "roads", "nav", "trails", "groups", "targets", "marks", "units", "aggro", "combat"];
+const PERSIST = ["tab", "sort", "bygroup", "cats", "metric", "range", "chart", "per", "heat", "heatKind", "roads", "nav", "trails", "groups", "targets", "marks", "units", "unitNames", "aggro", "combat"];
 document.addEventListener("alpine:init", () => {
   Alpine.store("v", V);
   Alpine.effect(() => { // any change to what the panels show: save it and refresh them
@@ -344,7 +344,7 @@ const groupMembers = () => { const s = store(); if (s.grp == null) return null; 
   return new Set([...P.keys()].filter((n) => at(n, t)?.s.grp === g)); };
 const focusSet = () => { const s = store(); return s.sel ? new Set([s.sel]) : groupMembers(); };
 let markerHits = [];
-let combatShown = false;
+let combatShown = false, unitHits = []; // unitHits: each creature drawn, [x, y, radius, name, level, health %, state], for hovering
 function drawMap() {
   const r = cv.getBoundingClientRect(), s = store(), sel = s.sel;
   combatShown = false;
@@ -386,6 +386,11 @@ function drawMap() {
   const UNIT_COLOR = ["#e04040", "#e8c040", "#40c050"], drawn = new Set();
   if (s.aggro) drawAggro();
   cx.font = "11px system-ui"; cx.textAlign = "left";
+  // their names: by the Layers menu's choice (the players' targets, hostile ones, everyone, nobody), drawn after the
+  // players so a player's name always wins, and skipped where one would overlap a name already drawn
+  const unitLabels = [];
+  unitHits = [];
+  const aims = s.unitNames === "targets" ? [...P.keys()].map((n) => at(n, t)?.s.tg).filter((g) => g && g[2] === M.id) : [];
   if (s.units) for (const n of P.keys()) {
     const a = U[n]; if (!a) continue;
     const u = a[upto(a, t) - 1]; if (!u || t - u.t > 5000 || u.m !== M.id) continue;
@@ -395,8 +400,11 @@ function drawMap() {
       cx.beginPath(); cx.arc(sx, sy, r, 0, 7);
       cx.fillStyle = dead ? "#777a" : UNIT_COLOR[state & 3] ?? "#aaa"; cx.fill();
       cx.lineWidth = 1; cx.strokeStyle = "#000a"; cx.stroke();
-      if (view.s >= 4 && !dead) { const label = `${name} ${lvl}${hp < 100 ? ` ${hp}%` : ""}`;
-        cx.lineWidth = 3; cx.strokeStyle = "#000a"; cx.fillStyle = "#ddd"; cx.strokeText(label, sx + r + 3, sy + 4); cx.fillText(label, sx + r + 3, sy + 4); }
+      unitHits.push([sx, sy, r, name, lvl, hp, state]);
+      if (dead) continue;
+      const aimed = aims.some((g) => Math.hypot(g[0] - x, g[1] - y) < 2);
+      const named = s.unitNames === "all" ? view.s >= 3 : s.unitNames === "hostile" ? view.s >= 3 && (state & 3) === 0 : s.unitNames === "targets" ? aimed && view.s >= 1.5 : false;
+      if (named) unitLabels.push([sx, sy, r, `${name} ${lvl}${hp < 100 ? ` ${hp}%` : ""}`, aimed]);
     }
   }
   // routes are smoothed a little: each corner is cut with a curve through the midpoints of its two sides
@@ -498,6 +506,15 @@ function drawMap() {
     names.push([lx, ly, w]);
     cx.strokeText(label, lx, ly); cx.fillText(label, lx, ly);
   }
+  // creatures' names, around the players' (names: [x, y, width] of each drawn), targeted ones first
+  cx.font = "11px system-ui"; cx.textAlign = "left"; cx.lineWidth = 3; cx.strokeStyle = "#000a";
+  unitLabels.sort((a, b) => b[4] - a[4]);
+  for (const [sx, sy, r, label, aimed] of unitLabels) {
+    const w = cx.measureText(label).width, lx = sx + r + 3, ly = sy + 4;
+    if (names.some(([x, y, pw]) => lx < x + pw + 2 && x < lx + w + 2 && Math.abs(y - ly) < 12)) continue; // would overlap
+    names.push([lx, ly, w]);
+    cx.fillStyle = aimed ? "#ffb0a0" : "#ddd"; cx.strokeText(label, lx, ly); cx.fillText(label, lx, ly);
+  }
   if (s.combat) drawCombatText();
   if (combatShown) dirty = true; // the rings pulse: keep drawing
 }
@@ -528,6 +545,12 @@ function wire() {
   cv.addEventListener("pointermove", (e) => {
     if (!drag) {
       const evs = markersAt(e); cv.style.cursor = evs.length ? "pointer" : "";
+      if (!evs.length) { // a creature under the pointer: its name, level and health
+        const rc = cv.getBoundingClientRect(), mx = e.clientX - rc.left, my = e.clientY - rc.top;
+        const u = unitHits.find(([x, y, r]) => Math.hypot(x - mx, y - my) <= Math.max(5, r + 2));
+        if (u) { const [, , , name, lvl, hp, state] = u, kind = state & 4 ? "dead" : ["hostile", "neutral", "friendly"][state & 3];
+          return tip(`<div><b>${esc(name)}</b> <span class="muted">level ${lvl}</span></div><div class="muted">${kind}${state & 4 ? "" : ` · ${hp}% health`}</div>`, e); }
+      }
       return tip(evs.length ? evs.slice(0, 6).map((ev) => { const [g, c] = GLYPH[ev.ev];
         return `<div class="ev"><span class="t">${fmt(ev.t)}</span><span class="g" style="color:var(${c})">${g}</span><span>${ev.html}</span></div>`; }).join("")
         + (evs.length > 6 ? `<div class="muted">+${evs.length - 6} more</div>` : "") + `<div class="muted hintline">click to jump there</div>` : null, e);
