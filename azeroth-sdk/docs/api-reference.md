@@ -411,7 +411,7 @@ Place is where something is in the world, measured from you: anything around you
 | `y` | number |  |
 | `z` | number |  |
 | `distance` | number | yards from you in a straight line |
-| `in_sight?` | bool | no static world model (rock, walls) between your eyes and it, as world.in_sight checks: a mob in a cave under you can be close but not in sight |
+| `in_sight?` | bool | no large world model (building, wall, cave) between your eyes and it, as world.in_sight checks; small doodads such as trees and many rocks do not block: a mob in a cave under you can be close but not in sight |
 | `path_distance?` | number | how far you'd walk to reach it (often much more than distance, across cliffs, floors and caves); worked out nearest first within a time budget, so the farthest may lack it |
 | `reachable?` | bool | with path_distance: whether a walking route gets you there |
 | `bearing` | number | degrees from where you face: 0 ahead, 90 to your right, -90 to your left, ±180 behind |

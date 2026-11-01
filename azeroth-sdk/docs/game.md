@@ -179,7 +179,7 @@ Every character can wear lighter armor types than its own; heavier ones protect 
 - **Crowd control** (Polymorph, Sap, Gouge, Hammer of Justice, Frost Nova, Psychic Scream) takes a mob out of a
   fight for a while. An aura that breaks on damage (`breaks_on_damage` in a unit's `control`) ends at the first
   damage; a fear, root, stun, confuse or transform from a spell with proc flags ends once the damage taken passes a
-  cap set by the caster's level (`damage_limit`). Fear makes a mob run, sometimes into others. A polymorphed creature
+  cap set by the caster's level (`damage_limit`). A feared creature runs; creatures it passes near follow the normal aggro and assistance rules. A polymorphed creature
   regains a third of its health every 2 seconds, in combat too, and other creatures can still heal or buff a
   controlled one. **Diminishing returns:** a second stun within 15 seconds of the last one ending lasts half as long,
   a third a quarter, and a fourth doesn't land; this applies to creatures for stuns, charges and Cyclone only, and

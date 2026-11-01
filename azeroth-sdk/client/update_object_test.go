@@ -178,7 +178,9 @@ func TestDeathFromHealthUpdateOnly(t *testing.T) {
 	w.charGUID = 5
 	deaths := 0
 	w.OnDeath = func() { deaths++ }
-	health := func(v uint32) { w.readValuesUpdate(bytes.NewReader(le(uint8(1), uint32(1)<<UnitFieldHealth, v)), w.charGUID) }
+	health := func(v uint32) {
+		w.readValuesUpdate(bytes.NewReader(le(uint8(1), uint32(1)<<UnitFieldHealth, v)), w.charGUID)
+	}
 	hit := func(dmg uint32) {
 		var p bytes.Buffer
 		p.Write(le(uint32(0)))

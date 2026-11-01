@@ -181,3 +181,18 @@ A paused run stays on its build or is ended before this lands (reliability spec 
 - Doc corrections are merged. New system docs pass the rules review.
 - Running the scenario with mid-run pauses and a deploy produces no missing tool outputs, refreshed workspace docs, a WHAT CHANGED section, a judge clock that stops at disconnect, and a reliability block that covers the whole run.
 - The re-run is complete and compared with this run in a report.
+
+## Status (2026-10-31)
+
+All S, H, J, P and E items are in the stack above this spec, one change each, with unit tests. Two are partial:
+
+- **S11, deferred in part.** Native-call panics are now recovered and name the op, the Lua line and the Go stack in session.log. The nil behind Isolde's healer panics was not reproduced in game. The next panic will identify it.
+- **S15, deferred in part.** `sight_refused` diagnostics and the in_sight docs are done. in_sight still ignores closed doors and uses fixed eye heights (1.8 / 1.5) rather than each model's collision height. Both corrections need GameObjectDisplayInfo or CreatureModelData geometry. They will be scheduled when the diagnostics show how often they happen.
+
+Still open:
+
+- **aggro_radius.** The SDK uses a 20 yd base. The server uses `creature_template.detection_range` (18 for most spawns), which the session can't read. The docs state the difference.
+- **Run-level criterion.** Not yet exercised end to end. H1 also has not been confirmed against a real Codex rollout: grep the next resume for `output is missing`.
+- **P items.** Each has reference entries and call forms in the system docs, but no separate example scripts.
+- **Re-run and comparison report.** Not done; they need agent runs.
+- **Pathfinding sweep.** 24 of 26 routes from the run pass. The one failure starts in the lake under the broken Lakeshire bridge; the land routes over the same crossing pass.
