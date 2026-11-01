@@ -20,12 +20,13 @@ import (
 // Detail tiles: a continent's map finer than its minimap (256 px per 533-yard square, ~2 yd a pixel). The minimap has
 // the right colours, buildings, water and baked shading but no detail; the ground textures the game paints the terrain
 // with (each chunk's texture layers and alpha maps, from the client's ADT files) have the detail. A detail tile is the
-// minimap, upscaled smoothly, plus the texture render's fine detail: the render minus itself blurred to the
-// minimap's resolution. Where the two disagree a lot (a building or water the textures don't have) less detail is
-// added, so roofs and water stay clean.
+// minimap, upscaled smoothly, plus the texture render's fine detail (the render minus itself blurred to the minimap's
+// resolution, matched to the minimap's brightness), lit by the terrain's own slopes at full resolution in place of the
+// minimap's baked lighting; the buildings, trees and the rest are drawn over it from their models (drawModels).
 
-// DetailVersion changes when detail tiles do (2: the models drawn, 3: textured), so browsers don't keep old ones.
-const DetailVersion = 3
+// DetailVersion changes when detail tiles do (2: the models drawn, 3: textured, 4: detail everywhere, sharp terrain
+// lighting), so browsers don't keep old ones.
+const DetailVersion = 4
 
 // MaxDetail is the finest detail level: a square cut into 2^4 x 2^4 sub-squares, 0.13 yd a pixel.
 const MaxDetail = 4
@@ -317,6 +318,7 @@ func DetailTile(m uint32, gx, gy, level, sx, sy int) []byte {
 		}
 	})
 	blur := boxBlur(ground, W, rad)
+	sharp, soft := terrainShade(m, xN+float64(rad)*res, yW+float64(rad)*res, res, W, rad)
 	out := image.NewRGBA(image.Rect(0, 0, n, n))
 	cl := func(v float64) uint8 { return uint8(math.Max(0, math.Min(255, math.Round(v)))) }
 	bands(n, func(r0, r1 int) {
@@ -329,13 +331,18 @@ func DetailTile(m uint32, gx, gy, level, sx, sy int) []byte {
 				if !ok { // past the minimap's edge (its neighbour has none): the textures alone
 					mm = blur[i]
 				}
-				k := 0.0
 				if have[i] {
 					g, b := ground[i], blur[i]
-					d := math.Abs(mm[0]-b[0]) + math.Abs(mm[1]-b[1]) + math.Abs(mm[2]-b[2])
-					k = math.Max(0, math.Min(1, 1-(d-60)/80)) // what the textures don't have (buildings, water): less detail
-					mm = [3]float64{mm[0] + k*(g[0]-b[0]), mm[1] + k*(g[1]-b[1]), mm[2] + k*(g[2]-b[2])}
+					// The minimap has the game's lighting baked in (a slope facing away from the light, south-east, is
+					// darker than the textures): the detail added is matched to its brightness. Buildings and the like,
+					// which the minimap has and the textures don't, are drawn over all this from their models.
+					s := math.Max(0.25, math.Min(2, lum(mm)/math.Max(1, lum(b))))
+					mm = [3]float64{mm[0] + s*(g[0]-b[0]), mm[1] + s*(g[1]-b[1]), mm[2] + s*(g[2]-b[2])}
 				}
+				// the terrain's own lighting, sharp, in place of the minimap's (a minimap pixel wide: on a slope, where
+				// lighting is most of what you see, ridges and gullies came out as smears)
+				f := math.Max(0.5, math.Min(1.6, sharp[i]/soft[i]))
+				mm = [3]float64{mm[0] * f, mm[1] * f, mm[2] * f}
 				o := out.Pix[r*out.Stride+c*4:]
 				o[0], o[1], o[2], o[3] = cl(mm[0]), cl(mm[1]), cl(mm[2]), 255
 			}
@@ -476,25 +483,7 @@ func drawModels(out *image.RGBA, p *paint, xN, yW, res float64) {
 			}
 		}
 	})
-	// what's below the models: the terrain, sampled every yard or so and interpolated (its own grid is ~4 yd)
-	step := max(1, int(math.Round(1/res)))
-	G := Z/step + 2
-	coarse := make([]float64, G*G)
-	for r := 0; r < G; r++ {
-		for c := 0; c < G; c++ {
-			coarse[r*G+c], _, _ = Sample(m, x0-float64(r*step)*res, y0-float64(c*step)*res)
-		}
-	}
-	ground := make([]float32, Z*Z)
-	for r := 0; r < Z; r++ {
-		fr := (float64(r) + 0.5) / float64(step)
-		r0, wr := int(fr), fr-math.Floor(fr)
-		for c := 0; c < Z; c++ {
-			fc := (float64(c) + 0.5) / float64(step)
-			c0, wc := int(fc), fc-math.Floor(fc)
-			ground[r*Z+c] = float32((1-wr)*((1-wc)*coarse[r0*G+c0]+wc*coarse[r0*G+c0+1]) + wr*((1-wc)*coarse[(r0+1)*G+c0]+wc*coarse[(r0+1)*G+c0+1]))
-		}
-	}
+	ground := terrainHeights(m, x0, y0, res, Z) // what's below the models
 	surface := func(i int) float32 { return max(top[i], ground[i]) }
 	caster := func(i int) float32 { return max(top[i], leafTop[i]) } // what casts a shadow: foliage too
 	steps := int(shadowLen / res)
@@ -559,6 +548,64 @@ func bands(n int, fn func(r0, r1 int)) {
 	}
 	wg.Wait()
 }
+
+// terrainHeights is the terrain's height at each pixel of a Z x Z buffer from (x0, y0) going south and east, sampled
+// every yard or so and interpolated (the terrain's own grid is ~2 yd: corners and middles of 4-yd squares).
+func terrainHeights(m uint32, x0, y0, res float64, Z int) []float32 {
+	step := max(1, int(math.Round(1/res)))
+	G := Z/step + 2
+	coarse := make([]float64, G*G)
+	for r := 0; r < G; r++ {
+		for c := 0; c < G; c++ {
+			coarse[r*G+c], _, _ = Sample(m, x0-float64(r*step)*res, y0-float64(c*step)*res)
+		}
+	}
+	h := make([]float32, Z*Z)
+	for r := 0; r < Z; r++ {
+		fr := (float64(r) + 0.5) / float64(step)
+		r0, wr := int(fr), fr-math.Floor(fr)
+		for c := 0; c < Z; c++ {
+			fc := (float64(c) + 0.5) / float64(step)
+			c0, wc := int(fc), fc-math.Floor(fc)
+			h[r*Z+c] = float32((1-wr)*((1-wc)*coarse[r0*G+c0]+wc*coarse[r0*G+c0+1]) + wr*((1-wc)*coarse[(r0+1)*G+c0]+wc*coarse[(r0+1)*G+c0+1]))
+		}
+	}
+	return h
+}
+
+// terrainShade is how lit the terrain is at each pixel of a W x W buffer: its slope against the sun (the north-west,
+// 45 degrees up), 1 on flat ground. sharp is per pixel; blurred, over a minimap pixel (rad), as the minimap has it.
+func terrainShade(m uint32, x0, y0, res float64, W, rad int) (sharp, blurred []float64) {
+	h := terrainHeights(m, x0, y0, res, W)
+	sun := [3]float64{1 / math.Sqrt(3.96), 1 / math.Sqrt(3.96), 1.4 / math.Sqrt(3.96)}
+	flat := sun[2]
+	px := make([][3]float64, W*W)
+	sharp = make([]float64, W*W)
+	d := max(1, int(math.Round(1/res))) // differences over a yard or two either side
+	for r := 0; r < W; r++ {
+		for c := 0; c < W; c++ {
+			hn, hs := h[max(0, r-d)*W+c], h[min(W-1, r+d)*W+c]
+			hw, he := h[r*W+max(0, c-d)], h[r*W+min(W-1, c+d)]
+			span := 2 * float64(d) * res
+			dx, dy := float64(hn-hs)/span, float64(hw-he)/span // rise towards the north, towards the west
+			l := (-dx*sun[0] - dy*sun[1] + sun[2]) / math.Sqrt(dx*dx+dy*dy+1)
+			if math.IsNaN(l) {
+				l = flat
+			}
+			v := math.Max(0.2, l) / flat
+			sharp[r*W+c] = v
+			px[r*W+c] = [3]float64{v, v, v}
+		}
+	}
+	bl := boxBlur(px, W, rad)
+	blurred = make([]float64, W*W)
+	for i, v := range bl {
+		blurred[i] = v[0]
+	}
+	return sharp, blurred
+}
+
+func lum(c [3]float64) float64 { return 0.3*c[0] + 0.59*c[1] + 0.11*c[2] }
 
 // boxBlur is a W x W image blurred by a (2r+1)-wide box, horizontally then vertically (running sums).
 func boxBlur(a [][3]float64, W, r int) [][3]float64 {
