@@ -722,7 +722,9 @@ function wire() {
   const pane = $("pane");
   pane.addEventListener("mousemove", hoverStats);
   pane.addEventListener("mouseleave", () => { hoverT = hoverN = null; tip(null); drawStats(); });
-  document.addEventListener("htmx:afterSettle", (e) => { if (e.detail.target?.id === "pane") drawStats(); });
+  // the canvases are kept through a swap (hx-preserve, im-preserve: replacing one blanked it until the redraw, a
+  // flash every refresh) and redrawn straight after it, before the browser paints
+  document.addEventListener("htmx:afterSwap", (e) => { if (e.detail.target?.id === "pane") drawStats(); });
   addEventListener("resize", () => drawStats());
   addEventListener("resize", () => { fit(); dirty = true; });
 }

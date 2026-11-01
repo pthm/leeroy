@@ -3,8 +3,8 @@
 {{range .Rows}}<div class="mrow{{if .Sel}} sel{{end}}" data-n="{{.Name}}"><i style="width:{{printf "%.1f" .Width}}%;background:{{.Color}}"></i><span class="who" style="color:{{.Color}}">{{.Name}}</span><span>{{.Value}}</span><span class="muted mx" title="{{.Title}}">{{.Extra}}</span>{{if .Pct}}<span class="muted mp">{{.Pct}}</span>{{end}}</div>
 {{else}}<div class="muted">No {{.Label}} in this window.</div>{{end}}</section>
 <section class="box"><h4 class="ch">Over time {{if not .Gauge}}<span class="seg"><button class="pill" style="--c:var(--accent)" data-chart="total" aria-pressed="{{not .Rate}}">Total</button><button class="pill" style="--c:var(--accent)" data-chart="rate" aria-pressed="{{.Rate}}">{{if .Share}}Share{{else}}Rate{{end}}</button>{{if .Rate}}<select data-stat="per" aria-label="Per">{{range .PerOpts}}<option value="{{.V}}"{{if .Sel}} selected{{end}}>{{.L}}</option>{{end}}</select>{{end}}</span>{{end}}</h4>
-<canvas id="chart"></canvas></section>
-<section class="box"><h4>Activity <span class="muted">· where each player's time went</span></h4><canvas id="strip"></canvas>
+<canvas id="chart" hx-preserve im-preserve="true"></canvas></section>
+<section class="box"><h4>Activity <span class="muted">· where each player's time went</span></h4><canvas id="strip" hx-preserve im-preserve="true"></canvas>
 <div class="slegend">{{range .States}}<span style="--c:{{index . 1}}">{{index . 0}}</span>{{end}}</div></section>
 {{if .HasBy}}<section class="box"><h4><span class="who" style="color:{{.SelColor}}">{{.Sel}}</span> by {{.ByLabel}}</h4>
 {{range .Parts}}<div class="mrow brk"><i style="width:{{printf "%.1f" .Width}}%;background:{{.Color}}"></i><span class="bk">{{.Name}}</span><span>{{.Value}}</span><span class="muted mp">{{.Pct}}</span></div>
