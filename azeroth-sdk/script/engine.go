@@ -1447,22 +1447,47 @@ func (e *Engine) registerRuntime() {
 			return 1
 		},
 	})
-	// log(msg): a log event (tagged with the task) and a line in session.log
+	// log(msg [, data]): a log event (tagged with the task) and a line in session.log; a table logs as JSON
 	e.set("now", func(L *lua.LState) int { L.Push(lua.LNumber(time.Now().UnixMilli())); return 1 })
 	e.set("log", func(L *lua.LState) int {
 		msg := L.ToString(1)
-		data := types.Log{Msg: msg}
+		if t, ok := L.Get(1).(*lua.LTable); ok {
+			msg, _ = jsonText(toGo(t, 0))
+		}
+		data := types.Log{Msg: msg, Data: toGo(L.Get(2), 0)}
 		if t := e.taskOf(L); t != nil {
 			data.Task = t.Name
 		}
+		line := msg
+		if data.Data != nil {
+			text, _ := jsonText(data.Data)
+			line += " " + text
+		}
 		if data.Task != "" {
-			e.logf("[Lua %s] %s", data.Task, msg)
+			e.logf("[Lua %s] %s", data.Task, line)
 		} else {
-			e.logf("[Lua] %s", msg)
+			e.logf("[Lua] %s", line)
 		}
 		go e.Emit("log", data)
 		return 0
 	})
+	e.set("json.encode", func(L *lua.LState) int {
+		text, err := jsonText(toGo(L.CheckAny(1), 0))
+		if err != nil {
+			L.RaiseError("json.encode: %v", err)
+		}
+		L.Push(lua.LString(text))
+		return 1
+	})
+}
+
+// jsonText: v as JSON (tables come from toGo); on failure (NaN, infinity) its error and v printed.
+func jsonText(v any) (string, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprint(v), err
+	}
+	return string(b), nil
 }
 
 // runtimeDocs documents the runtime's own functions (the Go side of task, events, wait...).
@@ -1470,7 +1495,8 @@ var runtimeDocs = [][3]string{
 	{"wait", "(seconds) → nil", "pause the current task (tasks only)"},
 	{"await", "(request [, timeout_s = 30]) → ActionResult", "wait for an action's result (tasks only); wait_timeout does not cancel the request"},
 	{"result", "(id) → (ActionResult | Request)?", "an action's result, its Request while pending, or nil for an unknown or expired ID"},
-	{"log", "(msg) → nil", "a log event (tagged with the task) and a line in session.log"},
+	{"log", "(msg [, data]) → nil", "a log event (tagged with the task) and a line in session.log; data (any value) is kept on the event, and a table as msg logs as JSON"},
+	{"json.encode", "(value) → string", "value as JSON: a sequence becomes an array, any other table an object (keys as strings, sorted)"},
 	{"now", "() → ms", "wall-clock time in milliseconds"},
 	{"help", "([prefix]) → {lines}", "this reference: every function whose name starts with prefix (\"items\", \"act.go\")"},
 	{"doc", "(name, sig, desc) → nil", "document a function of your own so help() lists it"},

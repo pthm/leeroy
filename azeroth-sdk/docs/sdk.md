@@ -160,8 +160,10 @@ local choice = ask("Bags full. Destroy greys or go sell?", {"destroy", "sell"}, 
 
 ## Seeing what your scripts do
 
-- **`log(msg)`** writes a `log` event tagged with the task that wrote it (`wow events --types log --last 20`: each
-  with its time and task) and a line in `session.log` (`12:04:31 [Bot Name] [Lua main] msg`).
+- **`log(msg [, data])`** writes a `log` event tagged with the task that wrote it (`wow events --types log --last 20`: each
+  with its time and task) and a line in `session.log` (`12:04:31 [Bot Name] [Lua main] msg`). `data`, any value, is
+  kept on the event and appended to the line as JSON; a table passed as `msg` is written as JSON. `json.encode(value)`
+  gives the same JSON text.
 - **`task.status(text)`** is what the task says it's doing, in `wow tasks`; keep it current and you can see where
   each task is without reading logs. Changes are also recorded as diagnostic `task_status` events, limited to
   512 bytes and marked as agent claims, with a source file and line when available.

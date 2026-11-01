@@ -14,7 +14,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `await(request [, timeout_s = 30]) → ActionResult` | wait for an action's result (tasks only); wait_timeout does not cancel the request | [ActionResult](#actionresult) |
 | `doc(name, sig, desc) → nil` | document a function of your own so help() lists it |  |
 | `help([prefix]) → {lines}` | this reference: every function whose name starts with prefix ("items", "act.go") |  |
-| `log(msg) → nil` | a log event (tagged with the task) and a line in session.log |  |
+| `log(msg [, data]) → nil` | a log event (tagged with the task) and a line in session.log; data (any value) is kept on the event, and a table as msg logs as JSON |  |
 | `now() → ms` | wall-clock time in milliseconds |  |
 | `result(id) → (ActionResult \| Request)?` | an action's result, its Request while pending, or nil for an unknown or expired ID | [ActionResult](#actionresult), [Request](#request) |
 | `wait(seconds) → nil` | pause the current task (tasks only) |  |
@@ -170,6 +170,12 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `items.rolls() → LootRoll[]` | group loot waiting for your roll (also in me.status().loot_rolls) | [LootRoll](#lootroll) |
 | `items.unequip(slot) → Request` | take off what you wear in a slot (head, chest, main_hand, off_hand, finger1, trinket2, ...) into your bags. Completion: the item is observed outside its equipped slot. | [Request](#request) |
 | `items.use(item [, guid]) → Request<CastDone>` | use an item you carry (entry or guid): food, drink, potions, quest items; optionally on a unit. Food and drink work out of combat, and you must sit still while they tick. Completion: a matching server item-use spell completion event was observed. | [Request](#request), [CastDone](#castdone) |
+
+### json
+
+| Function | | Returns |
+|---|---|---|
+| `json.encode(value) → string` | value as JSON: a sequence becomes an array, any other table an object (keys as strings, sorted) |  |
 
 ### me
 
@@ -2041,6 +2047,7 @@ Energize: power (mana, rage, energy, runic power) given to you, or by you to ano
 | Field | Type | |
 |---|---|---|
 | `msg` | string |  |
+| `data?` | any |  |
 | `task?` | string |  |
 
 ### Money
@@ -2221,7 +2228,7 @@ An event is an [Event](#event) whose `data` is the type below.
 | `kill` | Kill | you killed something |
 | `learned` | Learned | you learned a spell from a trainer |
 | `level_up` | LevelUp | you reached a new level |
-| `log` | Log | log(msg) from a script |
+| `log` | Log | log(msg [, data]) from a script |
 | `loot_roll` | LootRollResult | a group member (or you) chose need, greed, disenchant or pass, or rolled a number |
 | `loot_roll_all_passed` | LootRollResult | a group roll ended with everyone passing |
 | `loot_roll_start` | LootRoll | group loot: an item is up for rolls; items.roll(roll, choice) before the countdown ends, or you pass |

@@ -202,6 +202,7 @@ type ErrorEvent struct {
 
 type Log struct {
 	Msg  string `json:"msg"`
+	Data any    `json:"data,omitempty"`
 	Task string `json:"task,omitempty"`
 }
 
@@ -442,7 +443,7 @@ var EventTypes = map[string]EventType{
 	"loot_roll_all_passed": {LootRollResult{}, "a group roll ended with everyone passing"},
 	"error":                {ErrorEvent{}, "the server refused something"},
 	"result":               {ActionResult{}, "an action finished (its result)"},
-	"log":                  {Log{}, "log(msg) from a script"},
+	"log":                  {Log{}, "log(msg [, data]) from a script"},
 	"task_started":         {TaskEvent{}, "a task started"},
 	"task_finished":        {TaskEvent{}, "a task ended (done, failed or stopped)"},
 	"script_error":         {ScriptError{}, "a script raised an error"},

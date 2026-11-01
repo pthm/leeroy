@@ -1,6 +1,7 @@
 package script
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -231,6 +232,41 @@ func TestNativePanicRecovered(t *testing.T) {
 	}
 	if v, err := e.Eval("return 7"); err != nil || v != 7.0 {
 		t.Fatalf("engine after the panic: %v, %v", v, err)
+	}
+}
+
+// log keeps its data and prints tables as JSON; json.encode is the same encoding.
+func TestLogDataAndJSON(t *testing.T) {
+	var logged strings.Builder
+	e := NewEngine(func(f string, a ...any) { fmt.Fprintf(&logged, f+"\n", a...) }, nil)
+	if _, err := e.Eval(`log("pull", {target = "Hogger", hp = 0.5}); log({1, 2}); log("plain")`); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for i := 0; len(got) < 3 && i < 100; i++ {
+		evs := e.Bus.Wait(Query{Types: []string{"log"}}, time.Second)
+		if len(evs) < 3 {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		for _, ev := range evs {
+			b, _ := json.Marshal(ev.Data)
+			got = append(got, string(b))
+		}
+	}
+	slices.Sort(got)
+	want := []string{`{"msg":"[1,2]"}`, `{"msg":"plain"}`, `{"msg":"pull","data":{"hp":0.5,"target":"Hogger"}}`}
+	if !slices.Equal(got, want) {
+		t.Errorf("log events: %v", got)
+	}
+	if !strings.Contains(logged.String(), `[Lua] pull {"hp":0.5,"target":"Hogger"}`) {
+		t.Errorf("session.log: %s", logged.String())
+	}
+	if v, err := e.Eval(`return json.encode({1, "two", {a = true}})`); err != nil || v != `[1,"two",{"a":true}]` {
+		t.Errorf("json.encode: %v, %v", v, err)
+	}
+	if _, err := e.Eval(`return json.encode(0/0)`); err == nil || !strings.Contains(err.Error(), "json.encode:") {
+		t.Errorf("NaN: %v", err)
 	}
 }
 
