@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -11,7 +12,19 @@ import (
 // (64x64) for every layer above the first.
 type ADT struct {
 	Textures []string
-	Chunks   [256]Chunk // row-major: index = y*16 + x
+	Chunks   [256]Chunk  // row-major: index = y*16 + x
+	Models   []Placement // M2 doodads: trees, bushes, fences, lamps, crates (MDDF)
+	WMOs     []Placement // world map objects: buildings, bridges, walls, caves (MODF)
+}
+
+// Placement is a model placed on the map, as the ADT stores it: Pos and Rot (degrees) in the file's axes (Pos's x and
+// z are the world's y and x from the map's far corner, its y is height).
+type Placement struct {
+	Name      string // the model file, e.g. World\wmo\Azeroth\Buildings\Inn\Inn.wmo
+	UniqueID  uint32
+	Pos, Rot  [3]float32
+	Scale     float32
+	DoodadSet int // a WMO's doodad set, shown with set 0
 }
 
 type Chunk struct {
@@ -45,6 +58,27 @@ func ParseADT(b []byte, bigAlpha bool) (*ADT, error) {
 	le := binary.LittleEndian
 	a := &ADT{}
 	chunk := 0
+	var mmdx, mwmo []byte
+	var mmid, mwid []uint32
+	strAt := func(names []byte, offs []uint32, id uint32) string {
+		if int(id) >= len(offs) || int(offs[id]) >= len(names) {
+			return ""
+		}
+		s := names[offs[id]:]
+		if i := bytes.IndexByte(s, 0); i >= 0 {
+			s = s[:i]
+		}
+		return strings.ReplaceAll(string(s), "/", `\`)
+	}
+	u32s := func(b []byte) []uint32 {
+		out := make([]uint32, len(b)/4)
+		for i := range out {
+			out[i] = le.Uint32(b[i*4:])
+		}
+		return out
+	}
+	f32 := func(b []byte, i int) float32 { return math.Float32frombits(le.Uint32(b[i:])) }
+	var mddf, modf []byte
 	for i := 0; i+8 <= len(b); {
 		tag, n := string([]byte{b[i+3], b[i+2], b[i+1], b[i]}), int(le.Uint32(b[i+4:]))
 		body := i + 8
@@ -58,6 +92,18 @@ func ParseADT(b []byte, bigAlpha bool) (*ADT, error) {
 					a.Textures = append(a.Textures, strings.ReplaceAll(string(s), "/", `\`))
 				}
 			}
+		case "MMDX":
+			mmdx = b[body : body+n]
+		case "MMID":
+			mmid = u32s(b[body : body+n])
+		case "MWMO":
+			mwmo = b[body : body+n]
+		case "MWID":
+			mwid = u32s(b[body : body+n])
+		case "MDDF":
+			mddf = b[body : body+n]
+		case "MODF":
+			modf = b[body : body+n]
 		case "MCNK":
 			if chunk < 256 {
 				c, err := parseMCNK(b[i:body+n], bigAlpha)
@@ -69,6 +115,18 @@ func ParseADT(b []byte, bigAlpha bool) (*ADT, error) {
 			chunk++
 		}
 		i = body + n
+	}
+	for o := 0; o+36 <= len(mddf); o += 36 {
+		e := mddf[o:]
+		a.Models = append(a.Models, Placement{Name: strAt(mmdx, mmid, le.Uint32(e)), UniqueID: le.Uint32(e[4:]),
+			Pos: [3]float32{f32(e, 8), f32(e, 12), f32(e, 16)}, Rot: [3]float32{f32(e, 20), f32(e, 24), f32(e, 28)},
+			Scale: float32(le.Uint16(e[32:])) / 1024})
+	}
+	for o := 0; o+64 <= len(modf); o += 64 {
+		e := modf[o:]
+		a.WMOs = append(a.WMOs, Placement{Name: strAt(mwmo, mwid, le.Uint32(e)), UniqueID: le.Uint32(e[4:]),
+			Pos: [3]float32{f32(e, 8), f32(e, 12), f32(e, 16)}, Rot: [3]float32{f32(e, 20), f32(e, 24), f32(e, 28)}, Scale: 1,
+			DoodadSet: int(le.Uint16(e[58:]))})
 	}
 	return a, nil
 }
