@@ -76,6 +76,12 @@ stderr and in `alerts.log`, with the runtime's last error; bring it back with `a
 exits by itself (its world connection lost, the daemon crashed) is reported the same way and pauses the run: the
 judges stop at their last sample, so the clock doesn't run on a character nobody controls.
 
+A run with a Codex agent watches the shared Codex quota: the newest `rate_limits` Codex wrote in a rollout log
+(`~/.codex/sessions`; the highest window's `used_percent`, a window past its `resets_at` counting 0), read at the
+start (or resume) and every 5 minutes into `codex-quota.json` (`start`, kept from the first read, and `end`, the
+latest). It alerts the first time the quota passes 80% and 90%, and pauses the run at 97% or when Codex reports a
+limit reached; at the start, that refuses to run.
+
 ### Pause, resume and restart
 
 `azbench pause <run dir>` (or Ctrl-C on the supervisor) stops the judges where they are, then stops each agent,
@@ -134,7 +140,8 @@ and whether the character is alive, dead or a ghost, and where.
 | `<agent>.record.jsonl` | the client-side event log for the viewer (positions, combat, chat, API calls) |
 | `<Char>.events.jsonl` | the character's event stream; the judge reads combat and cooperation from it |
 | `board/<Char>.json` | each judge's latest result (with `minutes_left`), read by `standings` |
-| `alerts.log` | agents and sessions that stopped early |
+| `alerts.log` | agents and sessions that stopped early, and the Codex quota's alerts |
+| `codex-quota.json` | the Codex quota at the start and the latest read (runs with a Codex agent) |
 | `control.json` | while the supervisor runs: its control API (address and pid) |
 | `pids` | the process groups of the supervisor's running sessions and agents (empty once they stop) |
 | `paused` | the run was paused |

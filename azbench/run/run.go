@@ -74,8 +74,12 @@ func (r *Runner) logf(f string, a ...any) {
 	fmt.Fprintf(os.Stderr, "%s %s\n", time.Now().Format("15:04:05"), fmt.Sprintf(f, a...))
 }
 
+// alert: p nil for the run as a whole.
 func (r *Runner) alert(p *player, msg string) {
-	line := fmt.Sprintf("%s %s (%s): %s", time.Now().Format("15:04:05"), p.a.Name, p.a.Char, msg)
+	line := fmt.Sprintf("%s run: %s", time.Now().Format("15:04:05"), msg)
+	if p != nil {
+		line = fmt.Sprintf("%s %s (%s): %s", time.Now().Format("15:04:05"), p.a.Name, p.a.Char, msg)
+	}
 	fmt.Fprintln(os.Stderr, line)
 	f, err := os.OpenFile(filepath.Join(r.dir, "alerts.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err == nil {
@@ -155,6 +159,16 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 			return fmt.Errorf("save scenario preflight: %w", err)
 		}
 	}
+	codexAlerted := 0.0
+	if r.usesCodex() {
+		if q := r.noteCodexQuota(); q != nil {
+			if msg, pause := codexQuotaAlert(q, &codexAlerted); pause {
+				return fmt.Errorf("%s: not starting", msg)
+			} else if msg != "" {
+				r.alert(nil, msg)
+			}
+		}
+	}
 	if resume {
 		r.elapsed = r.played()
 		r.logf("resuming %s: %.0f of %d minutes played", r.dir, r.elapsed.Minutes(), r.s.Minutes)
@@ -183,6 +197,9 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 	}()
 	stopControl := r.serveControl()
 	defer stopControl()
+	if r.usesCodex() {
+		go r.watchCodexQuota(codexAlerted)
+	}
 	r.logf("run %s: %d players, %s, %d minutes", r.dir, len(r.players), r.s.Goal, r.s.Minutes)
 
 	// every session up first (logins staggered: concurrent ones time out on the auth server), then one clock
@@ -245,6 +262,9 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 		}()
 	}
 	judges.Wait()
+	if r.usesCodex() {
+		r.noteCodexQuota() // end
+	}
 	r.mu.Lock()
 	paused := r.paused
 	r.mu.Unlock()
