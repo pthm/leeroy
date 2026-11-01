@@ -82,7 +82,7 @@ func cstrings(b []byte, off uint32) string {
 
 // LoadWMO reads a WMO: its root (materials, doodads) and every group file (geometry). Triangles drawn by no material
 // (collision only) are left out.
-func (c *Client) LoadWMO(name string) (*Model, error) {
+func LoadWMO(c Source, name string) (*Model, error) {
 	root, err := c.Read(name)
 	if err != nil {
 		return nil, err
@@ -208,7 +208,7 @@ func parseMLIQ(b []byte) (Liquid, bool) {
 
 // LoadM2 reads an M2 doodad and its first skin (the full-detail triangles). Batches with a texture the game fills in
 // (a creature's skin) or drawn additively (glows) are left out.
-func (c *Client) LoadM2(name string) (*Model, error) {
+func LoadM2(c Source, name string) (*Model, error) {
 	name = strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(name, ".mdx"), ".MDX"), ".mdl")
 	if ext := strings.ToLower(path.Ext(name)); ext != ".m2" {
 		name = strings.TrimSuffix(name, path.Ext(name)) + ".m2"

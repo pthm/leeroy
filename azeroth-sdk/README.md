@@ -119,7 +119,7 @@ AC_DATA_DIR=$PWD/../data go test ./...         # with it: pathfinding and moveme
 
 | Command | |
 |---|---|
-| `go run ./azeroth-sdk/cmd/clientdata -client <WoW dir> extract data` | minimap tiles and road rasters from a 3.3.5a install (also `cat`, `blp`, `textures`) |
+| `go run ./azeroth-sdk/cmd/clientdata -client <WoW dir> extract data` | minimap tiles, road rasters, and the terrain and model files the viewer draws (`data/client`), from a 3.3.5a install (`-maps 0,1` for some continents; also `cat`, `blp`, `textures`) |
 | `go run ./azeroth-sdk/cmd/navprobe <data dir> x1 y1 z1 x2 y2 z2 [...]` | navmesh path length and straightness between points on map 0 |
 
 ## Packages

@@ -2,7 +2,6 @@ package clientdata
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -11,11 +10,11 @@ func testClient(t *testing.T) *Client {
 	t.Helper()
 	dir := os.Getenv("WOW_CLIENT")
 	if dir == "" {
-		dir = filepath.Join(os.Getenv("HOME"), "Downloads", "ChromieCraft_3.3.5a")
+		t.Skip("set WOW_CLIENT to a 3.3.5a game install")
 	}
 	c, err := OpenClient(dir)
 	if err != nil {
-		t.Skip("no game client")
+		t.Fatal(err)
 	}
 	return c
 }
@@ -48,7 +47,7 @@ func TestADTPlacements(t *testing.T) {
 
 func TestLoadModels(t *testing.T) {
 	c := testClient(t)
-	inn, err := c.LoadWMO(`WORLD\WMO\AZEROTH\BUILDINGS\GOLDSHIREINN\GOLDSHIREINN.WMO`)
+	inn, err := LoadWMO(c, `WORLD\WMO\AZEROTH\BUILDINGS\GOLDSHIREINN\GOLDSHIREINN.WMO`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +58,7 @@ func TestLoadModels(t *testing.T) {
 		if !strings.Contains(strings.ToLower(p.Name), "tree") {
 			continue
 		}
-		tree, err := c.LoadM2(p.Name)
+		tree, err := LoadM2(c, p.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -77,7 +76,7 @@ func TestLoadModels(t *testing.T) {
 // Stormwind's canals are the city WMO's liquid.
 func TestWMOLiquid(t *testing.T) {
 	c := testClient(t)
-	sw, err := c.LoadWMO(`WORLD\WMO\AZEROTH\BUILDINGS\STORMWIND\STORMWIND.WMO`)
+	sw, err := LoadWMO(c, `WORLD\WMO\AZEROTH\BUILDINGS\STORMWIND\STORMWIND.WMO`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,5 +91,21 @@ func TestWMOLiquid(t *testing.T) {
 	t.Logf("%d liquids, %d tiles", len(sw.Liquids), tiles)
 	if tiles < 100 {
 		t.Fatal("Stormwind has canals")
+	}
+}
+
+// Extracting copies what the loaders read: the inn loads from the extracted Dir as from the client.
+func TestExtractedDir(t *testing.T) {
+	c := testClient(t)
+	out := t.TempDir()
+	cp := &copier{src: c, out: out, done: map[string]bool{}}
+	const inn = `WORLD\WMO\AZEROTH\BUILDINGS\GOLDSHIREINN\GOLDSHIREINN.WMO`
+	want, err := LoadWMO(cp, inn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadWMO(Dir(out), inn)
+	if err != nil || len(got.Tris) != len(want.Tris) || len(got.Liquids) != len(want.Liquids) || !Dir(out).Has() {
+		t.Fatalf("from the Dir: %v, %d triangles, want %d", err, len(got.Tris), len(want.Tris))
 	}
 }
