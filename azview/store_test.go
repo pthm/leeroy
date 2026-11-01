@@ -1,0 +1,133 @@
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func evs(t *testing.T, text string) []Ev {
+	t.Helper()
+	out := ParseLines(text)
+	if len(out) == 0 {
+		t.Fatal("no events")
+	}
+	return out
+}
+
+func storeOf(t *testing.T, text string) *Store {
+	s := NewStore()
+	for _, e := range evs(t, text) {
+		s.add(e)
+	}
+	return s
+}
+
+func TestStoreKeepsTimeOrderAndInterpolates(t *testing.T) {
+	s := storeOf(t, `{"t":2000,"ev":"pos","n":"A","x":10,"y":0,"m":0,"alive":1}
+{"t":1000,"ev":"pos","n":"A","x":0,"y":0,"m":0,"alive":1}
+{"t":9000,"ev":"pos","n":"A","x":100,"y":0,"m":0,"alive":1}
+{"t":1500,"ev":"kill","n":"A","victim":{"id":6,"n":"Kobold"}}
+{"t":1200,"ev":"death","n":"A","killer":{"id":6,"n":"Kobold"}}`)
+	p := s.byName["A"]
+	if len(p.Track) != 3 || p.Track[0].T != 1000 || p.Track[1].T != 2000 {
+		t.Fatalf("track not sorted: %+v", p.Track)
+	}
+	if got, _ := p.At(1500); got.X != 5 {
+		t.Fatalf("want x 5 halfway, got %v", got.X)
+	}
+	if got, _ := p.At(5000); got.X != 10 { // a 7 s gap: hold
+		t.Fatalf("want x held at 10 over a gap, got %v", got.X)
+	}
+	if _, ok := p.At(500); ok {
+		t.Fatal("no position before the first sample")
+	}
+	if len(s.events) != 2 || S(s.events[0], "ev") != "death" || len(s.marks) != 1 || len(s.feed) != 2 {
+		t.Fatalf("events %v marks %d feed %d", s.events, len(s.marks), len(s.feed))
+	}
+}
+
+func TestStoreMergesRepeats(t *testing.T) {
+	s := storeOf(t, `{"t":1,"ev":"chat","n":"A","from":"Marshal","type":12,"msg":"hi"}
+{"t":2,"ev":"chat","n":"B","from":"Marshal","type":12,"msg":"hi"}
+{"t":3,"ev":"group","n":"A","grp":5,"leader":"A","members":["A","B"]}
+{"t":4,"ev":"group","n":"A","grp":5,"leader":"A","members":["A","B"]}`)
+	if n := len(s.byEv["chat"]); n != 1 {
+		t.Fatalf("NPC speech heard twice should be one event, got %d", n)
+	}
+	if h := s.byEv["chat"][0]["heard"].([]string); len(h) != 2 || !s.Hears(s.byEv["chat"][0], "B") || s.Hears(s.byEv["chat"][0], "C") {
+		t.Fatalf("heard %v", h)
+	}
+	if len(s.groups) != 1 {
+		t.Fatalf("a repeated group list should be dropped, got %d", len(s.groups))
+	}
+}
+
+func TestStoreTargetsAndGroups(t *testing.T) {
+	s := storeOf(t, `{"t":1000,"ev":"pos","n":"A","x":0,"y":0,"m":0,"alive":1,"grp":7,"hp":100,"hpmax":100}
+{"t":1000,"ev":"pos","n":"B","x":3,"y":4,"m":0,"alive":1,"grp":7,"hp":50,"hpmax":100}
+{"t":1000,"ev":"pos","n":"C","x":50,"y":0,"m":0,"alive":1}
+{"t":900,"ev":"group","n":"A","grp":7,"leader":"B","members":["A","B"]}
+{"t":1000,"ev":"units","n":"A","m":0,"u":[[6,3,40,0,80,0],[6,3,10,0,30,0]]}
+{"t":1100,"ev":"tgt","n":"A","tgt":{"id":6,"n":"Kobold","lvl":3}}
+{"t":1100,"ev":"dmg","n":"C","src":{"id":3,"n":"C","pl":1},"dst":{"id":6,"n":"Kobold"},"amount":5}
+{"t":1100,"ev":"tgt","n":"B","tgt":{"id":1,"n":"A","pl":1}}`)
+	a := s.byName["A"]
+	tg := s.TargetOf(a, 1200)
+	if tg == nil || tg.Name != "Kobold" || *tg.X != 10 || *tg.HP != 30 {
+		t.Fatalf("want the nearer kobold at x 10 with 30%%, got %+v", tg)
+	}
+	if tg := s.TargetOf(s.byName["C"], 1200); tg == nil || tg.Name != "Kobold" { // no target from the server: its last hit
+		t.Fatalf("want C's last hit as its target, got %+v", tg)
+	}
+	if tg := s.TargetOf(s.byName["C"], 5000); tg != nil {
+		t.Fatalf("a hit older than 3 s isn't a target, got %+v", tg)
+	}
+	if tg := s.TargetOf(s.byName["B"], 1200); tg == nil || !tg.Player || *tg.HP != 100 {
+		t.Fatalf("want player A at full health, got %+v", tg)
+	}
+	groups, solo := s.GroupsAt(1200)
+	if len(groups) != 1 || groups[0].Leader != "B" || len(groups[0].Members) != 2 || len(solo) != 1 {
+		t.Fatalf("groups %+v solo %v", groups, solo)
+	}
+}
+
+func TestLineReadsLikeTheGame(t *testing.T) {
+	s := storeOf(t, `{"t":1,"ev":"login","n":"A","cls":5}
+{"t":2,"ev":"chat","n":"A","to":"B","type":7,"msg":"<hi>"}`)
+	w := s.byEv["chat"][0]
+	if got := string(s.Line(w, "A")); !strings.Contains(got, "To [") || !strings.Contains(got, "&lt;hi&gt;") {
+		t.Fatalf("whisper from the sender's side, escaped: %s", got)
+	}
+	if got := string(s.Line(w, "B")); !strings.Contains(got, "whispers: ") || !strings.Contains(got, "#FFFFFF") { // A is a priest
+		t.Fatalf("whisper from the receiver's side: %s", got)
+	}
+	if Money(10203) != "1g 2s 3c" || Money(0) != "0c" || Fmt(3723000) != "1:02:03" || Fmt(65000) != "1:05" {
+		t.Fatal("money or time format")
+	}
+}
+
+func TestPollTailsFiles(t *testing.T) {
+	dir := t.TempDir()
+	rec, tr := filepath.Join(dir, "a.record.jsonl"), filepath.Join(dir, "agent.jsonl")
+	os.WriteFile(rec, []byte(`{"t":500,"ev":"pos","n":"A","x":1,"y":1}
+{"t":1000,"ev":"pos","n":"A","x":1,"y":1}
+{"t":1100,"op":"no ev: an action record"}
+{"t":1200,"ev":"xp","n":"A","amount":`), 0o644) // the last line is half written
+	os.WriteFile(tr, []byte(`{"type":"assistant","timestamp":"1970-01-01T00:00:01.300Z","message":{"content":[{"type":"text","text":"hello"}]}}
+`), 0o644)
+	s := NewStore()
+	src := &Source{Files: []string{rec, tr}, Transcripts: map[string]string{tr: "A"}, Since: 900}
+	s.Poll(src)
+	if p := s.byName["A"]; p == nil || len(p.Track) != 1 || len(p.says) != 1 || len(s.events) != 1 {
+		t.Fatalf("want one sample after since and one say, got %+v %v", p, s.events)
+	}
+	f, _ := os.OpenFile(rec, os.O_APPEND|os.O_WRONLY, 0)
+	f.WriteString("10}\n")
+	f.Close()
+	s.Poll(src)
+	if len(s.byEv["xp"]) != 1 || N(s.byEv["xp"][0], "amount") != 10 {
+		t.Fatalf("the finished line should be read: %v", s.byEv["xp"])
+	}
+}
