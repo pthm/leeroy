@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 
 	"github.com/pthm/leeroy/azeroth-sdk/clientdata"
@@ -156,19 +157,76 @@ func minimapRGBA(m uint32, gx, gy int) *image.RGBA {
 	return img
 }
 
+// paint is one tile's render: the squares, ground textures and minimap tiles it uses, looked up once each (the
+// shared caches lock; per pixel that was most of a tile's time).
+type paint struct {
+	m      uint32
+	adts   map[[2]int]*paintADT
+	minis  map[[2]int]*image.RGBA
+	lastA  [2]int
+	last   *paintADT
+	lastM  [2]int
+	lastMI *image.RGBA
+}
+
+type paintADT struct {
+	a    *clientdata.ADT
+	texs []*groundTex // by the ADT's texture index
+}
+
+func newPaint(m uint32) *paint {
+	return &paint{m: m, adts: map[[2]int]*paintADT{}, minis: map[[2]int]*image.RGBA{}, lastA: [2]int{-1, -1}, lastM: [2]int{-1, -1}}
+}
+
+func (p *paint) adt(gx, gy int) *paintADT {
+	k := [2]int{gx, gy}
+	if k == p.lastA {
+		return p.last
+	}
+	pa, ok := p.adts[k]
+	if !ok {
+		if a := adtOf(p.m, gx, gy); a != nil {
+			pa = &paintADT{a: a, texs: make([]*groundTex, len(a.Textures))}
+			for i, n := range a.Textures {
+				pa.texs[i] = texOf(n)
+			}
+		}
+		p.adts[k] = pa
+	}
+	p.lastA, p.last = k, pa
+	return pa
+}
+
+func (p *paint) mini(gx, gy int) *image.RGBA {
+	k := [2]int{gx, gy}
+	if k == p.lastM {
+		return p.lastMI
+	}
+	img, ok := p.minis[k]
+	if !ok {
+		img = minimapRGBA(p.m, gx, gy)
+		p.minis[k] = img
+	}
+	p.lastM, p.lastMI = k, img
+	return img
+}
+
 // minimapAt is the minimap's colour at a world point, bilinear between its pixels; ok false off the minimap.
-func minimapAt(m uint32, x, y float64) (rgb [3]float64, ok bool) {
+func (p *paint) minimapAt(x, y float64) (rgb [3]float64, ok bool) {
 	fr, fc := (GridSize*32-x)/GridSize*256-0.5, (GridSize*32-y)/GridSize*256-0.5 // pixel coordinates across the whole map
 	r0, c0 := int(math.Floor(fr)), int(math.Floor(fc))
 	for k := 0; k < 4; k++ {
 		r, c := r0+k/2, c0+k%2
-		img := minimapRGBA(m, r/256, c/256)
-		if img == nil || r < 0 || c < 0 {
+		if r < 0 || c < 0 {
+			return rgb, false
+		}
+		img := p.mini(r/256, c/256)
+		if img == nil {
 			return rgb, false
 		}
 		w := (1 - math.Abs(fr-float64(r))) * (1 - math.Abs(fc-float64(c)))
-		p := img.Pix[(r%256)*img.Stride+(c%256)*4:]
-		rgb[0], rgb[1], rgb[2] = rgb[0]+w*float64(p[0]), rgb[1]+w*float64(p[1]), rgb[2]+w*float64(p[2])
+		px := img.Pix[(r%256)*img.Stride+(c%256)*4:]
+		rgb[0], rgb[1], rgb[2] = rgb[0]+w*float64(px[0]), rgb[1]+w*float64(px[1]), rgb[2]+w*float64(px[2])
 	}
 	return rgb, true
 }
@@ -187,12 +245,13 @@ func alphaAt(a []uint8, fx, fy float64) float64 {
 }
 
 // groundAt is the ground textures' colour at a world point (texel per yd: the mip level's), ok false off the ADTs.
-func groundAt(m uint32, x, y float64, mip int) (rgb [3]float64, ok bool) {
+func (p *paint) groundAt(x, y float64, mip int) (rgb [3]float64, ok bool) {
 	gx, gy := int(math.Floor(32-x/GridSize)), int(math.Floor(32-y/GridSize))
-	a := adtOf(m, gx, gy)
-	if a == nil {
+	pa := p.adt(gx, gy)
+	if pa == nil {
 		return rgb, false
 	}
+	a := pa.a
 	cs := GridSize / 16
 	lx, ly := GridSize*float64(32-gx)-x, GridSize*float64(32-gy)-y // yards into the square from its north-west corner
 	cr, cc := min(15, int(lx/cs)), min(15, int(ly/cs))
@@ -208,15 +267,16 @@ func groundAt(m uint32, x, y float64, mip int) (rgb [3]float64, ok bool) {
 		if w <= 0 || int(ch.Layers[l]) >= len(a.Textures) {
 			continue
 		}
-		t := texOf(a.Textures[ch.Layers[l]])
+		t := pa.texs[ch.Layers[l]]
 		if t == nil {
 			continue
 		}
 		img := t.mips[min(mip, len(t.mips)-1)]
 		tw, th := img.Rect.Dx(), img.Rect.Dy()
-		u, v := math.Mod(fy*texRepeat, 1), math.Mod(fx*texRepeat, 1)
-		p := img.Pix[min(th-1, int(v*float64(th)))*img.Stride+min(tw-1, int(u*float64(tw)))*4:]
-		rgb[0], rgb[1], rgb[2] = rgb[0]+w*float64(p[0]), rgb[1]+w*float64(p[1]), rgb[2]+w*float64(p[2])
+		u, v := fy*texRepeat, fx*texRepeat
+		u, v = u-math.Floor(u), v-math.Floor(v)
+		px := img.Pix[min(th-1, int(v*float64(th)))*img.Stride+min(tw-1, int(u*float64(tw)))*4:]
+		rgb[0], rgb[1], rgb[2] = rgb[0]+w*float64(px[0]), rgb[1]+w*float64(px[1]), rgb[2]+w*float64(px[2])
 	}
 	return rgb, true
 }
@@ -235,37 +295,44 @@ func DetailTile(m uint32, gx, gy, level, sx, sy int) []byte {
 	xN, yW := GridSize*float64(32-gx)-float64(sx)*sub, GridSize*float64(32-gy)-float64(sy)*sub
 	// the mip whose texels are about a pixel: full size is 256 texels per 4.2 yd
 	mip := max(0, int(math.Round(math.Log2(256/(GridSize/16/texRepeat)*res))))
+	p := newPaint(m)
 	ground := make([][3]float64, W*W)
 	have := make([]bool, W*W)
-	for r := 0; r < W; r++ {
-		for c := 0; c < W; c++ {
-			x, y := xN-(float64(r-rad)+0.5)*res, yW-(float64(c-rad)+0.5)*res
-			ground[r*W+c], have[r*W+c] = groundAt(m, x, y, mip)
+	bands(W, func(r0, r1 int) {
+		bp := newPaint(m) // each band its own lookups: they aren't shared between goroutines
+		for r := r0; r < r1; r++ {
+			for c := 0; c < W; c++ {
+				x, y := xN-(float64(r-rad)+0.5)*res, yW-(float64(c-rad)+0.5)*res
+				ground[r*W+c], have[r*W+c] = bp.groundAt(x, y, mip)
+			}
 		}
-	}
+	})
 	blur := boxBlur(ground, W, rad)
 	out := image.NewRGBA(image.Rect(0, 0, n, n))
 	cl := func(v float64) uint8 { return uint8(math.Max(0, math.Min(255, math.Round(v)))) }
-	for r := 0; r < n; r++ {
-		for c := 0; c < n; c++ {
-			x, y := xN-(float64(r)+0.5)*res, yW-(float64(c)+0.5)*res
-			i := (r+rad)*W + c + rad
-			mm, ok := minimapAt(m, x, y)
-			if !ok { // past the minimap's edge (its neighbour has none): the textures alone
-				mm = blur[i]
+	bands(n, func(r0, r1 int) {
+		bp := newPaint(m)
+		for r := r0; r < r1; r++ {
+			for c := 0; c < n; c++ {
+				x, y := xN-(float64(r)+0.5)*res, yW-(float64(c)+0.5)*res
+				i := (r+rad)*W + c + rad
+				mm, ok := bp.minimapAt(x, y)
+				if !ok { // past the minimap's edge (its neighbour has none): the textures alone
+					mm = blur[i]
+				}
+				k := 0.0
+				if have[i] {
+					g, b := ground[i], blur[i]
+					d := math.Abs(mm[0]-b[0]) + math.Abs(mm[1]-b[1]) + math.Abs(mm[2]-b[2])
+					k = math.Max(0, math.Min(1, 1-(d-60)/80)) // what the textures don't have (buildings, water): less detail
+					mm = [3]float64{mm[0] + k*(g[0]-b[0]), mm[1] + k*(g[1]-b[1]), mm[2] + k*(g[2]-b[2])}
+				}
+				o := out.Pix[r*out.Stride+c*4:]
+				o[0], o[1], o[2], o[3] = cl(mm[0]), cl(mm[1]), cl(mm[2]), 255
 			}
-			k := 0.0
-			if have[i] {
-				g, b := ground[i], blur[i]
-				d := math.Abs(mm[0]-b[0]) + math.Abs(mm[1]-b[1]) + math.Abs(mm[2]-b[2])
-				k = math.Max(0, math.Min(1, 1-(d-60)/80)) // what the textures don't have (buildings, water): less detail
-				mm = [3]float64{mm[0] + k*(g[0]-b[0]), mm[1] + k*(g[1]-b[1]), mm[2] + k*(g[2]-b[2])}
-			}
-			o := out.Pix[r*out.Stride+c*4:]
-			o[0], o[1], o[2], o[3] = cl(mm[0]), cl(mm[1]), cl(mm[2]), 255
 		}
-	}
-	drawModels(out, m, xN, yW, res)
+	})
+	drawModels(out, p, xN, yW, res)
 	var buf bytes.Buffer
 	jpeg.Encode(&buf, out, &jpeg.Options{Quality: 85})
 	return buf.Bytes()
@@ -280,7 +347,8 @@ const shadowLen = 10.0
 // collision geometry, data/vmaps), seen from above: each pixel the highest surface, lit by its face's slope from the
 // north-west (the minimap's light), outlined where it drops to a wall, casting a short shadow on what's below. The
 // colour is still the minimap's (a roof's tiles, a canopy's green): the models carry no textures.
-func drawModels(out *image.RGBA, m uint32, xN, yW, res float64) {
+func drawModels(out *image.RGBA, p *paint, xN, yW, res float64) {
+	m := p.m
 	n := out.Rect.Dx()
 	zm := int(math.Ceil(shadowLen / res)) // margin: shadows cast from beyond the tile's edge
 	Z := n + 2*zm
@@ -335,11 +403,23 @@ func drawModels(out *image.RGBA, m uint32, xN, yW, res float64) {
 		return
 	}
 	// what's below the models: the terrain, or a model's surface
+	// sampled every yard or so and interpolated: the terrain's own grid is ~4 yd
+	step := max(1, int(math.Round(1/res)))
+	G := Z/step + 2
+	coarse := make([]float64, G*G)
+	for r := 0; r < G; r++ {
+		for c := 0; c < G; c++ {
+			coarse[r*G+c], _, _ = Sample(m, x0-float64(r*step)*res, y0-float64(c*step)*res)
+		}
+	}
 	ground := make([]float32, Z*Z)
 	for r := 0; r < Z; r++ {
+		fr := (float64(r) + 0.5) / float64(step)
+		r0, wr := int(fr), fr-math.Floor(fr)
 		for c := 0; c < Z; c++ {
-			h, _, _ := Sample(m, x0-(float64(r)+0.5)*res, y0-(float64(c)+0.5)*res)
-			ground[r*Z+c] = float32(h)
+			fc := (float64(c) + 0.5) / float64(step)
+			c0, wc := int(fc), fc-math.Floor(fc)
+			ground[r*Z+c] = float32((1-wr)*((1-wc)*coarse[r0*G+c0]+wc*coarse[r0*G+c0+1]) + wr*((1-wc)*coarse[(r0+1)*G+c0]+wc*coarse[(r0+1)*G+c0+1]))
 		}
 	}
 	surface := func(i int) float32 { return max(top[i], ground[i]) }
@@ -356,7 +436,7 @@ func drawModels(out *image.RGBA, m uint32, xN, yW, res float64) {
 		for c := 0; c < n; c++ {
 			i := (r+zm)*Z + c + zm
 			if top[i] > ground[i]+0.3 {
-				mm, _ := minimapAt(m, xN-(float64(r)+0.5)*res, yW-(float64(c)+0.5)*res)
+				mm, _ := p.minimapAt(xN-(float64(r)+0.5)*res, yW-(float64(c)+0.5)*res)
 				mini[r*n+c] = mm
 				a := &faces[face[i]]
 				a.sum[0], a.sum[1], a.sum[2], a.n = a.sum[0]+mm[0], a.sum[1]+mm[1], a.sum[2]+mm[2], a.n+1
@@ -406,6 +486,17 @@ func drawModels(out *image.RGBA, m uint32, xN, yW, res float64) {
 			}
 		}
 	}
+}
+
+// bands runs fn over [0, n) in a band of rows per core, in parallel.
+func bands(n int, fn func(r0, r1 int)) {
+	k := min(n, runtime.NumCPU())
+	var wg sync.WaitGroup
+	for i := 0; i < k; i++ {
+		wg.Add(1)
+		go func(r0, r1 int) { defer wg.Done(); fn(r0, r1) }(i*n/k, (i+1)*n/k)
+	}
+	wg.Wait()
 }
 
 // boxBlur is a W x W image blurred by a (2r+1)-wide box, horizontally then vertically (running sums).

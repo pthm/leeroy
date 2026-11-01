@@ -170,29 +170,39 @@ function drawTiles(w, h) {
 // Zoomed in past the minimap's own resolution (a pixel per ~2 yd), detail tiles: a square cut into 2^level x 2^level,
 // each 256 px (/detail, world.DetailTile). The level is the one whose pixels are about a screen pixel; a sub-square
 // whose tile hasn't come yet shows its part of a coarser one already here.
-const detail = new Map();
+const detail = new Map(), DETAIL_LOADS = 12; // at most this many tiles on their way (the browser runs six at once)
 function drawDetail(xa, ya, xb, yb) {
   if (!B.detail?.includes(M.id)) return;
   const L = Math.max(0, Math.min(B.maxDetail, Math.ceil(Math.log2(((GRID / RES) * view.s) / 256 * 0.9))));
-  if (!L) return;
-  const n = 1 << L, sub = GRID / n, size = (sub / RES) * view.s, idx = (v) => Math.floor((MAX - v) / sub);
-  cx.imageSmoothingEnabled = true;
-  for (let R = Math.max(0, idx(xa)); R <= Math.min(64 * n - 1, idx(xb)); R++) for (let C = Math.max(0, idx(ya)); C <= Math.min(64 * n - 1, idx(yb)); C++) {
-    const [sx, sy] = scr(MAX - R * sub, MAX - C * sub);
-    for (let l = L; l >= 1; l--) { // this level, or the part of a coarser one
-      const f = 1 << (L - l), r = Math.floor(R / f), c = Math.floor(C / f), m = 1 << l;
-      const key = `${M.id}/${l}/${Math.floor(r / m)}/${Math.floor(c / m)}/${r % m}/${c % m}`;
-      let im = detail.get(key);
-      if (!im && l === L) {
-        im = new Image(); im.onload = () => (dirty = true); im.src = `detail/${key}.jpg?v=${B.detailVersion}`; detail.set(key, im);
-        if (detail.size > 1500) detail.delete(detail.keys().next().value); // the oldest first
+  const want = new Set(), missing = [];
+  if (L) {
+    const n = 1 << L, sub = GRID / n, size = (sub / RES) * view.s, idx = (v) => Math.floor((MAX - v) / sub);
+    const r = cv.getBoundingClientRect(), [cr, cc] = [idx(MAX - ((r.height / 2 - view.oy) / view.s) * RES), idx(MAX - ((r.width / 2 - view.ox) / view.s) * RES)];
+    cx.imageSmoothingEnabled = true;
+    for (let R = Math.max(0, idx(xa)); R <= Math.min(64 * n - 1, idx(xb)); R++) for (let C = Math.max(0, idx(ya)); C <= Math.min(64 * n - 1, idx(yb)); C++) {
+      const [sx, sy] = scr(MAX - R * sub, MAX - C * sub);
+      for (let l = L; l >= 1; l--) { // this level, or the part of a coarser one already here
+        const f = 1 << (L - l), rr = Math.floor(R / f), c = Math.floor(C / f), m = 1 << l;
+        const key = `${M.id}/${l}/${Math.floor(rr / m)}/${Math.floor(c / m)}/${rr % m}/${c % m}`;
+        if (l === L) want.add(key);
+        const im = detail.get(key);
+        if (!im?.complete || !im.naturalWidth) { if (l === L && !im) missing.push([Math.hypot(R - cr, C - cc), key]); continue; }
+        const part = 256 / f;
+        cx.drawImage(im, (C % f) * part, (R % f) * part, part, part, sx, sy, size + 0.5, size + 0.5);
+        break;
       }
-      if (!im?.complete || !im.naturalWidth) continue;
-      const part = 256 / f;
-      cx.drawImage(im, (C % f) * part, (R % f) * part, part, part, sx, sy, size + 0.5, size + 0.5);
-      break;
     }
   }
+  // tiles on their way that aren't wanted any more (zoomed or panned past) are dropped, and the nearest to the
+  // middle of the screen are asked for first
+  let loading = 0;
+  for (const [key, im] of detail) if (!im.complete) { if (want.has(key)) loading++; else { im.src = ""; detail.delete(key); } }
+  missing.sort((a, b) => a[0] - b[0]);
+  for (const [, key] of missing.slice(0, Math.max(0, DETAIL_LOADS - loading))) {
+    const im = new Image(); im.onload = im.onerror = () => (dirty = true); im.src = `detail/${key}.jpg?v=${B.detailVersion}`; detail.set(key, im);
+    if (detail.size > 1500) for (const [k, old] of detail) { if (old.complete && !want.has(k)) { detail.delete(k); break; } } // the oldest drawn one
+  }
+  if (missing.length) dirty = true; // more to ask for next frame
 }
 const groupMembers = () => { const s = store(); if (s.grp == null) return null; const g = Number(s.grp);
   return new Set([...P.keys()].filter((n) => at(n, t)?.s.grp === g)); };
