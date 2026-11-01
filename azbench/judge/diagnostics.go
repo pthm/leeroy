@@ -107,15 +107,16 @@ func teamDiagnostics(cards []map[string]any) map[string]any {
 		var d diagnostics.Summary
 		b, _ := json.Marshal(c["diagnostics"])
 		json.Unmarshal(b, &d)
-		actions, failures := 0, 0
-		for _, a := range d.ByOperation {
+		actions, failed := 0, map[string]int{}
+		for _, a := range d.ByOperation { // top-level calls
 			actions += a.Count
 			if a.Outcome == "failed" {
-				failures += a.Count
+				failed[a.Class] += a.Count
 			}
 		}
 		agents = append(agents, map[string]any{"agent": c["agent"], "coverage": d.Coverage.Status, "actions": actions,
-			"failures": failures, "episodes": len(d.Episodes), "cost_status": d.Coverage.CostStatus,
+			"failures": failed["failure"], "combat_outcomes": failed["combat_outcome"], "preempted": failed["preempted"],
+			"episodes": len(d.Episodes), "cost_status": d.Coverage.CostStatus,
 			"tool_coverage": d.Tools.Status, "tool_timeouts": d.Tools.ObservedTimeouts, "tool_denials": d.Tools.ObservedDenials})
 	}
 	return map[string]any{"schema": 1, "agents": agents}

@@ -155,6 +155,13 @@ plus session/sequence when available. Three matching failures within 30 seconds 
 session replacement or judge pause/completion closes it. Targets, tasks and sessions stay separate. Durations
 are inclusive per operation: adding nested helper and raw-action durations would double-count time.
 
+`by_operation` counts top-level calls only (no `parent_call`); calls made inside another call are counted in
+`nested_calls`, since their outcome is also their parent's. Each failed aggregate has a `class`: `combat_outcome`
+(miss, dodge, parry, block, resist, evade, immune, deflect, absorb, reflect: the server's outcome of an attack that
+was made), `preempted` (replaced_by_owner, preempted, cancelled, session_closed, task_*: replaced or stopped by the
+agent's own task or session), or `failure`. `team.json`'s diagnostics give `failures`, `combat_outcomes` and
+`preempted` per agent.
+
 `azbench status` shows up to three fresh active episodes, ranked by recorded action time and episode span.
 This is observed failed-action time, not an estimate of all time lost to a problem. The evidence view keeps
 the last 200 action, status, tool, quest/group observation and lifecycle records and reports how many were omitted. Task status is an

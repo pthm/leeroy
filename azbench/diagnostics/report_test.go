@@ -248,3 +248,29 @@ func TestTaskShutdownClosesEpisodesWithoutCallingCleanupARetryLoop(t *testing.T)
 		t.Fatalf("new attempts joined stale episode: %+v", s.Episodes)
 	}
 }
+
+// Spec J3: nested calls aren't counted twice, and failed codes are bucketed.
+func TestFailuresCountTopLevelCallsByClass(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "record.jsonl")
+	var events []types.Diagnostic
+	for i, code := range []string{"unreachable", "miss", "parry", "replaced_by_owner", "task_stopped", "session_closed"} {
+		e := failure(uint64(i+1), int64(1000+i*60_000))
+		e.Code = code
+		events = append(events, e)
+	}
+	nested := failure(7, 400_000)
+	nested.Op, nested.Call, nested.ParentCall = "move.to", "c2", "c1"
+	events = append(events, nested)
+	writeEvents(t, path, events)
+	s := Read("a1", path)
+	got := map[string]int{}
+	for _, a := range s.ByOperation {
+		if a.Op == "move.to" {
+			t.Fatalf("nested call counted: %+v", a)
+		}
+		got[a.Class] += a.Count
+	}
+	if s.NestedCalls != 1 || !reflect.DeepEqual(got, map[string]int{"failure": 1, "combat_outcome": 2, "preempted": 3}) {
+		t.Fatalf("nested=%d classes=%v", s.NestedCalls, got)
+	}
+}

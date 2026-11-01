@@ -45,6 +45,7 @@ type Aggregate struct {
 	Op         string `json:"op"`
 	Code       string `json:"code,omitempty"`
 	Outcome    string `json:"outcome"`
+	Class      string `json:"class,omitempty"` // a failed call's Class
 	Count      int    `json:"count"`
 	DurationMS int64  `json:"duration_ms"` // inclusive per operation; never summed across nested operations
 	First      Ref    `json:"first"`
@@ -98,13 +99,29 @@ type Summary struct {
 	Schema          int         `json:"schema"`
 	Reliability     Reliability `json:"reliability"`
 	Coverage        Coverage    `json:"coverage"`
-	ByOperation     []Aggregate `json:"by_operation"`
+	ByOperation     []Aggregate `json:"by_operation"` // top-level calls only
+	NestedCalls     int         `json:"nested_calls"` // calls made inside another call, left out of by_operation
 	Tools           ToolSummary `json:"tools"`
 	Episodes        []Episode   `json:"episodes"`
 	Evidence        []Evidence  `json:"evidence"`
 	EvidenceOmitted int         `json:"evidence_omitted"`
 	Unavailable     []string    `json:"unavailable"`
 }
+// Class buckets a failed call's code: the server's combat outcome of an attack or spell (the call worked; the
+// attack missed), a call preempted by its own task or session (a newer request, a stopped task), or a failure.
+func Class(code string) string {
+	switch code {
+	case "miss", "dodge", "parry", "block", "resist", "evade", "immune", "deflect", "absorb", "reflect":
+		return "combat_outcome"
+	case "superseded", "replaced_by_owner", "preempted", "cancelled", "session_closed":
+		return "preempted"
+	}
+	if strings.HasPrefix(code, "task_") {
+		return "preempted"
+	}
+	return "failure"
+}
+
 type recorded struct {
 	types.Diagnostic
 	ref Ref
@@ -270,14 +287,19 @@ func Read(agent string, paths ...string) Summary {
 			continue
 		}
 		key := ev.Op + "|" + ev.Outcome + "|" + ev.Code
-		a := aggregates[key]
-		if a == nil {
-			a = &Aggregate{Op: ev.Op, Code: ev.Code, Outcome: ev.Outcome, First: ev.ref}
+		if ev.ParentCall != "" { // its outcome is also its parent's: counted once, at the top
+			s.NestedCalls++
+		} else if a := aggregates[key]; a != nil {
+			a.Count++
+			a.DurationMS += max(ev.DurationMS, 0)
+			a.Last = ev.ref
+		} else {
+			a = &Aggregate{Op: ev.Op, Code: ev.Code, Outcome: ev.Outcome, Count: 1, DurationMS: max(ev.DurationMS, 0), First: ev.ref, Last: ev.ref}
+			if ev.Outcome == "failed" {
+				a.Class = Class(ev.Code)
+			}
 			aggregates[key] = a
 		}
-		a.Count++
-		a.DurationMS += max(ev.DurationMS, 0)
-		a.Last = ev.ref
 		// A task shutdown can resolve many pending requests in one batch. Those
 		// outcomes count above, but are cleanup, not active repeated attempts.
 		if ev.Code == "task_stopped" || ev.Code == "task_paused" || ev.Code == "task_finished" || ev.Code == "session_closed" {
