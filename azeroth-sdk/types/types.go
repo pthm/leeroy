@@ -55,6 +55,14 @@ type Position struct {
 	Map uint32  `json:"map" doc:"0 Eastern Kingdoms, 1 Kalimdor, 530 Outland, 571 Northrend"`
 }
 
+// MemberPosition is a party member's position: party updates out of sight carry no z.
+type MemberPosition struct {
+	X   float64  `json:"x"`
+	Y   float64  `json:"y"`
+	Z   *float64 `json:"z,omitempty" doc:"nil while they're out of sight"`
+	Map uint32   `json:"map"`
+}
+
 type Location struct {
 	Zone   string `json:"zone" doc:"e.g. Elwynn Forest"`
 	Area   string `json:"area" doc:"e.g. Goldshire"`
@@ -115,6 +123,7 @@ type Creature struct {
 
 type Player struct {
 	Unit
+	Ghost bool   `json:"ghost,omitempty" doc:"released spirit: alive is false, though the server gives a ghost 1 health"`
 	Class string `json:"class" doc:"warrior, paladin, hunter, rogue, priest, death_knight, shaman, mage, warlock, druid"`
 	Race  string `json:"race" doc:"human, dwarf, night_elf, gnome, draenei, orc, undead, tauren, troll, blood_elf"`
 }
@@ -484,26 +493,26 @@ type Group struct {
 // GroupMember is a party member as the real client's party frames show them: health, power, level and where they
 // are come from the server's party updates even when they're out of sight.
 type GroupMember struct {
-	Name         string    `json:"name"`
-	GUID         GUID      `json:"guid"`
-	Leader       bool      `json:"leader"`
-	Online       bool      `json:"online"`
-	Class        string    `json:"class,omitempty"`
-	Level        uint32    `json:"level,omitempty"`
-	Health       Resource  `json:"health"`
-	Power        Resource  `json:"power"`
-	Alive        bool      `json:"alive"`
-	Ghost        bool      `json:"ghost,omitempty"`
-	InCombat     bool      `json:"in_combat,omitempty" doc:"only known while they're in sight"`
-	Zone         string    `json:"zone,omitempty"`
-	Position     *Position `json:"position,omitempty" doc:"x, y (and z while in sight)"`
-	Distance     *float64  `json:"distance,omitempty" doc:"yards from you"`
-	InRange      bool      `json:"in_range" doc:"close enough to see (about 100 yd): units.get works on them"`
-	InSight      *bool     `json:"in_sight,omitempty" doc:"in range and nothing solid between you"`
-	PathDistance *float64  `json:"path_distance,omitempty" doc:"how far you'd walk to reach them (in range only)"`
-	Reachable    *bool     `json:"reachable,omitempty"`
-	Target       GUID      `json:"target,omitempty" doc:"what they're targeting (in sight only)"`
-	Auras        []Aura    `json:"auras,omitempty" doc:"their buffs and debuffs (spell, name, harmful; details while in sight)"`
+	Name         string          `json:"name"`
+	GUID         GUID            `json:"guid"`
+	Leader       bool            `json:"leader"`
+	Online       bool            `json:"online"`
+	Class        string          `json:"class,omitempty"`
+	Level        uint32          `json:"level,omitempty"`
+	Health       Resource        `json:"health"`
+	Power        Resource        `json:"power"`
+	Alive        bool            `json:"alive"`
+	Ghost        bool            `json:"ghost,omitempty"`
+	InCombat     bool            `json:"in_combat,omitempty" doc:"only known while they're in sight"`
+	Zone         string          `json:"zone,omitempty"`
+	Position     *MemberPosition `json:"position,omitempty"`
+	Distance     *float64        `json:"distance,omitempty" doc:"yards from you"`
+	InRange      bool            `json:"in_range" doc:"close enough to see (about 100 yd): units.get works on them"`
+	InSight      *bool           `json:"in_sight,omitempty" doc:"in range and nothing solid between you"`
+	PathDistance *float64        `json:"path_distance,omitempty" doc:"how far you'd walk to reach them (in range only)"`
+	Reachable    *bool           `json:"reachable,omitempty"`
+	Target       GUID            `json:"target,omitempty" doc:"what they're targeting (in sight only)"`
+	Auras        []Aura          `json:"auras,omitempty" doc:"their buffs and debuffs (spell, name, harmful; details while in sight)"`
 }
 
 // GroupReport is how your party has spent the last minutes, from what you've seen of them (group.report).

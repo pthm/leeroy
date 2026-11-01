@@ -84,6 +84,9 @@ func (b *Bot) player(u UnitInfo) types.Player {
 	if o := b.world.GetObject(u.GUID); o != nil {
 		b0 := o.Value(fieldUnitBytes0)
 		p.Race, p.Class = name(raceNames, uint8(b0&0xFF)), name(classNames, uint8(b0>>8&0xFF))
+		if o.Value(fieldPlayerFlags)&0x10 != 0 { // PLAYER_FLAGS_GHOST: a ghost has 1 health
+			p.Ghost, p.Alive = true, false
+		}
 	}
 	return p
 }

@@ -184,3 +184,16 @@ func TestChatText(t *testing.T) {
 		}
 	}
 }
+
+// A released spirit has 1 health; PLAYER_FLAGS_GHOST makes it a ghost, not alive
+func TestGhostPlayerNotAlive(t *testing.T) {
+	b := testBot()
+	for g, flags := range map[uint64]uint32{7: 0x10, 8: 0} {
+		b.world.PutObjectForTest(&client.WorldObject{GUID: g, IsPlayer: true,
+			Values: map[uint16]uint32{client.UnitFieldHealth: 1, client.UnitFieldMaxHealth: 100, fieldPlayerFlags: flags}})
+		p := b.player(*b.GetUnitInfo(g))
+		if p.Ghost != (flags != 0) || p.Alive == p.Ghost {
+			t.Errorf("flags %#x: ghost %v alive %v", flags, p.Ghost, p.Alive)
+		}
+	}
+}

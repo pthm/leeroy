@@ -598,8 +598,8 @@ func (b *Bot) snapshot() types.Status {
 	}
 	if st.Group != nil {
 		for i := range st.Group.Members {
-			if m := &st.Group.Members[i]; m.InRange && m.Position != nil {
-				m.InSight, m.PathDistance, m.Reachable = r.of(uint64(m.GUID), m.Position.X, m.Position.Y, m.Position.Z, 1.5)
+			if m := &st.Group.Members[i]; m.InRange && m.Position != nil && m.Position.Z != nil {
+				m.InSight, m.PathDistance, m.Reachable = r.of(uint64(m.GUID), m.Position.X, m.Position.Y, *m.Position.Z, 1.5)
 			}
 		}
 	}

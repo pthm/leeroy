@@ -266,7 +266,7 @@ func (b *Bot) setupControl() {
 					gm.Power = types.Resource{Current: uint32(stats.power), Max: uint32(stats.maxPower), Type: name(powerNames, stats.powerType)}
 					gm.Zone = names[uint32(stats.zone)]
 					if stats.x != 0 || stats.y != 0 {
-						gm.Position = &types.Position{X: float64(stats.x), Y: float64(stats.y), Map: mapID}
+						gm.Position = &types.MemberPosition{X: float64(stats.x), Y: float64(stats.y), Map: mapID}
 						d := math.Round(math.Hypot(float64(stats.x)-float64(mx), float64(stats.y)-float64(my)))
 						gm.Distance = &d
 					}
@@ -280,7 +280,8 @@ func (b *Bot) setupControl() {
 					gm.InRange, gm.Level, gm.Alive = true, u.Level, u.IsAlive && !gm.Ghost // a ghost has 1 health
 					gm.Health = types.Resource{Current: u.Health, Max: u.MaxHealth}
 					gm.InCombat, gm.Target = u.Flags&0x80000 != 0, types.GUID(u.Target)
-					gm.Position = &types.Position{X: round1(u.PosX), Y: round1(u.PosY), Z: round1(u.PosZ), Map: mapID}
+					z := round1(u.PosZ)
+					gm.Position = &types.MemberPosition{X: round1(u.PosX), Y: round1(u.PosY), Z: &z, Map: mapID}
 					d := math.Round(math.Sqrt(float64((u.PosX-mx)*(u.PosX-mx)+(u.PosY-my)*(u.PosY-my)+(u.PosZ-mz)*(u.PosZ-mz)))*10) / 10
 					gm.Distance = &d
 					b0 := o.Value(fieldUnitBytes0)

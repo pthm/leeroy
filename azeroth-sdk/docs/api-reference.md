@@ -445,6 +445,7 @@ Everything in [Unit](#unit), plus:
 
 | Field | Type | |
 |---|---|---|
+| `ghost?` | bool | released spirit: alive is false, though the server gives a ghost 1 health |
 | `class` | string | warrior, paladin, hunter, rogue, priest, death_knight, shaman, mage, warlock, druid |
 | `race` | string | human, dwarf, night_elf, gnome, draenei, orc, undead, tauren, troll, blood_elf |
 
@@ -810,7 +811,7 @@ GroupMember is a party member as the real client's party frames show them: healt
 | `ghost?` | bool |  |
 | `in_combat?` | bool | only known while they're in sight |
 | `zone?` | string |  |
-| `position?` | Position | x, y (and z while in sight) |
+| `position?` | MemberPosition |  |
 | `distance?` | number | yards from you |
 | `in_range` | bool | close enough to see (about 100 yd): units.get works on them |
 | `in_sight?` | bool | in range and nothing solid between you |
@@ -818,6 +819,17 @@ GroupMember is a party member as the real client's party frames show them: healt
 | `reachable?` | bool |  |
 | `target?` | GUID | what they're targeting (in sight only) |
 | `auras?` | Aura[] | their buffs and debuffs (spell, name, harmful; details while in sight) |
+
+### MemberPosition
+
+MemberPosition is a party member's position: party updates out of sight carry no z.
+
+| Field | Type | |
+|---|---|---|
+| `x` | number |  |
+| `y` | number |  |
+| `z?` | number | nil while they're out of sight |
+| `map` | number |  |
 
 ### Aura
 

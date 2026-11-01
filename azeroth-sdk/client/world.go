@@ -3519,6 +3519,13 @@ func (w *WorldClient) SetLevelForTest(l uint32) {
 	w.statsMu.Unlock()
 }
 
+// PutObjectForTest adds an object as if the server had created it (unit tests outside this package).
+func (w *WorldClient) PutObjectForTest(o *WorldObject) {
+	w.objectsMu.Lock()
+	w.objects[o.GUID] = o
+	w.objectsMu.Unlock()
+}
+
 // IsSpellReady returns true if the spell is known and off cooldown.
 func (w *WorldClient) IsSpellReady(spellID uint32) bool {
 	w.spellsMu.RLock()
