@@ -18,7 +18,9 @@ Groups, chat, trades and the players around you. The rest of the SDK is in sdk.m
   a `party_invite` event and calls `group.accept()`; `group.info()`, `group.leave()`. A `ready_check` event:
   answer with `group.ready(true)`; its result is `unconfirmed` because the protocol provides no matching acknowledgement. A `summon_request` event: `summon.accept()` resolves when you arrive, or `summon.decline()`.
   `group.report([minutes])`: how each member spent the last minutes (fighting, travelling, idle, dead, with the
-  group), from what you've seen of them.
+  group), from what you've seen of them. The leader can hand the lead to a member (`group.promote(guid)`) and set
+  the loot rules (`group.set_loot(method [, threshold, master])`; game.md, "Group loot"); `group.info()` shows
+  `loot_method`, `loot_threshold` and `master_looter`. A member out of sight has no `z` in `group.info()`.
 - The server's message of the day comes as a `motd` event; battleground and arena queue changes as `battleground`.
 - `units.players(dist)`, `units.inspect(guid)`: who's around, their level, class and gear.
 - Trading: `trade.start(name)`, both sides `trade.offer{items = {...}, money = copper}`, both `trade.accept()`.

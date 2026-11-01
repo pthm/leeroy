@@ -30,6 +30,16 @@ Spells, attacks and fights, and looking back at a fight. The rest of the SDK is 
 - `combat.attack(guid)` starts auto-attack. A refused swing is an `attack_failed` event (`not_in_range`,
   `bad_facing`: `move.face`).
 - Each spell rank is its own id: `spells.known(id)` tests one rank; `spells.find(name)` returns the highest rank you know.
+- `units.engaged()` lists the creatures in combat with you, your pet or your party: each one with one of you on its
+  threat list (`on_threat`, highest first) or as its target, fleeing or targetless ones included. A unit's `fleeing`
+  is the server's fleeing flag. A unit's `control` lists the auras that take control from it (stun, polymorph,
+  fear, root, silence...): the spell, its `mechanic`, `caster_guid`, `remaining_ms`, whether damage breaks it
+  (`breaks_on_damage`) and the damage it takes to break (`damage_limit`). The rules behind them are in game.md,
+  "Mobs and combat".
+- `spells.stop_casting()` stops the cast or channel in progress (`not_casting`, or `cast_finished` when it went off
+  first); `spells.stop_auto_repeat()` stops a wand's Shoot or Auto Shot.
+- Throw, Shoot and a wand's shots have the ranged attack time (your ranged weapon's speed) as their cooldown, in
+  `spells.cooldown` and `spells.check`; Auto Shot doesn't.
 - Every fight ends with a `fight_end` event: duration, damage dealt and taken, abilities used, outcomes. A unit's
   `casting`, a `unit_cast_start` event, `units.auras`, `threat_pct` and `combat.threat(guid)` show what the game
   shows a player.

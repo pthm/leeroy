@@ -29,7 +29,11 @@ Quest givers, vendors, trainers, objects, your bags and gear. The rest of the SD
 ## Items
 
 - `items.list()` has each item's name, quality and vendor price once its info has loaded (a second after it first
-  appears). `items.free_slots()`, `items.destroy(item)`, `items.use(entry)`, `items.equip(item)`.
+  appears). `items.free_slots()`, `items.destroy(item)`, `items.use(entry)`, `items.equip(item)` (a bag goes in a
+  free bag slot, 19-22, and is `equipped` there). `items.find` takes an item entry or a whole item name (any case,
+  not part of one). `charges` is how many uses an item's spell has left, apart from its stack `count`.
+- `items.split(item, count)` puts `count` from a stack into an empty bag slot; `items.open(item)` opens an item that
+  holds loot (a clam, a sack, an unlocked lockbox) and takes what's inside.
 - `await(items.compare(item))` waits for the item and equipped templates (five seconds) and shows the change against what you wear in that slot (item level, stats, armor, dps) and
   `usable = false` with the reason when you can't use it. `await(items.info(entry)).data` has the details on success; `me.gear()` every
   slot; `items.broken()` what's at 0 durability.
@@ -45,8 +49,12 @@ Quest givers, vendors, trainers, objects, your bags and gear. The rest of the SD
   for confirmation; check their `ActResult` before assuming consumption started.
 - `act.rest{hp = 0.95, mana = 0.9, max_s = 40}` requires both thresholds. Missing consumables allow passive
   regeneration, but an item-use failure propagates. Expiry returns `rest_timeout` with achieved fractions.
-- `objects.use(guid)` within ~5 yards uses a chest, node or quest object. `objects.nearby` says what each takes
-  (`gather`, `skill`, `can_use`, `key`), `lit` when one of your quests needs it, and how far the walk is.
+- `objects.use(guid)` within ~5 yards uses a chest, node or quest object. A locked chest takes the Opening spell for
+  its lock's type, which `objects.use` picks unless you pass one. `objects.nearby` says what each takes (`gather`,
+  `skill`, `can_use`, `key`), `lit` when one of your quests needs it, and how far the walk is. An object's `state`
+  is closed, open or alternate (a door, a chest, a button); `objects.get(guid)` reads one object. `items.loot` on a
+  game object fails with `wrong_target_type`: `objects.use` takes its loot. `items.use(item, guid)` can target a
+  game object (a cannon's shot, a quest item used on an object).
 - `act.use_object{entry = object_entry, quest_id = quest_id}` verifies progress or completion in your quest log.
   An absent or disappearing quest fails. Without `quest_id`, it verifies `count` successful uses instead.
   The defaults are three attempts and a 60-second deadline (`max_attempts`, `timeout_s`); failure preserves

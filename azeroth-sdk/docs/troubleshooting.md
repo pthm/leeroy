@@ -13,7 +13,7 @@ sdk.md.
 | `out_of_range` | too far for that spell | `spells.info(id).range` |
 | `bad_targets` | not a valid target (dead, friendly, tapped by someone else) | the unit's `alive`, `reaction`, `tapped_by_other` |
 | `equipped_item_class*` | your weapon is broken or missing | `items.broken()` |
-| `not_ready` / `no_power` | cooldown, or not enough mana, rage or energy | `spells.cooldown(id)`, `items.cooldown(item)`, `spells.usable(id, guid)` |
+| `not_ready` / `no_power` | cooldown (for Throw, Shoot and wands, the ranged attack time), or not enough mana, rage or energy | `spells.cooldown(id)`, `items.cooldown(item)`, `spells.usable(id, guid)` |
 | `caster_aurastate` / `target_aurastate` | the spell's condition isn't met (Victory Rush without a kill, Execute above 20%) | `me.states()`, the target's `states`, `spells.usable` |
 | `unit_not_infront` | the target isn't within 90 degrees of where you face, for a spell that requires facing | `move.face(guid)` before the cast (`act.cast` faces for you) |
 | `not_facing` from `move.face` / `move.turn` | a route is walking you (`move.to`, `act.go_to`) and faces you along its path | `me.moving()`; `move.stop` ends the route |
@@ -21,6 +21,11 @@ sdk.md.
 | `interrupted` | you moved or were hit mid-cast | `me.casting()` |
 | `miss`, `resist`, `immune`, `evade`, `reflect`, `dodge`, `parry`... | the spell went off but didn't land: power and cooldown are spent, so a retry may hit `not_ready` | `spells.cooldown(id)`; `immune`/`evade`: try another spell or target |
 | `bags_full`, loot left on corpses | no bag space | `items.free_slots()` |
+| `wrong_target_type` from `items.loot` | the GUID is a game object (a chest): game objects are opened and looted by `objects.use` | `objects.get(guid)` |
+| something attacks you while `move.to` / `act.go_to` walks | walking doesn't fight: the walk goes on and the attacker follows | `on_attacked` on `act.go_to` and `act.travel` (moving.md) |
+| a walk goes on after a script changed its mind (a follow distance, a flag) | a `move.to` already sent keeps walking until it arrives, is stopped or cancelled, or the same task sends another | `move.owner()`, `move.stop()`, `move.cancel(id)` |
+| `bad argument #1 to tonumber (value expected)` | `string.match` found nothing and returned no value, passed straight to `tonumber` | sdk.md, "The Lua" |
+| a `failure_loop` event | a task's call failed with the same op and code 25 times in a row; from then its `act.*` helpers wait before returning each failure | `wow tasks`, the task's `r.error` |
 | `turn_in` times out | the quest isn't complete, or a different NPC takes it | `quests.log()`, `azworld quest <id>` |
 | accepting does nothing | level too low, a prerequisite missing, or already done | `azworld quest <id>` (min level, chain) |
 | a mob takes no damage | evading, or tagged by someone else | `evading`, `tapped_by_other` |

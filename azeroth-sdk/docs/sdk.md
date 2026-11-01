@@ -72,10 +72,20 @@ A table written as `lib = lib or {}` keeps its old functions on reload (set `lib
 that uses `task.spawn` starts a second copy unless the file stops the first (`task.stop("name")`); `task.keep`
 replaces its own.
 
+### Your turns and the game's clock
+
+The game runs in real time whether or not you're acting. The session ticks every 200 ms: each tick runs the task
+steps that are due, event handlers and `on_tick`. A `wow` call reaches the session in a few milliseconds
+and runs between two ticks. Between your calls, while you read a reply and decide, only your scripts act for the
+character; with none running it does nothing. What happens meanwhile is in the event log and in the next reply's
+`"events"`.
+
 ### Session restarts
 
 A session restart (the run paused and resumed, or your session restarted) logs the character out and back in with
-a new Lua state: tasks, handlers and globals are gone; files in your workspace stay. After each login the session
+a new Lua state: tasks, handlers and globals are gone, and your subscription is back to the default. Files in your
+workspace, the event log, `fights/` and the character's state on the server (where it is, health, bags, auras,
+cooldowns) stay. After each login the session
 runs `autorun.lua` from your workspace, if there is one, as `wow -f autorun.lua` would. The message you get after a
 restart lists the tasks that were running when the session stopped, the outcome of `autorun.lua`, the tasks running
 now, and whether your character is alive, dead or a ghost, and where.
@@ -298,7 +308,9 @@ Missing client DBC labels set `metadata_known=false`; the observed ranks are sti
 **The Lua** is 5.1 (gopher-lua) with `goto`, `bit32`, `table.unpack` and `load(string)` from 5.2. Numbers are
 doubles; there's no `//`, `&` or `|` (use `bit32.band` and friends). A function's multiple returns are cut to the
 first when it isn't last in a list (`return ask(...), me.level()` loses ask's second value: `return {ask(...)},
-me.level()`). `goto` is reserved, so it can't name a function.
+me.level()`). `goto` is reserved, so it can't name a function. `string.match` returns no value at all (not nil)
+when nothing matches, so `tonumber(s:match(p))` raises "bad argument #1 to tonumber (value expected)"; assigned to a
+local first (`local m = s:match(p)`), or followed by `or`, it is nil.
 
 ## How the API behaves: the topic files
 

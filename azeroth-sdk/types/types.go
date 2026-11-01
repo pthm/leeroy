@@ -127,7 +127,7 @@ type Creature struct {
 	Evading       bool     `json:"evading,omitempty" doc:"it's evading (resetting, unreachable): your attacks do nothing; leave it"`
 	Roles         []string `json:"roles,omitempty" doc:"what it offers: vendor, repair, trainer, quest_giver, flight_master, innkeeper, banker, spirit_healer, gossip"`
 	Attackable    bool     `json:"attackable" doc:"can be attacked at all (false for triggers, dummies, protected NPCs)"`
-	AggroRadius   float64  `json:"aggro_radius,omitempty" doc:"hostile and alive: how close you can come before it attacks you on sight (the server's rule: 20 yd at your level, a yard more per level above you and a yard less per level below, at least 5)"`
+	AggroRadius   float64  `json:"aggro_radius,omitempty" doc:"hostile and alive: how close you can come before it attacks you on sight: 20 yd at your level, a yard more per level above you and a yard less per level below, at least 5. The server's base is the creature's own detection range, 18 yd for most creatures, so this can be 2 yd more than the server's"`
 	InAggro       bool     `json:"in_aggro,omitempty" doc:"you're within its aggro_radius and in its sight: it attacks you now, or the moment it's free"`
 	Lootable      bool     `json:"lootable" doc:"a corpse with loot for you"`
 	TappedByOther bool     `json:"tapped_by_other" doc:"someone else damaged it first: killing it gives you nothing"`

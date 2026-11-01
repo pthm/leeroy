@@ -9,7 +9,9 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   `dz` (yards above you; negative: below, like a mob in the mine under you).
 - A living hostile creature has `aggro_radius`, how close you can come before it attacks on sight (20 yards at your
   level, a yard more per level above you, a yard less per level below, at least 5), and `in_aggro` when you're
-  inside it and in its sight.
+  inside it and in its sight. The server starts from each creature's own detection range instead of 20 yards: 18
+  for most creatures in the world database, 20 or 10 for others (game.md, "Aggro"), so `aggro_radius` can be 2 yards
+  more than the server's radius.
 - `wow look [radius]` (`world.look`) draws a top-down text map, north up: the ground (`^` higher, `v` lower, `#` no
   floor at your height), hostile creatures by capital letter with their aggro range shaded, other creatures,
   players and lootable corpses, then a line for each with level, distance, direction, height and aggro.
