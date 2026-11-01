@@ -1,0 +1,2 @@
+{{define "feed.html"}}{{.Only}}{{range .Rows}}<div class="row" data-t="{{printf "%.0f" .T}}" style="--c:{{.Color}}"><span class="t">{{.When}}</span><span>{{.Line}}</span></div>
+{{else}}<div class="muted">Nothing yet.</div>{{end}}{{end}}

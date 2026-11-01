@@ -47,3 +47,30 @@ func TestRosterPanel(t *testing.T) {
 		t.Error("flat, by level: A (12) before C (3), no groups")
 	}
 }
+
+func TestFeedPanel(t *testing.T) {
+	s := storeOf(t, party+`
+{"t":1150,"ev":"chat","n":"C","type":1,"msg":"far away"}
+{"t":1150,"ev":"chat","n":"B","type":2,"msg":"party only"}
+{"t":1160,"ev":"dmg","n":"A","src":{"id":1,"n":"A","pl":1},"dst":{"id":6,"n":"Kobold"},"amount":7}
+{"t":1170,"ev":"level","n":"C","to":4}`)
+	all := render(t, s, "pane", Query{T: 2000, Tab: "feed", Cats: map[string]bool{"events": true, "chat": true, "agent": true}})
+	for _, want := range []string{"far away", "party only", "reached level <b>4</b>", "“pulling now"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("feed lacks %q", want)
+		}
+	}
+	if strings.Contains(all, "hit") {
+		t.Error("combat is filtered out")
+	}
+	if strings.Index(all, "party only") > strings.Index(all, "reached level") {
+		t.Error("oldest first")
+	}
+	a := render(t, s, "pane", Query{T: 2000, Tab: "feed", Sel: "A", Cats: map[string]bool{"events": true, "chat": true, "combat": true}})
+	if !strings.Contains(a, "party only") || strings.Contains(a, "far away") || strings.Contains(a, "level") || !strings.Contains(a, "for <b>7</b>") || !strings.Contains(a, "data-clear") {
+		t.Errorf("A's feed: their party's chat and their hit, not C's say 500 yd away or C's level, with the everyone chip: %s", a)
+	}
+	if early := render(t, s, "pane", Query{T: 1155, Tab: "feed", Cats: map[string]bool{"events": true}}); strings.Contains(early, "level") {
+		t.Error("nothing after the playhead")
+	}
+}
