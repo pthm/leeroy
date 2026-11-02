@@ -1,0 +1,133 @@
+---
+// One run: tiles, findings, the roster, charts, and the story (src/content/runs/<id>.md, when written).
+import { getEntry, render } from 'astro:content';
+import FinishChart from '../../../components/FinishChart.astro';
+import ProgressChart from '../../../components/ProgressChart.astro';
+import Section from '../../../components/Section.astro';
+import Layout from '../../../layouts/Layout.astro';
+import {
+  allRuns,
+  classColor,
+  dollars,
+  duration,
+  harnessName,
+  modelName,
+  runDate,
+  specLabel,
+  TASKS,
+  taskTitle,
+  thousands,
+  totals,
+  type Run,
+} from '../../../lib/results';
+import { url } from '../../../lib/url';
+
+export function getStaticPaths() {
+  return allRuns().map(run => ({ params: { task: run.task, run: run.id }, props: { run } }));
+}
+
+const { run } = Astro.props as { run: Run };
+const notes = await getEntry('runs', run.id);
+const Story = notes ? (await render(notes)).Content : null;
+const t = totals(run);
+const levelled = run.players.some(p => p.series && p.series.at(-1)![1] - p.series[0][1] > 0.5);
+const outcome = (p: Run['players'][number]) => (p.met ? 'met' : p.gave_up ? 'gave up' : p.died ? 'died' : 'not met');
+const title = notes?.data.title ?? `Run of ${runDate(run)}`;
+const lede = notes?.data.lede ?? TASKS[run.task]?.summary ?? run.description;
+const roster = run.players.toSorted(
+  (a, b) => Number(b.met) - Number(a.met) || (a.time_to_goal_s ?? Infinity) - (b.time_to_goal_s ?? Infinity),
+);
+const clock = run.minutes >= 1440 ? `${run.minutes / 1440} days` : `${run.minutes} min`;
+
+const tiles = [
+  { v: `${t.met}/${run.players.length}`, k: 'reached the goal' },
+  { v: t.last ? duration(t.last) : duration(t.first), k: t.last ? 'until the last arrived' : 'first to the goal' },
+  { v: String(t.deaths), k: 'deaths' },
+  ...(levelled ? [{ v: String(t.quests), k: 'quests completed' }] : []),
+  { v: dollars(t.cost), k: 'cost at list prices' },
+  { v: thousands(t.output), k: 'output tokens' },
+];
+---
+
+<Layout title={`${title} · ${taskTitle(run.task)}`} description={lede}>
+  <Section>
+    <a href={url(`/results/${run.task}`)} class="eyebrow hover:underline">← {taskTitle(run.task)}</a>
+    <h1 class="mt-4 font-serif text-4xl leading-tight text-fg sm:text-5xl">{title}</h1>
+    <p class="mt-4 max-w-3xl text-lg leading-relaxed text-muted">{lede}</p>
+    <p class="mt-4 font-mono text-xs text-faint">
+      {runDate(run)} · {run.scenario} · goal <code>{run.goal}</code> · {clock} on the clock{run.hardcore && ' · hardcore'}
+    </p>
+    <ul class="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      {tiles.map(tile => (
+        <li class="rounded border border-hairline bg-raised px-4 py-3">
+          <b class="block font-mono text-lg font-semibold whitespace-nowrap text-fg tabular-nums">{tile.v}</b>
+          <span class="text-xs text-muted">{tile.k}</span>
+        </li>
+      ))}
+    </ul>
+  </Section>
+
+  {notes && notes.data.glance.length > 0 && (
+    <Section>
+      <p class="eyebrow mb-6">At a glance</p>
+      <ul class="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {notes.data.glance.map(g => (
+          <li class="rounded border border-hairline bg-raised p-5">
+            <p class="font-medium text-fg">{g.head}</p>
+            <p class="mt-1.5 text-sm leading-relaxed text-muted">{g.body}</p>
+          </li>
+        ))}
+      </ul>
+    </Section>
+  )}
+
+  <Section last={!Story}>
+    <p class="eyebrow mb-6">The players</p>
+    <div class="overflow-x-auto rounded border border-hairline bg-raised">
+      <table class="data">
+        <thead>
+          <tr>
+            <th>Character</th>
+            <th>Class</th>
+            <th>Model</th>
+            <th>Outcome</th>
+            <th class="num">Time</th>
+            {levelled && <th class="num">Level</th>}
+            <th class="num">Deaths</th>
+            {levelled && <th class="num">Quests</th>}
+            <th class="num">Cost</th>
+            <th class="num">Output</th>
+          </tr>
+        </thead>
+        <tbody>
+          {roster.map(p => (
+            <tr>
+              <td class:list={['font-medium', classColor(p.class)]}>{p.char}</td>
+              <td class="text-muted">{specLabel(p)}{p.role && <span class="text-faint"> · {p.role}</span>}</td>
+              <td class="text-fg">{modelName(p.model)} <span class="text-faint">{harnessName(p.runtime)}</span></td>
+              <td class:list={[p.met ? 'text-success' : 'text-warning']} title={p.gave_up}>{outcome(p)}</td>
+              <td class="num">{p.met ? duration(p.time_to_goal_s) : '–'}</td>
+              {levelled && <td class="num text-muted">{p.series?.at(-1)?.[1].toFixed(1) ?? p.level ?? '–'}</td>}
+              <td class="num text-muted">{p.deaths ?? '–'}</td>
+              {levelled && <td class="num text-muted">{p.series?.at(-1)?.[4] ?? '–'}</td>}
+              <td class="num text-muted">{dollars(p.cost_usd)}</td>
+              <td class="num text-muted">{thousands(p.tokens?.output)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <div class="mt-8">
+      {levelled ? <ProgressChart run={run} /> : <FinishChart run={run} />}
+    </div>
+  </Section>
+
+  {Story && (
+    <Section last>
+      <p class="eyebrow mb-2">The run</p>
+      <div class="prose run-story max-w-3xl">
+        <Story />
+      </div>
+    </Section>
+  )}
+</Layout>

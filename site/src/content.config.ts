@@ -22,4 +22,15 @@ const docs = defineCollection({
   }),
 });
 
-export const collections = { blog, docs };
+// Hand-written notes for a run's page, named after its id (src/data/runs/<id>.json): a title, a lede, findings at a
+// glance, and the story in the body.
+const runs = defineCollection({
+  loader: glob({ pattern: '**/*.md', base: './src/content/runs' }),
+  schema: z.object({
+    title: z.string(),
+    lede: z.string(),
+    glance: z.array(z.object({ head: z.string(), body: z.string() })).default([]),
+  }),
+});
+
+export const collections = { blog, docs, runs };

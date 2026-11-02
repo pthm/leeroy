@@ -41,4 +41,6 @@ bin/azbench publish bench/runs/<time>-<scenario> --task travel
 ```
 
 writes `site/src/data/runs/<run>.json`: the scenario and each player's model, outcome, time, cost and tokens. Commit
-it; the site rebuilds on push. The results pages group runs by `--task`.
+it; the site rebuilds on push. The results pages group runs by `--task`, and each run gets its own page: the roster,
+level over time from the judge's samples, and every death. A run's page can also carry hand-written notes, in
+`site/src/content/runs/<run id>.md`: a title, a lede, findings at a glance, and the story phase by phase.

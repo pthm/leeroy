@@ -1,0 +1,30 @@
+---
+// Time to the goal, one bar per player, fastest first; players who didn't make it are listed after. Claude Code in
+// amber, Codex in blue.
+import { duration, modelName, type Run } from '../lib/results';
+
+interface Props {
+  run: Run;
+}
+
+const ps = Astro.props.run.players.toSorted(
+  (a, b) => Number(b.met) - Number(a.met) || (a.time_to_goal_s ?? Infinity) - (b.time_to_goal_s ?? Infinity),
+);
+const max = Math.max(...ps.map(p => (p.met ? p.time_to_goal_s ?? 0 : 0)), 1);
+const color = (runtime: string) => (runtime === 'claude' ? 'bg-accent' : 'bg-info');
+---
+
+<figure class="rounded border border-hairline bg-raised p-4">
+  <p class="mb-4 font-mono text-xs text-muted">Time to the goal</p>
+  <ul class="space-y-2.5">
+    {ps.map(p => (
+      <li class="grid grid-cols-[9rem_1fr_5.5rem] items-center gap-3 font-mono text-xs">
+        <span class="truncate text-fg">{p.char} <span class="text-faint">{modelName(p.model)}</span></span>
+        <span class="h-2.5 rounded-sm bg-elevated">
+          {p.met && <span class:list={['block h-full rounded-sm', color(p.runtime)]} style={`width:${((p.time_to_goal_s ?? 0) / max) * 100}%`} />}
+        </span>
+        <span class:list={['text-right', p.met ? 'text-fg' : 'text-warning']}>{p.met ? duration(p.time_to_goal_s) : p.gave_up ? 'gave up' : 'not met'}</span>
+      </li>
+    ))}
+  </ul>
+</figure>

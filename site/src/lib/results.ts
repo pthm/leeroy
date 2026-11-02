@@ -19,6 +19,10 @@ export interface Player {
   gave_up?: string;
   died?: boolean;
   tokens?: { input: number; output: number; cache_read: number; cache_write: number };
+  spec_name?: string; // "Warrior - Protection"
+  role?: string; // Tank, Healer, DPS
+  series?: [number, number, number, number, number, number][]; // [elapsed s, level, XP earned, deaths, quests, kills]
+  deaths_at?: number[]; // elapsed s
 }
 
 export interface Run {
@@ -57,6 +61,7 @@ const runs: Run[] = Object.values(
 ).sort((a, b) => a.started.localeCompare(b.started));
 
 export const allRuns = () => runs;
+export const runById = (id: string) => runs.find(r => r.id === id);
 export const runsOf = (task: string) => runs.filter(r => r.task === task);
 export const tasks = () =>
   [...new Set(runs.map(r => r.task))].sort((a, b) => (TASKS[a]?.order ?? 99) - (TASKS[b]?.order ?? 99));
@@ -122,4 +127,39 @@ export function runDate(r: Run): string {
   const [, y, mo, d, h, mi] = r.id.match(/^(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)/)!;
   const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+mo - 1];
   return `${+d} ${month} ${y}, ${h}:${mi}`;
+}
+
+// A run's totals, for its tiles.
+export function totals(r: Run) {
+  const ps = r.players;
+  const sum = (f: (p: Player) => number | undefined) => ps.reduce((n, p) => n + (f(p) ?? 0), 0);
+  const times = ps.filter(p => p.met && p.time_to_goal_s).map(p => p.time_to_goal_s!);
+  return {
+    met: ps.filter(p => p.met).length,
+    first: times.length ? Math.min(...times) : undefined,
+    last: times.length === ps.length ? Math.max(...times) : undefined,
+    deaths: sum(p => p.deaths),
+    quests: sum(p => p.series?.at(-1)?.[4]),
+    cost: sum(p => p.cost_usd),
+    output: sum(p => p.tokens?.output),
+  };
+}
+
+// The game's class colours, as a CSS class (global.css): stroke, fill and text follow currentColor.
+export const classColor = (cls: string) => `cc-${cls.replace(/\s+/g, '-')}`;
+
+// "Warrior - Protection" -> "Protection Warrior"; else the scenario's class.
+export const specLabel = (p: Player) => {
+  const [cls, spec] = (p.spec_name ?? '').split(' - ');
+  return spec ? `${spec} ${cls}` : p.class.replace(/^./, c => c.toUpperCase());
+};
+
+// The hours axis for a run: every 1, 2, 4, 6 or 12 h, or minutes for short runs.
+export function timeTicks(maxS: number): { s: number; label: string }[] {
+  if (maxS <= 2 * 3600) {
+    const step = [5, 10, 15, 30].find(m => maxS / 60 / m <= 8)! * 60;
+    return Array.from({ length: Math.floor(maxS / step) + 1 }, (_, i) => ({ s: i * step, label: `${(i * step) / 60} min` }));
+  }
+  const step = [1, 2, 4, 6, 12, 24].find(h => maxS / 3600 / h <= 9)! * 3600;
+  return Array.from({ length: Math.floor(maxS / step) + 1 }, (_, i) => ({ s: i * step, label: `${(i * step) / 3600} h` }));
 }

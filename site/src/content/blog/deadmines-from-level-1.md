@@ -70,7 +70,7 @@ in the same second.
 | | |
 |---|---|
 | Time to the goal | 17 h 41 min |
-| Deaths | 116 (10 whole-party wipes) |
+| Deaths | 115 (10 whole-party wipes) |
 | Quests completed | 269 across the five |
 | Levels at the end | 14 to 16 |
 | Cost | about $307 at list prices, $55 to $78 per agent |

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,6 +74,13 @@ func publish(root, runDir, task, out string) (string, error) {
 		if _, ok := p["time_to_goal_s"]; !ok && p["met"] == true { // older judges: the clock stopped at the goal
 			p["time_to_goal_s"] = judged[char]["elapsed_s"]
 		}
+		if a.Name != "" {
+			var meta struct{ Spec, Role string }
+			if readJSON(filepath.Join(runDir, a.Name, "meta.json"), &meta) == nil {
+				p["spec_name"], p["role"] = meta.Spec, meta.Role
+			}
+			p["series"], p["deaths_at"] = series(filepath.Join(runDir, a.Name, "samples.jsonl"))
+		}
 		players = append(players, p)
 	}
 	if task == "" {
@@ -89,6 +97,48 @@ func publish(root, runDir, task, out string) (string, error) {
 	f := filepath.Join(out, id+".json")
 	data, _ := json.MarshalIndent(doc, "", "  ")
 	return f, os.WriteFile(f, append(data, '\n'), 0o644)
+}
+
+// seriesPoints: about how many points a player's progress keeps for the charts
+const seriesPoints = 240
+
+// series: a player's progress from the judge's samples (every 15 s), thinned to about seriesPoints points of
+// [elapsed s, level (fractional), XP earned, deaths, quests, kills], the last always kept; and the elapsed seconds of
+// every death, from each sample where the count rose.
+func series(f string) ([][6]float64, []float64) {
+	data, err := os.ReadFile(f)
+	if err != nil {
+		return nil, nil
+	}
+	var all [][6]float64
+	deaths := []float64{}
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		var s struct {
+			Elapsed float64 `json:"elapsed_s"`
+			Signals struct {
+				Level, Deaths, Quests float64
+				XP                    float64 `json:"xp_earned"`
+				Kills                 float64 `json:"creatures_killed"`
+			} `json:"signals"`
+		}
+		if json.Unmarshal([]byte(line), &s) != nil {
+			continue
+		}
+		g := s.Signals
+		if n := len(all); n > 0 && g.Deaths > all[n-1][3] {
+			deaths = append(deaths, s.Elapsed)
+		}
+		all = append(all, [6]float64{s.Elapsed, math.Round(g.Level*100) / 100, g.XP, g.Deaths, g.Quests, g.Kills})
+	}
+	step := max(1, len(all)/seriesPoints)
+	var out [][6]float64
+	for i := 0; i < len(all); i += step {
+		out = append(out, all[i])
+	}
+	if len(all) > 0 && out[len(out)-1] != all[len(all)-1] {
+		out = append(out, all[len(all)-1])
+	}
+	return out, deaths
 }
 
 func readJSON(f string, v any) error {

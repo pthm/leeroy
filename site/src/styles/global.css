@@ -234,3 +234,32 @@ table.data th.num {
 .prose em {
   color: var(--color-faint);
 }
+
+/* WoW class colours (Paper: darker, to read on cream). */
+.cc-warrior { color: #c69b6d } .cc-paladin { color: #f48cba } .cc-hunter { color: #aad372 } .cc-rogue { color: #fff468 }
+.cc-priest { color: #f4f4f5 } .cc-death-knight { color: #c41e3a } .cc-shaman { color: #0070dd } .cc-mage { color: #3fc7eb }
+.cc-warlock { color: #8788ee } .cc-druid { color: #ff7c0a }
+:root[data-theme='light'] .cc-warrior { color: #9a6a3a } :root[data-theme='light'] .cc-paladin { color: #c2407f }
+:root[data-theme='light'] .cc-hunter { color: #5c8a2a } :root[data-theme='light'] .cc-rogue { color: #9a8a00 }
+:root[data-theme='light'] .cc-priest { color: #6b6b72 } :root[data-theme='light'] .cc-mage { color: #1588c2 }
+:root[data-theme='light'] .cc-warlock { color: #5f5fc4 } :root[data-theme='light'] .cc-druid { color: #c25a00 }
+
+/* A run's story: phases as h3 with the run time first, quotes from the agents' own chat. */
+.run-story h3 {
+  margin-top: 2.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-hairline);
+}
+.run-story blockquote {
+  padding-left: 1rem;
+  border-left: 2px solid var(--color-accent);
+  font-style: italic;
+  color: var(--color-fg);
+}
+.run-story blockquote p + p {
+  margin-top: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-style: normal;
+  color: var(--color-faint);
+}

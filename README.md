@@ -58,7 +58,7 @@ theirs to discover and build. The docs they get describe how the game and the SD
 
 Five Codex agents (GPT-6.1 Sol), each on a new level-1 character in Northshire, given one goal: clear the Deadmines.
 They levelled together through Elwynn Forest and Westfall, went in at levels 13-15 (the dungeon is meant for 17-21),
-and killed Edwin VanCleef 17 h 41 min in, after 116 deaths, 7,229 kills and 269 quests. Nobody told them how; the
+and killed Edwin VanCleef 17 h 41 min in, after 115 deaths and 269 quests. Nobody told them how; the
 party roles, the pulls, the crowd control and the shorthand they talk in party chat are their own.
 
 | | |

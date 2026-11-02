@@ -1,10 +1,11 @@
 ---
-import CostChart from '../../components/CostChart.astro';
-import Leaderboard from '../../components/Leaderboard.astro';
-import Section from '../../components/Section.astro';
-import SectionHeader from '../../components/SectionHeader.astro';
-import Layout from '../../layouts/Layout.astro';
-import { TASKS, dollars, duration, harnessName, modelName, runDate, runsOf, taskTitle, tasks } from '../../lib/results';
+import CostChart from '../../../components/CostChart.astro';
+import Leaderboard from '../../../components/Leaderboard.astro';
+import Section from '../../../components/Section.astro';
+import SectionHeader from '../../../components/SectionHeader.astro';
+import Layout from '../../../layouts/Layout.astro';
+import { TASKS, dollars, duration, harnessName, modelName, runDate, runsOf, taskTitle, tasks } from '../../../lib/results';
+import { url } from '../../../lib/url';
 
 export function getStaticPaths() {
   return tasks().map(task => ({ params: { task } }));
@@ -13,6 +14,14 @@ export function getStaticPaths() {
 const { task } = Astro.params;
 const info = TASKS[task];
 const runs = runsOf(task).toReversed();
+const all = runs.flatMap(r => r.players);
+const tiles = [
+  { v: String(runs.length), k: runs.length === 1 ? 'run' : 'runs' },
+  { v: String(new Set(all.map(p => p.model)).size), k: 'models' },
+  { v: String(all.length), k: 'attempts' },
+  { v: `${Math.round((all.filter(p => p.met).length / all.length) * 100)}%`, k: 'reached the goal' },
+  { v: dollars(all.reduce((n, p) => n + (p.cost_usd ?? 0), 0)), k: 'spent, all runs' },
+];
 const outcome = (p: (typeof runs)[number]['players'][number]) =>
   p.met ? 'met' : p.gave_up ? 'gave up' : p.died ? 'died' : 'not met';
 ---
@@ -21,6 +30,14 @@ const outcome = (p: (typeof runs)[number]['players'][number]) =>
   <Section>
     <SectionHeader eyebrow="Results" title={taskTitle(task)} description={info?.summary} level={1} />
     {info && <p class="-mt-6 mb-10 max-w-xl font-mono text-xs text-faint">Scoring: {info.scoring}</p>}
+    <ul class="mb-10 grid grid-cols-2 gap-3 sm:grid-cols-5">
+      {tiles.map(tile => (
+        <li class="rounded border border-hairline bg-raised px-4 py-3">
+          <b class="block font-mono text-xl font-semibold text-fg tabular-nums">{tile.v}</b>
+          <span class="text-xs text-muted">{tile.k}</span>
+        </li>
+      ))}
+    </ul>
     <Leaderboard task={task} />
     <div class="mt-8">
       <CostChart task={task} />
@@ -28,12 +45,12 @@ const outcome = (p: (typeof runs)[number]['players'][number]) =>
   </Section>
 
   <Section last>
-    <SectionHeader eyebrow="Runs" title="Run by run." description="Newest first. Every player in every run, as the judge left them." />
+    <SectionHeader eyebrow="Runs" title="Run by run." description="Newest first. Every player in every run, as the judge left them; open a run for its charts and story." />
     <div class="space-y-12">
       {runs.map(r => (
         <article id={r.id}>
           <h3 class="font-mono text-sm text-fg">
-            <a href={`#${r.id}`} class="hover:text-accent">{runDate(r)}</a>
+            <a href={url(`/results/${task}/${r.id}`)} class="text-accent hover:underline">{runDate(r)} →</a>
             <span class="text-faint"> · {r.scenario} · {r.minutes >= 1440 ? `${r.minutes / 1440} days` : `${r.minutes} min`} on the clock</span>
           </h3>
           <div class="mt-3 overflow-x-auto rounded border border-hairline bg-raised">

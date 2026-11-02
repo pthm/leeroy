@@ -1,0 +1,62 @@
+---
+// Level over the run, one line per player in their class colour, and under it a row per player with a tick at each
+// death. From the judge's samples (azbench publish). Hover a line or tick for details.
+import { classColor, duration, type Run, timeTicks } from '../lib/results';
+
+interface Props {
+  run: Run;
+}
+
+const ps = Astro.props.run.players.filter(p => p.series?.length);
+const end = Math.max(...ps.map(p => p.series!.at(-1)![0]));
+const levels = ps.flatMap(p => p.series!.map(s => s[1]));
+const lo = Math.floor(Math.min(...levels)), hi = Math.ceil(Math.max(...levels));
+const W = 900, L = 76, R = 16, T = 12, CH = 260, ROW = 18, GAP = 34;
+const H = T + CH + GAP + ps.length * ROW + 24;
+const x = (s: number) => L + (s / end) * (W - L - R);
+const y = (lvl: number) => T + CH - ((lvl - lo) / Math.max(1, hi - lo)) * CH;
+const step = hi - lo > 20 ? 5 : hi - lo > 8 ? 2 : 1;
+const yTicks = Array.from({ length: Math.floor((hi - lo) / step) + 1 }, (_, i) => lo + i * step);
+const lines = ps.map(p => ({
+  p,
+  d: p.series!.map((s, i) => `${i ? 'L' : 'M'}${x(s[0]).toFixed(1)},${y(s[1]).toFixed(1)}`).join(''),
+}));
+const stripTop = T + CH + GAP;
+const ticks = timeTicks(end);
+---
+
+<figure class="rounded border border-hairline bg-raised p-4">
+  <p class="mb-2 font-mono text-xs text-muted">Level over the run · deaths below</p>
+  <div class="overflow-x-auto">
+    <svg viewBox={`0 0 ${W} ${H}`} class="w-full min-w-[640px]" role="img" aria-label="Each player's level over the run, and when each died">
+      {yTicks.map(v => (
+        <g>
+          <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="var(--color-hairline)" />
+          <text x={L - 8} y={y(v) + 4} text-anchor="end" class="fill-faint font-mono text-[11px]">{v}</text>
+        </g>
+      ))}
+      {ticks.map(t => (
+        <text x={x(t.s)} y={H - 6} text-anchor="middle" class="fill-faint font-mono text-[11px]">{t.label}</text>
+      ))}
+      {lines.map(({ p, d }) => (
+        <path d={d} fill="none" stroke="currentColor" stroke-width="2" class={classColor(p.class)}>
+          <title>{p.char}: level {p.series!.at(-1)![1].toFixed(1)} at the end</title>
+        </path>
+      ))}
+      {ps.map((p, i) => {
+        const cy = stripTop + i * ROW + ROW / 2;
+        return (
+          <g class={classColor(p.class)}>
+            <line x1={L} x2={W - R} y1={cy} y2={cy} stroke="var(--color-hairline)" />
+            <text x={L - 8} y={cy + 4} text-anchor="end" class="fill-current font-mono text-[11px]">{p.char}</text>
+            {(p.deaths_at ?? []).map(s => (
+              <line x1={x(s)} x2={x(s)} y1={cy - 6} y2={cy + 6} stroke="currentColor" stroke-width="2">
+                <title>{p.char} died at {duration(s)}</title>
+              </line>
+            ))}
+          </g>
+        );
+      })}
+    </svg>
+  </div>
+</figure>
