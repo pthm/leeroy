@@ -183,13 +183,17 @@ html:has(.lightbox:popover-open) body {
   color: var(--color-accent);
 }
 
-/* Code blocks: shiki writes both themes; Paper switches to the light one. */
+/* Code blocks: shiki writes both themes as variables; Noir uses the dark one, Paper the light one. */
 .astro-code {
-  background-color: var(--color-raised) !important;
+  background-color: var(--color-raised);
 }
-:root[data-theme='light'] .astro-code,
+.astro-code span {
+  color: var(--shiki-dark);
+  font-style: var(--shiki-dark-font-style);
+}
 :root[data-theme='light'] .astro-code span {
-  color: var(--shiki-light) !important;
+  color: var(--shiki-light);
+  font-style: var(--shiki-light-font-style);
 }
 
 /* Tables in rendered markdown and the results pages. */

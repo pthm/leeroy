@@ -15,7 +15,7 @@ export default defineConfig({
   trailingSlash: 'ignore',
   integrations: [icon(), sitemap()],
   markdown: {
-    shikiConfig: { themes: { dark: noir, light: paper } },
+    shikiConfig: { themes: { dark: noir, light: paper }, defaultColor: false }, // colours as CSS variables, picked in global.css
   },
   build: { format: 'directory', inlineStylesheets: 'always' },
   vite: { plugins: [tailwindcss()] },
