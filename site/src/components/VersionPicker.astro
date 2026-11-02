@@ -1,7 +1,9 @@
 ---
-// The benchmark version shown: a link per version that has runs (for one task, or any), and All versions, with the
-// selected version's notes. Results aren't compared across versions.
-import { ALL, LATEST, VERSIONS, latestFor, versionLabel, versionsOf } from '../lib/results';
+// The benchmark version shown, as a dropdown: a button with the current version, opening a list of every version
+// with runs (for one task, or any), newest first, each with its date, run count and notes, then All versions. Built on
+// <details>, so it works without JavaScript; scripts/interact.ts closes it on an outside click or Escape.
+import { Icon } from 'astro-icon/components';
+import { ALL, LATEST, allRuns, latestFor, runsOf, versionLabel, versionsOf } from '../lib/results';
 import { resultsUrl } from '../lib/url';
 
 interface Props {
@@ -10,29 +12,62 @@ interface Props {
 }
 
 const { version, task } = Astro.props;
-const options = versionsOf(task);
-const latest = task ? latestFor(task) : VERSIONS.at(-1)?.version;
-const current = VERSIONS.find(v => v.version === version);
-const link = (v: string) => resultsUrl(v, task, latest);
-const chip = (on: boolean) => [
-  'rounded border px-2.5 py-1 font-mono text-xs transition-colors',
-  on ? 'border-accent bg-elevated text-accent' : 'border-hairline text-muted hover:border-outline hover:text-fg',
-];
+const latest = task ? latestFor(task) : LATEST;
+const count = (v: string) => (task ? runsOf(task, v) : allRuns(v)).length;
+const options = versionsOf(task)
+  .toReversed()
+  .map(v => ({ v: v.version, label: versionLabel(v.version), date: v.from.slice(0, 10), notes: v.notes }));
+// pinned under the list, so it stays in view however many versions there are
+const all = { v: ALL, label: versionLabel(ALL), date: '', notes: 'Runs from every version together. Versions differ, so compare within one where possible.' };
+const plural = (n: number) => `${n} run${n === 1 ? '' : 's'}`;
 ---
 
-<nav aria-label="Benchmark version" class="mb-8 rounded border border-hairline bg-raised p-4">
-  <div class="flex flex-wrap items-center gap-2">
-    <span class="eyebrow mr-2">Version</span>
-    {options.toReversed().map(v => (
-      <a href={link(v.version)} aria-current={v.version === version ? 'page' : undefined} class:list={chip(v.version === version)}>
-        {versionLabel(v.version)}{v.version === LATEST && <span class="text-faint"> · latest</span>}
-      </a>
-    ))}
-    <a href={link(ALL)} aria-current={version === ALL ? 'page' : undefined} class:list={chip(version === ALL)}>{versionLabel(ALL)}</a>
+<details class="version-picker relative" data-dropdown>
+  <summary class="flex cursor-pointer list-none items-center gap-2 rounded border border-outline bg-raised px-3 py-2 font-mono text-xs text-fg transition-colors hover:border-accent">
+    <span class="text-faint">Version</span>
+    <span>{versionLabel(version)}{version === LATEST && <span class="text-faint"> · latest</span>}</span>
+    <Icon name="lucide:chevron-down" class="chev size-3.5 text-muted transition-transform" aria-hidden="true" />
+  </summary>
+  <div class="absolute right-0 z-40 mt-2 w-[min(26rem,calc(100vw-3rem))] overflow-hidden rounded border border-outline bg-raised shadow-2xl">
+    <ul class="max-h-72 divide-y divide-hairline overflow-y-auto">
+      {options.map(o => (
+        <li>
+          <a
+            href={resultsUrl(o.v, task, latest)}
+            aria-current={o.v === version ? 'page' : undefined}
+            class:list={['block px-4 py-3 transition-colors hover:bg-elevated', o.v === version && 'bg-elevated']}
+          >
+            <span class="flex items-baseline justify-between gap-3 font-mono text-xs">
+              <span class:list={[o.v === version ? 'text-accent' : 'text-fg']}>
+                {o.v === version ? '✓ ' : ''}
+                {o.label}
+                {o.v === LATEST && <span class="text-faint"> · latest</span>}
+              </span>
+              <span class="text-faint">{[o.date, plural(count(o.v))].filter(Boolean).join(' · ')}</span>
+            </span>
+            <span class="mt-1 block text-xs leading-relaxed text-muted">{o.notes}</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+    <div class="border-t border-outline">
+        <div>
+          <a
+            href={resultsUrl(all.v, task, latest)}
+            aria-current={all.v === version ? 'page' : undefined}
+            class:list={['block px-4 py-3 transition-colors hover:bg-elevated', all.v === version && 'bg-elevated']}
+          >
+            <span class="flex items-baseline justify-between gap-3 font-mono text-xs">
+              <span class:list={[all.v === version ? 'text-accent' : 'text-fg']}>
+                {all.v === version ? '✓ ' : ''}
+                {all.label}
+                {all.v === LATEST && <span class="text-faint"> · latest</span>}
+              </span>
+              <span class="text-faint">{[all.date, plural(count(all.v))].filter(Boolean).join(' · ')}</span>
+            </span>
+            <span class="mt-1 block text-xs leading-relaxed text-muted">{all.notes}</span>
+          </a>
+        </div>
+    </div>
   </div>
-  <p class="mt-3 text-xs text-muted">
-    {current
-      ? `${versionLabel(current.version)}, from ${current.from.slice(0, 10)}. ${current.notes}`
-      : 'Runs from every version together. Versions differ in the SDK and scoring, so compare results within a version where possible.'}
-  </p>
-</nav>
+</details>

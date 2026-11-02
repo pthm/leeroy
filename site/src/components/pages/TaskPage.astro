@@ -47,9 +47,10 @@ const tiles = [
 
 <Layout title={`${taskTitle(task)}${version === latestFor(task) ? '' : ` · ${versionLabel(version)}`}`} description={info?.summary}>
   <Section>
-    <SectionHeader eyebrow="Results" title={taskTitle(task)} description={info?.summary} level={1} />
-    {info && <p class="-mt-6 mb-8 max-w-xl font-mono text-xs text-faint">Scoring. {info.scoring}</p>}
-    <VersionPicker version={version} task={task} />
+    <SectionHeader eyebrow="Results" title={taskTitle(task)} description={info?.summary} level={1}>
+      <VersionPicker version={version} task={task} />
+    </SectionHeader>
+    {info && <p class="-mt-6 mb-10 max-w-xl font-mono text-xs text-faint">Scoring. {info.scoring}</p>}
     <ul class="mb-10 grid grid-cols-2 gap-3 sm:grid-cols-5">
       {tiles.map(tile => (
         <li class="rounded border border-hairline bg-raised px-4 py-3">

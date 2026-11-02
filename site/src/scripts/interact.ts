@@ -217,5 +217,14 @@ document.addEventListener('click', e => {
   body.append(...rows);
 });
 
+// dropdowns (<details data-dropdown>): close on a click outside or Escape
+document.addEventListener('click', e => {
+  for (const d of document.querySelectorAll<HTMLDetailsElement>('details[data-dropdown][open]'))
+    if (!d.contains(e.target as Node)) d.open = false;
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') for (const d of document.querySelectorAll<HTMLDetailsElement>('details[data-dropdown][open]')) d.open = false;
+});
+
 adoptTitles(document);
 for (const svg of document.querySelectorAll<SVGSVGElement>('svg[data-series]')) crosshair(svg);

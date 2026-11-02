@@ -36,8 +36,9 @@ const summary = [
       title="Results"
       description="Each task starts new characters in the same place with the same goal. Goal tasks are ranked by goals met and time, levelling tasks by XP per hour."
       level={1}
-    />
-    <VersionPicker version={version} />
+    >
+      <VersionPicker version={version} />
+    </SectionHeader>
     <ul class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
       {summary.map(t => (
         <li class="rounded border border-hairline bg-raised px-4 py-3">
