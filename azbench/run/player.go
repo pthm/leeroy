@@ -252,8 +252,7 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 		if a.Model != "" {
 			args = append(args, "--model", a.Model)
 		}
-		args = append(args, "--add-dir", repo+"/azeroth-sdk/client", repo+"/azeroth-sdk/session", repo+"/azeroth-sdk/script",
-			repo+"/server/azerothcore/src/server/game", repo+"/server/azerothcore/src/server/shared",
+		args = append(args, "--add-dir", repo+"/azeroth-sdk", repo+"/server/azerothcore/src/server/game", repo+"/server/azerothcore/src/server/shared",
 			"--allowedTools")
 		for _, c := range agentCommands {
 			args = append(args, "Bash("+c+":*)")
@@ -306,8 +305,7 @@ func opencodeConfig(repo, ws string) string {
 		bash[c], bash[c+" *"] = "allow", "allow"
 	}
 	ext := map[string]string{"*": "deny"}
-	for _, d := range []string{"azeroth-sdk/client", "azeroth-sdk/session", "azeroth-sdk/script",
-		"server/azerothcore/src/server/game", "server/azerothcore/src/server/shared"} {
+	for _, d := range []string{"azeroth-sdk", "server/azerothcore/src/server/game", "server/azerothcore/src/server/shared"} {
 		ext[filepath.Join(repo, d)+"/**"] = "allow"
 	}
 	// edit rules match paths relative to the git root (the repo), not absolute ones

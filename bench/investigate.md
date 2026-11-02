@@ -54,6 +54,7 @@ mountains to the Wetlands (up to z 445 at -4367 -2212, climbs of 55-58 degrees b
 - **No boats or zeppelins.** The SDK drops ONTRANSPORT whenever the character moves (`client/selfmove.go`), so it
   can't ride one; the docs say so. Haiku and Sonnet worked that out at the Stormwind dock (The Bravery to Auberdine
   is the intended route to Darnassus) and quit. Needs: boarding, riding along the transport's path, getting off.
+
 ## azworld
 
 (nothing open)
@@ -63,6 +64,3 @@ mountains to the Wetlands (up to z 445 at -4367 -2212, climbs of 55-58 degrees b
 - **An agent that exits early stays stopped.** Haiku quit with 78 minutes left and Sonnet with 64 (alerts.log; exit 0,
   no restart). Decide whether an early exit before the goal gets one continuation prompt (the clock and score are
   unchanged either way), or stands as the agent's choice and is reported as such.
-- **Claude Code permission prompts:** 13 across Haiku, Sonnet and Opus, for compound commands, `$VAR`, zsh range globs
-  and redirects to /tmp; Opus was refused a grep in azeroth-sdk outside client/, session/ and script/ while looking
-  for the jump snap-back. Widen the allowed reads to the whole SDK, and check the shell patterns.
