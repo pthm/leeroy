@@ -87,9 +87,9 @@ function at(name, t) {
   const a = S[name]; if (!a) return null;
   const i = upto(a, t) - 1; if (i < 0) return null;
   const s = a[i], n = a[i + 1];
-  if (!n || jump(s.t, s.x, s.y, s.m, n.t, n.x, n.y, n.m)) return { s, x: s.x, y: s.y };
-  const f = (t - s.t) / (n.t - s.t);
-  return { s, x: s.x + (n.x - s.x) * f, y: s.y + (n.y - s.y) * f };
+  if (!n || jump(s.t, s.x, s.y, s.m, n.t, n.x, n.y, n.m)) return { s, x: s.x, y: s.y, pet: s.pet };
+  const f = (t - s.t) / (n.t - s.t), pet = s.pet && n.pet ? [s.pet[0] + (n.pet[0] - s.pet[0]) * f, s.pet[1] + (n.pet[1] - s.pet[1]) * f, s.pet[2], s.pet[3]] : s.pet;
+  return { s, x: s.x + (n.x - s.x) * f, y: s.y + (n.y - s.y) * f, pet };
 }
 
 // The samples loaded cover [have.from, have.to] (relative ms). Playback and seeking ask for a window around the
@@ -656,6 +656,22 @@ function drawMap() {
     cx.strokeText(g, sx, sy + 4); cx.fillText(g, sx, sy + 4);
     markerHits.push([sx, sy, e]);
   }
+  // pets (pp.pet: [x, y, health % or -1 dead, name]): a smaller, hollow dot in the master's colour, joined to the master
+  // by a line (outlined, so it shows over the master's own route); named under the dot, after the players' names
+  const petLabels = [], petDots = new Map(); // master -> [x, y, r] of its pet, so its name can keep clear
+  for (const p of P.values()) {
+    const pp = at(p.name, t), pet = pp?.pet; if (!pet || pp.s.m !== M.id || (focus && !focus.has(p.name))) continue;
+    const [ax, ay] = scr(pp.x, pp.y), [px, py] = scr(pet[0], pet[1]), pr = Math.max(4.5, playerR() * 0.75), dead = pet[2] < 0;
+    cx.lineCap = "round"; cx.beginPath(); cx.moveTo(ax, ay); cx.lineTo(px, py);
+    cx.strokeStyle = "#000c"; cx.lineWidth = 4; cx.stroke(); cx.strokeStyle = dead ? "#888" : p.color; cx.lineWidth = 2; cx.stroke();
+    cx.beginPath(); cx.arc(px, py, pr, 0, 7); cx.fillStyle = dead ? "#555" : "#000c"; cx.fill();
+    cx.lineWidth = 2.5; cx.strokeStyle = dead ? "#888" : p.color; cx.stroke();
+    if (dead) { cx.strokeStyle = css("--death"); cx.lineWidth = 1.5; cx.beginPath(); cx.moveTo(px - 3, py - 3); cx.lineTo(px + 3, py + 3); cx.moveTo(px + 3, py - 3); cx.lineTo(px - 3, py + 3); cx.stroke(); }
+    petDots.set(p.name, [px, py, pr]);
+    const dx = px - ax, dy = py - ay, len = Math.hypot(dx, dy); // the name on the far side from the master (below when on top of it)
+    petLabels.push(len < 2 ? [px, py + pr + 11] : [px + (dx / len) * (pr + 14), py + (dy / len) * (pr + 14) + 4]);
+    petLabels.at(-1).push(pet[3] + (dead ? " (dead)" : ""));
+  }
   // players now; each name nudged down until it doesn't overlap one already drawn
   const names = [];
   for (const p of P.values()) {
@@ -673,9 +689,18 @@ function drawMap() {
     cx.font = "600 12px system-ui"; cx.textAlign = "left"; cx.lineWidth = 3; cx.strokeStyle = "#000b"; cx.fillStyle = "#fff";
     const label = p.name + (ghost ? " (ghost)" : ""), w = cx.measureText(label).width;
     let lx = sx + r + 3, ly = sy - r - 1;
+    const pd = petDots.get(p.name); // its pet under the name: the name goes left of the dot
+    if (pd && pd[0] + pd[2] > lx - 2 && pd[0] - pd[2] < lx + w + 2 && pd[1] + pd[2] > ly - 12 && pd[1] - pd[2] < ly + 3) lx = sx - r - 3 - w;
     for (let k = 0; k < 8; k++) { const hit = names.find(([x, y, pw]) => lx < x + pw + 4 && x < lx + w + 4 && Math.abs(y - ly) < 13); if (!hit) break; lx = hit[0]; ly = hit[1] + 14; }
     names.push([lx, ly, w]);
     cx.strokeText(label, lx, ly); cx.fillText(label, lx, ly);
+  }
+  // pets' names, centred beyond their dots, where they don't cover a name already drawn
+  cx.font = "italic 11px system-ui"; cx.textAlign = "left"; cx.lineWidth = 3; cx.strokeStyle = "#000b"; cx.fillStyle = "#e8e8e8";
+  for (const [px, ly, label] of petLabels) {
+    const w = cx.measureText(label).width, lx = px - w / 2;
+    if (names.some(([x, y, pw]) => lx < x + pw + 2 && x < lx + w + 2 && Math.abs(y - ly) < 12)) continue;
+    names.push([lx, ly, w]); cx.strokeText(label, lx, ly); cx.fillText(label, lx, ly);
   }
   // creatures' names, around the players' (names: [x, y, width] of each drawn), targeted ones first
   cx.font = "11px system-ui"; cx.textAlign = "left"; cx.lineWidth = 3; cx.strokeStyle = "#000a";

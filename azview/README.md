@@ -47,7 +47,7 @@ viewer fills it in from `acore_world.creature_template`.
 
 | `ev` | Fields | Server | Client |
 |---|---|---|---|
-| `pos` | `m` map, `x` `y` `z` `o`, `hp` `hpmax`, `pt` power type, `pw` `pwmax`, `lvl`, `xp`, `money` (copper), `zone`, `area`, `alive` `ghost` `combat` (0/1), `grp` (group id, 0 = none), `tgt` (current victim, if any) | every 1 s | every 1 s |
+| `pos` | `m` map, `x` `y` `z` `o`, `hp` `hpmax`, `pt` power type, `pw` `pwmax`, `lvl`, `xp`, `money` (copper), `zone`, `area`, `alive` `ghost` `combat` (0/1), `grp` (group id, 0 = none), `tgt` (current victim, if any); client side, `pet` when one is out: `{e` entry, `n` name, `x` `y` `z`, `hp` `hpmax`, `lvl`, `alive}` | every 1 s | every 1 s |
 | `login` | `race`, `cls`, `lvl` | yes | yes |
 | `logout` | | yes | yes |
 | `chat` | `type` (chat message type), `msg`, `to` (whisper target, `party`, `guild`, channel) | messages a player sends | messages the character receives from others, with `from` = speaker |
@@ -61,7 +61,7 @@ viewer fills it in from `acore_world.creature_template`.
 | `level` | `from`, `to` | yes | `to` only |
 | `xp` | `amount`, `src`, `victim` | yes | `amount` only |
 | `money` | `delta` (copper) | yes | no |
-| `units` | `m` map, `u`: the creatures within 60 yd, each `[entry, level, x, y, health %, state]` (state 0 hostile, 1 neutral, 2 friendly, +4 dead) | no | every 2 s |
+| `units` | `m` map, `u`: the creatures within 60 yd, each `[entry, level, x, y, health %, state]` (state 0 hostile, 1 neutral, 2 friendly, +4 dead); players' pets aren't among them (they're in their master's `pos`), totems are | no | every 2 s |
 | `transport` | `id`, `e` entry, `n` name, `m` map, `x` `y` `z` `o`, `pp` path progress (ms), `period` (ms): each boat and zeppelin (not elevators) | every 1 s | no |
 | `quest` (completed) | `id`, `title` | yes | `id`, `xp`, `money` |
 | `achievement` | `id`, `title`, `points` | yes | `id` only |
@@ -217,7 +217,7 @@ everywhere: the map follows it, the feed and the stats narrow to it.
   terrain outlined). On the map, each
   toggleable: trails, **foliage** (a slider: how much the trees' leaves, and fences' and banners' see-through parts,
   cover the zoomed-in map, from as drawn down to none: the tiles with and without foliage, mixed), **transports** (every boat and zeppelin where the server has it: the server log's transport
-  samples, one kept every 4 s, drawn as the outline of its collision model, rotated to its heading), group lines, target lines, event markers, creatures (named by choice: the players' targets, the
+  samples, one kept every 4 s, drawn as the outline of its collision model, rotated to its heading), group lines, target lines, event markers. Always drawn: each player's pet (a hunter's beast, a warlock's demon, a water elemental) as a smaller hollow dot in its master's colour, joined to the master by a line and named beyond it, and on the master's roster card a row with its name, level and health. Then creatures (named by choice: the players' targets, the
   default; hostile ones; everyone; or none; names skipped where they'd overlap one drawn, players' first; hover a
   creature for its name, level and health), **aggro radii** (off by default: around
   each hostile creature, how close a player can come before it attacks, as the server works it out in

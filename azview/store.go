@@ -24,13 +24,30 @@ type Sample struct {
 	M, Zone, Grp                             int
 	HP, HPMax, PW, PWMax, PT, Lvl, XP, Money int
 	Alive, Ghost, Combat                     bool
+	Pet                                      *PetSample // the pet it had out, if any
 }
+
+// PetSample is a player's pet in one of its samples: a hunter's beast, a warlock's demon, a water elemental.
+type PetSample struct {
+	Name           string
+	X, Y           float64
+	HP, HPMax, Lvl int
+	Alive          bool
+}
+
+var petNames sync.Map // interned: a week's samples share a few names
 
 func sampleOf(e Ev) Sample {
 	i := func(k string) int { return int(N(e, k)) }
-	return Sample{T: N(e, "t"), X: N(e, "x"), Y: N(e, "y"), M: i("m"), Zone: i("zone"), Grp: i("grp"),
+	s := Sample{T: N(e, "t"), X: N(e, "x"), Y: N(e, "y"), M: i("m"), Zone: i("zone"), Grp: i("grp"),
 		HP: i("hp"), HPMax: i("hpmax"), PW: i("pw"), PWMax: i("pwmax"), PT: i("pt"), Lvl: i("lvl"), XP: i("xp"), Money: i("money"),
 		Alive: Truthy(e["alive"]), Ghost: Truthy(e["ghost"]), Combat: Truthy(e["combat"])}
+	if pe, ok := e["pet"].(map[string]any); ok {
+		name, _ := petNames.LoadOrStore(S(pe, "n"), S(pe, "n"))
+		s.Pet = &PetSample{Name: name.(string), X: N(pe, "x"), Y: N(pe, "y"), HP: int(N(pe, "hp")), HPMax: int(N(pe, "hpmax")),
+			Lvl: int(N(pe, "lvl")), Alive: Truthy(pe["alive"])}
+	}
+	return s
 }
 
 // UnitRow is a creature around a player: entry, level, where, health % and state (0 hostile, 1 neutral, 2 friendly, +4 dead).
@@ -266,6 +283,12 @@ func (p *Player) At(t float64) (Sample, bool) {
 			f := (t - a.T) / (b.T - a.T)
 			a.X += (b.X - a.X) * f
 			a.Y += (b.Y - a.Y) * f
+			if a.Pet != nil && b.Pet != nil { // a copy: the sample's own is shared
+				pet := *a.Pet
+				pet.X += (b.Pet.X - pet.X) * f
+				pet.Y += (b.Pet.Y - pet.Y) * f
+				a.Pet = &pet
+			}
 		}
 	}
 	return a, true
@@ -669,11 +692,18 @@ func (s *Store) liveJSON(typ string, v any) liveMsg {
 
 // ---------- what the map draws ----------
 
-// mapSample is a sample as the map draws it: where, state, group and leader, and the target with where it is.
+// mapSample is a sample as the map draws it: where, state, group and leader, the target with where it is, and the pet.
 func (s *Store) mapSample(p *Player, a Sample) map[string]any {
 	out := map[string]any{"t": a.T, "x": a.X, "y": a.Y, "m": a.M, "a": a.Alive, "g": a.Ghost, "c": a.Combat, "l": a.Lvl}
 	if a.Grp != 0 {
 		out["grp"], out["ld"] = a.Grp, s.LeaderAt(a.Grp, a.T)
+	}
+	if pt := a.Pet; pt != nil { // [x, y, health % (-1 dead), name]
+		hp := -1
+		if pt.Alive {
+			hp = 100 * pt.HP / max(1, pt.HPMax)
+		}
+		out["pet"] = []any{pt.X, pt.Y, hp, pt.Name}
 	}
 	if a.Alive {
 		if tg := s.TargetOf(p, a.T); tg != nil && tg.X != nil {

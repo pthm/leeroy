@@ -168,3 +168,20 @@ func TestAtHoldsOverTeleport(t *testing.T) {
 		t.Fatalf("5 yd in a second is walking: interpolated, got %v", got.X)
 	}
 }
+
+// a pet rides in its master's pos: parsed, moved between samples (without changing the stored sample), on the card
+func TestStorePet(t *testing.T) {
+	s := storeOf(t, `{"t":1000,"ev":"pos","n":"A","x":0,"y":0,"m":0,"alive":1,"hp":10,"hpmax":10,"pet":{"n":"Voidwalker","x":2,"y":0,"hp":50,"hpmax":100,"lvl":60,"alive":1}}
+{"t":2000,"ev":"pos","n":"A","x":10,"y":0,"m":0,"alive":1,"hp":10,"hpmax":10,"pet":{"n":"Voidwalker","x":12,"y":0,"hp":50,"hpmax":100,"lvl":60,"alive":1}}`)
+	p := s.byName["A"]
+	got, _ := p.At(1500)
+	if got.Pet == nil || got.Pet.X != 7 || got.Pet.Name != "Voidwalker" || p.Track[0].Pet.X != 2 {
+		t.Fatalf("pet halfway: %+v, stored %+v", got.Pet, p.Track[0].Pet)
+	}
+	if c := s.card(p, 1500, Query{}, false); c.Pet == nil || c.Pet.HPPct != 50 || c.Pet.Dead {
+		t.Fatalf("card pet: %+v", c.Pet)
+	}
+	if m := s.mapSample(p, got); m["pet"] == nil {
+		t.Fatalf("map sample has no pet: %v", m)
+	}
+}

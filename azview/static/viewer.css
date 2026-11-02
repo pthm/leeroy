@@ -54,6 +54,15 @@ main { display: grid; grid-template-columns: clamp(260px, 20vw, 340px) 1fr clamp
 .pc-tgt { display: flex; align-items: center; gap: 6px; height: 16px; font-size: 11.5px; color: #ff8080; }
 .pc-tgt > span:first-child { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pc-tgt.none { color: var(--quiet); opacity: .6; }
+/* the pet a player has out: a sub-row under its target, joined to the card by a corner */
+.pc-pet { min-width: 0; display: flex; align-items: center; gap: 6px; height: 16px; font-size: 11.5px; color: var(--ink); padding-left: 12px; position: relative; }
+.pc-pet::before { content: ""; position: absolute; left: 3px; top: 1px; width: 6px; height: 7px; border-left: 1px solid var(--quiet); border-bottom: 1px solid var(--quiet); opacity: .7; }
+.pc-pet .pet-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-pet .pdot { display: inline-block; width: 6px; height: 6px; margin-right: 5px; vertical-align: -1px; border-radius: 50%; border: 2px solid; box-sizing: content-box; }
+.pc-pet .tbar { flex: none; width: 54px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.pc-pet .tbar i { display: block; height: 100%; }
+.pc-pet b { flex: none; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--ink); min-width: 4ch; text-align: right; }
+.pc-pet.dead { opacity: .55; }
 .pc-tgt .tbar { flex: none; width: 54px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .pc-tgt .tbar i { display: block; height: 100%; }
 .pc-tgt b { flex: none; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--ink); min-width: 4ch; text-align: right; }
@@ -192,7 +201,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px;
 
 /* short transitions between states, so updates ease in rather than snap (off for reduced motion) */
 @media (prefers-reduced-motion: no-preference) {
-  .hpbar > i, .pwbar > i, .pc-tgt .tbar i { transition: width .3s ease-out, background-color .3s; }
+  .hpbar > i, .pwbar > i, .pc-tgt .tbar i, .pc-pet .tbar i { transition: width .3s ease-out, background-color .3s; }
   .mrow > i { transition: width .35s ease-out; }
   .pc { transition: border-color .25s, box-shadow .2s, opacity .25s; }
   .pc > * { transition: opacity .25s; }

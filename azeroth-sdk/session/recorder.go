@@ -273,9 +273,14 @@ func (b *Bot) startRecording() {
 				if me := w.GetObject(w.CharGUID()); me != nil {
 					xp = me.Value(0x27A)
 				}
-				b.Record("pos", map[string]any{"m": m, "x": x, "y": y, "z": z, "o": o, "hp": hp, "hpmax": hpmax,
+				pos := map[string]any{"m": m, "x": x, "y": y, "z": z, "o": o, "hp": hp, "hpmax": hpmax,
 					"pt": b.GetPowerType(), "pw": pw, "pwmax": pwmax, "lvl": w.PlayerLevel(), "xp": xp, "money": w.Money(),
-					"zone": 0, "grp": groupID(w), "alive": b01(b.IsAlive()), "ghost": b01(b.IsGhost()), "combat": b01(b.InCombat())})
+					"zone": 0, "grp": groupID(w), "alive": b01(b.IsAlive()), "ghost": b01(b.IsGhost()), "combat": b01(b.InCombat())}
+				if u := b.GetUnitInfo(b.GetPetGUID()); u != nil && b.GetPetGUID() != 0 { // the pet out: a hunter's beast, a warlock's demon
+					pos["pet"] = map[string]any{"e": u.Entry, "n": u.Name, "x": round1(u.PosX), "y": round1(u.PosY), "z": round1(u.PosZ),
+						"hp": u.Health, "hpmax": u.MaxHealth, "lvl": u.Level, "alive": b01(u.IsAlive)}
+				}
+				b.Record("pos", pos)
 				if tick++; tick%2 == 0 {
 					b.Record("units", map[string]any{"m": m, "u": b.nearbyUnitRows()})
 				}
@@ -301,6 +306,23 @@ func b01(v bool) int {
 
 // nearbyUnitRows: the creatures within 60 yd for the viewer, each [entry, level, x, y, health %, state], state 0
 // hostile, 1 neutral, 2 friendly, plus 4 when dead
+// playerPet: a creature a player summoned that isn't a totem (UNIT_FIELD_SUMMONEDBY a player's GUID, whose high
+// part is 0): a pet, a demon, a water elemental.
+func (b *Bot) playerPet(u UnitInfo) bool {
+	o := b.world.GetObject(u.GUID)
+	if o == nil {
+		return false
+	}
+	by := o.GUIDField(client.UnitFieldSummonedBy)
+	if by == 0 || by>>48 != 0 {
+		return false
+	}
+	creatures.Lock()
+	info, known := creatures.info[u.Entry]
+	creatures.Unlock()
+	return !known || info.typ != 11
+}
+
 func (b *Bot) nearbyUnitRows() [][]any {
 	var faction uint32
 	if me := b.world.GetObject(b.world.CharGUID()); me != nil {
@@ -309,6 +331,9 @@ func (b *Bot) nearbyUnitRows() [][]any {
 	rows := [][]any{}
 	for _, u := range b.GetNearbyUnits(60) {
 		if u.IsPlayer || u.Flags&0x2000000 != 0 { // UNIT_FLAG_NOT_SELECTABLE: invisible triggers
+			continue
+		}
+		if b.playerPet(u) { // a player's pet is in its master's pos, not here
 			continue
 		}
 		state := map[string]int{"hostile": 0, "neutral": 1, "friendly": 2}[factionReaction(u.Faction, faction)]

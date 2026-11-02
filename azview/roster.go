@@ -23,11 +23,22 @@ type Card struct {
 	PW, PWMax         int
 	Target            *Target
 	TargetHP          string // the target's health bar colour
+	Pet               *PetCard
 	Say, SayFull      string
 	Money             int
 	Score             Ev
 	Agent             map[string]any
 	sortKeys          map[string]float64
+}
+
+// PetCard is the pet a player has out, on its card.
+type PetCard struct {
+	Name     string
+	Lvl      int
+	HP, Max  int
+	HPPct    float64
+	Dead     bool
+	BarColor string
 }
 
 // RosterGroup is a party's cards.
@@ -86,6 +97,10 @@ func (s *Store) card(p *Player, t float64, q Query, leader bool) Card {
 		if c.Target != nil && c.Target.HP != nil {
 			c.TargetHP = barColor(*c.Target.HP)
 		}
+	}
+	if pt := pp.Pet; pt != nil {
+		c.Pet = &PetCard{Name: pt.Name, Lvl: pt.Lvl, HP: pt.HP, Max: pt.HPMax, HPPct: 100 * float64(pt.HP) / math.Max(1, float64(pt.HPMax)), Dead: !pt.Alive}
+		c.Pet.BarColor = barColor(int(c.Pet.HPPct))
 	}
 	c.sortKeys["level"], c.sortKeys["hp"] = float64(pp.Lvl), c.HPPct/100
 	return c
