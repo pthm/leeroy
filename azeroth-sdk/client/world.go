@@ -2537,6 +2537,18 @@ func (w *WorldClient) CastSpellCount(spellID uint32, targetGUID uint64, count ui
 	return w.sendPacket(CmsgCastSpell, buf.Bytes())
 }
 
+// CastSpellOnItemCount casts a spell at an item you carry (TARGET_FLAG_ITEM 0x10 and the item's packed GUID): Feed
+// Pet's food.
+func (w *WorldClient) CastSpellOnItemCount(spellID uint32, itemGUID uint64, count uint8) error {
+	buf := new(bytes.Buffer)
+	buf.WriteByte(count)
+	binary.Write(buf, binary.LittleEndian, spellID)
+	buf.WriteByte(0)
+	binary.Write(buf, binary.LittleEndian, uint32(0x0010))
+	writePackedGUID(buf, itemGUID)
+	return w.sendPacket(CmsgCastSpell, buf.Bytes())
+}
+
 // AutoEquipItem sends CMSG_AUTOEQUIP_ITEM for a bag/slot inventory location.
 // bag=255 is the backpack; slots 23..38 are backpack item slots on 3.3.5a.
 func (w *WorldClient) AutoEquipItem(bag, slot uint8) error {

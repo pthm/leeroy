@@ -430,6 +430,8 @@ var EventTypes = map[string]EventType{
 	"cast_start":           {Cast{}, "a cast with a cast time began"},
 	"cast_done":            {Cast{}, "a spell went off"},
 	"cast_failed":          {Cast{}, "a cast failed or was interrupted"},
+	"pet_cast_done":        {Cast{}, "your pet's ability went off"},
+	"pet_cast_failed":      {Cast{}, "your pet couldn't use an ability (code: the reason)"},
 	"unit_cast_start":      {UnitCast{}, "an enemy started casting at you or a party member (an interrupt or a stun stops it)"},
 	"attack_start":         {AttackStart{}, "your auto-attack started"},
 	"attack_failed":        {AttackFailed{}, "the server refused a swing"},
@@ -545,5 +547,6 @@ var OpResults = map[string]any{
 	"items.use": CastDone{}, "objects.use": ObjectActivation{}, "transports.board": Boarding{}, "transports.leave": Position{}, "items.loot": Looted{}, "items.open": Looted{}, "items.split": Item{}, "items.equip": Equipped{}, "items.roll": LootRollResult{},
 	"vendor.buy": ItemReceived{}, "vendor.sell": Sold{}, "vendor.sell_junk": Sold{}, "vendor.repair": Repaired{},
 	"trainer.learn": Learned{}, "quests.turn_in": QuestDone{}, "quests.accept": QuestDone{}, "talents.learn": TalentLearned{},
+	"pet.cast": Cast{}, "pet.feed": Cast{},
 	"combat.attack": Attacking{}, "move.unstuck": Teleport{}, "summon.accept": Teleport{}, "flights.map": FlightMap{}, "flights.take": Flight{}, "innkeeper.bind": Home{},
 }

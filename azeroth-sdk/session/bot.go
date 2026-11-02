@@ -57,6 +57,7 @@ type BotEvent struct {
 // Bot implements the WoW client bot logic with behavior tree AI.
 type Bot struct {
 	castSequences    castSequences
+	pet              petBar                       // the pet's bar (pet.go)
 	rec              *Recorder                    // optional event log (-record)
 	lastAttackReject atomic.Pointer[attackReject] // for bot.last_attack_error() // last move_to found no navmesh path (move_to returns false)
 	id               string
@@ -387,6 +388,8 @@ func (b *Bot) Run() BotResult {
 			b.handleLootResponse(data)
 		}
 	})
+
+	b.watchPet()
 
 	// Summon / .go / portal: interrupt movement+combat and flag Lua to restart AI.
 	b.wireTeleportHandling()

@@ -241,7 +241,8 @@ the initial roster and server group updates using GUIDs, without names, chat, re
 | `objects` | game objects: chests, ore veins and herbs, doors, quest objects (`nearby`, `find`, `use`) |
 | `world` | terrain: ground heights, walking paths, line of sight to a point |
 | `move` | walking (`to`, `stop`, `unstuck`) and facing (`face`, `turn`) |
-| `combat` | targeting, auto-attack, your pet, threat tables, the combat log and meters |
+| `combat` | targeting, auto-attack, threat tables, the combat log and meters |
+| `pet` | your pet: its state and abilities, commands (`follow`, `stay`, `attack`), stance (`react`), `cast`, `autocast`, `feed` |
 | `spells` | casting (`cast`, `cast_at`), cooldowns, usability, what a spell does |
 | `items` | your bags and gear: list, info, compare, use, equip, destroy, loot |
 | `gossip` | talking to NPCs: what they say, their dialogue options and quests |

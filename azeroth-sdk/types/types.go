@@ -502,6 +502,35 @@ type Talents struct {
 	Trees  []TalentTree `json:"trees"`
 }
 
+// ---------- pet ----------
+
+type Pet struct {
+	GUID      GUID       `json:"guid"`
+	Name      string     `json:"name"`
+	Level     uint32     `json:"level"`
+	Health    Resource   `json:"health"`
+	Power     Resource   `json:"power" doc:"focus for a hunter's pet, else mana"`
+	Happiness *Happiness `json:"happiness,omitempty" doc:"a hunter's pet only"`
+	React     string     `json:"react" doc:"its stance: passive, defensive or aggressive (the last one sent; empty until the server sends the pet's bar)"`
+	Command   string     `json:"command" doc:"stay, follow or attack (the last one sent)"`
+	Target    *UnitRef   `json:"target,omitempty" doc:"what it's attacking"`
+	Spells    []PetSpell `json:"spells" doc:"its abilities"`
+}
+
+type PetSpell struct {
+	ID       uint32 `json:"id"`
+	Name     string `json:"name"`
+	Passive  bool   `json:"passive,omitempty" doc:"always on: not cast"`
+	Autocast bool   `json:"autocast,omitempty" doc:"it uses this by itself (pet.autocast)"`
+}
+
+// Happiness: a hunter's pet's. Below content it does less damage; at 0 it leaves you. Feeding raises it (pet.feed).
+type Happiness struct {
+	Current uint32 `json:"current"`
+	Max     uint32 `json:"max"`
+	State   string `json:"state" doc:"unhappy, content or happy"`
+}
+
 // ---------- others ----------
 
 type Group struct {

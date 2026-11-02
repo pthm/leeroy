@@ -47,6 +47,25 @@ Spells, attacks and fights, and looking back at a fight. The rest of the SDK is 
   given), `dispel` (auras dispelled or stolen). A `cast_done` event says how many targets it `hits` and which it
   `misses`, and why.
 
+## Your pet
+
+- `pet.info()` is nil without a pet out; otherwise its health, power (focus for a hunter's pet, else mana),
+  `happiness` (a hunter's pet), `react`, `command`, `target` and `spells`: its abilities, each `passive` (always on)
+  or castable, and whether it uses it by itself (`autocast`). The server sends the abilities, stance and command
+  when the pet comes out; it doesn't confirm a command or stance change, so `react` and `command` are the last ones
+  sent, as in the game's own client.
+- Commands: `pet.follow()` (it comes back and stops fighting), `pet.stay()`, `pet.attack(guid)`. Stances,
+  `pet.react(stance)`: `passive` (it never attacks on its own), `defensive` (it attacks what attacks you or it),
+  `aggressive` (it attacks hostiles in range).
+- `pet.cast(id, guid)` uses an ability on a unit (its own target without one): a `pet_cast_done` event when it goes
+  off, `pet_cast_failed` with the server's reason (`not_ready`, `out_of_range`, ...), which the request returns too.
+  `pet.autocast(id, on)` sets whether it uses an ability by itself.
+- A hunter's pet's happiness falls over time. Below content it does less damage, and at 0 it leaves for good.
+  `pet.feed(item)` casts Feed Pet on food you carry: each family eats some kinds of food, and food far below the
+  pet's level is refused (`food_lowlevel`).
+- Summoning, dismissing and reviving are the class's spells (Call Pet, Dismiss Pet, Revive Pet; a warlock's
+  Summon Imp...): `spells.cast`.
+
 ## Looking back at a fight
 
 The session keeps a fight log: where you, your party and the enemies were every second, and every hit, heal, cast,

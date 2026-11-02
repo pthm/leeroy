@@ -241,6 +241,19 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `objects.nearby([dist = 30]) → Object[]` | game objects within dist yards (chests, doors, quest objects, herbs...), nearest first | [Object](#object) |
 | `objects.use(guid [, spell]) → Request<ObjectActivation>` | use a game object within ~5 yd. Chests use the Opening spell for their lock's type; herb, ore and locked nodes select Herb Gathering, Mining or Pick Lock from observed lock metadata. not_available while the object template is loading; unsupported_gathering requires an explicit spell. Plain objects require an observed state change, a teleport, or (a portal) its spell going off; its failure (cast_failed) fails the use. data.kind distinguishes cast completion from state_changed; neither establishes quest progress. Completion: matching opening cast completion, an observed game-object state change, a teleport, or a portal's spell going off (its cast_failed fails the use); quest progress is checked separately by act.use_object. | [Request](#request), [ObjectActivation](#objectactivation) |
 
+### pet
+
+| Function | | Returns |
+|---|---|---|
+| `pet.attack(guid) → Request` | send your pet at a unit (as combat.pet_attack). Completion: the observed pet targets the requested unit. | [Request](#request) |
+| `pet.autocast(id, on) → Request` | turn your pet's use of an ability on its own on or off. Completion: the autocast change was sent. | [Request](#request) |
+| `pet.cast(id [, guid]) → Request<Cast>` | your pet uses one of its abilities (ids from pet.info), on a unit or its own target. Completion: the pet's matching spell went off (SMSG_SPELL_GO from the pet); SMSG_PET_CAST_FAILED fails it. | [Request](#request), [Cast](#cast) |
+| `pet.feed(item) → Request<Cast>` | feed your hunter's pet food you carry (entry or guid), with Feed Pet: it gains happiness. It only eats the kinds of food its family likes. Completion: Feed Pet went off; its cast failure fails the request. | [Request](#request), [Cast](#cast) |
+| `pet.follow() → Request` | your pet follows you (and stops fighting). Completion: the command was sent (the server doesn't confirm pet commands). | [Request](#request) |
+| `pet.info() → Pet?` | your pet: health, focus or mana, happiness (a hunter's), stance, command and abilities; nil for none | [Pet](#pet) |
+| `pet.react(stance) → Request` | your pet's stance: passive (it never attacks on its own), defensive (it attacks what attacks you or it), aggressive (it attacks hostiles in range). Completion: the stance was sent (the server doesn't confirm pet stances). | [Request](#request) |
+| `pet.stay() → Request` | your pet stays where it is. Completion: the command was sent (the server doesn't confirm pet commands). | [Request](#request) |
+
 ### quests
 
 | Function | | Returns |
@@ -824,6 +837,40 @@ Everything in [Item](#item), plus:
 | `available` | bool | you can learn the next rank now |
 | `now?` | string | what your ranks give, as its tooltip says |
 | `next?` | string | what the next rank gives |
+
+### Pet
+
+| Field | Type | |
+|---|---|---|
+| `guid` | GUID |  |
+| `name` | string |  |
+| `level` | number |  |
+| `health` | Resource |  |
+| `power` | Resource | focus for a hunter's pet, else mana |
+| `happiness?` | Happiness | a hunter's pet only |
+| `react` | string | its stance: passive, defensive or aggressive (the last one sent; empty until the server sends the pet's bar) |
+| `command` | string | stay, follow or attack (the last one sent) |
+| `target?` | UnitRef | what it's attacking |
+| `spells` | PetSpell[] | its abilities |
+
+### Happiness
+
+Happiness: a hunter's pet's. Below content it does less damage; at 0 it leaves you. Feeding raises it (pet.feed).
+
+| Field | Type | |
+|---|---|---|
+| `current` | number |  |
+| `max` | number |  |
+| `state` | string | unhappy, content or happy |
+
+### PetSpell
+
+| Field | Type | |
+|---|---|---|
+| `id` | number |  |
+| `name` | string |  |
+| `passive?` | bool | always on: not cast |
+| `autocast?` | bool | it uses this by itself (pet.autocast) |
 
 ### Group
 
@@ -1943,6 +1990,28 @@ ObjectActivation distinguishes a successful opening cast from a non-casting obje
 | `cast?` | CastDone |  |
 | `state?` | number | observed GAMEOBJECT_BYTES_1 after a state change |
 
+### Cast
+
+| Field | Type | |
+|---|---|---|
+| `count` | number | protocol cast sequence; zero may be an unsolicited/server cast |
+| `spell` | number |  |
+| `name` | string |  |
+| `cast_ms?` | number | cast_start: how long it takes |
+| `code?` | string | cast_failed: the reason (out_of_range, line_of_sight, not_ready, interrupted, ...) |
+| `detail?` | string | cast_failed: what the reason is about (the missing reagent or tool, the spell focus or area needed) |
+| `hint?` | string |  |
+| `interrupted?` | bool |  |
+| `hits?` | number | cast_done: how many targets it landed on |
+| `misses?` | SpellMiss[] | cast_done: targets it went off at but didn't land on |
+
+### SpellMiss
+
+| Field | Type | |
+|---|---|---|
+| `unit` | UnitRef |  |
+| `outcome` | string | miss, resist, dodge, parry, block, evade, immune, deflect, absorb, reflect |
+
 ### QuestDone
 
 | Field | Type | |
@@ -2034,28 +2103,6 @@ Battleground: a battleground or arena queue changed.
 | `arena?` | number | arenas: players per side |
 | `rated?` | bool |  |
 | `seconds_left?` | number |  |
-
-### Cast
-
-| Field | Type | |
-|---|---|---|
-| `count` | number | protocol cast sequence; zero may be an unsolicited/server cast |
-| `spell` | number |  |
-| `name` | string |  |
-| `cast_ms?` | number | cast_start: how long it takes |
-| `code?` | string | cast_failed: the reason (out_of_range, line_of_sight, not_ready, interrupted, ...) |
-| `detail?` | string | cast_failed: what the reason is about (the missing reagent or tool, the spell focus or area needed) |
-| `hint?` | string |  |
-| `interrupted?` | bool |  |
-| `hits?` | number | cast_done: how many targets it landed on |
-| `misses?` | SpellMiss[] | cast_done: targets it went off at but didn't land on |
-
-### SpellMiss
-
-| Field | Type | |
-|---|---|---|
-| `unit` | UnitRef |  |
-| `outcome` | string | miss, resist, dodge, parry, block, evade, immune, deflect, absorb, reflect |
 
 ### Chat
 
@@ -2386,6 +2433,8 @@ An event is an [Event](#event) whose `data` is the type below.
 | `party_changed` | PartyChanged | your group changed |
 | `party_invite` | PartyInvite | someone invited you to their group |
 | `party_kill` | Kill | a party member killed something |
+| `pet_cast_done` | Cast | your pet's ability went off |
+| `pet_cast_failed` | Cast | your pet couldn't use an ability (code: the reason) |
 | `progress` | Progress | a periodic digest of your progress (events.watch{every_s = ...}; off by default) |
 | `quest_complete` | QuestDone | a quest's objectives are done: turn it in |
 | `quest_failed` | QuestDone | a quest in your log failed: abandon it (quests.abandon) and take it again |
@@ -2433,6 +2482,8 @@ The `data` of an ok result, per op.
 | `move.to` | MoveDone |
 | `move.unstuck` | Teleport |
 | `objects.use` | ObjectActivation |
+| `pet.cast` | Cast |
+| `pet.feed` | Cast |
 | `quests.accept` | QuestDone |
 | `quests.info` | QuestInfo |
 | `quests.turn_in` | QuestDone |
