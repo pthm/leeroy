@@ -49,7 +49,7 @@ type RosterGroup struct {
 	Cards  []Card
 }
 
-var power = map[int]string{0: "mana", 1: "rage", 3: "energy", 6: "runic"}
+var power = map[string]string{"mana": "mana", "rage": "rage", "energy": "energy", "runic_power": "runic"}
 
 func (s *Store) card(p *Player, t float64, q Query, leader bool) Card {
 	c := Card{Name: p.Name, Color: ClassColor(p.Cls), Leader: leader, Sel: q.Sel == p.Name, Score: p.ScoreAt(t), sortKeys: map[string]float64{}}

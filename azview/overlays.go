@@ -41,11 +41,11 @@ var heatKinds = map[string]struct {
 	who    func(Ev) string // whose position; "" skips
 	weight func(Ev) float64
 }{
-	"deaths": {"death", func(e Ev) string { return S(e, "n") }, func(Ev) float64 { return 1 }},
-	"kills":  {"kill", func(e Ev) string { return S(e, "n") }, func(Ev) float64 { return 1 }},
-	"xp":     {"xp", func(e Ev) string { return S(e, "n") }, func(e Ev) float64 { return N(e, "amount") }},
-	"taken":  {"dmg", unitField("dst"), func(e Ev) float64 { return N(e, "amount") }},
-	"dealt":  {"dmg", unitField("src"), func(e Ev) float64 { return N(e, "amount") }},
+	"deaths": {"death", func(e Ev) string { return S(e, "char") }, func(Ev) float64 { return 1 }},
+	"kills":  {"kill", func(e Ev) string { return S(e, "char") }, func(Ev) float64 { return 1 }},
+	"xp":     {"xp", func(e Ev) string { return S(e, "char") }, func(e Ev) float64 { return N(e, "amount") }},
+	"taken":  {"damage", unitField("dst"), func(e Ev) float64 { return N(e, "amount") }},
+	"dealt":  {"damage", unitField("src"), func(e Ev) float64 { return N(e, "amount") }},
 }
 
 // HeatAt is where the players (all, or only those named) spent their time on map m up to t, or where an event kind

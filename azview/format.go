@@ -9,6 +9,7 @@ import (
 	"html"
 	"html/template"
 	"math"
+	"slices"
 	"strings"
 )
 
@@ -19,10 +20,10 @@ var feedCats = []struct {
 	Kinds             []string
 	On                bool
 }{
-	{"events", "Events", "#ffd100", []string{"death", "kill", "pvp", "achievement", "level", "quest", "loot", "zone", "release", "resurrect", "login", "logout", "spell", "group", "money"}, true},
+	{"events", "Events", "#ffd100", []string{"death", "kill", "achievement", "level_up", "quest_turned_in", "item_received", "area_changed", "resurrected", "login", "logout", "group", "money"}, true},
 	{"chat", "Chat", "#aaaaff", []string{"chat"}, true},
 	{"agent", "Agent", "#d97757", []string{"say"}, true},
-	{"combat", "Combat", "#ff8040", []string{"dmg", "heal", "cast", "xp"}, false},
+	{"combat", "Combat", "#ff8040", []string{"damage", "heal", "cast_done", "xp"}, false},
 	{"api", "Evals", "#9b9a95", []string{"api"}, false},
 	{"script_error", "Errors", "#ff4040", []string{"script_error"}, true},
 }
@@ -40,11 +41,14 @@ func feedCat(kind string) (key, color string) {
 }
 
 var (
-	chatColor = map[int]string{0: "#ffff00", 1: "#ffffff", 2: "#aaaaff", 3: "#ff7f00", 4: "#40ff40", 5: "#40c040", 6: "#ff4040", 7: "#ff80ff", 9: "#ff80ff", 10: "#ff8040", 11: "#ff8040",
-		12: "#ffffff", 13: "#aaaaff", 14: "#ff4040", 15: "#ff80ff", 16: "#ff8040", 17: "#ffc0c0", 39: "#ff4809", 40: "#ff4800", 41: "#ffdd00", 42: "#ff80ff", 51: "#76c8ff"}
-	quality = []string{"#9d9d9d", "#ffffff", "#1eff00", "#0070dd", "#a335ee", "#ff8000", "#e6cc80", "#e6cc80"}
-	chatTag = map[int]string{2: "Party", 3: "Raid", 4: "Guild", 5: "Officer", 39: "Raid Leader", 40: "Raid Warning", 51: "Party Leader"}
-	npcVerb = map[int]string{12: "says", 13: "says", 14: "yells", 15: "whispers", 42: "whispers"}
+	// by the SDK's chat kinds
+	chatColor = map[string]string{"say": "#ffffff", "party": "#aaaaff", "raid": "#ff7f00", "guild": "#40ff40", "officer": "#40c040",
+		"yell": "#ff4040", "whisper": "#ff80ff", "whisper_sent": "#ff80ff", "emote": "#ff8040", "npc_say": "#ffffff", "npc_party": "#aaaaff",
+		"npc_yell": "#ff4040", "npc_whisper": "#ff80ff", "npc_emote": "#ff8040", "channel": "#ffc0c0", "raid_warning": "#ff4800", "battleground": "#ff7f00"}
+	qualities = []string{"poor", "common", "uncommon", "rare", "epic", "legendary", "artifact", "heirloom"} // the SDK's
+	quality   = []string{"#9d9d9d", "#ffffff", "#1eff00", "#0070dd", "#a335ee", "#ff8000", "#e6cc80", "#e6cc80"}
+	chatTag   = map[string]string{"party": "Party", "raid": "Raid", "guild": "Guild", "officer": "Officer", "raid_warning": "Raid Warning", "battleground": "Battleground"}
+	npcVerb   = map[string]string{"npc_say": "says", "npc_party": "says", "npc_yell": "yells", "npc_whisper": "whispers"}
 )
 
 var esc = html.EscapeString
@@ -90,14 +94,14 @@ func (s *Store) unitName(v any) string {
 	if !ok {
 		return "?"
 	}
-	if Truthy(u["pl"]) {
-		return s.Who(S(u, "n"))
+	if IsPlayer(u) {
+		return s.Who(S(u, "name"))
 	}
-	out := esc(S(u, "n"))
+	out := esc(S(u, "name"))
 	if out == "" {
-		out = s.names[int(N(u, "id"))]
+		out = s.names[int(N(u, "entry"))]
 	}
-	if l := N(u, "lvl"); l > 0 {
+	if l := N(u, "level"); l > 0 {
 		out += fmt.Sprintf(` <span class="muted">(%g)</span>`, l)
 	}
 	return out
@@ -112,27 +116,29 @@ func or(a, b string) string {
 
 // Line is an event as one line of HTML. sel is the selected player: whispers read from their side.
 func (s *Store) Line(e Ev, sel string) template.HTML {
-	w := s.Who(S(e, "n"))
+	w := s.Who(S(e, "char"))
 	num := func(k string) string { return fmt.Sprint(N(e, k)) }
 	var out string
-	switch S(e, "ev") {
+	switch S(e, "type") {
 	case "chat":
 		out = s.chatLine(e, sel)
 	case "death":
+		if e["killer"] == nil && S(e, "cause") != "" {
+			out = w + " died: " + esc(S(e, "cause"))
+			break
+		}
 		out = w + " was killed by " + s.unitName(e["killer"])
 	case "kill":
 		out = w + " killed " + s.unitName(e["victim"])
-	case "pvp":
-		out = w + " killed player " + s.unitName(e["victim"])
 	case "achievement":
 		out = fmt.Sprintf("%s earned <b>%s</b>", w, esc(or(S(e, "title"), "achievement "+num("id"))))
 		if N(e, "points") > 0 {
 			out += fmt.Sprintf(" (%s pts)", num("points"))
 		}
-	case "level":
-		out = fmt.Sprintf("%s reached level <b>%s</b>", w, num("to"))
-	case "quest":
-		out = fmt.Sprintf("%s completed <b>%s</b>", w, esc(or(S(e, "title"), "quest "+num("id"))))
+	case "level_up":
+		out = fmt.Sprintf("%s reached level <b>%s</b>", w, num("level"))
+	case "quest_turned_in":
+		out = fmt.Sprintf("%s completed <b>%s</b>", w, esc(or(S(e, "title"), "quest "+num("quest"))))
 		if N(e, "xp") > 0 {
 			extra := ""
 			if N(e, "money") > 0 {
@@ -140,43 +146,34 @@ func (s *Store) Line(e Ev, sel string) template.HTML {
 			}
 			out += fmt.Sprintf(` <span class="muted">+%s xp%s</span>`, num("xp"), extra)
 		}
-	case "loot":
-		it, ok := s.items[int(N(e, "item"))]
+	case "item_received":
+		item := Unit(e, "item")
+		it, ok := s.items[int(N(item, "entry"))]
 		if !ok {
-			it.Name, it.Q = "item "+num("item"), 1
+			it.Name, it.Q = or(S(item, "name"), fmt.Sprint("item ", N(item, "entry"))), max(0, slices.Index(qualities, S(item, "quality")))
 		}
 		c := "inherit"
 		if it.Q >= 0 && it.Q < len(quality) {
 			c = quality[it.Q]
 		}
 		out = fmt.Sprintf(`%s looted <span style="color:%s">[%s]</span>`, w, c, esc(it.Name))
-		if N(e, "count") > 1 {
-			out += " ×" + num("count")
+		if c := N(item, "count"); c > 1 {
+			out += fmt.Sprint(" ×", c)
 		}
-	case "zone":
-		out = w + " entered " + esc(or(s.zones[int(N(e, "area"))], or(s.zones[int(N(e, "zone"))], "zone "+num("zone"))))
-	case "release":
-		out = w + " released spirit"
-	case "resurrect":
+	case "area_changed":
+		out = w + " entered " + esc(or(S(e, "area"), or(s.zones[int(N(e, "area_id"))], or(S(e, "zone"), "zone "+num("zone_id")))))
+	case "resurrected":
 		out = w + " resurrected"
-		if Truthy(e["sickness"]) {
-			out += " (sickness)"
-		}
 	case "login":
 		out = w + " logged in"
 	case "logout":
 		out = w + " logged out"
-	case "spell":
-		out = w + " learned spell " + num("id")
-	case "dmg":
+	case "damage":
 		out = fmt.Sprintf("%s hit %s for <b>%s</b>", s.unitName(e["src"]), s.unitName(e["dst"]), num("amount"))
 	case "heal":
 		out = fmt.Sprintf("%s healed %s for <b>%s</b>", s.unitName(e["src"]), s.unitName(e["dst"]), num("amount"))
-	case "cast":
-		out = w + " cast " + esc(S(e, "name"))
-		if e["target"] != nil {
-			out += " on " + s.unitName(e["target"])
-		}
+	case "cast_done":
+		out = w + " cast " + esc(or(S(e, "name"), "spell "+num("spell")))
 	case "xp":
 		out = fmt.Sprintf("%s +%s xp", w, num("amount"))
 	case "api":
@@ -192,9 +189,9 @@ func (s *Store) Line(e Ev, sel string) template.HTML {
 	case "say":
 		out = fmt.Sprintf(`%s <span style="color:var(--accent)">“%s”</span>`, w, esc(cut(S(e, "text"), 600)))
 	case "script_error":
-		out = fmt.Sprintf(`%s <span style="color:var(--death)">script error ×%s</span> %s`, w, num("count"), esc(S(e, "last")))
+		out = fmt.Sprintf(`%s <span style="color:var(--death)">script error</span> %s: %s`, w, esc(S(e, "where")), esc(S(e, "error")))
 	case "group":
-		if N(e, "grp") == 0 {
+		if N(e, "group") == 0 {
 			out = w + " left their group"
 			break
 		}
@@ -209,12 +206,12 @@ func (s *Store) Line(e Ev, sel string) template.HTML {
 		}
 	case "money":
 		sign := ""
-		if N(e, "delta") > 0 {
+		if N(e, "amount") > 0 {
 			sign = "+"
 		}
-		out = fmt.Sprintf("%s %s%sc", w, sign, num("delta"))
+		out = fmt.Sprintf("%s %s%s", w, sign, Money(int(N(e, "amount"))))
 	default:
-		out = w + " " + esc(S(e, "ev"))
+		out = w + " " + esc(S(e, "type"))
 	}
 	return template.HTML(out)
 }
@@ -228,31 +225,34 @@ func cut(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
-// chatLine is chat as the game prints it, in the chat type's colour with class-coloured [Names]. Server records name
-// the sender (n) and the recipient (to: a name, "party", a channel); NPC speech comes from the agents' clients,
-// speaker in from. Whispers read from the selected player's side: "To [B]:" when they sent it, "[A] whispers:" when
-// they got it.
+// chatLine is chat as the game prints it, in its kind's colour with class-coloured [Names] (ChatSides: the speaker,
+// and a whisper's other side). Whispers read from the selected player's side: "To [B]:" when they sent it, "[A]
+// whispers:" when they got it.
 func (s *Store) chatLine(e Ev, sel string) string {
-	typ, from, snd, to := int(N(e, "type")), S(e, "from"), S(e, "n"), S(e, "to")
+	kind := S(e, "kind")
+	snd, to, npc := ChatSides(e)
+	if kind == "channel" {
+		to = S(e, "channel")
+	}
 	name := func(n string) string { return "[" + s.Who(n) + "]" }
 	say := func(pre string) string {
-		return fmt.Sprintf(`<span style="color:%s">%s%s</span>`, or(chatColor[typ], "inherit"), pre, esc(S(e, "msg")))
+		return fmt.Sprintf(`<span style="color:%s">%s%s</span>`, or(chatColor[kind], "inherit"), pre, esc(S(e, "text")))
 	}
-	if from != "" {
-		if v, ok := npcVerb[typ]; ok {
-			return say(esc(from) + " " + v + ": ")
+	if npc {
+		if v, ok := npcVerb[kind]; ok {
+			return say(esc(snd) + " " + v + ": ")
 		}
 		return say("") // NPC emotes carry the name
 	}
-	if tag, ok := chatTag[typ]; ok {
+	if tag, ok := chatTag[kind]; ok {
 		return say(fmt.Sprintf("[%s] %s: ", tag, name(snd)))
 	}
-	switch typ {
-	case 1:
+	switch kind {
+	case "say":
 		return say(name(snd) + " says: ")
-	case 6:
+	case "yell":
 		return say(name(snd) + " yells: ")
-	case 7, 9:
+	case "whisper", "whisper_sent":
 		switch sel {
 		case snd:
 			return say("To " + name(to) + ": ")
@@ -260,30 +260,30 @@ func (s *Store) chatLine(e Ev, sel string) string {
 			return say(name(snd) + " whispers: ")
 		}
 		return say(name(snd) + " whispers to " + name(to) + ": ")
-	case 10:
+	case "emote":
 		return say(s.Who(snd) + " ")
-	case 17:
+	case "channel":
 		return say(fmt.Sprintf("[%s] %s: ", esc(to), name(snd)))
 	}
 	return say(name(snd) + ": ")
 }
 
-// Involves: does an event concern player n (theirs, or they're the speaker, attacker, target, killer or victim).
+// Involves: does an event concern player n (theirs, or they're the attacker, target, killer or victim).
 func Involves(e Ev, n string) bool {
-	if S(e, "n") == n || S(e, "from") == n {
+	if S(e, "char") == n {
 		return true
 	}
-	for _, k := range []string{"src", "dst", "victim", "killer", "target"} {
-		if u, ok := e[k].(map[string]any); ok && Truthy(u["pl"]) && S(u, "n") == n {
+	for _, k := range []string{"src", "dst", "victim", "killer"} {
+		if u := Unit(e, k); IsPlayer(u) && S(u, "name") == n {
 			return true
 		}
 	}
 	return false
 }
 
-// Hears: did player n see this chat message. Their own, whispers to them, their party's at the time, say and emote
-// within 25 yd, yells within 300, channels (everyone in the run is assumed to be in them); NPC speech if their client
-// recorded it.
+// Hears: did player n see this chat message: everyone whose game log has it (heard). With only the speaker's copy:
+// their own, whispers to them, their party's at the time, say and emote within 25 yd, yells within 300, channels
+// (everyone in the run is assumed to be in them).
 func (s *Store) Hears(e Ev, n string) bool {
 	if h, ok := e["heard"].([]string); ok {
 		for _, x := range h {
@@ -293,20 +293,21 @@ func (s *Store) Hears(e Ev, n string) bool {
 		}
 		return false
 	}
-	if S(e, "n") == n {
+	snd, to, _ := ChatSides(e)
+	if snd == n {
 		return true
 	}
 	t := N(e, "t")
-	switch int(N(e, "type")) {
-	case 7, 9:
-		return S(e, "to") == n
-	case 2, 3, 39, 40, 51:
-		g := s.grpOf(S(e, "n"), t)
+	switch S(e, "kind") {
+	case "whisper", "whisper_sent":
+		return to == n
+	case "party", "raid", "raid_warning", "battleground":
+		g := s.grpOf(snd, t)
 		return g != 0 && g == s.grpOf(n, t)
-	case 1, 10, 11:
-		return s.yards(S(e, "n"), n, t) <= 25
-	case 6:
-		return s.yards(S(e, "n"), n, t) <= 300
+	case "say", "emote":
+		return s.yards(snd, n, t) <= 25
+	case "yell":
+		return s.yards(snd, n, t) <= 300
 	}
 	return true
 }

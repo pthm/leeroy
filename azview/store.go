@@ -4,7 +4,6 @@ package main
 // for what it shows at a moment (a few samples, a panel) instead of downloading every event.
 
 import (
-	"cmp"
 	"encoding/json"
 	"github.com/pthm/leeroy/azbench/gamelog"
 	"github.com/pthm/leeroy/azbench/runfiles"
@@ -22,12 +21,13 @@ import (
 
 // Sample is one position sample.
 type Sample struct {
-	T                                        float64
-	X, Y                                     float64
-	M, Zone, Grp                             int
-	HP, HPMax, PW, PWMax, PT, Lvl, XP, Money int
-	Alive, Ghost, Combat                     bool
-	Pet                                      *PetSample // the pet it had out, if any
+	T                                    float64
+	X, Y                                 float64
+	M, Grp                               int
+	HP, HPMax, PW, PWMax, Lvl, XP, Money int
+	PT                                   string // the power: mana, rage, energy, focus, runic_power
+	Alive, Ghost, Combat                 bool
+	Pet                                  *PetSample // the pet it had out, if any
 }
 
 // PetSample is a player's pet in one of its samples: a hunter's beast, a warlock's demon, a water elemental.
@@ -40,15 +40,23 @@ type PetSample struct {
 
 var petNames sync.Map // interned: a week's samples share a few names
 
+var powerTypes sync.Map // interned, as petNames
+
+// sampleOf reads a state record (types.State).
 func sampleOf(e Ev) Sample {
 	i := func(k string) int { return int(N(e, k)) }
-	s := Sample{T: N(e, "t"), X: N(e, "x"), Y: N(e, "y"), M: i("m"), Zone: i("zone"), Grp: i("grp"),
-		HP: i("hp"), HPMax: i("hpmax"), PW: i("pw"), PWMax: i("pwmax"), PT: i("pt"), Lvl: i("lvl"), XP: i("xp"), Money: i("money"),
-		Alive: Truthy(e["alive"]), Ghost: Truthy(e["ghost"]), Combat: Truthy(e["combat"])}
-	if pe, ok := e["pet"].(map[string]any); ok {
-		name, _ := petNames.LoadOrStore(S(pe, "n"), S(pe, "n"))
-		s.Pet = &PetSample{Name: name.(string), X: N(pe, "x"), Y: N(pe, "y"), HP: int(N(pe, "hp")), HPMax: int(N(pe, "hpmax")),
-			Lvl: int(N(pe, "lvl")), Alive: Truthy(pe["alive"])}
+	hp, hpmax := Res(e, "health")
+	pw, pwmax := Res(e, "power")
+	pr, _ := e["power"].(map[string]any)
+	pt, _ := powerTypes.LoadOrStore(S(pr, "type"), S(pr, "type"))
+	s := Sample{T: N(e, "t"), X: N(e, "x"), Y: N(e, "y"), M: i("map"), Grp: i("group"),
+		HP: int(hp), HPMax: int(hpmax), PW: int(pw), PWMax: int(pwmax), PT: pt.(string), Lvl: i("level"), XP: i("xp"), Money: i("money"),
+		Alive: Truthy(e["alive"]), Ghost: Truthy(e["ghost"]), Combat: Truthy(e["in_combat"])}
+	if pe := Unit(e, "pet"); pe != nil {
+		name, _ := petNames.LoadOrStore(S(pe, "name"), S(pe, "name"))
+		php, phpmax := Res(pe, "health")
+		s.Pet = &PetSample{Name: name.(string), X: N(pe, "x"), Y: N(pe, "y"), HP: int(php), HPMax: int(phpmax),
+			Lvl: int(N(pe, "level")), Alive: Truthy(pe["alive"])}
 	}
 	return s
 }
@@ -60,7 +68,7 @@ type UnitRow struct {
 	X, Y           float32
 }
 
-// UnitsSample is a player's "units" sample: the creatures within 60 yd, every 2 s.
+// UnitsSample is a player's "units" record (types.Nearby): the creatures within 60 yd, every 2 s.
 type UnitsSample struct {
 	T float64
 	M int
@@ -68,8 +76,8 @@ type UnitsSample struct {
 }
 
 func unitsOf(e Ev) UnitsSample {
-	s := UnitsSample{T: N(e, "t"), M: int(N(e, "m"))}
-	rows, _ := e["u"].([]any)
+	s := UnitsSample{T: N(e, "t"), M: int(N(e, "map"))}
+	rows, _ := e["units"].([]any)
 	for _, r := range rows {
 		r, ok := r.([]any)
 		if !ok || len(r) < 6 {
@@ -86,13 +94,13 @@ type Player struct {
 	Name, Cls string
 	Track     []Sample
 	Units     []UnitsSample
-	tgts      []Ev // its target changing (server log)
+	tgts      []Ev // its target changing: {t, target (none: no target)}, from its state records
 	hits      []Ev // its damage to creatures
 	says      []Ev // its agent's messages
 	scores    []Ev // judge samples
 }
 
-// Transport is a boat or zeppelin (the server log's transport events): where it was, a sample every trEvery.
+// Transport is a boat or zeppelin (the characters' transports records): where it was, a sample every trEvery.
 type Transport struct {
 	Name  string
 	Entry float64
@@ -102,8 +110,8 @@ type Transport struct {
 // TrSample: [t, map, x, y, orientation]
 type TrSample [5]float64
 
-// trEvery: a transport's samples kept, ms apart (the server logs one a second; at most 30 yd/s, a straight line
-// between samples 4 s apart is close, and a week's run keeps a few million, not tens)
+// trEvery: a transport's samples kept, ms apart (every character on its map logs it every 4 s; at most 30 yd/s, a
+// straight line between samples 4 s apart is close)
 const trEvery = 4000
 
 // Store holds a run. Everything is kept in time order; events arriving late (a file read after another) are inserted.
@@ -112,7 +120,7 @@ type Store struct {
 	Start   float64 // the run's start (its go file), else the first event
 	players []*Player
 	byName  map[string]*Player
-	events  []Ev                 // every event but pos and units
+	events  []Ev                 // every event but state, units and transports
 	byEv    map[string][]Ev      // the same by kind
 	rows    map[string][]statRow // the same with the fields the stats count read out (a map lookup each was most of their time)
 	feed    []Ev                 // the events the feed lists
@@ -129,8 +137,8 @@ type Store struct {
 	zones   map[int]string  // area names
 	agents  map[string]any  // name -> meta.json
 	subs    map[chan liveMsg]bool
-	last    float64                // the newest event
-	trs     map[float64]*Transport // by guid counter
+	last    float64               // the newest event
+	trs     map[string]*Transport // by guid
 }
 
 // liveMsg is one server-sent event: its type and JSON.
@@ -141,7 +149,7 @@ type liveMsg struct {
 
 func NewStore() *Store {
 	return &Store{byName: map[string]*Player{}, byEv: map[string][]Ev{}, rows: map[string][]statRow{}, lastGrp: map[string]string{}, npcSaid: map[string]Ev{},
-		items: map[int]world.ItemName{}, names: map[int]string{}, radii: map[int]float64{}, detect: map[int]float64{}, zones: map[int]string{}, agents: map[string]any{}, subs: map[chan liveMsg]bool{}, trs: map[float64]*Transport{}}
+		items: map[int]world.ItemName{}, names: map[int]string{}, radii: map[int]float64{}, detect: map[int]float64{}, zones: map[int]string{}, agents: map[string]any{}, subs: map[chan liveMsg]bool{}, trs: map[string]*Transport{}}
 }
 
 // insert puts v into s, sorted by t; appending is the usual case.
@@ -171,7 +179,13 @@ func (s *Store) player(n string) *Player {
 }
 
 var (
-	markKinds = map[string]bool{"death": true, "achievement": true, "level": true, "quest": true}
+	markKinds = map[string]bool{"death": true, "achievement": true, "level_up": true, "quest_turned_in": true}
+	// keptKinds: the events the store files (the rest of a game log, the agent's results, auras, casts starting...,
+	// it has no use for)
+	keptKinds = map[string]bool{"state": true, "units": true, "transports": true, "chat": true, "group": true, "login": true,
+		"logout": true, "say": true, "score": true, "damage": true, "heal": true, "kill": true, "death": true, "level_up": true,
+		"xp": true, "item_received": true, "money": true, "quest_turned_in": true, "achievement": true, "cast_done": true,
+		"area_changed": true, "resurrected": true, "api": true, "script_error": true}
 	feedKinds = func() map[string]bool {
 		m := map[string]bool{}
 		for _, c := range feedCats {
@@ -184,81 +198,78 @@ var (
 )
 
 // add files one event; the caller holds the lock. False if it was merged away (a repeated group list, a second
-// listener's copy of NPC speech).
+// listener's copy of chat) or isn't kept.
 func (s *Store) add(e Ev) bool {
-	t, n, kind := N(e, "t"), S(e, "n"), S(e, "ev")
-	if kind == "transport" { // not the run's: they don't move its end
-		return s.addTransport(e)
+	t, n, kind := N(e, "t"), S(e, "char"), S(e, "type")
+	if !keptKinds[kind] || kind == "chat" && !chatKinds[S(e, "kind")] {
+		return false
+	}
+	if kind == "transports" { // not the run's: they don't move its end
+		return s.addTransports(e)
 	}
 	s.last = math.Max(s.last, t)
 	switch kind {
-	case "pos":
+	case "state":
 		p := s.player(n)
 		p.Track = insert(p.Track, sampleOf(e), func(x Sample) float64 { return x.T })
+		tg, was := Unit(e, "target"), map[string]any(nil)
+		if k := len(p.tgts); k > 0 {
+			was = Unit(p.tgts[k-1], "target")
+		}
+		if (tg == nil) != (was == nil) || S(tg, "guid") != S(was, "guid") || S(tg, "name") != S(was, "name") { // the target changed (or went)
+			p.tgts = insert(p.tgts, Ev{"t": t, "target": tg}, evT)
+		}
 		return true
 	case "units":
 		p := s.player(n)
 		p.Units = insert(p.Units, unitsOf(e), func(x UnitsSample) float64 { return x.T })
 		return true
 	case "chat":
-		// one event per message: an NPC's, once per agent that heard it; a player's, in the speaker's record (no by)
-		// and each listener's (by: the speaker). The first copy stands for all of them: said by the speaker (its n),
-		// heard by everyone who recorded it, the speaker too (no listener's copy: Hears works it out).
-		from, by := S(e, "from"), S(e, "by")
-		speaker := from
-		if speaker == "" && (by != "" || playerChat[N(e, "type")]) {
-			speaker = cmp.Or(by, n)
-		}
-		if speaker != "" {
-			k := speaker + "|" + S(e, "msg")
-			if first, ok := s.npcSaid[k]; ok && math.Abs(t-N(first, "t")) < 3000 {
-				h, listed := first["heard"].([]string)
-				if !listed { // the speaker's record, until now the only one
-					h = []string{S(first, "n")}
-				}
-				if !slices.Contains(h, n) {
-					h = append(h, n)
-				}
-				first["heard"] = h
-				return false
+		// one event per message: in the speaker's game log (self) and each listener's. The first copy stands for all
+		// of them: speaker set, heard by everyone who logged it (the speaker's own copy alone: Hears works it out).
+		speaker, _, npc := ChatSides(e)
+		e["speaker"] = speaker
+		k := speaker + "|" + S(e, "text")
+		if first, ok := s.npcSaid[k]; ok && math.Abs(t-N(first, "t")) < 3000 {
+			h, listed := first["heard"].([]string)
+			if !listed { // the speaker's copy, until now the only one
+				h = []string{S(first, "char")}
 			}
-			switch {
-			case by != "": // a listener's copy: the speaker said it
-				e["n"], e["heard"] = by, []string{n}
-			case from != "":
-				e["heard"] = []string{n}
-			} // the speaker's own record alone: who heard it is worked out (Hears), as for the server log's
-			s.npcSaid[k] = e
+			if !slices.Contains(h, n) {
+				h = append(h, n)
+			}
+			first["heard"] = h
+			return false
 		}
-	case "group": // older client records repeat the group list unchanged dozens of times per change: keep changes
-		b, _ := json.Marshal([]any{e["grp"], e["leader"], e["members"]})
+		if npc || speaker != n { // a listener's copy
+			e["heard"] = []string{n}
+		}
+		s.npcSaid[k] = e
+	case "group": // only changes (the SDK logs only changes; a resumed session logs its group again)
+		b, _ := json.Marshal([]any{e["group"], e["leader"], e["members"]})
 		if s.lastGrp[n] == string(b) {
 			return false
 		}
 		s.lastGrp[n] = string(b)
 		s.groups = insert(s.groups, e, evT)
 	case "login":
-		if c := int(N(e, "cls")); c > 0 && c < len(Class) {
+		if c := classIDs[S(e, "class")]; c > 0 {
 			s.player(n).Cls = Class[c]
 		}
-	case "tgt":
-		s.player(n).tgts = insert(s.player(n).tgts, e, evT)
 	case "say":
 		s.player(n).says = insert(s.player(n).says, e, evT)
 	case "score":
 		s.player(n).scores = insert(s.player(n).scores, e, evT)
-	case "dmg":
-		if src, _ := e["src"].(map[string]any); src != nil && Truthy(src["pl"]) {
-			if dst, _ := e["dst"].(map[string]any); dst == nil || !Truthy(dst["pl"]) {
-				p := s.player(S(src, "n"))
-				p.hits = insert(p.hits, e, evT)
-			}
+	case "damage":
+		if src := Unit(e, "src"); IsPlayer(src) && !IsPlayer(Unit(e, "dst")) {
+			p := s.player(S(src, "name"))
+			p.hits = insert(p.hits, e, evT)
 		}
 	}
 	s.events = insert(s.events, e, evT)
 	s.byEv[kind] = insert(s.byEv[kind], e, evT)
 	s.rows[kind] = insert(s.rows[kind], rowOf(e), func(r statRow) float64 { return r.T })
-	if (kind == "dmg" || kind == "heal") && N(e, "amount") > 0 {
+	if (kind == "damage" || kind == "heal") && N(e, "amount") > 0 {
 		s.meter = insert(s.meter, e, evT)
 	}
 	if feedKinds[kind] {
@@ -338,17 +349,17 @@ type Target struct {
 	creature int
 }
 
-// TargetOf is p's target at t, and where it is: the server log names the target (a creature entry, or a player), and
-// p's own "units" samples place it: the nearest creature of that entry around them, with its health %. The server's
-// target is who they're meleeing, so for casters it's usually empty: then it's what they last hit, within 3 s.
+// TargetOf is p's target at t, and where it is: its state records name the target (a creature entry, or a player),
+// and p's own "units" records place it: the nearest creature of that entry around them, with its health %. Without
+// a target it's what they last hit, within 3 s.
 func (s *Store) TargetOf(p *Player, t float64) *Target {
 	var tg map[string]any
 	if e := last(p.tgts, t); e != nil {
-		tg, _ = e["tgt"].(map[string]any)
+		tg = Unit(e, "target")
 	}
 	if tg == nil {
 		if h := last(p.hits, t); h != nil && t-N(h, "t") <= 3000 {
-			tg, _ = h["dst"].(map[string]any)
+			tg = Unit(h, "dst")
 		}
 	}
 	if tg == nil {
@@ -358,7 +369,7 @@ func (s *Store) TargetOf(p *Player, t float64) *Target {
 	if !ok {
 		return nil
 	}
-	out := &Target{Name: S(tg, "n"), Player: Truthy(tg["pl"]), Lvl: int(N(tg, "lvl")), creature: int(N(tg, "id"))}
+	out := &Target{Name: S(tg, "name"), Player: IsPlayer(tg), Lvl: int(N(tg, "level")), creature: int(N(tg, "entry"))}
 	if out.Player {
 		if q := s.byName[out.Name]; q != nil {
 			if qp, ok := q.At(t); ok {
@@ -394,7 +405,7 @@ func (s *Store) TargetOf(p *Player, t float64) *Target {
 // LeaderAt is group g's leader at t, from the latest group event naming one.
 func (s *Store) LeaderAt(g int, t float64) string {
 	for i := uptoEv(s.groups, t) - 1; i >= 0; i-- {
-		if e := s.groups[i]; int(N(e, "grp")) == g && S(e, "leader") != "" {
+		if e := s.groups[i]; int(N(e, "group")) == g && S(e, "leader") != "" {
 			return S(e, "leader")
 		}
 	}
@@ -438,8 +449,8 @@ func (s *Store) GroupsAt(t float64) (groups []*Group, solo []*Player) {
 // its character), the characters to keep and the earliest time.
 type Source struct {
 	Files       []string
-	Games       map[string]*gamelog.Reader // game/<char>/events.jsonl
-	Scores      map[string]string          // judge/<char>/samples.jsonl
+	Games       map[string]string // game/<char>/events.jsonl
+	Scores      map[string]string // judge/<char>/samples.jsonl
 	Transcripts map[string]string
 	Chars       []string
 	Since       float64
@@ -488,7 +499,7 @@ func (s *Store) Poll(src *Source) {
 			// maps until the end, a long run's backlog peaked at 800 MB
 			var samples []Ev
 			for _, e := range src.parse(f, text[:cut]) {
-				if k := S(e, "ev"); k == "pos" || k == "units" {
+				if k := S(e, "type"); k == "state" || k == "units" {
 					samples = append(samples, e)
 				} else {
 					fresh = append(fresh, e)
@@ -548,16 +559,16 @@ func (src *Source) parse(f, lines string) []Ev {
 	} else if name, ok := src.Scores[f]; ok {
 		got = gamelog.Samples(lines, name)
 	} else {
-		r := src.Games[f]
-		if r == nil { // a game log named on the command line: game/<char>/events.jsonl
-			r = &gamelog.Reader{Char: filepath.Base(filepath.Dir(f))}
-			src.Games[f] = r
+		char, ok := src.Games[f]
+		if !ok { // a game log named on the command line: game/<char>/events.jsonl
+			char = filepath.Base(filepath.Dir(f))
+			src.Games[f] = char
 		}
-		got = r.Lines(lines)
+		got = gamelog.Lines(lines, char)
 	}
 	out := got[:0]
 	for _, e := range got {
-		if S(e, "ev") != "" && N(e, "t") >= src.Since && (len(src.Chars) == 0 || slices.Contains(src.Chars, S(e, "n"))) {
+		if keptKinds[S(e, "type")] && N(e, "t") >= src.Since && (len(src.Chars) == 0 || slices.Contains(src.Chars, S(e, "char"))) {
 			out = append(out, e)
 		}
 	}
@@ -569,15 +580,15 @@ func (s *Store) resolve(evs []Ev) {
 	s.mu.RLock()
 	var loot, units []int
 	for _, e := range evs {
-		switch S(e, "ev") {
-		case "loot":
-			if id := int(N(e, "item")); !slices.Contains(loot, id) {
+		switch S(e, "type") {
+		case "item_received":
+			if id := int(N(Unit(e, "item"), "entry")); !slices.Contains(loot, id) {
 				if _, ok := s.items[id]; !ok {
 					loot = append(loot, id)
 				}
 			}
 		case "units":
-			rows, _ := e["u"].([]any)
+			rows, _ := e["units"].([]any)
 			for _, r := range rows {
 				if r, ok := r.([]any); ok && len(r) > 0 {
 					v, _ := r[0].(float64)
@@ -630,20 +641,36 @@ func (s *Store) Subscribe() (chan liveMsg, func()) {
 	}
 }
 
-// addTransport files a transport sample, if it's trEvery after the last one kept or on another map.
-func (s *Store) addTransport(e Ev) bool {
-	id := N(e, "id")
-	tr := s.trs[id]
-	if tr == nil {
-		tr = &Transport{Name: S(e, "n"), Entry: N(e, "e")}
-		s.trs[id] = tr
+// transports is a transports record's boats and zeppelins (types.TransportState).
+func transports(e Ev) []map[string]any {
+	rows, _ := e["data"].([]any)
+	out := make([]map[string]any, 0, len(rows))
+	for _, r := range rows {
+		if r, ok := r.(map[string]any); ok {
+			out = append(out, r)
+		}
 	}
-	x := TrSample{N(e, "t"), N(e, "m"), N(e, "x"), N(e, "y"), N(e, "o")}
-	if k := len(tr.Track); k > 0 && x[0]-tr.Track[k-1][0] < trEvery && x[1] == tr.Track[k-1][1] {
-		return false
+	return out
+}
+
+// addTransports files a transports record: a sample of each, if it's trEvery after the last one kept or on another map.
+func (s *Store) addTransports(e Ev) bool {
+	added := false
+	for _, r := range transports(e) {
+		id := S(r, "guid")
+		tr := s.trs[id]
+		if tr == nil {
+			tr = &Transport{Name: S(r, "name"), Entry: N(r, "entry")}
+			s.trs[id] = tr
+		}
+		x := TrSample{N(e, "t"), N(r, "map"), N(r, "x"), N(r, "y"), N(r, "o")}
+		if k := len(tr.Track); k > 0 && x[0]-tr.Track[k-1][0] < trEvery && x[1] == tr.Track[k-1][1] {
+			continue
+		}
+		tr.Track = insert(tr.Track, x, func(v TrSample) float64 { return v[0] })
+		added = true
 	}
-	tr.Track = insert(tr.Track, x, func(v TrSample) float64 { return v[0] })
-	return true
+	return added
 }
 
 // broadcast sends new events to subscribers (the caller holds the lock): samples for the map, marks and ticks for the
@@ -656,17 +683,19 @@ func (s *Store) broadcast(evs []Ev) {
 	other := false
 	newest := 0.0 // the newest of the other events: when the playhead reaches it, the panels have something new
 	for _, e := range evs {
-		p := s.byName[S(e, "n")]
-		switch kind := S(e, "ev"); {
-		case kind == "pos" && p != nil:
+		p := s.byName[S(e, "char")]
+		switch kind := S(e, "type"); {
+		case kind == "state" && p != nil:
 			msgs = append(msgs, s.liveJSON("s", map[string]any{"n": p.Name, "cls": p.Cls, "s": s.mapSample(p, sampleOf(e))}))
-		case kind == "transport":
-			msgs = append(msgs, s.liveJSON("tr", map[string]any{"id": N(e, "id"), "n": S(e, "n"), "e": N(e, "e"),
-				"s": TrSample{N(e, "t"), N(e, "m"), N(e, "x"), N(e, "y"), N(e, "o")}}))
+		case kind == "transports":
+			for _, r := range transports(e) {
+				msgs = append(msgs, s.liveJSON("tr", map[string]any{"id": S(r, "guid"), "n": S(r, "name"), "e": N(r, "entry"),
+					"s": TrSample{N(e, "t"), N(r, "map"), N(r, "x"), N(r, "y"), N(r, "o")}}))
+			}
 		case kind == "units" && p != nil:
 			msgs = append(msgs, s.liveJSON("u", map[string]any{"n": p.Name, "u": s.mapUnits(unitsOf(e))}))
 		default:
-			if (kind == "dmg" || kind == "heal") && N(e, "amount") > 0 {
+			if (kind == "damage" || kind == "heal") && N(e, "amount") > 0 {
 				for _, h := range mapHits(e) {
 					msgs = append(msgs, s.liveJSON("hit", h))
 				}
@@ -748,14 +777,14 @@ func (s *Store) mapUnits(u UnitsSample) map[string]any {
 // the player, shown over their target; t: taken; h: healed), and that player.
 func mapHits(e Ev) []map[string]any {
 	unit := func(k string) (string, bool) {
-		u, _ := e[k].(map[string]any)
-		return S(u, "n"), u != nil && Truthy(u["pl"])
+		u := Unit(e, k)
+		return S(u, "name"), IsPlayer(u)
 	}
 	src, srcPl := unit("src")
 	dst, dstPl := unit("dst")
 	t, a := N(e, "t"), N(e, "amount")
 	var out []map[string]any
-	if S(e, "ev") == "heal" {
+	if S(e, "type") == "heal" {
 		if dstPl {
 			out = append(out, map[string]any{"t": t, "a": a, "k": "h", "n": dst})
 		}
@@ -772,8 +801,8 @@ func mapHits(e Ev) []map[string]any {
 
 // mapMark is a marked event with where it happened (its player's position then) and its line for the tooltip.
 func (s *Store) mapMark(e Ev) map[string]any {
-	out := map[string]any{"t": N(e, "t"), "ev": S(e, "ev"), "n": S(e, "n"), "html": string(s.Line(e, ""))}
-	if p := s.byName[S(e, "n")]; p != nil {
+	out := map[string]any{"t": N(e, "t"), "type": S(e, "type"), "n": S(e, "char"), "html": string(s.Line(e, ""))}
+	if p := s.byName[S(e, "char")]; p != nil {
 		if pp, ok := p.At(N(e, "t")); ok {
 			out["x"], out["y"], out["m"] = pp.X, pp.Y, pp.M
 		}
@@ -781,9 +810,9 @@ func (s *Store) mapMark(e Ev) map[string]any {
 	return out
 }
 
-// scan adds what a run dir has that src doesn't yet: the record files and transcripts of agents whose sessions came up
-// since the last scan (a viewer started early in a run), their meta, the server log once there are characters, and
-// run.json's start. A record file's events from before Since are still dropped, so a late file reads from the start.
+// scan adds what a run dir has that src doesn't yet: the game logs, judge samples and transcripts of agents whose
+// sessions came up since the last scan (a viewer started early in a run), their meta, and run.json's start. A file's
+// events from before Since are still dropped, so a late file reads from the start.
 func (s *Store) scan(src *Source) {
 	src.scanned = time.Now()
 	games, scores, transcripts := RunSources(src.Dir)
@@ -795,7 +824,7 @@ func (s *Store) scan(src *Source) {
 	defer s.mu.Unlock()
 	for _, g := range games {
 		if !have[g.Path] {
-			src.Games[g.Path] = &gamelog.Reader{Char: g.Name}
+			src.Games[g.Path] = g.Name
 			src.Files = append(src.Files, g.Path)
 		}
 	}
@@ -827,7 +856,7 @@ func (s *Store) scan(src *Source) {
 // OpenRun is a store for a bench run dir (its game logs, judge samples and transcripts), or for game log files when
 // dir is "". It reads from the run's start (run.json), else from sinceMin minutes ago. Call Poll to read.
 func OpenRun(dir string, files []string, sinceMin float64) (*Store, *Source) {
-	s, src := NewStore(), &Source{Games: map[string]*gamelog.Reader{}, Scores: map[string]string{}, Transcripts: map[string]string{}}
+	s, src := NewStore(), &Source{Games: map[string]string{}, Scores: map[string]string{}, Transcripts: map[string]string{}}
 	src.Since = float64(time.Now().UnixMilli()) - sinceMin*60_000
 	src.Files, src.Dir = files, dir
 	if dir != "" {

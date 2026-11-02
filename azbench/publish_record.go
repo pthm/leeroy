@@ -17,8 +17,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pthm/leeroy/azbench/config"
-	"github.com/pthm/leeroy/azbench/gamelog"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 	"github.com/pthm/leeroy/azworld/world"
 )
 
@@ -43,11 +42,10 @@ type recording struct {
 	deaths []recDeath
 }
 
-// chatKinds: chat types counted as the players' own talk (each message once, however many heard it)
-var chatKinds = map[int]string{2: "party", 51: "party", 9: "whisper", 17: "channel", 1: "say"}
+// chatKinds: the chat counted as the players' own talk (the SDK's kinds), from the speaker's own game log (self)
+var chatKinds = map[string]string{"party": "party", "whisper_sent": "whisper", "channel": "channel", "say": "say"}
 
-// readRecording reads char's own events from one recording; chat (every kind in chatKinds) goes into chat, keyed so a
-// message heard by several players counts once.
+// readRecording reads char's game log; its chat (every kind in chatKinds) goes into chat.
 func readRecording(f, char string, start int64, chat map[string]chatMsg) (*recording, error) {
 	fh, err := os.Open(f)
 	if err != nil {
@@ -60,12 +58,8 @@ func readRecording(f, char string, start int64, chat map[string]chatMsg) (*recor
 	speed := 0.0 // yd/s over the last second
 	sc := bufio.NewScanner(fh)
 	sc.Buffer(make([]byte, 1<<20), 16<<20)
-	r := gamelog.Reader{Char: char}
 	for sc.Scan() {
-		for _, ev := range r.Line(sc.Bytes()) {
-			b, _ := json.Marshal(ev)
-			readEvent(rec, b, char, start, chat, &last, &prev, &speed)
-		}
+		readEvent(rec, sc.Bytes(), char, start, chat, &last, &prev, &speed)
 	}
 	return rec, sc.Err()
 }
@@ -76,69 +70,75 @@ type place struct {
 	x, y float64
 }
 
-// readEvent files one event of the character's game log (gamelog's form) in rec.
+// readEvent files one line of the character's game log in rec.
 func readEvent(rec *recording, line []byte, char string, start int64, chat map[string]chatMsg, last *float64, prevp *place, speedp *float64) {
 	prev, speed := *prevp, *speedp
 	defer func() { *prevp, *speedp = prev, speed }()
-	{
-		var e struct {
-			Ev, N, Msg string
-			T          int64
-			M, Grp     int
-			Type       int
-			X, Y       float64
-			Killer     struct{ ID int }
-			Cls        int
-			Name       string
-			Spell      int
-		}
-		if json.Unmarshal(line, &e) != nil || e.N != char {
+	var l struct {
+		T    int64           `json:"t"`
+		Type string          `json:"type"`
+		Data json.RawMessage `json:"data"`
+	}
+	if json.Unmarshal(line, &l) != nil {
+		return
+	}
+	t := float64(l.T-start) / 1000
+	switch l.Type {
+	case "state":
+		var e types.State
+		if json.Unmarshal(l.Data, &e) != nil {
 			return
 		}
-		t := float64(e.T-start) / 1000
-		switch e.Ev {
-		case "pos":
-			// a jump: over 100 yd within 3 s. A teleport (a portal, a hearthstone, a spirit healer) comes at walking
-			// pace; a boat or zeppelin's path skips stretches too, but the player was moving at its speed (about 30
-			// yd/s) just before
-			d := math.Hypot(e.X-prev.x, e.Y-prev.y)
-			if prev.t > 0 && prev.m == e.M && t-prev.t <= 3 && d > 100 {
-				mark := -1.0
-				if speed > 15 {
-					mark = -2
-				}
-				rec.track = append(rec.track, [5]float64{math.Round(t), mark, 0, 0, 0})
-				rec.raw = append(rec.raw, [5]float64{math.Round(t), mark, 0, 0, 0})
-				*last = -1e9
+		m, grp := int(e.Map), float64(e.Group)
+		// a jump: over 100 yd within 3 s. A teleport (a portal, a hearthstone, a spirit healer) comes at walking
+		// pace; a boat or zeppelin's path skips stretches too, but the player was moving at its speed (about 30
+		// yd/s) just before
+		d := math.Hypot(e.X-prev.x, e.Y-prev.y)
+		if prev.t > 0 && prev.m == m && t-prev.t <= 3 && d > 100 {
+			mark := -1.0
+			if speed > 15 {
+				mark = -2
 			}
-			if prev.t > 0 && prev.m == e.M && d <= 100 && t > prev.t {
-				speed = d / (t - prev.t)
-			}
-			prev.t, prev.m, prev.x, prev.y = t, e.M, e.X, e.Y
-			rec.raw = append(rec.raw, [5]float64{math.Round(t), float64(e.M), math.Round(e.X*10) / 10, math.Round(e.Y*10) / 10, float64(e.Grp)})
-			if t-*last >= 15 || len(rec.track) > 0 && rec.track[len(rec.track)-1][1] != float64(e.M) {
-				rec.track = append(rec.track, [5]float64{math.Round(t), float64(e.M), math.Round(e.X), math.Round(e.Y), float64(e.Grp)})
-				*last = t
-			}
-		case "cast":
-			if e.Name != "" {
-				rec.casts[e.Name]++
-				rec.spells[e.Name] = e.Spell
-			}
-		case "login":
-			if e.Cls != 0 {
-				rec.class = strings.ToLower(config.ClassName(e.Cls))
-			}
-		case "death":
-			d := recDeath{T: math.Round(t), entry: e.Killer.ID}
-			if n := len(rec.track); n > 0 {
-				p := rec.track[n-1]
-				d.Map, d.X, d.Y = int(p[1]), p[2], p[3]
-			}
-			rec.deaths = append(rec.deaths, d)
-		case "chat":
-			if kind, ok := chatKinds[e.Type]; ok {
-				chat[fmt.Sprintf("%d|%d|%s", e.Type, e.T/1000, e.Msg)] = chatMsg{t, kind}
+			rec.track = append(rec.track, [5]float64{math.Round(t), mark, 0, 0, 0})
+			rec.raw = append(rec.raw, [5]float64{math.Round(t), mark, 0, 0, 0})
+			*last = -1e9
+		}
+		if prev.t > 0 && prev.m == m && d <= 100 && t > prev.t {
+			speed = d / (t - prev.t)
+		}
+		prev.t, prev.m, prev.x, prev.y = t, m, e.X, e.Y
+		rec.raw = append(rec.raw, [5]float64{math.Round(t), float64(m), math.Round(e.X*10) / 10, math.Round(e.Y*10) / 10, grp})
+		if t-*last >= 15 || len(rec.track) > 0 && rec.track[len(rec.track)-1][1] != float64(m) {
+			rec.track = append(rec.track, [5]float64{math.Round(t), float64(m), math.Round(e.X), math.Round(e.Y), grp})
+			*last = t
+		}
+	case "cast_done":
+		var e types.Cast
+		if json.Unmarshal(l.Data, &e) == nil && e.Name != "" {
+			rec.casts[e.Name]++
+			rec.spells[e.Name] = int(e.Spell)
+		}
+	case "login":
+		var e types.Login
+		json.Unmarshal(l.Data, &e)
+		rec.class = strings.ReplaceAll(e.Class, "_", " ")
+	case "death":
+		var e types.Death
+		json.Unmarshal(l.Data, &e)
+		d := recDeath{T: math.Round(t)}
+		if e.Killer != nil {
+			d.entry = int(e.Killer.Entry)
+		}
+		if n := len(rec.track); n > 0 {
+			p := rec.track[n-1]
+			d.Map, d.X, d.Y = int(p[1]), p[2], p[3]
+		}
+		rec.deaths = append(rec.deaths, d)
+	case "chat":
+		var e types.Chat
+		if json.Unmarshal(l.Data, &e) == nil && e.Self {
+			if kind, ok := chatKinds[e.Kind]; ok {
+				chat[fmt.Sprintf("%s|%d|%s", char, l.T, e.Text)] = chatMsg{t, kind}
 			}
 		}
 	}

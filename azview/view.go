@@ -22,8 +22,26 @@ var (
 	Color = []string{"#888", "#C79C6E", "#F58CBA", "#ABD473", "#FFF569", "#FFFFFF", "#C41F3B", "#0070DE", "#69CCF0", "#9482C9", "#888", "#FF7D0A"}
 )
 
-// Ev is one event, as azbench/gamelog reads it: {"t": ms, "ev": kind, "n": character, ...}.
+// Ev is one event, as azbench/gamelog reads it: a game log line's data (the SDK's types) beside t (unix ms), type and
+// char (the character). The viewer adds its own: say (an agent's message, from its transcript) and score (a judge
+// sample); on chat it sets speaker and heard.
 type Ev = map[string]any
+
+// classIDs: the SDK's class names as Class indexes.
+var classIDs = map[string]int{"warrior": 1, "paladin": 2, "hunter": 3, "rogue": 4, "priest": 5, "death_knight": 6,
+	"shaman": 7, "mage": 8, "warlock": 9, "druid": 11}
+
+// Unit is a unit in an event (types.UnitRef: guid, name, entry for a creature, level, player), nil if none.
+func Unit(e Ev, k string) map[string]any { u, _ := e[k].(map[string]any); return u }
+
+// IsPlayer: is u a player.
+func IsPlayer(u map[string]any) bool { return u != nil && Truthy(u["player"]) }
+
+// Res is a types.Resource field (health, power): current and max.
+func Res(e Ev, k string) (cur, max float64) {
+	r, _ := e[k].(map[string]any)
+	return N(r, "current"), N(r, "max")
+}
 
 // Repo is the repository root (the parent of data/).
 func Repo() string { return filepath.Dir(world.DataDir()) }
@@ -116,11 +134,11 @@ func TranscriptEvents(text, name string) []Ev {
 			continue
 		}
 		if m.Type == "item.completed" && m.Item.Type == "agent_message" && strings.TrimSpace(m.Item.Text) != "" {
-			out = append(out, Ev{"t": t, "ev": "say", "n": name, "text": strings.TrimSpace(m.Item.Text)})
+			out = append(out, Ev{"t": t, "type": "say", "char": name, "text": strings.TrimSpace(m.Item.Text)})
 			continue
 		}
 		if m.Type == "text" && strings.TrimSpace(m.Part.Text) != "" {
-			out = append(out, Ev{"t": t, "ev": "say", "n": name, "text": strings.TrimSpace(m.Part.Text)})
+			out = append(out, Ev{"t": t, "type": "say", "char": name, "text": strings.TrimSpace(m.Part.Text)})
 			continue
 		}
 		if m.Type != "assistant" {
@@ -128,7 +146,7 @@ func TranscriptEvents(text, name string) []Ev {
 		}
 		for _, c := range m.Message.Content {
 			if c.Type == "text" && strings.TrimSpace(c.Text) != "" {
-				out = append(out, Ev{"t": t, "ev": "say", "n": name, "text": strings.TrimSpace(c.Text)})
+				out = append(out, Ev{"t": t, "type": "say", "char": name, "text": strings.TrimSpace(c.Text)})
 			}
 		}
 	}
@@ -175,40 +193,60 @@ func RunSources(dir string) (games, scores, transcripts []Transcript) {
 	return
 }
 
-// player chat (say, party, raid, guild, officer, yell, whisper and its echo, emote, channel, raid leader and warning,
-// party leader) and the achievement broadcast (the achievement event has it)
-var playerChat = map[float64]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 9: true, 10: true, 17: true, 39: true, 40: true, 48: true, 51: true}
+// chatKinds are the chat kinds the viewer keeps (the SDK's kinds): what players say, and NPC speech. The game's own
+// lines (system, loot, money, xp, skill...) are left out: their events say it.
+var chatKinds = map[string]bool{"say": true, "party": true, "raid": true, "raid_warning": true, "battleground": true,
+	"guild": true, "officer": true, "yell": true, "whisper": true, "whisper_sent": true, "emote": true, "channel": true,
+	"npc_say": true, "npc_party": true, "npc_yell": true, "npc_whisper": true, "npc_emote": true}
 
-// NameUnits fills in what SDK recordings carry only as ids: creature names, quest titles, achievement titles and points.
+// ChatSides is who said a chat event (a player, or an NPC: npc) and, for a whisper, who it went to, from the SDK's
+// chat: from is the speaker, except on the character's own lines (self: from is the character) and a whisper it
+// sent (whisper_sent: from is who it went to).
+func ChatSides(e Ev) (speaker, to string, npc bool) {
+	kind, from, char := S(e, "kind"), S(e, "from"), S(e, "char")
+	switch {
+	case strings.HasPrefix(kind, "npc_"):
+		return from, "", true
+	case kind == "whisper_sent":
+		return char, from, false
+	case Truthy(e["self"]):
+		return char, "", false
+	case kind == "whisper":
+		return from, char, false
+	}
+	return from, "", false
+}
+
+// NameUnits fills in what game logs carry only as ids: creature names, quest titles, achievement titles and points.
 func NameUnits(events []Ev) {
 	var refs []map[string]any
 	var ids, questIDs []int
 	var questEvs []Ev
 	for _, e := range events {
-		switch S(e, "ev") {
-		case "quest":
+		switch S(e, "type") {
+		case "quest_turned_in":
 			if S(e, "title") == "" {
 				questEvs = append(questEvs, e)
-				questIDs = append(questIDs, int(N(e, "id")))
+				questIDs = append(questIDs, int(N(e, "quest")))
 			}
 		case "achievement":
 			if a, ok := world.Achievements()[int(N(e, "id"))]; ok && S(e, "title") == "" {
 				e["title"], e["points"] = a.Title, a.Points
 			}
 		}
-		for _, k := range []string{"src", "dst", "victim", "killer", "target", "tgt"} {
-			u, ok := e[k].(map[string]any)
-			if !ok || Truthy(u["pl"]) || Truthy(u["n"]) || !Truthy(u["id"]) {
+		for _, k := range []string{"src", "dst", "victim", "killer", "target"} {
+			u := Unit(e, k)
+			if u == nil || IsPlayer(u) || Truthy(u["name"]) || !Truthy(u["entry"]) {
 				continue
 			}
 			refs = append(refs, u)
-			ids = append(ids, int(N(u, "id")))
+			ids = append(ids, int(N(u, "entry")))
 		}
 	}
 	if len(questEvs) > 0 {
 		titles := world.QuestTitles(questIDs)
 		for _, e := range questEvs {
-			e["title"] = titles[int(N(e, "id"))]
+			e["title"] = titles[int(N(e, "quest"))]
 		}
 	}
 	if len(refs) == 0 {
@@ -216,7 +254,7 @@ func NameUnits(events []Ev) {
 	}
 	names := world.CreatureNames(ids)
 	for _, u := range refs {
-		u["n"] = names[int(N(u, "id"))]
+		u["name"] = names[int(N(u, "entry"))]
 	}
 }
 

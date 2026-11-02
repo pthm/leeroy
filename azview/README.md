@@ -26,36 +26,32 @@ Build everything with `./build.sh` (binaries in `bin/`); all commands run from t
 
 Each character's session writes one game log, JSON Lines, appended as it happens: `azsdk -events <file>`, which
 `azbench run` points at `game/<char>/events.jsonl` in the run dir. Every line has `t` (unix ms), `type` and `data`.
-Two kinds of line share the file:
+Two kinds of line share the file, in one vocabulary (units are always the SDK's `UnitRef`: `guid`, `name`, `entry`
+for a creature, `level`, `player`):
 
-- **Events** (with `seq`): what the agent saw, the same stream its `events` API reads (damage, kills, chat, loot,
-  quests...; the SDK's event types, [azeroth-sdk/docs](../azeroth-sdk/docs/sdk.md)).
-- **Records** (no `seq`; the agent never sees them): what the session kept for the viewer and the report.
+- **Events** (with `seq`): what the agent saw, the same stream its `events` API reads: `damage`, `heal`, `kill`,
+  `death`, `xp`, `level_up`, `item_received`, `money`, `quest_turned_in`, `achievement`, `cast_done`,
+  `area_changed`, `resurrected`, `chat`, `script_error`... (`azeroth-sdk/types/events.go`).
+- **Records** (no `seq`; the agent never sees them; `azeroth-sdk/types/gamelog.go`):
 
-| Record `type` | `data` | When |
+| `type` | `data` | When |
 |---|---|---|
-| `state` | `m` map, `x` `y` `z` `o`, `hp` `hpmax`, `pt` power type, `pw` `pwmax`, `lvl`, `xp`, `money` (copper), `grp` (group id, 0 = none), `alive` `ghost` `combat` (0/1); `tgt` the target, if any; `pet` when one is out: `{e` entry, `n` name, `x` `y` `z`, `hp` `hpmax`, `lvl`, `alive}` | every 1 s |
-| `units` | `m` map, `u`: the creatures within 60 yd, each `[entry, level, x, y, health %, state]` (state 0 hostile, 1 neutral, 2 friendly, +4 dead); pets are in their master's `state`, totems are here | every 2 s |
-| `transports` | each boat and zeppelin on the map: `[guid counter, entry, name, map, x, y, o]` | every 4 s |
-| `login` | `race`, `cls`, `lvl` | at login |
+| `state` | `State`: `map`, `x` `y` `z` `o`, `level`, `xp`, `health` and `power` (`current`, `max`, power `type`), `money`, `group` (the server's group id), `alive`, `ghost`, `in_combat`, `target`, `pet` (a `UnitRef` with `x` `y` `z`, `health`, `alive`) | every 1 s |
+| `units` | `Nearby`: `map`, `units`: the creatures within 60 yd, each `[entry, level, x, y, health %, state]` (state 0 hostile, 1 neutral, 2 friendly, +4 dead); pets are in their master's `state`, totems are here | every 2 s |
+| `transports` | a list of `TransportState`: each boat and zeppelin on the map, `guid`, `entry`, `name`, `map`, `x` `y` `o` | every 4 s |
+| `login` | `Login`: `race`, `class`, `level` | at login |
 | `logout` | | at logout |
-| `group` | `grp`, `leader`, `members` (names); `grp` 0 and no members = left | on any change |
-| `api` | `method`, `params` (raw JSON, cut at 500 chars) | each daemon API call (except read-only and waiting ones) |
-| `script_error` | the script errors from a Lua eval | as they happen |
+| `group` | `GroupState`: `group`, `leader`, `members` (names); no `group` = left | on a change |
+| `api` | `APICall`: `method`, `params` (raw JSON, cut at 500 chars) | each daemon API call (except read-only and waiting ones) |
 
-Units (a target, attacker, victim) are `{"id", "n", "pl": 1}` for a player (`id` = guid counter), or `{"id", "n",
-"lvl"}` for a creature (`id` = creature entry); the viewer fills in missing creature names from
-`acore_world.creature_template`.
-
-`azbench/gamelog` turns each line into what the viewer, publish and the report use, maps with `t`, `ev` (the kind)
-and `n` (the character); its package doc lists the mapping (`state` becomes `pos`, and `tgt` when the target changes;
-`damage` becomes `dmg`; `chat` keeps `type` as the game's chat type number with `by` the player who said it, `from`
-an NPC, `to` a whisper's target or channel). Two more kinds come from elsewhere:
+`azbench/gamelog` reads a line as it is: its data's fields beside `t`, `type` and `char` (the character); a list
+(transports) under `data`. The viewer adds two kinds of its own:
 - `score`: the judge's samples (`judge/<char>/samples.jsonl`, each with `t`). The viewer charts them.
 - `say`: the viewer turns each agent's transcript into `say` events (below).
 
-A message is in the speaker's log and in each listener's (`by`): the viewer merges the copies into one event, said by
-the speaker, `heard` by everyone who logged it.
+A chat message is in the speaker's log (`self`) and in each listener's (`from`: the speaker): the viewer keeps one
+event, with `speaker` set and `heard` listing everyone who logged it. The viewer fills in creature names, quest
+titles and achievement names from the world database and `data/dbc/Achievement.dbc`.
 
 ## The viewer
 

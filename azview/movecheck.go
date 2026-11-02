@@ -74,19 +74,18 @@ func runMovecheck(args []string) {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		r := gamelog.Reader{Char: filepath.Base(filepath.Dir(file))}
-		evs = append(evs, r.Lines(string(b))...)
+		evs = append(evs, gamelog.Lines(string(b), filepath.Base(filepath.Dir(file)))...)
 	}
 	n, s := N, S
 	by, order := map[string][]Ev{}, []string{}
 	for _, e := range evs {
-		if s(e, "ev") != "pos" || n(e, "t") < from || (chars != nil && !slices.Contains(chars, s(e, "n"))) {
+		if s(e, "type") != "state" || n(e, "t") < from || (chars != nil && !slices.Contains(chars, s(e, "char"))) {
 			continue
 		}
-		if _, ok := by[s(e, "n")]; !ok {
-			order = append(order, s(e, "n"))
+		if _, ok := by[s(e, "char")]; !ok {
+			order = append(order, s(e, "char"))
 		}
-		by[s(e, "n")] = append(by[s(e, "n")], e)
+		by[s(e, "char")] = append(by[s(e, "char")], e)
 	}
 	height := func(m, x, y float64) float64 { h, _, _ := world.Sample(uint32(m), x, y); return h }
 	for _, name := range order {
@@ -97,13 +96,13 @@ func runMovecheck(args []string) {
 		for i := 1; i < len(track); i++ {
 			a, p := track[i-1], track[i]
 			dt := (n(p, "t") - n(a, "t")) / 1000
-			if dt <= 0 || dt > 2 || a["m"] != p["m"] {
+			if dt <= 0 || dt > 2 || a["map"] != p["map"] {
 				continue
 			}
 			r.Samples++
 			d := math.Hypot(n(p, "x")-n(a, "x"), n(p, "y")-n(a, "y"))
 			v := d / dt
-			_, water, _ := world.Sample(uint32(n(p, "m")), n(p, "x"), n(p, "y"))
+			_, water, _ := world.Sample(uint32(n(p, "map")), n(p, "x"), n(p, "y"))
 			if !math.IsNaN(water) && n(p, "z") < water-1.5 {
 				r.UnderwaterS++
 				if v > 5.5 {
@@ -137,7 +136,7 @@ func runMovecheck(args []string) {
 				}
 			}
 			// steepest terrain slope along the step, sampled every 2 yards
-			m, worst := n(a, "m"), 0.0
+			m, worst := n(a, "map"), 0.0
 			steps := max(1, int(math.Ceil(d/2)))
 			prev := height(m, n(a, "x"), n(a, "y"))
 			for k := 1; k <= steps; k++ {

@@ -42,7 +42,7 @@ func (s *Store) inFocus(e Ev, f []string) bool {
 		return true
 	}
 	for _, n := range f {
-		if S(e, "ev") == "chat" && s.Hears(e, n) || S(e, "ev") != "chat" && Involves(e, n) {
+		if S(e, "type") == "chat" && s.Hears(e, n) || S(e, "type") != "chat" && Involves(e, n) {
 			return true
 		}
 	}
@@ -56,11 +56,11 @@ func (s *Store) Feed(q Query) map[string]any {
 	seen := map[string]int{}
 	for i := uptoEv(s.feed, q.T) - 1; i >= 0 && len(rows) < 200; i-- {
 		e := s.feed[i]
-		cat, color := feedCat(S(e, "ev"))
+		cat, color := feedCat(S(e, "type"))
 		if !q.Cats[cat] || !s.inFocus(e, f) {
 			continue
 		}
-		id := fmt.Sprintf("f%.0f-%s-%s", N(e, "t"), S(e, "ev"), S(e, "n"))
+		id := fmt.Sprintf("f%.0f-%s-%s", N(e, "t"), S(e, "type"), S(e, "char"))
 		seen[id]++
 		if seen[id] > 1 { // the same moment, kind and player more than once: numbered, newest first
 			id += fmt.Sprint("-", seen[id])

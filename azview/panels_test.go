@@ -22,16 +22,16 @@ func render(t *testing.T, s *Store, name string, q Query) string {
 	return b.String()
 }
 
-const party = `{"t":1,"ev":"login","n":"A","cls":1}
-{"t":1,"ev":"login","n":"B","cls":5}
-{"t":900,"ev":"group","n":"A","grp":7,"leader":"B","members":["A","B"]}
-{"t":1000,"ev":"pos","n":"A","x":0,"y":0,"m":0,"alive":1,"combat":1,"grp":7,"hp":1234,"hpmax":2000,"pt":1,"pw":30,"pwmax":100,"lvl":12,"money":10203}
-{"t":1000,"ev":"pos","n":"B","x":30,"y":40,"m":0,"alive":0,"ghost":1,"grp":7,"hp":0,"hpmax":100,"lvl":11}
-{"t":1000,"ev":"pos","n":"C","x":500,"y":0,"m":0,"alive":1,"hp":10,"hpmax":10,"lvl":3}
-{"t":1000,"ev":"units","n":"A","m":0,"u":[[6,3,5,0,40,0]]}
-{"t":1100,"ev":"tgt","n":"A","tgt":{"id":6,"n":"Kobold <Miner>","lvl":3}}
-{"t":1100,"ev":"say","n":"A","text":"pulling now\nsecond line"}
-{"t":1100,"ev":"score","n":"C","value":10,"score":2.5,"pace":1,"recent_rate":3}`
+const party = `{"char":"A","t":1,"type":"login","data":{"class":"warrior"}}
+{"char":"B","t":1,"type":"login","data":{"class":"priest"}}
+{"char":"A","t":900,"type":"group","data":{"group":7,"leader":"B","members":["A","B"]}}
+{"char":"A","t":1000,"type":"state","data":{"map":0,"x":0,"y":0,"health":{"current":1234,"max":2000},"power":{"type":"rage","current":30,"max":100},"level":12,"money":10203,"group":7,"alive":true,"in_combat":true}}
+{"char":"B","t":1000,"type":"state","data":{"map":0,"x":30,"y":40,"health":{"current":0,"max":100},"level":11,"group":7,"alive":false,"ghost":true}}
+{"char":"C","t":1000,"type":"state","data":{"map":0,"x":500,"y":0,"health":{"current":10,"max":10},"level":3,"alive":true}}
+{"char":"A","t":1000,"type":"units","data":{"map":0,"units":[[6,3,5,0,40,0]]}}
+{"char":"A","t":1100,"type":"state","data":{"map":0,"x":0,"y":0,"health":{"current":1234,"max":2000},"power":{"type":"rage","current":30,"max":100},"level":12,"money":10203,"group":7,"alive":true,"in_combat":true,"target":{"name":"Kobold <Miner>","entry":6,"level":3}}}
+{"char":"A","t":1100,"type":"say","data":{"text":"pulling now\nsecond line"}}
+{"char":"C","t":1100,"type":"score","data":{"value":10,"score":2.5,"pace":1,"recent_rate":3}}`
 
 func TestRosterPanel(t *testing.T) {
 	s := storeOf(t, party)
@@ -53,10 +53,10 @@ func TestRosterPanel(t *testing.T) {
 
 func TestFeedPanel(t *testing.T) {
 	s := storeOf(t, party+`
-{"t":1150,"ev":"chat","n":"C","type":1,"msg":"far away"}
-{"t":1150,"ev":"chat","n":"B","type":2,"msg":"party only"}
-{"t":1160,"ev":"dmg","n":"A","src":{"id":1,"n":"A","pl":1},"dst":{"id":6,"n":"Kobold"},"amount":7}
-{"t":1170,"ev":"level","n":"C","to":4}`)
+{"char":"C","t":1150,"type":"chat","data":{"kind":"say","text":"far away","from":"C","self":true}}
+{"char":"B","t":1150,"type":"chat","data":{"kind":"party","text":"party only","from":"B","self":true}}
+{"char":"A","t":1160,"type":"damage","data":{"src":{"name":"A","guid":"1","player":true},"dst":{"name":"Kobold","entry":6},"amount":7}}
+{"char":"C","t":1170,"type":"level_up","data":{"level":4}}`)
 	all := render(t, s, "pane", Query{T: 2000, Tab: "feed", Cats: map[string]bool{"events": true, "chat": true, "agent": true}})
 	for _, want := range []string{"far away", "party only", "reached level <b>4</b>", "“pulling now"} {
 		if !strings.Contains(all, want) {
@@ -80,11 +80,11 @@ func TestFeedPanel(t *testing.T) {
 
 func TestStatsPanel(t *testing.T) {
 	s := storeOf(t, party+`
-{"t":1300,"ev":"dmg","n":"A","src":{"id":1,"n":"A","pl":1},"dst":{"id":6,"n":"Kobold"},"amount":30}
-{"t":1400,"ev":"dmg","n":"A","src":{"id":1,"n":"A","pl":1},"dst":{"id":7,"n":"Wolf"},"amount":10}
-{"t":1500,"ev":"dmg","n":"C","src":{"id":3,"n":"C","pl":1},"dst":{"id":6,"n":"Kobold"},"amount":60}
-{"t":2000,"ev":"pos","n":"A","x":0,"y":3,"m":0,"alive":1,"combat":1,"grp":7,"hp":1234,"hpmax":2000,"lvl":12}
-{"t":3000,"ev":"pos","n":"A","x":0,"y":7,"m":0,"alive":1,"combat":1,"grp":7,"hp":1234,"hpmax":2000,"lvl":12}`)
+{"char":"A","t":1300,"type":"damage","data":{"src":{"name":"A","guid":"1","player":true},"dst":{"name":"Kobold","entry":6},"amount":30}}
+{"char":"A","t":1400,"type":"damage","data":{"src":{"name":"A","guid":"1","player":true},"dst":{"name":"Wolf","entry":7},"amount":10}}
+{"char":"C","t":1500,"type":"damage","data":{"src":{"name":"C","guid":"3","player":true},"dst":{"name":"Kobold","entry":6},"amount":60}}
+{"char":"A","t":2000,"type":"state","data":{"map":0,"x":0,"y":3,"health":{"current":1234,"max":2000},"level":12,"group":7,"alive":true,"in_combat":true}}
+{"char":"A","t":3000,"type":"state","data":{"map":0,"x":0,"y":7,"health":{"current":1234,"max":2000},"level":12,"group":7,"alive":true,"in_combat":true}}`)
 	s.Start = 0
 	q := Query{T: 3000, Tab: "stats", Metric: "dmg", Range: "all", Chart: "total", Sel: "A"}
 	got := render(t, s, "pane", q)
@@ -127,7 +127,7 @@ func TestStatsPanel(t *testing.T) {
 func TestHeatAt(t *testing.T) {
 	var lines []string
 	for i := 0; i < 60; i++ { // A stands at (0, 0) for a minute, then walks north 30 yd; B is elsewhere
-		lines = append(lines, fmt.Sprintf(`{"t":%d,"ev":"pos","n":"A","x":%d,"y":0,"m":0,"alive":1}`, i*1000, max(0, i-30)), fmt.Sprintf(`{"t":%d,"ev":"pos","n":"B","x":500,"y":500,"m":0,"alive":1}`, i*1000))
+		lines = append(lines, fmt.Sprintf(`{"char":"A","t":%d,"type":"state","data":{"map":0,"x":%d,"y":0,"alive":true}}`, i*1000, max(0, i-30)), fmt.Sprintf(`{"char":"B","t":%d,"type":"state","data":{"map":0,"x":500,"y":500,"alive":true}}`, i*1000))
 	}
 	s := storeOf(t, strings.Join(lines, "\n"))
 	h := s.HeatAt(0, 60000, nil, "time")
@@ -145,10 +145,10 @@ func TestHeatAt(t *testing.T) {
 
 // A death heatmap is where the deaths were, not the paths.
 func TestHeatDeaths(t *testing.T) {
-	s := storeOf(t, `{"t":0,"ev":"pos","n":"A","x":0,"y":0,"m":0,"alive":1}
-{"t":1000,"ev":"pos","n":"A","x":300,"y":0,"m":0,"alive":1}
-{"t":2000,"ev":"pos","n":"A","x":300,"y":300,"m":0,"alive":0}
-{"t":2000,"ev":"death","n":"A","killer":{"id":6,"n":"Kobold"}}`)
+	s := storeOf(t, `{"char":"A","t":0,"type":"state","data":{"map":0,"x":0,"y":0,"alive":true}}
+{"char":"A","t":1000,"type":"state","data":{"map":0,"x":300,"y":0,"alive":true}}
+{"char":"A","t":2000,"type":"state","data":{"map":0,"x":300,"y":300,"alive":false}}
+{"char":"A","t":2000,"type":"death","data":{"killer":{"name":"Kobold","entry":6}}}`)
 	h := s.HeatAt(0, 3000, nil, "deaths")
 	img, _ := png.Decode(base64.NewDecoder(base64.StdEncoding, strings.NewReader(strings.TrimPrefix(h.PNG, "data:image/png;base64,"))))
 	at := func(x, y float64) uint32 { // alpha at a world point

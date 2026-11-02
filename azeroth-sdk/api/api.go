@@ -101,9 +101,6 @@ var methods = map[string]method{
 		}
 		if se := e.TakeScriptErrors(); se != nil {
 			out["script_errors"] = se
-			if b := session_(s, p.Char); b != nil {
-				b.GameLog("script_error", se)
-			}
 		}
 		return out, nil
 	}),
@@ -399,7 +396,7 @@ func callRecorded(s Sessions, name string, params json.RawMessage, m method) (an
 		if len(raw) > 500 {
 			raw = raw[:500] + "..."
 		}
-		b.GameLog("api", map[string]any{"method": name, "params": raw})
+		b.GameLog("api", types.APICall{Method: name, Params: raw})
 	}
 	return m(s, params)
 }

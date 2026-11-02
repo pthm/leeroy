@@ -144,7 +144,7 @@ func (v *server) page(w http.ResponseWriter, r *http.Request) {
 	}
 	ticks := make([][2]any, len(s.ticks))
 	for i, e := range s.ticks {
-		ticks[i] = [2]any{N(e, "t"), S(e, "ev")}
+		ticks[i] = [2]any{N(e, "t"), S(e, "type")}
 	}
 	cats := make([]map[string]any, len(feedCats))
 	for i, c := range feedCats {

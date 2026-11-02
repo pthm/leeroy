@@ -60,7 +60,7 @@ func (b *Bot) gameLog(kind string, body any) {
 }
 
 // logTransports: every boat and zeppelin on the character's map (the server shows them all on arrival), where each is
-// now: [guid counter, entry, name, map, x, y, orientation].
+// now.
 func (b *Bot) logTransports() {
 	b.scanTransports()
 	aboard, _ := b.world.Transport()
@@ -70,11 +70,12 @@ func (b *Bot) logTransports() {
 		guids = append(guids, g)
 	}
 	b.trs.mu.Unlock()
-	var rows [][]any
+	var rows []types.TransportState
 	now := time.Now()
 	for _, g := range guids {
 		if v, ok := b.transportView(g, now, aboard); ok {
-			rows = append(rows, []any{g & 0xFFFFFFFF, v.Entry, v.Name, v.Map, round1(float32(v.X)), round1(float32(v.Y)), v.O})
+			rows = append(rows, types.TransportState{GUID: types.GUID(g), Entry: v.Entry, Name: v.Name, Map: v.Map,
+				X: round1(float32(v.X)), Y: round1(float32(v.Y)), O: v.O})
 		}
 	}
 	if len(rows) > 0 {
@@ -82,40 +83,18 @@ func (b *Bot) logTransports() {
 	}
 }
 
-// unitRef identifies a unit: players by guid counter + name, creatures by entry (+ name, level).
-func (b *Bot) unitRef(guid uint64) map[string]any {
-	if guid>>48 == 0 { // player
-		name := ""
-		if o := b.world.GetObject(guid); o != nil {
-			name = o.Name
-		}
-		if guid == b.world.CharGUID() {
-			name = b.config.CharacterName
-		}
-		return map[string]any{"id": guid & 0xFFFFFFFF, "n": name, "pl": 1}
-	}
-	ref := map[string]any{"id": (guid >> 24) & 0xFFFFFF}
-	if o := b.world.GetObject(guid); o != nil {
-		if o.Entry != 0 {
-			ref["id"] = o.Entry
-		}
-		ref["n"], ref["lvl"] = o.Name, o.Level()
-	}
-	return ref
-}
-
 // startGameLog starts the game log once the character is in the world (called from setupControl).
 func (b *Bot) startGameLog() {
 	w := b.world
-	b.gameLog("login", map[string]any{"race": b.GetRace(), "cls": b.GetClass(), "lvl": w.PlayerLevel()})
+	b.gameLog("login", types.Login{Race: name(raceNames, b.GetRace()), Class: name(classNames, b.GetClass()), Level: w.PlayerLevel()})
 	me := w.CharGUID()
-	// party changes: {grp (the server's group id, 0 = none), leader, members (names, including self)}. The server
+	// party changes. The server
 	// sends the list at login, before recording starts, so the current state is recorded first. It also resends the
 	// list unchanged on many updates (about 50 times for each real change), so only changes are recorded.
-	var lastGroup map[string]any
-	record := func(g map[string]any) {
-		if !reflect.DeepEqual(g, lastGroup) {
-			lastGroup = g
+	var lastGroup *types.GroupState
+	record := func(g types.GroupState) {
+		if lastGroup == nil || !reflect.DeepEqual(g, *lastGroup) {
+			lastGroup = &g
 			b.gameLog("group", g)
 		}
 	}
@@ -123,7 +102,7 @@ func (b *Bot) startGameLog() {
 		observed := observedGroup(me, st)
 		b.lua.RecordObservation("group_state", types.DiagnosticDetails{Group: &observed})
 		if !st.InGroup {
-			record(map[string]any{"grp": 0, "members": []string{}})
+			record(types.GroupState{Members: []string{}})
 			return
 		}
 		members, leader := []string{b.config.CharacterName}, ""
@@ -136,7 +115,7 @@ func (b *Bot) startGameLog() {
 				leader = m.Name
 			}
 		}
-		record(map[string]any{"grp": st.GroupGUID & 0xFFFFFFFF, "leader": leader, "members": members})
+		record(types.GroupState{Group: uint32(st.GroupGUID), Leader: leader, Members: members})
 	}
 	onGroup(w.GroupState())
 	w.AddGroupListHook(onGroup)
@@ -180,23 +159,26 @@ func (b *Bot) startGameLog() {
 				x, y, z, o, m := w.Position()
 				hp, hpmax := b.GetHealth()
 				pw, pwmax := b.GetPower()
-				var xp uint32
+				st := types.State{Position: types.Position{X: round1(x), Y: round1(y), Z: round1(z), O: facing(o), Map: m},
+					Level: w.PlayerLevel(), Money: w.Money(), Group: groupID(w),
+					Health: types.Resource{Current: hp, Max: hpmax}, Power: types.Resource{Current: pw, Max: pwmax, Type: name(powerNames, b.GetPowerType())},
+					Alive: b.IsAlive(), Ghost: b.IsGhost(), InCombat: b.InCombat()}
 				if me := w.GetObject(w.CharGUID()); me != nil {
-					xp = me.Value(0x27A)
+					st.XP = me.Value(0x27A)
 				}
-				pos := map[string]any{"m": m, "x": x, "y": y, "z": z, "o": o, "hp": hp, "hpmax": hpmax,
-					"pt": b.GetPowerType(), "pw": pw, "pwmax": pwmax, "lvl": w.PlayerLevel(), "xp": xp, "money": w.Money(),
-					"zone": 0, "grp": groupID(w), "alive": b01(b.IsAlive()), "ghost": b01(b.IsGhost()), "combat": b01(b.InCombat())}
-				if u := b.GetUnitInfo(b.GetPetGUID()); u != nil && b.GetPetGUID() != 0 { // the pet out: a hunter's beast, a warlock's demon
-					pos["pet"] = map[string]any{"e": u.Entry, "n": u.Name, "x": round1(u.PosX), "y": round1(u.PosY), "z": round1(u.PosZ),
-						"hp": u.Health, "hpmax": u.MaxHealth, "lvl": u.Level, "alive": b01(u.IsAlive)}
+				if pg := b.GetPetGUID(); pg != 0 {
+					if u := b.GetUnitInfo(pg); u != nil {
+						st.Pet = &types.PetState{UnitRef: b.ref(pg), X: round1(u.PosX), Y: round1(u.PosY), Z: round1(u.PosZ),
+							Health: types.Resource{Current: u.Health, Max: u.MaxHealth}, Alive: u.IsAlive}
+					}
 				}
 				if tg := b.GetTargetGUID(); tg != 0 && b.IsAlive() {
-					pos["tgt"] = b.unitRef(tg)
+					r := b.ref(tg)
+					st.Target = &r
 				}
-				b.gameLog("state", pos)
+				b.gameLog("state", st)
 				if tick++; tick%2 == 0 {
-					b.gameLog("units", map[string]any{"m": m, "u": b.nearbyUnitRows()})
+					b.gameLog("units", types.Nearby{Map: m, Units: b.nearbyUnitRows()})
 				}
 				if tick%4 == 0 {
 					b.logTransports()
@@ -207,22 +189,13 @@ func (b *Bot) startGameLog() {
 }
 
 // groupID is the server's group id (the low half of the group GUID), 0 when not in a group.
-func groupID(w *client.WorldClient) uint64 {
+func groupID(w *client.WorldClient) uint32 {
 	if st := w.GroupState(); st.InGroup {
-		return st.GroupGUID & 0xFFFFFFFF
+		return uint32(st.GroupGUID)
 	}
 	return 0
 }
 
-func b01(v bool) int {
-	if v {
-		return 1
-	}
-	return 0
-}
-
-// nearbyUnitRows: the creatures within 60 yd for the viewer, each [entry, level, x, y, health %, state], state 0
-// hostile, 1 neutral, 2 friendly, plus 4 when dead
 // playerPet: a creature a player summoned that isn't a totem (UNIT_FIELD_SUMMONEDBY a player's GUID, whose high
 // part is 0): a pet, a demon, a water elemental.
 func (b *Bot) playerPet(u UnitInfo) bool {
@@ -240,12 +213,13 @@ func (b *Bot) playerPet(u UnitInfo) bool {
 	return !known || info.typ != 11
 }
 
-func (b *Bot) nearbyUnitRows() [][]any {
+// nearbyUnitRows: the creatures within 60 yd (types.NearbyUnit)
+func (b *Bot) nearbyUnitRows() []types.NearbyUnit {
 	var faction uint32
 	if me := b.world.GetObject(b.world.CharGUID()); me != nil {
 		faction = me.Value(fieldUnitFaction)
 	}
-	rows := [][]any{}
+	rows := []types.NearbyUnit{}
 	for _, u := range b.GetNearbyUnits(60) {
 		if u.IsPlayer || u.Flags&0x2000000 != 0 { // UNIT_FLAG_NOT_SELECTABLE: invisible triggers
 			continue
@@ -253,15 +227,15 @@ func (b *Bot) nearbyUnitRows() [][]any {
 		if b.playerPet(u) { // a player's pet is in its master's pos, not here
 			continue
 		}
-		state := map[string]int{"hostile": 0, "neutral": 1, "friendly": 2}[factionReaction(u.Faction, faction)]
+		state := map[string]float64{"hostile": 0, "neutral": 1, "friendly": 2}[factionReaction(u.Faction, faction)]
 		if !u.IsAlive {
 			state += 4
 		}
-		hp := 0
+		hp := 0.0
 		if u.MaxHealth > 0 {
-			hp = int(100 * u.Health / u.MaxHealth)
+			hp = float64(100 * u.Health / u.MaxHealth)
 		}
-		rows = append(rows, []any{u.Entry, u.Level, round1(u.PosX), round1(u.PosY), hp, state})
+		rows = append(rows, types.NearbyUnit{float64(u.Entry), float64(u.Level), round1(u.PosX), round1(u.PosY), hp, state})
 	}
 	return rows
 }

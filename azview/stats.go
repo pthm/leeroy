@@ -63,19 +63,20 @@ func stateOf(a Sample, b *Sample) int {
 
 func unitField(k string) func(Ev) string {
 	return func(e Ev) string {
-		if u, ok := e[k].(map[string]any); ok && Truthy(u["pl"]) {
-			return S(u, "n")
+		if u := Unit(e, k); IsPlayer(u) {
+			return S(u, "name")
 		}
 		return ""
 	}
 }
 
 func unitNamed(k string) func(Ev) string {
-	return func(e Ev) string { u, _ := e[k].(map[string]any); return S(u, "n") }
+	return func(e Ev) string { return S(Unit(e, k), "name") }
 }
 
 // statRow is an event with the fields the stats count read out: its time, player, the player attacker and victim
-// (src, dst: "" unless a player), an NPC speaker (from), amount and count; e for a breakdown.
+// (src, dst: "" unless a player), an NPC speaker (from), amount and count (an item's); e for a breakdown. A chat
+// line's player is its speaker.
 type statRow struct {
 	T                 float64
 	N, Src, Dst, From string
@@ -84,13 +85,15 @@ type statRow struct {
 }
 
 func rowOf(e Ev) statRow {
-	pl := func(k string) string {
-		if u, ok := e[k].(map[string]any); ok && Truthy(u["pl"]) {
-			return S(u, "n")
+	pl := unitField
+	r := statRow{T: N(e, "t"), N: S(e, "char"), Src: pl("src")(e), Dst: pl("dst")(e), Amount: N(e, "amount"), Count: N(Unit(e, "item"), "count"), E: e}
+	if S(e, "type") == "chat" {
+		speaker, _, npc := ChatSides(e)
+		if r.N = speaker; npc {
+			r.From = speaker
 		}
-		return ""
 	}
-	return statRow{T: N(e, "t"), N: S(e, "n"), Src: pl("src"), Dst: pl("dst"), From: S(e, "from"), Amount: N(e, "amount"), Count: N(e, "count"), E: e}
+	return r
 }
 
 func rowSrc(r *statRow) string    { return r.Src }
@@ -119,40 +122,41 @@ func scoreGauge(k string) func(p *Player, t float64) (float64, bool) {
 
 func (s *Store) statDefs() map[string]statDef {
 	chatChannel := func(e Ev) string {
-		if tag, ok := chatTag[int(N(e, "type"))]; ok {
+		if tag, ok := chatTag[S(e, "kind")]; ok {
 			return tag
 		}
-		return or(map[int]string{1: "Say", 6: "Yell", 7: "Whisper", 10: "Emote", 17: "Channel"}[int(N(e, "type"))], "Other")
+		return or(map[string]string{"say": "Say", "yell": "Yell", "whisper": "Whisper", "whisper_sent": "Whisper", "emote": "Emote", "channel": "Channel"}[S(e, "kind")], "Other")
 	}
 	return map[string]statDef{
-		"dmg":    {ev: "dmg", who: rowSrc, val: amount, rate: "s", by: unitNamed("dst"), byLabel: "target"},
-		"taken":  {ev: "dmg", who: rowDst, val: amount, rate: "s", by: unitNamed("src"), byLabel: "source"},
+		"dmg":    {ev: "damage", who: rowSrc, val: amount, rate: "s", by: unitNamed("dst"), byLabel: "target"},
+		"taken":  {ev: "damage", who: rowDst, val: amount, rate: "s", by: unitNamed("src"), byLabel: "source"},
 		"heal":   {ev: "heal", who: rowSrc, val: amount, rate: "s", by: unitNamed("dst"), byLabel: "target"},
 		"healed": {ev: "heal", who: rowDst, val: amount, rate: "s", by: unitNamed("src"), byLabel: "healer"},
 		"kills":  {ev: "kill", rate: "h", by: unitNamed("victim"), byLabel: "victim"},
 		"deaths": {ev: "death", by: unitNamed("killer"), byLabel: "killer"},
-		"casts":  {ev: "cast", rate: "h", by: func(e Ev) string { return S(e, "name") }, byLabel: "spell"},
+		"casts":  {ev: "cast_done", rate: "h", by: func(e Ev) string { return S(e, "name") }, byLabel: "spell"},
 		"combat": {track: secsIf(func(a, b Sample) bool { return a.Combat }), format: "time", share: true},
 		"lowhp":  {track: secsIf(func(a, b Sample) bool { return a.Alive && float64(a.HP) < 0.35*float64(a.HPMax) }), format: "time", share: true},
 		"oom": {track: secsIf(func(a, b Sample) bool {
-			return a.Alive && a.PT == 0 && a.PWMax > 0 && float64(a.PW) < 0.1*float64(a.PWMax)
+			return a.Alive && a.PT == "mana" && a.PWMax > 0 && float64(a.PW) < 0.1*float64(a.PWMax)
 		}), format: "time", share: true},
 		"score":    {gauge: scoreGauge("score"), unit: "/h"},
 		"progress": {gauge: scoreGauge("value")},
 		"pace":     {gauge: scoreGauge("pace")},
 		"recent":   {gauge: scoreGauge("recent_rate"), unit: "/h"},
 		"xp":       {ev: "xp", val: amount, rate: "h"},
-		"quests":   {ev: "quest", rate: "h", by: func(e Ev) string { return or(S(e, "title"), fmt.Sprint("quest ", N(e, "id"))) }, byLabel: "quest"},
-		"levels":   {ev: "level"},
+		"quests":   {ev: "quest_turned_in", rate: "h", by: func(e Ev) string { return or(S(e, "title"), fmt.Sprint("quest ", N(e, "quest"))) }, byLabel: "quest"},
+		"levels":   {ev: "level_up"},
 		"level": {gauge: func(p *Player, t float64) (float64, bool) {
 			pp, ok := p.At(t)
 			return float64(pp.Lvl), ok
 		}},
-		"loot": {ev: "loot", val: countOr1, by: func(e Ev) string {
-			if it, ok := s.items[int(N(e, "item"))]; ok {
+		"loot": {ev: "item_received", val: countOr1, by: func(e Ev) string {
+			id := N(Unit(e, "item"), "entry")
+			if it, ok := s.items[int(id)]; ok {
 				return it.Name
 			}
-			return fmt.Sprint("item ", N(e, "item"))
+			return fmt.Sprint("item ", id)
 		}, byLabel: "item"},
 		"money": {track: func(a, b Sample, dt float64) float64 { return float64(b.Money - a.Money) }, format: "gold", rate: "h"},
 		"gold": {gauge: func(p *Player, t float64) (float64, bool) {
@@ -174,7 +178,7 @@ func (s *Store) statDefs() map[string]statDef {
 		"grouped": {track: secsIf(func(a, b Sample) bool { return a.Grp != 0 }), format: "time", share: true},
 		"say":     {ev: "say", rate: "h"},
 		"api":     {ev: "api", rate: "h", by: func(e Ev) string { return S(e, "method") }, byLabel: "method"},
-		"errors":  {ev: "script_error", val: countOr1},
+		"errors":  {ev: "script_error"},
 		"chat": {ev: "chat", rate: "h", by: chatChannel, byLabel: "channel", who: func(r *statRow) string {
 			if r.From != "" { // NPC speech
 				return ""

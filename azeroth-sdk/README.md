@@ -33,8 +33,9 @@ worldserver ──> client ─────> session ─────> script ─�
   comes from its path progress and a port of the server's path builder (`transportpath.go`, within 0.05 yd of the
   server's); boarding walks straight onto the deck from the pier while it's docked, and the server then carries you.
 - **Game log**: with `-events`, the character's event stream file also keeps records beside its events (no `seq`,
-  not shown to the agent): its state each second (position, health, power, money, group, target, pet), nearby
-  creatures, transports, group changes, and the agent-side `api` (each RPC call and its params) and `script_error`.
+  not shown to the agent; their types are in [`types/gamelog.go`](types/gamelog.go), in the events' vocabulary): its
+  state each second (position, health, power, money, group, target, pet), nearby creatures, transports, group
+  changes, and each RPC call (`api`).
   azbench's runs keep it as `game/<char>/events.jsonl`; the viewer (`bin/azview`, `../azview`) reads it.
 
 ## Build and run

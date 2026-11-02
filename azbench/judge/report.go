@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/pthm/leeroy/azbench/runfiles"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 	"math"
 	"os"
 	"path/filepath"
@@ -639,33 +640,17 @@ func readPositions(dir string) map[string][]metrics.Pos {
 			}
 			var e struct {
 				T    int64
-				Data struct {
-					X, Y, M, Grp  float64
-					Alive, Combat any
-				}
+				Data types.State
 			}
 			if json.Unmarshal(l, &e) == nil {
 				p := e.Data
-				out[char] = append(out[char], metrics.Pos{T: e.T, X: p.X, Y: p.Y, Map: p.M, Alive: truthy(p.Alive),
-					Combat: truthy(p.Combat), Group: p.Grp})
+				out[char] = append(out[char], metrics.Pos{T: e.T, X: p.X, Y: p.Y, Map: float64(p.Map), Alive: p.Alive,
+					Combat: p.InCombat, Group: float64(p.Group)})
 			}
 		}
 		fh.Close()
 	}
 	return out
-}
-
-// truthy is JS truthiness: the recorder's flags are 0/1 or booleans, and a victim is an object.
-func truthy(v any) bool {
-	switch x := v.(type) {
-	case bool:
-		return x
-	case float64:
-		return x != 0
-	case string:
-		return x != ""
-	}
-	return v != nil
 }
 
 // teamResults: team.json from each player's judge result (judge/<char>/result.json), and the report cards grouped

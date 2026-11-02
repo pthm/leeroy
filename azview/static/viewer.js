@@ -126,7 +126,7 @@ async function loadRoute(n) {
 }
 
 // marks (deaths, achievements, levels, quests) with where they happened, and the seek bar's ticks
-const MARKS = B.marks.map(rel), TICKS = B.ticks.map(([tt, k]) => ({ t: tt - B.start, ev: k }));
+const MARKS = B.marks.map(rel), TICKS = B.ticks.map(([tt, k]) => ({ t: tt - B.start, type: k }));
 
 // ---------- live ----------
 // samples and marks as they arrive; the newest data's time (dataEnd) and when anything last came (lastLive)
@@ -140,7 +140,7 @@ es.addEventListener("tr", (m) => { const d = JSON.parse(m.data), s = trSample(d.
   if (have.to >= s.t - 10000) { ins(v.s, s); dirty = true; } }); // not live(): the server's, not the run's
 es.addEventListener("hit", (m) => { addHit(rel(JSON.parse(m.data))); dirty = true; });
 es.addEventListener("mark", (m) => { const e = rel(JSON.parse(m.data)); ins(MARKS, e); live(e.t); });
-es.addEventListener("tick", (m) => { const [tt, k] = JSON.parse(m.data); ins(TICKS, { t: tt - B.start, ev: k }); });
+es.addEventListener("tick", (m) => { const [tt, k] = JSON.parse(m.data); ins(TICKS, { t: tt - B.start, type: k }); });
 es.addEventListener("data", (m) => { lastLive = performance.now(); shows(JSON.parse(m.data).t - B.start); });
 function live(tt, all = true) { dataEnd = Math.max(dataEnd, tt); lastLive = performance.now(); dirty = true; shows(tt, all); }
 // Watching live, the panels refresh when something new comes into view (the playhead, LIVE_LAG behind the clock,
@@ -652,7 +652,7 @@ function drawMap() {
   for (let i = 0, end = s.marks ? upto(MARKS, t) : 0; i < end; i++) {
     const e = MARKS[i]; if (e.m !== M.id || e.x == null || (focus && !focus.has(e.n))) continue;
     const [sx, sy] = scr(e.x, e.y); if (sx < -10 || sy < -10 || sx > r.width + 10 || sy > r.height + 10) continue;
-    const [g, c] = GLYPH[e.ev]; cx.fillStyle = css(c);
+    const [g, c] = GLYPH[e.type]; cx.fillStyle = css(c);
     cx.strokeText(g, sx, sy + 4); cx.fillText(g, sx, sy + 4);
     markerHits.push([sx, sy, e]);
   }
@@ -752,7 +752,7 @@ function drawTransports(t) {
 }
 
 const PLAYER_RADIUS = 0.306; // ponytail: every race and gender alike; the models' radii are 0.2 to 0.5 yd
-const GLYPH = { death: ["✕", "--death"], achievement: ["★", "--ach"], level: ["▲", "--level"], quest: ["!", "--quest"] };
+const GLYPH = { death: ["✕", "--death"], achievement: ["★", "--ach"], level_up: ["▲", "--level"], quest_turned_in: ["!", "--quest"] };
 
 // map interaction: drag pans (and stops the camera following), scroll zooms, a click selects a player or jumps to a marker
 let drag = null, down = null;
@@ -772,7 +772,7 @@ function wire() {
         if (u) { const [, , , name, lvl, hp, state] = u, kind = state & 4 ? "dead" : ["hostile", "neutral", "friendly"][state & 3];
           return tip(`<div><b>${esc(name)}</b> <span class="muted">level ${lvl}</span></div><div class="muted">${kind}${state & 4 ? "" : ` · ${hp}% health`}</div>`, e); }
       }
-      return tip(evs.length ? evs.slice(0, 6).map((ev) => { const [g, c] = GLYPH[ev.ev];
+      return tip(evs.length ? evs.slice(0, 6).map((ev) => { const [g, c] = GLYPH[ev.type];
         return `<div class="ev"><span class="t">${fmt(ev.t)}</span><span class="g" style="color:var(${c})">${g}</span><span>${ev.html}</span></div>`; }).join("")
         + (evs.length > 6 ? `<div class="muted">+${evs.length - 6} more</div>` : "") + `<div class="muted hintline">click to jump there</div>` : null, e);
     }
@@ -882,7 +882,7 @@ function updateMaps() {
 
 // ---------- seek bar ----------
 const tl = $("timeline"), tx = tl.getContext("2d");
-const TICK = { death: "--death", achievement: "--ach", level: "--level", quest: "--quest", chat: "--chat" };
+const TICK = { death: "--death", achievement: "--ach", level_up: "--level", quest_turned_in: "--quest", chat: "--chat" };
 let seeking = false;
 function drawTimeline() {
   const r = tl.getBoundingClientRect(), d = duration();
@@ -891,16 +891,16 @@ function drawTimeline() {
   const W = r.width, X = (ms) => (ms / Math.max(1, d)) * W;
   tx.fillStyle = css("--line"); tx.fillRect(0, 26, W, 6);
   tx.fillStyle = css("--accent"); tx.fillRect(0, 26, X(t), 6);
-  for (const e of TICKS) { tx.fillStyle = css(TICK[e.ev]); const h = e.ev === "chat" ? 6 : 14; tx.fillRect(Math.round(X(e.t)), 24 - h, e.ev === "chat" ? 1 : 2, h); }
+  for (const e of TICKS) { tx.fillStyle = css(TICK[e.type]); const h = e.type === "chat" ? 6 : 14; tx.fillRect(Math.round(X(e.t)), 24 - h, e.type === "chat" ? 1 : 2, h); }
   tx.fillStyle = css("--ink"); tx.beginPath(); tx.arc(X(t), 29, 6, 0, 7); tx.fill();
 }
 const seekFrom = (e) => { const r = tl.getBoundingClientRect(); setT(((e.clientX - r.left) / r.width) * duration()); };
 function hoverTimeline(e) {
   const r = tl.getBoundingClientRect(), x = e.clientX - r.left, d = duration(), tt = (x / r.width) * d, slop = (4 / r.width) * d;
-  const near = TICKS.slice(upto(TICKS, tt - slop - 1), upto(TICKS, tt + slop)), marks = near.filter((e) => e.ev in GLYPH), chats = near.length - marks.length;
-  const lines = marks.slice(0, 6).map((m) => MARKS.find((k) => k.t === m.t && k.ev === m.ev)).filter(Boolean);
+  const near = TICKS.slice(upto(TICKS, tt - slop - 1), upto(TICKS, tt + slop)), marks = near.filter((e) => e.type in GLYPH), chats = near.length - marks.length;
+  const lines = marks.slice(0, 6).map((m) => MARKS.find((k) => k.t === m.t && k.type === m.type)).filter(Boolean);
   const el = $("tltip");
-  el.innerHTML = `<div class="t">${fmt(tt)}</div>` + lines.map((m) => { const [g, c] = GLYPH[m.ev]; return `<div><span class="g" style="color:var(${c})">${g}</span>${m.html}</div>`; }).join("")
+  el.innerHTML = `<div class="t">${fmt(tt)}</div>` + lines.map((m) => { const [g, c] = GLYPH[m.type]; return `<div><span class="g" style="color:var(${c})">${g}</span>${m.html}</div>`; }).join("")
     + (marks.length > 6 ? `<div class="muted">+${marks.length - 6} more</div>` : "") + (chats ? `<div class="muted">${chats} chat message${chats > 1 ? "s" : ""}</div>` : "");
   el.hidden = false; el.style.left = Math.max(0, Math.min(r.width - el.offsetWidth, x - el.offsetWidth / 2)) + "px";
 }
