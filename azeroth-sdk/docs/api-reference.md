@@ -239,7 +239,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `objects.find(entry [, dist = 80]) → Object?` | the nearest game object with that entry; nil if none | [Object](#object) |
 | `objects.get(guid) → Object?` | one game object by GUID; nil if it's out of sight or not a game object (units.get takes units) | [Object](#object) |
 | `objects.nearby([dist = 30]) → Object[]` | game objects within dist yards (chests, doors, quest objects, herbs...), nearest first | [Object](#object) |
-| `objects.use(guid [, spell]) → Request<ObjectActivation>` | use a game object within ~5 yd. Chests use the Opening spell for their lock's type; herb, ore and locked nodes select Herb Gathering, Mining or Pick Lock from observed lock metadata. not_available while the object template is loading; unsupported_gathering requires an explicit spell. Plain objects require an observed state change. data.kind distinguishes cast completion from state_changed; neither establishes quest progress. Completion: matching opening cast completion or an observed game-object state change; quest progress is checked separately by act.use_object. | [Request](#request), [ObjectActivation](#objectactivation) |
+| `objects.use(guid [, spell]) → Request<ObjectActivation>` | use a game object within ~5 yd. Chests use the Opening spell for their lock's type; herb, ore and locked nodes select Herb Gathering, Mining or Pick Lock from observed lock metadata. not_available while the object template is loading; unsupported_gathering requires an explicit spell. Plain objects require an observed state change, a teleport, or (a portal) its spell going off; its failure (cast_failed) fails the use. data.kind distinguishes cast completion from state_changed; neither establishes quest progress. Completion: matching opening cast completion, an observed game-object state change, a teleport, or a portal's spell going off (its cast_failed fails the use); quest progress is checked separately by act.use_object. | [Request](#request), [ObjectActivation](#objectactivation) |
 
 ### quests
 
@@ -1888,7 +1888,7 @@ ObjectActivation distinguishes a successful opening cast from a non-casting obje
 
 | Field | Type | |
 |---|---|---|
-| `kind` | string | cast or state_changed |
+| `kind` | string | cast, state_changed or teleported |
 | `object` | GUID |  |
 | `cast?` | CastDone |  |
 | `state?` | number | observed GAMEOBJECT_BYTES_1 after a state change |

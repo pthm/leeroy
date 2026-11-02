@@ -41,6 +41,7 @@ const (
 
 	fieldGOBytes1 = 0x11 // GAMEOBJECT_BYTES_1: state, type, art kit, anim progress
 	goTypeChest   = 3
+	goTypePortal  = 22   // GAMEOBJECT_TYPE_SPELLCASTER: casts its spell (data0) on whoever uses it
 	spellOpening  = 6478 // "Opening" (lock type 13): what objects.use casts on a chest whose lock names no type with its own spell
 )
 
@@ -791,7 +792,7 @@ func (b *Bot) setupItems() {
 		})
 
 	// ---------- objects ----------
-	e.Func("objects.use", "(guid [, spell]) → Request<ObjectActivation>", "use a game object within ~5 yd. Chests use the Opening spell for their lock's type; herb, ore and locked nodes select Herb Gathering, Mining or Pick Lock from observed lock metadata. not_available while the object template is loading; unsupported_gathering requires an explicit spell. Plain objects require an observed state change. data.kind distinguishes cast completion from state_changed; neither establishes quest progress",
+	e.Func("objects.use", "(guid [, spell]) → Request<ObjectActivation>", "use a game object within ~5 yd. Chests use the Opening spell for their lock's type; herb, ore and locked nodes select Herb Gathering, Mining or Pick Lock from observed lock metadata. not_available while the object template is loading; unsupported_gathering requires an explicit spell. Plain objects require an observed state change, a teleport, or (a portal) its spell going off; its failure (cast_failed) fails the use. data.kind distinguishes cast completion from state_changed; neither establishes quest progress",
 		func(guid uint64, spell uint32) map[string]any {
 			args := map[string]any{"object": gs(guid)}
 			o := w.GetObject(guid)
@@ -817,6 +818,15 @@ func (b *Bot) setupItems() {
 			}
 			if spell == 0 {
 				before := o.Value(fieldGOBytes1)
+				var goSpell uint32 // a portal's spell: its cast_failed or cast_done answers the use
+				if (before>>8)&0xFF == goTypePortal {
+					entry := b.object(o).Entry
+					creatures.Lock()
+					if t := goNames.t[entry]; t != nil {
+						goSpell = t.data[0]
+					}
+					creatures.Unlock()
+				}
 				if err := w.GameObjectUse(guid); err != nil {
 					return b.refuse("objects.use", args, "failed", err.Error())
 				}
@@ -827,7 +837,7 @@ func (b *Bot) setupItems() {
 						return script.Ok(types.ObjectActivation{Kind: "state_changed", Object: types.GUID(guid), State: &state})
 					}
 					return nil
-				}, nil)
+				}, plainObjectMatch(guid, goSpell))
 			}
 			count, ok := b.castSequences.reserve(time.Now(), 10*time.Second)
 			if !ok {
@@ -1041,6 +1051,31 @@ func (b *Bot) setupItems() {
 				})
 		})
 
+}
+
+// plainObjectMatch: what answers using an object with no spell of ours, besides a state change: a teleport (a
+// portal, a teleporter), or its own spell (goSpell, a portal's; 0 unknown) going off or failing (dead, wrong level).
+func plainObjectMatch(guid uint64, goSpell uint32) func(script.Event) *script.Outcome {
+	return func(ev script.Event) *script.Outcome {
+		if ev.Type == "teleported" {
+			return script.Ok(types.ObjectActivation{Kind: "teleported", Object: types.GUID(guid)})
+		}
+		c, ok := ev.Data.(types.Cast)
+		if !ok || goSpell == 0 || c.Spell != goSpell {
+			return nil
+		}
+		switch ev.Type {
+		case "cast_done":
+			return script.Ok(types.ObjectActivation{Kind: "cast", Object: types.GUID(guid), Cast: &types.CastDone{Spell: goSpell}})
+		case "cast_failed":
+			msg := "the object's spell failed: " + c.Code
+			if c.Hint != "" {
+				msg += ": " + c.Hint
+			}
+			return script.Fail(c.Code, msg, nil)
+		}
+		return nil
+	}
 }
 
 func objectCastMatch(guid uint64, spell uint32, count uint8) func(script.Event) *script.Outcome {

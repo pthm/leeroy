@@ -300,3 +300,17 @@ func TestSplitRefusals(t *testing.T) {
 		t.Fatalf("empty slots: %v", s)
 	}
 }
+
+// A portal's use is answered by its spell failing (dead: targets_dead) or a teleport, not a timeout.
+func TestPlainObjectMatch(t *testing.T) {
+	m := plainObjectMatch(9, 17608)
+	if o := m(script.Event{Type: "cast_failed", Data: types.Cast{Spell: 17608, Code: "targets_dead"}}); o == nil || o.OK || o.Code != "targets_dead" {
+		t.Fatalf("portal spell failure: %+v", o)
+	}
+	if o := m(script.Event{Type: "cast_failed", Data: types.Cast{Spell: 1, Code: "x"}}); o != nil {
+		t.Fatalf("someone else's spell: %+v", o)
+	}
+	if o := m(script.Event{Type: "teleported", Data: types.Teleport{}}); o == nil || !o.OK {
+		t.Fatalf("teleport: %+v", o)
+	}
+}

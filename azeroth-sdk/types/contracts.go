@@ -28,7 +28,7 @@ var ActionPostconditions = map[string]string{
 	"items.open":              "the opened item's loot (or its absence) was observed: it's gone or its stack shrank, or loot arrived, and a second passed with nothing more",
 	"items.loot":              "the loot interaction completed with the reported items and money",
 	"items.roll":              "the server echoed this player's vote for the requested roll",
-	"objects.use":             "matching opening cast completion or an observed game-object state change; quest progress is checked separately by act.use_object",
+	"objects.use":             "matching opening cast completion, an observed game-object state change, a teleport, or a portal's spell going off (its cast_failed fails the use); quest progress is checked separately by act.use_object",
 	"vendor.items":            "the requested vendor inventory window was observed",
 	"vendor.buy":              "the requested item receipt was observed",
 	"vendor.sell":             "the requested inventory count decrease was observed",

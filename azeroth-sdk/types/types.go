@@ -176,7 +176,7 @@ type Object struct {
 // ObjectActivation distinguishes a successful opening cast from a non-casting
 // object state transition. Loot and quest progress remain separate observations.
 type ObjectActivation struct {
-	Kind   string    `json:"kind" doc:"cast or state_changed"`
+	Kind   string    `json:"kind" doc:"cast, state_changed or teleported"`
 	Object GUID      `json:"object"`
 	Cast   *CastDone `json:"cast,omitempty"`
 	State  *uint32   `json:"state,omitempty" doc:"observed GAMEOBJECT_BYTES_1 after a state change"`
