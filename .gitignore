@@ -1,7 +1,7 @@
 server/azerothcore/
 bench/runs/
 bench/workspaces/*/
-data/
+/data/
 node_modules/
 *.log
 .playwright-mcp/

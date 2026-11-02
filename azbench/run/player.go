@@ -552,7 +552,10 @@ func (p *player) meta(spec config.Spec) {
 		model = "default"
 	}
 	effort := p.a.Effort
-	if effort == "" {
+	for i := 0; effort == "" || effort == "default" && p.a.Runtime == "codex" && i < 15; i++ { // Codex writes it just after the model
+		if i > 0 {
+			time.Sleep(2 * time.Second)
+		}
 		effort = DetectEffort(p.a.Runtime, filepath.Join(p.dir, "agent.jsonl"))
 	}
 	b, _ := json.Marshal(map[string]any{"agent": p.a.Name, "char": p.a.Char, "runtime": p.a.Runtime, "model": model,

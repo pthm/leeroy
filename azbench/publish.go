@@ -153,7 +153,7 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 				}
 				p["outages"] = outs
 			}
-			if p["effort"] == nil || p["effort"] == "" { // runs from before effort was recorded: Codex's session says
+			if p["effort"] == nil || p["effort"] == "" || p["effort"] == "default" { // unrecorded, or read before Codex wrote it: its session says
 				p["effort"] = run.DetectEffort(fmt.Sprint(p["runtime"]), filepath.Join(adir, "agent.jsonl"))
 			}
 			if t := trajectory(filepath.Join(runDir, char+".events.jsonl"), started.UnixMilli()); len(t) > 0 {
