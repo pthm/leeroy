@@ -116,3 +116,9 @@ func renderMap(m uint32, xMin, xMax, yMin, yMax, res float64, heightRange *[2]fl
 	(&png.Encoder{CompressionLevel: png.DefaultCompression}).Encode(&b, img)
 	return Map{PNG: b.Bytes(), W: W, H: H}
 }
+
+// Image decodes the map's PNG.
+func (m Map) Image() image.Image {
+	img, _ := png.Decode(bytes.NewReader(m.PNG))
+	return img
+}

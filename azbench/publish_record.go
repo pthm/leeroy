@@ -1,16 +1,16 @@
 package main
 
 // What the website shows of a run beyond the judge: each player's route and deaths (from their recording, with killer
-// and place names from the world database), the party's chat volume and time together, and relief maps behind the
-// routes (from the server's terrain, never the game's minimap art).
+// and place names from the world database), the party's chat volume and time together, and maps behind the routes
+// (the viewer's detail map in greyscale; instances: their navmesh floor plan).
 
 import (
 	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"
 	"image/jpeg"
-	"image/png"
 	"math"
 	"os"
 	"path/filepath"
@@ -209,7 +209,7 @@ func simplify(raw [][5]float64) [][5]float64 {
 type mapImage struct {
 	Map  int     `json:"map"`
 	Name string  `json:"name"`
-	File string  `json:"file,omitempty"` // under site/src/assets/runs: relief (continents) or the navmesh floor plan (instances)
+	File string  `json:"file,omitempty"` // under site/src/assets/runs: the detail map in grey (continents) or the navmesh floor plan (instances)
 	XMin float64 `json:"x_min"`
 	XMax float64 `json:"x_max"`
 	YMin float64 `json:"y_min"`
@@ -248,9 +248,10 @@ func mapImages(id string, tracks [][][5]float64, assetDir string) ([]mapImage, e
 		h = w / 1.6
 		mi := mapImage{Map: m, Name: mapName(m), XMin: cx - h/2, XMax: cx + h/2, YMin: cy - w/2, YMax: cy + w/2}
 		if _, ok := continents[m]; ok {
-			img := world.RenderRelief(uint32(m), mi.XMin, mi.XMax, mi.YMin, mi.YMax, math.Max(1, w/1400))
+			// the viewer's full-detail map (ground, buildings, trees), in greyscale so the routes' colours stand out
 			mi.File = fmt.Sprintf("%s-%d.jpg", id, m)
-			if err := writeJPEG(filepath.Join(assetDir, mi.File), img.PNG); err != nil {
+			img := world.DetailBox(uint32(m), mi.XMin, mi.XMax, mi.YMin, mi.YMax, 2400) // sharp enough to zoom into
+			if err := writeJPEG(filepath.Join(assetDir, mi.File), img); err != nil {
 				return nil, err
 			}
 		} else if plan := world.FloorBox(uint32(m), mi.XMin, mi.XMax, mi.YMin, mi.YMax, math.Max(0.5, w/1400)); plan != nil {
@@ -341,16 +342,12 @@ func nameDeaths(recs []*recording) {
 	}
 }
 
-func writeJPEG(f string, pngData []byte) error {
-	img, err := png.Decode(bytes.NewReader(pngData))
-	if err != nil {
-		return err
-	}
+func writeJPEG(f string, img image.Image) error {
 	if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
 		return err
 	}
 	var b bytes.Buffer
-	if err := jpeg.Encode(&b, img, &jpeg.Options{Quality: 80}); err != nil {
+	if err := jpeg.Encode(&b, img, &jpeg.Options{Quality: 82}); err != nil {
 		return err
 	}
 	return os.WriteFile(f, b.Bytes(), 0o644)

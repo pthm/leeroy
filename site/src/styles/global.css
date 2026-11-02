@@ -329,3 +329,6 @@ dialog.enlarge svg[data-zoom] { max-height: 80vh; touch-action: none; }
   cursor: pointer;
 }
 .enlarge-close:hover { color: var(--color-accent); border-color: var(--color-accent); }
+.map-click { cursor: zoom-in; transition: border-color 0.15s; }
+.map-click:hover, .map-click:focus-visible { border-color: var(--color-accent); }
+dialog.enlarge .enlarge-hide { display: none; }

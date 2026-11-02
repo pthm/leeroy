@@ -14,7 +14,7 @@ npm run build      # into dist/; SITE_BASE=/ builds for the root of a domain
 | | |
 |---|---|
 | `src/data/runs/*.json` | one file per published run, written by `bin/azbench publish <run dir> --task <task>` (needs the server's database up, for names); never edited by hand |
-| `src/assets/runs/*.jpg` | relief maps behind a run's routes, from the server's terrain (never the game's minimap art); written by `publish` |
+| `src/assets/runs/*` | the maps behind a run's routes, written by `publish`: the viewer's detail map in grey (continents, `.jpg`) or the navmesh floor plan (instances, `.png`) |
 | `src/lib/results.ts` | the runs grouped by task and model; `TASKS` titles and describes each task |
 | `src/pages/results/` | every task; a page per task (tiles, the leaderboard, time against cost, the runs); a page per run (tiles, the roster, level over time with wipes and instance time or time to the goal, route maps, killers and places, time use, chat and time together, cost and errors, its notes); task pages compare models across runs (every attempt, agent time, errors) |
 | `src/content/runs/<run id>.md` | optional notes for a run's page: a title, a lede, findings at a glance (frontmatter) and the story (body) |

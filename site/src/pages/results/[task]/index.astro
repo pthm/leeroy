@@ -80,7 +80,7 @@ const outcome = (p: (typeof runs)[number]['players'][number]) =>
 
   {boxes.size > 0 && (
     <Section>
-      <SectionHeader eyebrow="Where they went" title="Every route." description="Every attempt in every run, one colour per model, over the server's own terrain (an instance: its floor plan). Hover a line for the attempt, a cross for the killer." />
+      <SectionHeader eyebrow="Where they went" title="Every route." description="Every attempt in every run, one colour per model, over the game's own map (an instance: its floor plan). Hover a line for the attempt, click a map to enlarge it." />
       <div class:list={['grid grid-cols-1 gap-4', boxes.size > 1 && 'lg:grid-cols-2']}>
         {[...boxes.values()].map(box => (
           <RouteMap box={box} routes={attempts} legend={models.map(m => ({ key: m, name: modelName(m), cls: modelCls(m) }))} thin />

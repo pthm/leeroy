@@ -42,7 +42,7 @@ bin/azbench publish bench/runs/<time>-<scenario> --task travel
 
 writes `site/src/data/runs/<run>.json`: the scenario and, for each player, the model, outcome, time, cost and tokens,
 progress from the judge's samples, the route and deaths from the recording (killers and zones named from the world
-database, so the server must be up), how the time went and the most frequent errors; and a relief map of each
-continent the run crossed into `site/src/assets/runs/`, drawn from the server's height data. Commit both; the site rebuilds on push. The results pages group runs by `--task`, and each run gets its own page: the roster,
+database, so the server must be up), how the time went and the most frequent errors; and a map of each
+place the run went into `site/src/assets/runs/`: the viewer's detail map in grey, or a dungeon's floor plan. Commit both; the site rebuilds on push. The results pages group runs by `--task`, and each run gets its own page: the roster,
 level over time from the judge's samples, and every death. A run's page can also carry hand-written notes, in
 `site/src/content/runs/<run id>.md`: a title, a lede, findings at a glance, and the story phase by phase.

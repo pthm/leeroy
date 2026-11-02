@@ -76,11 +76,20 @@ dialog.addEventListener('close', () => {
   dialog.replaceChildren();
   tip.hidden = true;
 });
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && (e.target as Element).matches?.('[data-enlarge][role=button]')) {
+    e.preventDefault();
+    (e.target as HTMLElement).click();
+  }
+});
 document.addEventListener('click', e => {
   const b = (e.target as Element).closest?.('[data-enlarge]');
   if (!b || dialog.open) return;
   const fig = b.closest('figure')!.cloneNode(true) as HTMLElement;
-  fig.querySelector('[data-enlarge]')?.remove();
+  for (const el of fig.querySelectorAll('[data-enlarge]')) {
+    if (el.tagName === 'BUTTON') el.remove(); // an Enlarge button
+    else el.removeAttribute('data-enlarge'); // the map itself, clicked: stays, and zooms instead
+  }
   const close = document.createElement('button');
   close.type = 'button';
   close.dataset.close = '';

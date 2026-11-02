@@ -58,14 +58,11 @@ const anyRide = drawn.some(x => x.rides);
 ---
 
 <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-  <div class="mb-2 flex items-center justify-between">
-    <p class="font-mono text-xs text-muted">{box.name}</p>
-    <button type="button" class="enlarge-btn" data-enlarge>Enlarge · zoom</button>
-  </div>
-  <div class="overflow-hidden rounded border border-hairline">
+  <p class="mb-2 font-mono text-xs text-muted">{box.name} <span class="enlarge-hide text-faint">· click to enlarge and zoom</span></p>
+  <div class="map-click overflow-hidden rounded border border-hairline" data-enlarge role="button" tabindex="0" aria-label={`Enlarge the map of ${box.name}`}>
     <svg viewBox={`0 0 ${W} ${H}`} class="block w-full" role="img" aria-label={`Routes in ${box.name}`} data-zoom>
       <rect width={W} height={H} fill="var(--color-base)" />
-      {img && <image href={img.src} width={W} height={H} opacity={floor ? 0.8 : 0.6} style="filter:grayscale(1) contrast(1.1)" />}
+      {img && <image href={img.src} width={W} height={H} opacity={floor ? 0.8 : 0.7} style={floor ? 'filter:grayscale(1)' : undefined} />}
       {drawn.map(x => (
         <g class={x.r.cls} data-key={x.r.key}>
           <path d={x.d} fill="none" stroke="currentColor" stroke-width={line} vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round" opacity={thin ? 0.8 : 0.9}>
@@ -90,6 +87,6 @@ const anyRide = drawn.some(x => x.rides);
     {legend.map(l => (
       <button type="button" class={l.cls} data-toggle={l.key} aria-pressed="true">● <span class="text-muted">{l.name}</span></button>
     ))}
-    <span class="text-faint">× death{!thin && ' · ● where they ended'}{anyRide && ' · dashed: on a boat'} · {floor ? 'floor plan from the navmesh' : "terrain from the server's height maps"}</span>
+    <span class="text-faint">× death{!thin && ' · ● where they ended'}{anyRide && ' · dashed: on a boat'} · {floor ? 'floor plan from the navmesh' : "the game's map, in grey"}</span>
   </figcaption>
 </figure>

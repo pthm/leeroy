@@ -135,7 +135,7 @@ const tiles = [
 
   {(run.maps ?? []).length > 0 && (
     <Section>
-      <SectionHeader eyebrow="Where they went" title="The routes." description="Every player's path, sampled from their recordings, over the server's own terrain. Crosses are deaths; hover one for the killer." />
+      <SectionHeader eyebrow="Where they went" title="The routes." description="Every player's path, sampled from their recordings, over the game's own map. Crosses are deaths; hover one for the killer, click a map to enlarge it." />
       <div class:list={['grid grid-cols-1 gap-4', run.maps!.length > 1 && 'lg:grid-cols-2']}>
         {run.maps!.map(box => (
           <RouteMap
