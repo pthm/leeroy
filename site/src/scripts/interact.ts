@@ -97,6 +97,7 @@ document.addEventListener('click', e => {
   close.setAttribute('aria-label', 'Close');
   close.textContent = '✕';
   dialog.replaceChildren(close, fig);
+  for (const im of fig.querySelectorAll('image[data-full]')) im.setAttribute('href', im.getAttribute('data-full')!); // the sharp one
   dialog.showModal();
   for (const svg of fig.querySelectorAll<SVGSVGElement>('svg[data-zoom]')) {
     zoomable(svg);

@@ -347,7 +347,7 @@ func writeJPEG(f string, img image.Image) error {
 		return err
 	}
 	var b bytes.Buffer
-	if err := jpeg.Encode(&b, img, &jpeg.Options{Quality: 82}); err != nil {
+	if err := jpeg.Encode(&b, img, &jpeg.Options{Quality: 72}); err != nil {
 		return err
 	}
 	return os.WriteFile(f, b.Bytes(), 0o644)
