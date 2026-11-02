@@ -11,4 +11,6 @@ require (
 
 require filippo.io/edwards25519 v1.2.0 // indirect
 
+// Until azsdk's first tag (azsdk/v0.1.0): then require that version and drop this (go install refuses replace
+// directives). go.work builds the two modules together from the checkout either way.
 replace github.com/pthm/leeroy/azsdk => ./azsdk

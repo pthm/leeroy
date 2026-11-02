@@ -211,6 +211,23 @@ bin/azbench judge Agentone level:10 --timeout 4h                  # prints JSON 
 # ...give the agent the docs (see suite/README.md#the-agent) + the goal; it drives the session with suite/agent/bin/wow
 ```
 
+## Modules and releases
+
+Two Go modules: `github.com/pthm/leeroy/azsdk` (the client, usable on its own) and `github.com/pthm/leeroy` (the
+benchmark tools and their shared packages). `go.work` builds them together from the checkout. Once published, each
+tool installs on its own, and the packages import with `go get`:
+
+```sh
+go install github.com/pthm/leeroy/azsdk/cmd/azsdk@latest   # the client daemon (also cmd/wow, cmd/clientdata)
+go install github.com/pthm/leeroy/cmd/azbench@latest       # also cmd/azview, cmd/azworld
+go get github.com/pthm/leeroy/azsdk                         # the client as a library
+go get github.com/pthm/leeroy                               # world, runfiles, gamelog, trajectory
+```
+
+A release tags the SDK first, then the root: `git tag azsdk/vX.Y.Z`, push it, then in the root
+`go get github.com/pthm/leeroy/azsdk@vX.Y.Z`, tag `vX.Y.Z` and push. Neither `go.mod` may carry a `replace` directive
+(`go install` refuses one); the root's points at `./azsdk` only until the SDK's first tag.
+
 ## License
 
 MIT, see [LICENSE](LICENSE). `azsdk/` is derived from AzerothGhost, also MIT
