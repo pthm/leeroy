@@ -32,7 +32,8 @@ type recDeath struct {
 }
 
 type recording struct {
-	track  [][5]float64 // t, map, x, y, group id: every 15 s
+	track  [][5]float64 // t, map, x, y, group id: every 15 s; map -1 marks a teleport, -2 a ride (boat, zeppelin)
+	raw    [][5]float64 // the same every second, for drawing (simplify)
 	deaths []recDeath
 }
 
@@ -48,7 +49,13 @@ func readRecording(f, char string, start int64, chat map[string]chatMsg) (*recor
 	}
 	defer fh.Close()
 	rec := &recording{}
-	last := -1.0
+	last := -1e9
+	var prev struct {
+		t    float64
+		m    int
+		x, y float64
+	}
+	speed := 0.0 // yd/s over the last second
 	sc := bufio.NewScanner(fh)
 	sc.Buffer(make([]byte, 1<<20), 16<<20)
 	for sc.Scan() {
@@ -66,6 +73,24 @@ func readRecording(f, char string, start int64, chat map[string]chatMsg) (*recor
 		t := float64(e.T-start) / 1000
 		switch e.Ev {
 		case "pos":
+			// a jump: over 100 yd within 3 s. A teleport (a portal, a hearthstone, a spirit healer) comes at walking
+			// pace; a boat or zeppelin's path skips stretches too, but the player was moving at its speed (about 30
+			// yd/s) just before
+			d := math.Hypot(e.X-prev.x, e.Y-prev.y)
+			if prev.t > 0 && prev.m == e.M && t-prev.t <= 3 && d > 100 {
+				mark := -1.0
+				if speed > 15 {
+					mark = -2
+				}
+				rec.track = append(rec.track, [5]float64{math.Round(t), mark, 0, 0, 0})
+				rec.raw = append(rec.raw, [5]float64{math.Round(t), mark, 0, 0, 0})
+				last = -1e9
+			}
+			if prev.t > 0 && prev.m == e.M && d <= 100 && t > prev.t {
+				speed = d / (t - prev.t)
+			}
+			prev.t, prev.m, prev.x, prev.y = t, e.M, e.X, e.Y
+			rec.raw = append(rec.raw, [5]float64{math.Round(t), float64(e.M), math.Round(e.X*10) / 10, math.Round(e.Y*10) / 10, float64(e.Grp)})
 			if t-last >= 15 || len(rec.track) > 0 && rec.track[len(rec.track)-1][1] != float64(e.M) {
 				rec.track = append(rec.track, [5]float64{math.Round(t), float64(e.M), math.Round(e.X), math.Round(e.Y), float64(e.Grp)})
 				last = t
@@ -121,19 +146,63 @@ func mapName(m int) string {
 	return a.Names[best]
 }
 
-// thinTrack keeps a point every `every` s at most, and only once a player has moved 10 yd, plus every map change:
-// the routes without the hours spent standing still.
-func thinTrack(t [][5]float64, every float64) [][5]float64 {
+// simplify draws a route with few points: each stretch between map changes, teleports and rides (marks, kept) is
+// reduced with Ramer-Douglas-Peucker to within eps yd of the full one-second track (finer inside instances, where
+// rooms are small), and points rounded to the yard.
+func simplify(raw [][5]float64) [][5]float64 {
 	var out [][5]float64
-	for _, p := range t {
-		if n := len(out); n > 0 {
-			q := out[n-1]
-			if q[1] == p[1] && (p[0]-q[0] < every || math.Hypot(p[2]-q[2], p[3]-q[3]) < 10) {
+	flush := func(seg [][5]float64) {
+		if len(seg) == 0 {
+			return
+		}
+		eps := 8.0
+		if _, ok := continents[int(seg[0][1])]; !ok {
+			eps = 2.5
+		}
+		keep := make([]bool, len(seg))
+		keep[0], keep[len(seg)-1] = true, true
+		var rdp func(a, b int)
+		rdp = func(a, b int) {
+			ax, ay, bx, by := seg[a][2], seg[a][3], seg[b][2], seg[b][3]
+			l := math.Hypot(bx-ax, by-ay)
+			worst, at := 0.0, -1
+			for i := a + 1; i < b; i++ {
+				var d float64
+				if l < 1e-9 {
+					d = math.Hypot(seg[i][2]-ax, seg[i][3]-ay)
+				} else {
+					d = math.Abs((bx-ax)*(ay-seg[i][3])-(ax-seg[i][2])*(by-ay)) / l
+				}
+				if d > worst {
+					worst, at = d, i
+				}
+			}
+			if worst > eps {
+				keep[at] = true
+				rdp(a, at)
+				rdp(at, b)
+			}
+		}
+		rdp(0, len(seg)-1)
+		for i, p := range seg {
+			if keep[i] {
+				out = append(out, [5]float64{p[0], p[1], math.Round(p[2]), math.Round(p[3]), p[4]})
+			}
+		}
+	}
+	var seg [][5]float64
+	for _, p := range raw {
+		if p[1] < 0 || len(seg) > 0 && seg[0][1] != p[1] {
+			flush(seg)
+			seg = nil
+			if p[1] < 0 {
+				out = append(out, p)
 				continue
 			}
 		}
-		out = append(out, p)
+		seg = append(seg, p)
 	}
+	flush(seg)
 	return out
 }
 
@@ -155,6 +224,9 @@ func mapImages(id string, tracks [][][5]float64, assetDir string) ([]mapImage, e
 	for _, tr := range tracks {
 		for _, p := range tr {
 			m := int(p[1])
+			if m < 0 {
+				continue
+			}
 			b := box[m]
 			if b == nil {
 				b = &[4]float64{p[2], p[2], p[3], p[3]}
@@ -169,11 +241,11 @@ func mapImages(id string, tracks [][][5]float64, assetDir string) ([]mapImage, e
 		if n[m] < 4 {
 			continue
 		}
-		// a margin, at least 600 yd across, and the image's aspect no taller than 4:3 or wider than 2:1
+		// a margin, at least 600 yd across, and always 16:10 (west-east : north-south) so every map is the same shape
 		cx, cy := (b[0]+b[1])/2, (b[2]+b[3])/2
-		h, w := math.Max(600, b[1]-b[0]+200), math.Max(600, b[3]-b[2]+200)
-		w = math.Max(w, h*0.75*4/3)
-		h = math.Max(h, w/2)
+		h, w := math.Max(375, b[1]-b[0]+200), math.Max(600, b[3]-b[2]+200)
+		w = math.Max(w, h*1.6)
+		h = w / 1.6
 		mi := mapImage{Map: m, Name: mapName(m), XMin: cx - h/2, XMax: cx + h/2, YMin: cy - w/2, YMax: cy + w/2}
 		if _, ok := continents[m]; ok {
 			img := world.RenderRelief(uint32(m), mi.XMin, mi.XMax, mi.YMin, mi.YMax, math.Max(1, w/1400))

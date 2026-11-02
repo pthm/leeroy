@@ -6,7 +6,8 @@ import RouteMap from '../../../components/RouteMap.astro';
 import Section from '../../../components/Section.astro';
 import SectionHeader from '../../../components/SectionHeader.astro';
 import Layout from '../../../layouts/Layout.astro';
-import { TASKS, dollars, duration, harnessName, leaderboard, modelName, runDate, runsOf, taskTitle, tasks, type MapBox } from '../../../lib/results';
+import { Icon } from 'astro-icon/components';
+import { TASKS, dollars, duration, harnessName, leaderboard, modelName, runDate, runsOf, taskTitle, tasks, totals, type MapBox } from '../../../lib/results';
 import { url } from '../../../lib/url';
 
 export function getStaticPaths() {
@@ -52,6 +53,25 @@ const outcome = (p: (typeof runs)[number]['players'][number]) =>
         </li>
       ))}
     </ul>
+    <p class="eyebrow mb-3">Run reports</p>
+    <ul class="mb-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {runs.map(r => {
+        const t = totals(r);
+        return (
+          <li>
+            <a href={url(`/results/${task}/${r.id}`)} class="group flex h-full flex-col justify-between gap-3 rounded border border-outline bg-raised p-4 transition-colors hover:border-accent">
+              <span>
+                <span class="block font-mono text-sm text-fg">{runDate(r)}</span>
+                <span class="mt-1 block text-xs text-muted">{t.met}/{r.players.length} reached the goal · first in {duration(t.first)} · {dollars(t.cost)}</span>
+              </span>
+              <span class="inline-flex items-center gap-1.5 font-mono text-xs text-accent">
+                Open the run report <Icon name="lucide:arrow-right" class="size-3 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+              </span>
+            </a>
+          </li>
+        );
+      })}
+    </ul>
     <Leaderboard task={task} />
     <div class="mt-8">
       <CostChart task={task} />
@@ -79,10 +99,15 @@ const outcome = (p: (typeof runs)[number]['players'][number]) =>
     <div class="space-y-12">
       {runs.map(r => (
         <article id={r.id}>
-          <h3 class="font-mono text-sm text-fg">
-            <a href={url(`/results/${task}/${r.id}`)} class="text-accent hover:underline">{runDate(r)} →</a>
-            <span class="text-faint"> · {r.scenario} · {r.minutes >= 1440 ? `${r.minutes / 1440} days` : `${r.minutes} min`} on the clock</span>
-          </h3>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h3 class="font-mono text-sm text-fg">
+              {runDate(r)}
+              <span class="text-faint"> · {r.scenario} · {r.minutes >= 1440 ? `${r.minutes / 1440} days` : `${r.minutes} min`} on the clock</span>
+            </h3>
+            <a href={url(`/results/${task}/${r.id}`)} class="inline-flex items-center gap-1.5 rounded bg-accent px-3 py-1.5 font-mono text-xs font-medium text-on-accent transition-opacity hover:opacity-90">
+              Run report <Icon name="lucide:arrow-right" class="size-3" aria-hidden="true" />
+            </a>
+          </div>
           <div class="mt-3 overflow-x-auto rounded border border-hairline bg-raised">
             <table class="data">
               <thead>

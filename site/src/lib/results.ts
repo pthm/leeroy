@@ -23,7 +23,7 @@ export interface Player {
   role?: string; // Tank, Healer, DPS
   series?: [number, number, number, number, number, number][]; // [elapsed s, level, XP earned, deaths, quests, kills]
   deaths_at?: number[]; // elapsed s
-  track?: [number, number, number, number, number][]; // [s from the start, map, x, y, group id]
+  track?: [number, number, number, number, number][]; // [s from the start, map, x, y, group id]; map -1: a teleport
   death_list?: { t: number; map: number; x: number; y: number; killer: string; place: string }[];
   failures?: { op: string; code: string; count: number }[];
   time_use?: { seconds: number; fighting_pct: number; travelling_pct: number; idle_pct: number; dead_pct: number; with_group_pct: number };
@@ -214,9 +214,9 @@ export function instanceTime(run: Run): [number, number][] {
   for (const p of run.players) {
     const tr = p.track ?? [];
     for (let i = 0; i < tr.length; i++) {
-      if (isContinent(tr[i][1])) continue;
+      if (isContinent(tr[i][1]) || tr[i][1] < 0) continue; // map -1: a teleport mark
       const start = tr[i][0];
-      while (i + 1 < tr.length && !isContinent(tr[i + 1][1])) i++;
+      while (i + 1 < tr.length && !isContinent(tr[i + 1][1]) && tr[i + 1][1] >= 0) i++;
       spans.push([start, tr[Math.min(i + 1, tr.length - 1)][0]]);
     }
   }

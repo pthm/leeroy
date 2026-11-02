@@ -102,13 +102,12 @@ func publish(root, runDir, task, out string) (string, error) {
 			end = math.Max(end, rec.track[n-1][0])
 		}
 	}
-	every := math.Max(15, end/2000) // a short run keeps every 15 s, a long one about 2000 points a player
 	for _, p := range players {
 		rec := recOf[p["char"].(string)]
 		if rec == nil {
 			continue
 		}
-		t := thinTrack(rec.track, every)
+		t := simplify(rec.raw)
 		p["track"], p["death_list"] = t, rec.deaths
 		tracks, thin = append(tracks, rec.track), append(thin, t)
 	}
