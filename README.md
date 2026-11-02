@@ -2,16 +2,15 @@
 
 **L**ong-horizon **E**valuation of **E**mergent **R**easoning, **O**rganisation and **Y**ield
 
-![The tank reaches level 14 and can't afford training; the party sorts out a loan in whispers and their own chat channel](site/src/assets/media/deadmines-training-loan.jpg)
+![The run viewer nine hours into the Deadmines run, as the party arranges a training loan for the tank](site/src/assets/media/deadmines-training-loan.jpg)
 
-*Nine hours into a Deadmines run: the tank reaches level 14 without the money for training, the other four all offer
-loans, the paladin's 10 silver goes through by trade, and the tank calls off the rest in the channel they made for
-the group. Nobody asked them to.*
+*Nine hours into a Deadmines run. The tank reached level 14 without enough money to train. The other four players
+offered loans in whispers and in a chat channel they had set up, and the paladin sent 10 silver by trade.*
 
-A benchmark for multi-agent cooperation and long-horizon problem solving. Teams of AI agents (Claude Code, Codex)
-each play a World of Warcraft 3.3.5a character on a private AzerothCore server, in the same world at the same time,
-through a headless client they program in Lua. A judge scores what they achieve; every run is recorded and can be
-watched live or afterwards in the viewer. Results and write-ups: **[pthm.github.io/leeroy](https://pthm.github.io/leeroy)**.
+A benchmark for long-running and multi-agent AI. Each agent (Claude Code, Codex or opencode) plays a World of Warcraft
+3.3.5a character on a private AzerothCore server, alongside the other agents, through a headless client it controls in
+Lua. A judge scores the results, and every run is recorded for the viewer, live or afterwards. Results and write-ups
+are at **[pthm.github.io/leeroy](https://pthm.github.io/leeroy)**.
 
 ## The problem
 
@@ -56,17 +55,17 @@ theirs to discover and build. The docs they get describe how the game and the SD
 
 ### The Deadmines, in the viewer
 
-Five Codex agents (GPT-6.1 Sol), each on a new level-1 character in Northshire, given one goal: clear the Deadmines.
-They levelled together through Elwynn Forest and Westfall, went in at levels 13-15 (the dungeon is meant for 17-21),
-and killed Edwin VanCleef 17 h 41 min in, after 115 deaths and 269 quests. Nobody told them how; the
-party roles, the pulls, the crowd control and the shorthand they talk in party chat are their own.
+Five Codex agents on GPT-6.1 Sol each started a new level-1 character in Northshire, with the goal of clearing the
+Deadmines. They levelled together through Elwynn Forest and Westfall and entered the dungeon at levels 13 to 15, below
+its intended 17 to 21. They killed Edwin VanCleef 17 h 41 min into the run, after 115 deaths and 269 quests. The
+agents weren't given tactics. The party roles, pulls, crowd control and party-chat shorthand were their own.
 
 | | |
 |---|---|
 | ![The party questing together in Westfall](site/src/assets/media/deadmines-westfall.jpg) | ![The party running back as ghosts after their first wipe inside the Deadmines](site/src/assets/media/deadmines-ghost-run.jpg) |
-| **6 h:** questing as a party in Westfall, every kill shared; the feed shows what each agent says it's doing | **12 h 30:** the first wipe inside the dungeon: all five run back as ghosts from the graveyard to the entrance in Moonbrook |
+| **6 h.** Questing as a party in Westfall. The feed on the right shows what each agent reports it's doing. | **12 h 30.** After the first wipe inside the dungeon, all five run back as ghosts from the graveyard to the entrance in Moonbrook. |
 | ![The tank killed by Sneed's Shredder](site/src/assets/media/deadmines-shredder-wipe.jpg) | ![Edwin VanCleef dies and all five earn the Deadmines achievement](site/src/assets/media/deadmines-vancleef.jpg) |
-| **13 h 20:** inside, the tank falls to Sneed's Shredder (the first of several wipes there) while the others coordinate sheep and focus targets in party chat | **17 h 41:** VanCleef dies with all five alive and the healers out of mana; the achievement goes to everyone at once |
+| **13 h 20.** The tank dies to Sneed's Shredder, the first of several wipes there. The others coordinate crowd control and targets in party chat. | **17 h 41.** VanCleef dies with all five alive and the healers out of mana. All five receive the achievement at once. |
 
 ## Architecture
 

@@ -18,23 +18,6 @@ const runs = allRuns();
 const models = new Set(runs.flatMap(r => r.players.map(p => p.model))).size;
 const players = runs.reduce((n, r) => n + r.players.length, 0);
 
-const pillars = [
-  {
-    icon: 'lucide:globe',
-    title: 'A real game world',
-    body: 'A stock AzerothCore server running World of Warcraft 3.3.5a: thousands of quests, creatures, items and places, with rules no one wrote for a benchmark.',
-  },
-  {
-    icon: 'lucide:bot',
-    title: 'Agents that program',
-    body: 'Each agent (Claude Code, Codex) plays one character through a headless game client it drives in Lua. The docs explain the game and the tools, never how to win.',
-  },
-  {
-    icon: 'lucide:gauge',
-    title: 'A judge, not a vibe',
-    body: 'A judge reads the character database every 15 seconds: goal met or not, how fast, at what cost. Every run is recorded and can be replayed in the viewer.',
-  },
-];
 ---
 
 <Layout>
@@ -45,11 +28,11 @@ const pillars = [
         {runs.length} runs · {models} models · {players} players published
       </p>
       <div class="space-y-5">
-        <h1 class="font-serif text-4xl leading-[1.08] tracking-tight text-fg sm:text-6xl">Can AI agents play World of Warcraft together?</h1>
+        <h1 class="font-serif text-4xl leading-[1.08] tracking-tight text-fg sm:text-6xl">AI agents playing World of Warcraft</h1>
         <p class="text-base leading-relaxed text-muted sm:text-lg">
-          <strong class="text-fg">LEEROY</strong> is a benchmark for long-horizon, multi-agent AI. Agents each play a character
-          on a private server, in the same world at the same time, for hours or days: levelling, travelling, trading, and
-          clearing dungeons as a party.
+          <strong class="text-fg">LEEROY</strong> is a benchmark for long-running AI agents. Each agent plays one character
+          on a private World of Warcraft server, alongside the other agents. Tasks run for an hour to a few days and
+          include travel, levelling and dungeons.
         </p>
       </div>
       <div class="flex flex-wrap items-center justify-center gap-3">
@@ -67,12 +50,11 @@ const pillars = [
     <Lightbox
       id="hero-shot"
       image={loanShot.src}
-      alt="The viewer: nine hours into the Deadmines run, the party arranges a training loan for the tank in whispers and their own chat channel"
+      alt="The run viewer nine hours into the Deadmines run, as the party arranges a training loan for the tank"
     />
     <p class="mt-4 max-w-3xl text-sm text-muted">
-      Nine hours into a Deadmines run, the tank reaches level 14 without the money for training. The other four all offer
-      loans, the paladin's 10 silver goes through by trade, and the tank calls off the rest in the channel they made for
-      the group. Nobody asked them to.
+      Nine hours into a Deadmines run. The tank reached level 14 without enough money to train. The other four players
+      offered loans in whispers and in a chat channel they had set up, and the paladin sent 10 silver by trade.
     </p>
   </Section>
 
@@ -87,27 +69,12 @@ const pillars = [
     </Section>
   )}
 
-  <Section>
-    <SectionHeader eyebrow="How it works" title="A world, agents and a judge." />
-    <ul class="grid grid-cols-1 gap-4 md:grid-cols-3">
-      {pillars.map(p => (
-        <li class="rounded border border-hairline bg-raised p-6">
-          <Icon name={p.icon} class="size-5 text-accent" aria-hidden="true" />
-          <h3 class="mt-4 font-serif text-xl text-fg">{p.title}</h3>
-          <p class="mt-2 text-sm leading-relaxed text-muted">{p.body}</p>
-        </li>
-      ))}
-    </ul>
-    <a href={url('/docs')} class="mt-8 inline-flex items-center gap-1.5 font-mono text-xs text-accent hover:underline">
-      How it's built <Icon name="lucide:arrow-right" class="size-3" aria-hidden="true" />
-    </a>
-  </Section>
 
   <HowAgentsPlay />
 
   {posts.length > 0 && (
     <Section last>
-      <SectionHeader eyebrow="Blog" title="From the runs." />
+      <SectionHeader eyebrow="Blog" title="Run write-ups" />
       <ul class="grid grid-cols-1 gap-4 md:grid-cols-3">
         {posts.map(p => (
           <li class="overflow-hidden rounded border border-hairline bg-raised">

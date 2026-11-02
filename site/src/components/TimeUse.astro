@@ -27,8 +27,8 @@ const ps = run.players.filter(p => p.time_use || p.time_pct_by_state);
 {ps.length > 0 && (
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     {[
-      { title: 'The character', parts: game, get: (p: (typeof ps)[number], k: string) => (p.time_use as any)?.[k] ?? 0 },
-      { title: 'The agent', parts: agent, get: (p: (typeof ps)[number], k: string) => p.time_pct_by_state?.[k] ?? 0 },
+      { title: 'Character', parts: game, get: (p: (typeof ps)[number], k: string) => (p.time_use as any)?.[k] ?? 0 },
+      { title: 'Agent', parts: agent, get: (p: (typeof ps)[number], k: string) => p.time_pct_by_state?.[k] ?? 0 },
     ].map(({ title, parts, get }) => (
       <figure class="rounded border border-hairline bg-raised p-4" data-chart>
         <p class="mb-4 font-mono text-xs text-muted">{title}</p>
@@ -54,8 +54,8 @@ const ps = run.players.filter(p => p.time_use || p.time_pct_by_state);
 )}
 {ps.length > 0 && (
   <p class="mt-3 font-mono text-[11px] leading-relaxed text-faint">
-    The character, from its recording: fighting = in combat; travelling = moving; dead = a corpse or a ghost; idle =
-    the rest. The agent, from the harness: thinking = the model generating; script running = waiting while its Lua
-    plays; in a call = a tool command running; nothing running = neither.
-  </p>
+    Character time comes from the recording. Fighting means in combat, travelling means moving, and dead means a
+    corpse or a ghost. Agent time comes from the harness. Thinking is time the model spends generating, script running
+    is time it waits while its Lua plays, and in a call is time a tool command is running.
+</p>
 )}

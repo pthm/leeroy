@@ -62,58 +62,59 @@ export interface Run {
 // What each task is, for the pages. A task without an entry here still shows, under its id.
 export const TASKS: Record<string, { title: string; short: string; summary: string; scoring: string; order: number }> = {
   travel: {
-    title: 'Travel: Northshire to Darnassus',
+    title: 'Travel from Northshire to Darnassus',
     short: 'Travel',
     summary:
-      'A new level-30 Human warrior in Northshire must reach Darnassus on the other continent: two boats and a portal, no map handed over. One character per model, all at once, 90 minutes.',
-    scoring: 'Arrived or not, then time to arrive. Cost is what the run spent at list prices.',
+      'A new level-30 Human warrior starts in Northshire and has to reach Darnassus on the other continent. The route needs two boats and a portal. Each model plays one character, all at the same time, with 90 minutes.',
+    scoring: 'Whether the character arrives, then how long it takes. Cost is at list prices.',
     order: 1,
   },
   hogger: {
-    title: 'Hogger, as a trio',
+    title: 'Hogger with three players',
     short: 'Hogger',
     summary:
-      'Three new level-5 characters in Goldshire, a Protection Paladin, a Holy Priest and a Frost Mage, with one goal: the quest "Wanted: Hogger", an elite gnoll several levels above them.',
-    scoring: 'Met or not (the quest completed), then time to it.',
+      'Three new level-5 characters start in Goldshire: a Protection Paladin, a Holy Priest and a Frost Mage. The goal is the quest "Wanted: Hogger", whose target is an elite gnoll above their level.',
+    scoring: 'Whether the quest is completed, then how long it takes.',
     order: 3,
   },
   'levelling-party': {
     title: 'Levelling from level 1',
     short: 'Levelling',
     summary:
-      'New level-1 characters in Northshire, one of each class (a tank, a healer, three damage dealers), free to group or not, progressing as far as they can on a fixed clock.',
-    scoring: 'XP earned per hour of the clock. Class matters as much as the model, so compare like with like.',
+      'New level-1 characters start in Northshire, one of each class, and level for a fixed time. They can group or play alone.',
+    scoring: 'XP earned per hour. Class affects the result as much as the model does.',
     order: 4,
   },
   'frost-mages': {
-    title: 'Frost Mages, ten models',
+    title: 'Frost Mages across ten models',
     short: 'Frost Mages',
     summary:
-      'Ten new level-1 Frost Mages in Northshire, one per model, all on the same open-source harness (opencode, through OpenRouter), levelling for an hour.',
-    scoring: 'XP earned per hour. Same class, harness, start and clock: the model is the only difference.',
+      'Ten new level-1 Frost Mages start in Northshire, one per model, and level for an hour. All use the same harness, opencode through OpenRouter.',
+    scoring: 'XP earned per hour. Class, harness, start and time are the same for every model.',
     order: 5,
   },
   'early-team': {
-    title: 'The first team: ten Opus agents',
+    title: 'First team: ten Opus agents',
     short: 'First team',
     summary:
-      'The first runs of the benchmark: ten Claude Code agents on Opus 5.5, one of each class twice, in Northshire, scored on a weighted mix of progress with "Wanted: Hogger" as a suggested target. The same ten characters played three sessions in a row, from level 1 to about 11.',
-    scoring: 'An early weighted progress score; shown here as levels and XP per hour (the first session did not record XP). Each session starts where the last ended, so later ones are at higher levels.',
+      'The benchmark\'s first runs. Ten Claude Code agents on Opus 5.5, two of each class, played three sessions in a row with the same characters, from level 1 to about 11. They were scored on a weighted progress score, with "Wanted: Hogger" as a suggested target.',
+    scoring: 'Shown here as levels gained and XP per hour. The first session didn\'t record XP. Later sessions start at higher levels.',
     order: 7,
   },
   hardcore: {
     title: 'Hardcore levelling',
     short: 'Hardcore',
-    summary: 'A new level-1 Human Arms warrior in Northshire, four hours on the clock, and the first death ends the run.',
-    scoring: 'XP earned over the whole clock, so an early death costs everything after it.',
+    summary:
+      'A new level-1 Human Arms warrior starts in Northshire with four hours. The first death ends the run.',
+    scoring: 'XP earned divided by the full four hours, so an early death keeps a low rate.',
     order: 6,
   },
   deadmines: {
     title: 'The Deadmines from level 1',
     short: 'Deadmines',
     summary:
-      'Five new level-1 characters in Northshire, a tank, a healer and three damage dealers, with one goal: clear the Deadmines and kill Edwin VanCleef. A week on the clock.',
-    scoring: 'Met or not (the Deadmines achievement), then time to it.',
+      'Five new level-1 characters start in Northshire: a tank, a healer and three damage dealers. The goal is to clear the Deadmines and kill Edwin VanCleef. The clock is one week.',
+    scoring: 'Whether the party earns the Deadmines achievement, then how long it takes.',
     order: 2,
   },
 };

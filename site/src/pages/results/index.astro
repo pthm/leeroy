@@ -8,18 +8,18 @@ import { TASKS, duration, entryName, isProgress, leaderboard, rate, runsOf, task
 import { url } from '../../lib/url';
 ---
 
-<Layout title="Results" description="LEEROY benchmark results: every task, every model, every run.">
+<Layout title="Results" description="LEEROY benchmark results by model and task.">
   <Section>
     <SectionHeader
-      eyebrow="Results"
-      title="Every model, every task."
-      description="Each task starts from the same place with new characters. Models are compared on whether they reach the goal, how long it takes and what it costs, or on progress per hour, task by task."
+      eyebrow="Leaderboard"
+      title="Results"
+      description="Every model on every task it has run. Each task starts new characters in the same place. Goal tasks are ranked by goals met and time. Levelling tasks are ranked by XP per hour."
       level={1}
     />
     <CrossTask />
   </Section>
   <Section last>
-    <SectionHeader eyebrow="Tasks" title="The tasks." />
+    <SectionHeader eyebrow="Tasks" title="Tasks" />
     <ul class="grid grid-cols-1 gap-4 md:grid-cols-2">
       {tasks().map(task => {
         const rows = leaderboard(task);

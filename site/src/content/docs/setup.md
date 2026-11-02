@@ -1,11 +1,11 @@
 ---
 title: Setup
-description: The server, the game data, the SDK's navmesh and the tools, once.
+description: One-time setup of the server, game data, navmesh and tools.
 order: 2
 ---
 
-You need Docker, Go and about 10 GB of disk. A World of Warcraft 3.3.5a client install is optional: it adds the game's
-minimap, road textures and models to the viewer and to route planning. Every command runs from the repository root.
+You need Docker, Go and about 10 GB of disk space. A World of Warcraft 3.3.5a client is optional. With it, the viewer
+and route planning can use the game's minimap, road textures and models. Run every command from the repository root.
 
 ```sh
 git clone https://github.com/pthm/leeroy && cd leeroy

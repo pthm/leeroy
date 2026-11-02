@@ -32,7 +32,7 @@ const tip = (p: (typeof pts)[number]) =>
       : `${p.r.met}/${p.r.attempts} reached the goal; ${duration(p.r.meanTime)} mean, ${duration(p.r.bestTime)} best`,
     `${dollars(p.r.meanCost)} per attempt${p.r.costPerSuccess != null ? `, ${dollars(p.r.costPerSuccess)} per success` : ''}`,
     `${thousands(p.r.meanOutputTokens)} output tokens per attempt`,
-    front.includes(p) ? 'On the frontier: nothing is both cheaper and better' : '',
+    front.includes(p) ? 'On the cost frontier' : '',
   ]
     .filter(Boolean)
     .join('\n');
@@ -70,7 +70,7 @@ const tip = (p: (typeof pts)[number]) =>
       ))}
     </svg>
     <figcaption class="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-faint">
-      <span>{progress ? 'Up and to the left is better.' : 'Down and to the left is better.'} Dashed: the frontier, where nothing is both cheaper and better.</span>
+      <span>{progress ? 'Higher and further left is better.' : 'Lower and further left is better.'} The dashed line is the cost frontier: no other entry is both cheaper and better.</span>
       {labs.map(l => <span><span style={`color:${LABS[l]}`}>●</span> {l}</span>)}
     </figcaption>
   </figure>

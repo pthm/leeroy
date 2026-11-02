@@ -66,7 +66,7 @@ const tiles = [
       ]
     : [
         { v: `${t.met}/${run.players.length}`, k: 'reached the goal' },
-        { v: t.last ? duration(t.last) : duration(t.first), k: t.last ? 'until the last arrived' : t.first ? 'first to the goal' : 'nobody in time' },
+        { v: t.last ? duration(t.last) : duration(t.first), k: t.last ? 'until all reached it' : t.first ? 'first to the goal' : 'none in time' },
       ]),
   { v: String(t.deaths), k: 'deaths' },
   ...(levelled ? [{ v: String(t.quests), k: 'quests completed' }] : []),
@@ -108,7 +108,7 @@ const tiles = [
   )}
 
   <Section>
-    <p class="eyebrow mb-6">The players</p>
+    <p class="eyebrow mb-6">Players</p>
     <div class="overflow-x-auto rounded border border-hairline bg-raised">
       <table class="data">
         <thead>
@@ -146,13 +146,13 @@ const tiles = [
   </Section>
 
   <Section>
-    <SectionHeader eyebrow="Progress" title={levelled ? 'Level by level.' : 'Who got there, and when.'} description={levelled ? 'Each player\'s level over the run from the judge\'s samples, every death below it, wipes and time inside the dungeon shaded. Hover for details.' : 'Time from the start to the goal, fastest first.'} />
+    <SectionHeader eyebrow="Progress" title={levelled ? 'Level over time' : 'Time to the goal'} description={levelled ? 'Level from the judge\'s samples, with deaths marked below. Shading shows time in a dungeon and party wipes.' : 'Time from the start of the run to the goal, fastest first.'} />
     {levelled ? <ProgressChart run={run} /> : <FinishChart run={run} />}
   </Section>
 
   {(run.maps ?? []).length > 0 && (
     <Section>
-      <SectionHeader eyebrow="Where they went" title="The routes." description="Every player's path, sampled from their recordings, over the game's own map. Crosses are deaths; hover one for the killer, click a map to enlarge it." />
+      <SectionHeader eyebrow="Map" title="Routes" description="Each player's path from their recording, drawn over the game map. Crosses mark deaths. Click a map to enlarge it." />
       <div class:list={['grid grid-cols-1 gap-4', run.maps!.length > 1 && 'lg:grid-cols-2']}>
         {run.maps!.map(box => (
           <RouteMap
@@ -167,31 +167,31 @@ const tiles = [
 
   {hasDeaths && (
     <Section>
-      <SectionHeader eyebrow="Deaths" title="What killed them." description="Every death in the recordings, by killer and by zone, split by player." />
+      <SectionHeader eyebrow="Combat" title="Deaths" description="Deaths by killer and by zone, split by player." />
       <Deaths run={run} />
     </Section>
   )}
 
   <Section>
-    <SectionHeader eyebrow="Time" title="How the time went." description="The character's time in the game, and the agent's: thinking, a script running while it waits, in a call, or nothing running at all." />
+    <SectionHeader eyebrow="Time" title="Time use" description="How each character spent its time in the game, and how each agent spent its time." />
     <TimeUse run={run} />
   </Section>
 
   {hasChat && run.players.length > 1 && (
     <Section>
-      <SectionHeader eyebrow="Together" title="Talking and staying close." description="Messages between the players per hour of the run, and how often the whole party stood together." />
+      <SectionHeader eyebrow="Group" title="Chat and proximity" description="Messages between players per hour, and how often the whole party was within 40 yards of each other." />
       <Talk run={run} />
     </Section>
   )}
 
   <Section last={!Story}>
-    <SectionHeader eyebrow="Cost and errors" title="What it cost, what went wrong." description="List-price cost per player with tokens by kind, and the errors the SDK returned most often." />
+    <SectionHeader eyebrow="Spend" title="Cost and errors" description="Cost per player at list prices, token counts, and the SDK errors each player hit most often." />
     <Spend run={run} />
   </Section>
 
   {Story && (
     <Section last>
-      <p class="eyebrow mb-2">The run</p>
+      <p class="eyebrow mb-2">Account of the run</p>
       <div class="prose run-story max-w-3xl">
         <Story />
       </div>

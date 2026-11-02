@@ -36,7 +36,7 @@ const tickLabel = (t: number) => (progress ? (t >= 1000 ? `${t / 1000}k` : Strin
 
 <div class="space-y-4">
   <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-    <p class="mb-4 font-mono text-xs text-muted">{progress ? "Every attempt's XP per hour · ● one attempt · ▏ the mean" : "Every attempt's time to the goal · ● one attempt · ▏ the mean · ✕ didn't make it"}</p>
+    <p class="mb-4 font-mono text-xs text-muted">{progress ? "XP per hour by attempt · ● attempt · ▏ mean" : "Time to the goal by attempt · ● attempt · ▏ mean · ✕ not met"}</p>
     <ul class="space-y-2">
       {rows.map(r => (
         <li class="grid grid-cols-[8rem_1fr] items-center gap-3 font-mono text-xs" data-key={r.key}>
@@ -69,7 +69,7 @@ const tickLabel = (t: number) => (progress ? (t >= 1000 ? `${t / 1000}k` : Strin
 
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-      <p class="mb-4 font-mono text-xs text-muted">How the agent spent its time, on average</p>
+      <p class="mb-4 font-mono text-xs text-muted">Agent time, mean of all attempts</p>
       <ul class="space-y-2">
         {rows.map(r => {
           const ps = attempts(r.key);
@@ -91,7 +91,7 @@ const tickLabel = (t: number) => (progress ? (t >= 1000 ? `${t / 1000}k` : Strin
       </p>
     </figure>
     <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-      <p class="mb-4 font-mono text-xs text-muted">Most frequent errors, all attempts</p>
+      <p class="mb-4 font-mono text-xs text-muted">Most frequent errors</p>
       <ul class="space-y-2.5">
         {rows.filter(r => topFailures(attempts(r.key)).length).map(r => (
           <li class="text-xs">
@@ -110,9 +110,9 @@ const tickLabel = (t: number) => (progress ? (t >= 1000 ? `${t / 1000}k` : Strin
     </figure>
   </div>
   <p class="font-mono text-[11px] leading-relaxed text-faint">
-    Agent time, from the harness: thinking = the model generating; script running = the agent waiting while its Lua
-    plays; in a call = a tool command running; nothing running = no script and no call (the character idles).
-    Errors are the SDK's own codes, summed over every attempt; harmless ones (a script replacing its own move, a miss,
-    a spell on cooldown) are left out.
-  </p>
+    Agent time comes from the harness. Thinking is time the model spends generating. Script running is time the agent
+    waits while its Lua plays. In a call is time a tool command is running. Nothing running means neither, and the
+    character stands idle. Errors are the SDK's error codes summed over all attempts. Expected ones, such as a script
+    replacing its own move, a missed attack or a spell on cooldown, are excluded.
+</p>
 </div>

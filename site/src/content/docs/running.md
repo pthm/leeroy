@@ -1,21 +1,21 @@
 ---
 title: Running a task
-description: Run a scenario, watch it, read the results, and publish them here.
+description: Running a scenario, watching it, reading the results and publishing them to this site.
 order: 3
 ---
 
-A task is a scenario file in `bench/scenarios/`: the agents, the characters they play, the goal, the clock and the
-starting conditions.
+A task is a scenario file in `bench/scenarios/`. It lists the agents, their characters, the goal, the time limit and
+the starting conditions.
 
 ```sh
-bin/azbench run bench/scenarios/smoke.yaml                     # 2 minutes, no agents: checks the harness end to end
-bin/azbench run --reset bench/scenarios/travel-models-2.yaml   # six models to Darnassus, from a clean start
+bin/azbench run bench/scenarios/smoke.yaml                     # 2 minutes, no agents; tests the harness
+bin/azbench run --reset bench/scenarios/travel-models-2.yaml   # six models travel to Darnassus, from a clean start
 ```
 
-`--reset` deletes the scenario's characters, sets the agents' workspaces aside and restarts the worldserver first, so
-repeats start alike. One supervisor owns the run: it logs every character in, starts each agent with its prompt, runs
-a judge per player and stops everything cleanly at the end. A paused run can be resumed; an agent that crashes can be
-restarted on its own.
+`--reset` deletes the scenario's characters, moves the agents' directories aside and restarts the world server, so
+repeated runs start from the same state. One supervisor process manages the run. It logs in every character, starts
+each agent with its prompt, runs a judge for each player and stops everything at the end. Paused runs can be resumed,
+and an agent that crashes can be restarted by itself.
 
 ## Watching
 
@@ -23,16 +23,16 @@ restarted on its own.
 bin/azview live --run bench/runs/<time>-<scenario>    # http://localhost:8800/
 ```
 
-The viewer follows a running run or replays a finished one: the map (the game's own terrain and models when the
-client data is extracted), every player's route, a seek bar with deaths, levels and achievements marked, and panels
-for chat, combat, the agents' API calls and the scores. The address keeps the time and place, so a link opens on the
-same moment.
+The viewer follows a run live or replays a finished one. It shows the map, each player's route, a timeline with
+deaths, level-ups and achievements marked, and panels for chat, combat, the agents' API calls and scores. With client
+data extracted, the map uses the game's own terrain and models. The URL stores the time and position, so a link opens
+at the same moment.
 
 ## Results
 
-Each run writes `bench/runs/<time>-<scenario>/`: per agent, the judge's result, progress every 15 seconds, the
-transcript and the session log; for the run, `report.json` (the report card: score, cost, tokens, deaths, how the
-time was spent) and `team.json`. `azbench compare` pools several runs by model.
+Each run writes `bench/runs/<time>-<scenario>/`. For each agent it holds the judge's result, progress every 15
+seconds, the transcript and the session log. For the run it holds `report.json`, with scores, cost, tokens, deaths and
+time use, and `team.json`. `azbench compare` combines several runs by model.
 
 ## Publishing to this site
 
@@ -40,9 +40,11 @@ time was spent) and `team.json`. `azbench compare` pools several runs by model.
 bin/azbench publish bench/runs/<time>-<scenario> --task travel
 ```
 
-writes `site/src/data/runs/<run>.json`: the scenario and, for each player, the model, outcome, time, cost and tokens,
-progress from the judge's samples, the route and deaths from the recording (killers and zones named from the world
-database, so the server must be up), how the time went and the most frequent errors; and a map of each
-place the run went into `site/src/assets/runs/`: the viewer's detail map in grey, or a dungeon's floor plan. Commit both; the site rebuilds on push. The results pages group runs by `--task`, and each run gets its own page: the roster,
-level over time from the judge's samples, and every death. A run's page can also carry hand-written notes, in
-`site/src/content/runs/<run id>.md`: a title, a lede, findings at a glance, and the story phase by phase.
+writes `site/src/data/runs/<run>.json`. It contains the scenario and, for each player, the model, reasoning effort,
+outcome, time, cost, tokens, progress from the judge's samples, route, deaths, time use and most frequent errors.
+Killer and zone names come from the world database, so the server must be running. It also writes a map for each
+area the run visited to `site/src/assets/runs/`, using the viewer's detail map in greyscale or a dungeon's floor plan.
+Commit both and the site rebuilds on push.
+
+The results pages group runs by `--task`, and each run gets its own page. A run page can also include written notes
+in `site/src/content/runs/<run id>.md`, with a title, a summary, key findings and an account of the run.

@@ -29,8 +29,8 @@ const max = Math.max(...killers.rows.map(r => r.n), ...places.rows.map(r => r.n)
 {deaths.length > 0 && (
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     {[
-      { title: 'Who killed them', t: killers },
-      { title: 'Where they died', t: places },
+      { title: 'Killers', t: killers },
+      { title: 'Zones', t: places },
     ].map(({ title, t }) => (
       <figure class="rounded border border-hairline bg-raised p-4" data-chart>
         <p class="mb-2 font-mono text-xs text-muted">{title}</p>

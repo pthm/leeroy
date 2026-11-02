@@ -35,16 +35,16 @@ const tiles = [
   { v: String(new Set(all.map(p => p.model)).size), k: 'models' },
   { v: String(all.length), k: 'attempts' },
   isProgress(task)
-    ? { v: rate(meanRate(all)), k: 'mean, all attempts' }
+    ? { v: rate(meanRate(all)), k: 'mean XP/h' }
     : { v: `${Math.round((all.filter(p => p.met).length / all.length) * 100)}%`, k: 'reached the goal' },
-  { v: dollars(all.reduce((n, p) => n + (p.cost_usd ?? 0), 0)), k: 'spent, all runs' },
+  { v: dollars(all.reduce((n, p) => n + (p.cost_usd ?? 0), 0)), k: 'total cost' },
 ];
 ---
 
 <Layout title={taskTitle(task)} description={info?.summary}>
   <Section>
     <SectionHeader eyebrow="Results" title={taskTitle(task)} description={info?.summary} level={1} />
-    {info && <p class="-mt-6 mb-10 max-w-xl font-mono text-xs text-faint">Scoring: {info.scoring}</p>}
+    {info && <p class="-mt-6 mb-10 max-w-xl font-mono text-xs text-faint">Scoring. {info.scoring}</p>}
     <ul class="mb-10 grid grid-cols-2 gap-3 sm:grid-cols-5">
       {tiles.map(tile => (
         <li class="rounded border border-hairline bg-raised px-4 py-3">
@@ -65,7 +65,7 @@ const tiles = [
                 <span class="mt-1 block text-xs text-muted">
                   {isProgress(task)
                     ? `${r.players.length} players · best ${rate(bestRate(r.players))} · ${dollars(t.cost)}`
-                    : `${t.met}/${r.players.length} reached the goal · ${t.first ? `first in ${duration(t.first)}` : 'none in time'} · ${dollars(t.cost)}`}
+                    : `${t.met}/${r.players.length} reached the goal · ${t.first ? `fastest ${duration(t.first)}` : 'none in time'} · ${dollars(t.cost)}`}
                 </span>
               </span>
               <span class="inline-flex items-center gap-1.5 font-mono text-xs text-accent">
@@ -84,7 +84,7 @@ const tiles = [
 
   {boxes.size > 0 && (
     <Section>
-      <SectionHeader eyebrow="Where they went" title="Every route." description="Every attempt in every run, one colour per model, over the game's own map (an instance: its floor plan). Hover a line for the attempt, click a map to enlarge it." />
+      <SectionHeader eyebrow="Map" title="Routes" description="Every attempt from every run, coloured by model. Dungeons are drawn from their floor plans. Click a map to enlarge it." />
       <div class:list={['grid grid-cols-1 gap-4', boxes.size > 1 && 'lg:grid-cols-2']}>
         {[...boxes.values()].map(box => (
           <RouteMap box={box} routes={attempts} legend={entries.map(e => ({ key: e.key, name: entryName(e), cls: modelCls(e.key) }))} thin />
@@ -94,12 +94,12 @@ const tiles = [
   )}
 
   <Section>
-    <SectionHeader eyebrow="By model" title="Model by model." description="Every attempt rather than the mean alone, where each model's agent spent its time, and the errors it kept running into." />
+    <SectionHeader eyebrow="Models" title="By model" description="Each attempt's result, how each model's agent spent its time, and its most frequent errors." />
     <ModelInsights task={task} />
   </Section>
 
   <Section last>
-    <SectionHeader eyebrow="Runs" title="Run by run." description="Newest first. Every player in every run, as the judge left them; open a run for its charts and story." />
+    <SectionHeader eyebrow="Runs" title="All runs" description="Newest first. Open a run report for charts and details." />
     <div class="space-y-12">
       {runs.map(r => (
         <article id={r.id}>

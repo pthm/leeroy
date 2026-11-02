@@ -71,8 +71,9 @@ const cellValue = (t: string, r: ModelRow) => (isProgress(t) ? r.meanRate ?? 0 :
   </table>
 </div>
 <p class="mt-3 font-mono text-[11px] leading-relaxed text-faint">
-  Each cell is the entry's result in that task: goals met / attempts and mean time to the goal, or mean XP per hour and
-  the number of attempts. Shading: its percentile within the task (the task's best 100, its worst 0, linear in rank);
-  bold: the task's best. Pct. = the mean of those percentiles over the tasks it ran, not an overall score: tasks
-  differ in kind and in which models ran them. Click a column to sort.
+  Goal tasks show goals met out of attempts, with mean time to the goal. Levelling tasks show mean XP per hour, with
+  the number of attempts. Shading shows the entry's percentile within that task, from 100 for the best to 0 for the
+  worst. The task's best entry is in bold. Pct. is the mean of those percentiles across the tasks an entry has run.
+  It is not an overall score, since tasks differ and not every model has run every task. Click a column header to
+  sort.
 </p>

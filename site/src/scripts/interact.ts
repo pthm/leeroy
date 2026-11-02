@@ -103,7 +103,7 @@ document.addEventListener('click', e => {
     zoomable(svg);
     const hint = document.createElement('p');
     hint.className = 'mt-2 font-mono text-[11px] text-faint';
-    hint.textContent = 'Scroll to zoom · drag to pan · double-click to reset · click a name to hide it';
+    hint.textContent = 'Scroll to zoom, drag to pan, double-click to reset. Click a name to hide it.';
     svg.closest('div')!.after(hint);
   }
   for (const svg of fig.querySelectorAll<SVGSVGElement>('svg[data-series]')) crosshair(svg);

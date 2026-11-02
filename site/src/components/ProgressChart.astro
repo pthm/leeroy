@@ -45,7 +45,7 @@ const seriesData = JSON.stringify({
     <svg viewBox={`0 0 ${W} ${H}`} class="w-full min-w-[640px]" role="img" aria-label="Each player's level over the run, and when each died" data-series={seriesData}>
       {inside.map(([a, b]) => (
         <rect x={x(a)} y={T} width={Math.max(1, x(b) - x(a))} height={bottom - T} fill="var(--color-accent)" opacity="0.08">
-          <title>In an instance, {duration(a)} to {duration(b)}</title>
+          <title>In a dungeon from {duration(a)} to {duration(b)}</title>
         </rect>
       ))}
       {wiped.map(([a, b]) => (
@@ -82,8 +82,8 @@ const seriesData = JSON.stringify({
     </svg>
   </div>
   <figcaption class="mt-2 font-mono text-[11px] text-faint">
-    Level over the run; a tick per death below.
-    {inside.length > 0 && <span><span class="text-accent">▮</span> inside an instance</span>}
-    {wiped.length > 0 && <span> · <span class="text-error">▮</span> {wiped.length} wipes (three or more dead within two minutes)</span>}
+    Level over time, with one tick per death below.
+    {inside.length > 0 && <span> <span class="text-accent">▮</span> in a dungeon</span>}
+    {wiped.length > 0 && <span> · <span class="text-error">▮</span> {wiped.length} wipes, counted when three or more players die within two minutes</span>}
   </figcaption>
 </figure>

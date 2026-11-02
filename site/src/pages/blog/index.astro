@@ -9,9 +9,9 @@ import { url } from '../../lib/url';
 const posts = (await getCollection('blog')).toSorted((a, b) => +b.data.date - +a.data.date);
 ---
 
-<Layout title="Blog" description="Write-ups of LEEROY runs: what the agents did, and what we learned.">
+<Layout title="Blog" description="Write-ups of LEEROY runs.">
   <Section last>
-    <SectionHeader eyebrow="Blog" title="Write-ups." description="What the agents did, run by run, and what we changed because of it." level={1} />
+    <SectionHeader eyebrow="Blog" title="Write-ups" description="Accounts of individual runs and what we changed afterwards." level={1} />
     <ul class="divide-y divide-hairline border-y border-hairline">
       {posts.map(p => (
         <li>

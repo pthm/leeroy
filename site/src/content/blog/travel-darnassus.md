@@ -1,19 +1,19 @@
 ---
-title: 'A smoke test: Northshire to Darnassus'
-description: Six models, six new warriors, one trip across two continents. Every model arrives; how fast, and for how much, separates them.
+title: Travel from Northshire to Darnassus
+description: Six models each took a new warrior from Northshire to Darnassus, three times. All but one attempt arrived. The differences were in time and cost.
 date: 2026-11-01
 ---
 
-Before asking agents to clear dungeons, it's worth knowing whether they can get around. The travel task is our smoke
-test: a new level-30 Human warrior in Northshire must reach Darnassus, the night elf capital, on the other continent.
+The travel task is a basic test of getting around before harder tasks. A new level-30 Human warrior starts in
+Northshire and has to reach Darnassus, the night elf capital on the other continent.
 
-The way there isn't given. It takes a walk to Stormwind's harbour, a boat to Auberdine in Darkshore, a second boat to
-Rut'theran Village, and the portal up into Darnassus. The agents get the game's rules and the tools to read the
-world (where NPCs stand, what the boats' schedules are, the roads), not a route.
+The agents aren't given a route. The trip involves walking to Stormwind's harbour, a boat to Auberdine in Darkshore, a
+second boat to Rut'theran Village and a portal into Darnassus. The agents have the game's rules and tools for looking
+up the world, such as NPC locations, boat schedules and roads.
 
-Six models ran it at the same time, each on its own vendor's harness: Claude Code with Haiku, Sonnet and Opus 5.5, and
-Codex with GPT-6 Luna, GPT-6.1 Terra and GPT-6.1 Sol. Same class, same start, same 90-minute clock, neutral character
-names. We ran it three times.
+Six models ran at the same time, each on its vendor's own harness. Haiku, Sonnet and Opus 5.5 ran on Claude Code, and
+GPT-6 Luna, GPT-6.1 Terra and GPT-6.1 Sol on Codex. Every character had the same class, start, 90-minute limit and a
+neutral name. We ran the task three times.
 
 ## Results
 
@@ -26,18 +26,20 @@ names. We ran it three times.
 | Sonnet 5.5 | 3/3 | 22.5 min | $0.50–1.00 |
 | Haiku 5.5 | 2/3 | 33.3 min | $0.10–0.20 |
 
-The live table, with every run, is on the [results page](../../results/travel).
+The [results page](../../results/travel) has the current table and every run.
 
-## What it found
+## Problems found
 
-Mostly bugs in our own tooling, which is what a smoke test is for:
+Most of what the test found were bugs in our own tools.
 
-- **Boats.** The first attempt predates boat support in the SDK, and isn't counted. Boarding now works from where a
-  transport's crew stand on its deck, with the ship's position worked out the same way the server does.
-- **The Rut'theran portal.** Haiku's slow and failed runs were mostly one bug: an area trigger (the portal) was sent
-  to the server once, but the server checks it against its own, slightly lagging, idea of where you are. Walking
-  through the edge of the portal could miss. The SDK now re-sends it while you stand inside; edge walks went from one
-  failure in four to ten passes in ten. Haiku's one clean run took 26.8 minutes.
+**Boats.** An earlier attempt ran before the SDK supported boats and isn't counted. Agents now board from where a
+boat's crew stand on deck, and the SDK works out the boat's position the same way the server does.
 
-A run of all six costs about $4 and ends in about half an hour, so it's cheap to repeat. Three runs don't separate
-the middle of the table yet (Opus, Sonnet and Luna); more will.
+**The Rut'theran portal.** Most of Haiku's slow and failed attempts came from one bug. The SDK sent the portal's area
+trigger to the server once, but the server checks triggers against its own position for the player, which lags
+slightly. Walking through the edge of the portal could miss it. The SDK now re-sends the trigger while the player is
+inside it. In testing, edge walks went from one failure in four to ten successes in ten. Haiku's one attempt without
+the bug took 26.8 minutes.
+
+A run of all six models costs about $4 and takes about half an hour, so it is cheap to repeat. Three runs aren't
+enough to separate Opus, Sonnet and Luna, which are close.
