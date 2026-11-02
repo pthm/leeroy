@@ -258,7 +258,17 @@ function A.go_to(o)
   -- An explicit elevation is the destination. Only select a floor if it was omitted.
   if z == nil then
     local hint = A.dist(o.x, o.y) < 80 and initial.z or nil
-    z = hint and world.ground_z(o.x, o.y, hint) or world.ground_z(o.x, o.y)
+    z = hint and world.ground_z(o.x, o.y, hint)
+    if z == nil then
+      -- the navmesh floor nearest the terrain, not the terrain itself: under a dock, a bridge or a town's raised
+      -- streets the terrain is a floor nobody walks on
+      local t = world.ground_z(o.x, o.y)
+      for _, dz in ipairs(t and {0, 8, 16} or {}) do
+        z = world.ground_z(o.x, o.y, t + dz)
+        if z then break end
+      end
+      z = z or t
+    end
   end
   local function evidence()
     local p = me.position()
@@ -1233,7 +1243,7 @@ for name, d in pairs({
   make_room = { "{} → ActResult<Consumed>", "destroy the cheapest loaded poor-quality item that is not a possible usable gear upgrade; wait up to 5 seconds for confirmation, or no_disposable_item; options may be omitted" },
   cast = { "(id [, guid, options]) → ActResult", "spells.check, stop only owned movement, face and await a server outcome; one facing retry. options: approach=false, max_move_yards=10 (max40), max_time_s=30 (max60). approach=true walks, when out of range or out of sight, to world.los_spot: the shortest walk to a spot in range with a clear, wide view (round a corridor bend, not up to the target), within max_move_yards. data preserves check, attempts, corrections and server action" },
   buff = { "(id [, guid]) → ActResult", "cast it unless the aura is already active (ok with data.status = already_active then)" },
-  go_to = { "{x, y [, z, map, tolerance = 4, vertical_tolerance = 3, tries = 3, unstuck = false, on_attacked = nil]} → ActResult", "walk to the requested map and floor; explicit z is never replaced by a floor query. Success requires horizontal and vertical tolerances; wrong_floor/wrong_map/unreachable include observed position and gaps. Without z, select a floor with ground_z or fail. tries is 1..32 for stuck retries; unstuck=true authorizes a last-resort hearth (unstuck_home). on_attacked stops to call your combat handler, then resumes" },
+  go_to = { "{x, y [, z, map, tolerance = 4, vertical_tolerance = 3, tries = 3, unstuck = false, on_attacked = nil]} → ActResult", "walk to the requested map and floor; explicit z is never replaced by a floor query. Success requires horizontal and vertical tolerances; wrong_floor/wrong_map/unreachable include observed position and gaps. Without z, the floor: within 80 yd the one nearest your height, else the navmesh floor nearest the terrain (a dock, a raised street), else fail. tries is 1..32 for stuck retries; unstuck=true authorizes a last-resort hearth (unstuck_home). on_attacked stops to call your combat handler, then resumes" },
   travel = { "{points = {{x, y, z}, ...} [, map, tolerance = 4, vertical_tolerance = 3, validate = true, allow_partial = false, stop_on_danger = false, unstuck = false, on_attacked = nil]} → ActResult", "validate all 1..64 3D waypoints with world.route before moving, then go_to each while holding movement ownership. Named waypoints accept x,y,z,map. Report first failed waypoint, completed_waypoints and validation evidence. allow_partial=true may walk a known route_unreachable prefix but still returns failure for the requested destination. validate=false permits unverified 2D waypoints; allow_partial then is invalid. Exposure is checked before each leg and during movement; the latest 64 observations are retained. stop_on_danger=true stops on hostile or unknown evidence" },
   approach = { "{unit [, range = 4, timeout = 60]} → ActResult<Creature>", "move within range and verify facing; reuse a pending walk until the target moves; bounded by timeout" },
   follow = { "{name [, distance = 5, until = fn, timeout_s = 600]} → ActResult", "requires until or timeout_s; call until each pass: anything but nil or false ends the follow, fail timeout at the deadline (at most 600 seconds), or player_not_visible after 5 seconds of absence" },

@@ -10,6 +10,8 @@ func TestGoToFloorPostconditions(t *testing.T) {
 			`r=act.go_to{x=10,y=0,z=0};assert(not r.ok and r.error.code=="wrong_floor" and r.data.vertical_gap==10 and r.data.position.z==10)`},
 		{"selected floor enforced", `world.ground_z=function() return 20 end;move.to=function() return {ok=true} end`,
 			`r=act.go_to{x=0,y=0};assert(not r.ok and r.error.code=="wrong_floor" and r.data.destination.z==20)`},
+		{"far floor over the terrain", `world.ground_z=function(x,y,z) if z==nil then return 21 elseif z>=29 then return 35 end return nil end`,
+			`r=act.go_to{x=100,y=0};assert(moves[1].z==35 and r.data.destination.z==35)`},
 		{"unknown floor", `world.ground_z=function() return nil end`,
 			`r=act.go_to{x=10,y=0};assert(not r.ok and r.error.code=="wrong_floor" and #moves==0)`},
 		{"wrong map before movement", `pos.map=1`,

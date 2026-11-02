@@ -59,11 +59,6 @@ mountains to the Wetlands (up to z 445 at -4367 -2212, climbs of 55-58 degrees b
   the teleport happened but the result still said "unreachable: walk completed outside the destination tolerance".
   Same-map portals are walked into (moving.md); `areatrigger_teleport` boxes should be too, and a cross-map
   transfer should end the walk as arrived.
-- **Routes fail when the destination's z is a few yards off.** `route_unreachable` though the reachable point is
-  directly below ("path ends 5.7 yd short ... 5.7 yd below it"): Bertil 20 times through Stormwind (about 6 min),
-  Dorian 11 (about 5 min). Without a z, `act.go_to` uses `world.ground_z` (act.lua), which picked a floor 7 yd off
-  the navmesh at Darkshire. Project a destination onto the navmesh when z is missing or a little off.
-
 ## azworld
 
 (nothing open)
