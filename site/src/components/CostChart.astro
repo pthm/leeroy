@@ -2,7 +2,7 @@
 // Each entry's result against its mean cost per attempt, cost on a log scale (prices span 100x), coloured by lab, with
 // the frontier: the entries nothing beats on both. Goal tasks plot mean minutes to the goal (lower is better);
 // progress tasks mean XP per hour (higher is better). Hover a point for the detail.
-import { LABS, dollars, duration, entryName, frontier, harnessName, isProgress, leaderboard, rate, thousands } from '../lib/results';
+import { LABS, dollars, duration, entryName, frontier, harnessName, isProgress, leaderboard, placeLabels, rate, thousands } from '../lib/results';
 
 interface Props {
   task: string;
@@ -24,6 +24,9 @@ const step = [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000].
 const yTicks = Array.from({ length: Math.floor(maxY / step) + 1 }, (_, i) => i * step);
 const front = frontier(pts, progress);
 const labs = [...new Set(pts.map(p => p.r.lab))];
+const order = pts.map((p, i) => i).sort((a, b) => y(pts[a].y) - y(pts[b].y));
+const ys = placeLabels(order.map(i => ({ x: x(pts[i].cost) + 10, y: y(pts[i].y) + 4, w: entryName(pts[i].r).length * 6.7 })));
+const labelY = new Map(order.map((i, k) => [i, ys[k]]));
 const tip = (p: (typeof pts)[number]) =>
   [
     `${entryName(p.r)} (${p.r.lab}, ${harnessName(p.r.runtime)})`,
@@ -60,12 +63,15 @@ const tip = (p: (typeof pts)[number]) =>
       {front.length > 1 && (
         <path d={front.map((p, i) => `${i ? 'L' : 'M'}${x(p.cost).toFixed(1)},${y(p.y).toFixed(1)}`).join('')} fill="none" stroke="var(--color-muted)" stroke-width="1.2" stroke-dasharray="5 4" />
       )}
-      {pts.map(p => (
+      {pts.map((p, i) => (
         <g data-key={p.r.key}>
           <title>{tip(p)}</title>
           <circle cx={x(p.cost)} cy={y(p.y)} r="12" fill="transparent" />
           <circle cx={x(p.cost)} cy={y(p.y)} r={front.includes(p) ? 6.5 : 5} fill={LABS[p.r.lab]} stroke={front.includes(p) ? 'var(--color-fg)' : 'none'} stroke-width="1.5" />
-          <text x={x(p.cost) + 10} y={y(p.y) + 4} class="fill-fg font-mono text-[11px]">{entryName(p.r)}</text>
+          {labelY.get(i)! - (y(p.y) + 4) > 1 && (
+            <line x1={x(p.cost) + 4} y1={y(p.y)} x2={x(p.cost) + 8} y2={labelY.get(i)! - 4} stroke="var(--color-outline)" stroke-width="0.8" />
+          )}
+          <text x={x(p.cost) + 10} y={labelY.get(i)} class="fill-fg font-mono text-[11px]">{entryName(p.r)}</text>
         </g>
       ))}
     </svg>

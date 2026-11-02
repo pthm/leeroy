@@ -391,3 +391,22 @@ export function percentiles(task: string): Map<string, number> {
   const rows = leaderboard(task);
   return new Map(rows.map((r, i) => [r.key, rows.length > 1 ? 1 - i / (rows.length - 1) : 1]));
 }
+
+// Names for a set of entries, with the harness added where two share a name (Opus 5.5 on Claude Code and on opencode).
+export function displayNames(rows: { key: string; model: string; effort?: string; runtime: string }[]): Map<string, string> {
+  const count = new Map<string, number>();
+  for (const r of rows) count.set(entryName(r), (count.get(entryName(r)) ?? 0) + 1);
+  return new Map(rows.map(r => [r.key, count.get(entryName(r))! > 1 ? `${entryName(r)} (${harnessName(r.runtime)})` : entryName(r)]));
+}
+
+// Label positions that don't overlap: each label starts beside its point and moves down in steps until it clears the
+// ones already placed. ponytail: greedy, fine for a few dozen labels.
+export function placeLabels(pts: { x: number; y: number; w: number }[], h = 13): number[] {
+  const placed: { x: number; y: number; w: number }[] = [];
+  return pts.map(p => {
+    let y = p.y;
+    for (let i = 0; i < 12 && placed.some(q => Math.abs(q.y - y) < h && p.x < q.x + q.w && q.x < p.x + p.w); i++) y += h;
+    placed.push({ x: p.x, y, w: p.w });
+    return y;
+  });
+}

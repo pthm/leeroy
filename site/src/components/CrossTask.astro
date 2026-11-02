@@ -1,7 +1,7 @@
 ---
 // Every entry (a model at an effort) across every task: each cell its result there (goals met and mean time, or XP
 // per hour) and n, shaded by where it ranks in that task. Blank: not run. Sortable by any column (scripts/interact.ts).
-import { LABS, duration, entryName, harnessName, isProgress, leaderboard, percentiles, rate, taskShort, taskTitle, tasks, type ModelRow } from '../lib/results';
+import { LABS, displayNames, duration, entryName, harnessName, isProgress, leaderboard, percentiles, rate, taskShort, taskTitle, tasks, type ModelRow } from '../lib/results';
 import { url } from '../lib/url';
 
 const ts = tasks();
@@ -19,6 +19,7 @@ const best = new Map(ts.map(t => [t, leaderboard(t)[0]?.key]));
 const entries = [...by.values()]
   .map(e => ({ ...e, mean: [...e.pct.values()].reduce((a, b) => a + b, 0) / e.pct.size }))
   .sort((a, b) => b.pct.size - a.pct.size || b.mean - a.mean);
+const names = displayNames(entries.map(e => e.row));
 const cellText = (t: string, r: ModelRow) => (isProgress(t) ? rate(r.meanRate).replace(' XP/h', '') : `${r.met}/${r.attempts}`);
 const cellSub = (t: string, r: ModelRow) => (isProgress(t) ? `n=${r.attempts}` : r.meanTime != null ? duration(r.meanTime) : 'none met');
 const cellValue = (t: string, r: ModelRow) => (isProgress(t) ? r.meanRate ?? 0 : r.met / r.attempts - (r.meanTime ?? 1e6) / 1e9);
@@ -42,7 +43,7 @@ const cellValue = (t: string, r: ModelRow) => (isProgress(t) ? r.meanRate ?? 0 :
     <tbody>
       {entries.map(e => (
         <tr data-key={e.row.key}>
-          <td class="whitespace-nowrap text-fg" data-v={entryName(e.row)}>
+          <td class="whitespace-nowrap text-fg" data-v={names.get(e.row.key)}>
             <span style={`color:${LABS[e.row.lab]}`} title={e.row.lab}>●</span> {entryName(e.row)}
           </td>
           <td class="whitespace-nowrap text-muted" data-v={e.row.runtime}>{harnessName(e.row.runtime)}</td>

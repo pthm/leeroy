@@ -1,5 +1,6 @@
 ---
 import { Icon } from 'astro-icon/components';
+import CrossCostChart from '../../components/CrossCostChart.astro';
 import CrossTask from '../../components/CrossTask.astro';
 import Section from '../../components/Section.astro';
 import SectionHeader from '../../components/SectionHeader.astro';
@@ -17,6 +18,7 @@ import { url } from '../../lib/url';
       level={1}
     />
     <CrossTask />
+    <CrossCostChart />
   </Section>
   <Section last>
     <SectionHeader eyebrow="Tasks" title="Tasks" />
