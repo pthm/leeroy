@@ -185,3 +185,22 @@ func TestStorePet(t *testing.T) {
 		t.Fatalf("map sample has no pet: %v", m)
 	}
 }
+
+// a player's message in the speaker's record and two listeners' (by: the speaker), in any order: one event, said by
+// the speaker, heard by all three
+func TestStoreMergesPlayerChat(t *testing.T) {
+	s := storeOf(t, `{"t":10,"ev":"chat","n":"B","by":"A","type":2,"msg":"pull"}
+{"t":10,"ev":"chat","n":"A","type":2,"msg":"pull"}
+{"t":11,"ev":"chat","n":"C","by":"A","type":2,"msg":"pull"}
+{"t":20,"ev":"chat","n":"C","by":"A","type":7,"msg":"psst","to":"C"}`)
+	if n := len(s.byEv["chat"]); n != 2 {
+		t.Fatalf("want 2 messages, got %d: %v", n, s.byEv["chat"])
+	}
+	e := s.byEv["chat"][0]
+	if S(e, "n") != "A" || len(e["heard"].([]string)) != 3 || !s.Hears(e, "C") || !s.Hears(e, "A") {
+		t.Fatalf("party message: %v", e)
+	}
+	if w := s.byEv["chat"][1]; S(w, "n") != "A" || S(w, "to") != "C" {
+		t.Fatalf("whisper: %v", w)
+	}
+}

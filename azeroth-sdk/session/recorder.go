@@ -223,9 +223,22 @@ func (b *Bot) startRecording() {
 					b.Record("cast", map[string]any{"spell": spell, "name": sp.Name})
 				}
 			}
-		case smsgMessageChat:
-			if m, guid, ok := parseChat(op, data); ok && guid != me {
+		case smsgMessageChat: // what we say (the speaker's record, as mod-recorder's), and what we hear, with who said it
+			m, guid, ok := parseChat(op, data)
+			switch {
+			case !ok:
+			case guid == me: // the server echoes our say, yell, party, raid, guild and channel messages to us
+				b.Record("chat", map[string]any{"type": m.Type, "msg": m.Text, "to": m.Channel})
+			case m.Type == 9: // CHAT_MSG_WHISPER_INFORM: our whisper, with its receiver in the sender's place
+				b.Record("chat", map[string]any{"type": 7, "msg": m.Text, "to": b.unitName(guid)})
+			case m.From != "": // an NPC
 				b.Record("chat", map[string]any{"type": m.Type, "msg": m.Text, "from": m.From, "to": m.Channel})
+			default: // a player: by, who said it (each listener's record: the viewer merges them with the speaker's)
+				to := m.Channel
+				if m.Type == 7 { // a whisper to us
+					to = b.unitName(me)
+				}
+				b.Record("chat", map[string]any{"type": m.Type, "msg": m.Text, "by": b.unitName(guid), "to": to})
 			}
 		}
 	})

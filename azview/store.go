@@ -4,6 +4,7 @@ package main
 // for what it shows at a moment (a few samples, a panel) instead of downloading every event.
 
 import (
+	"cmp"
 	"encoding/json"
 	"math"
 	"os"
@@ -198,15 +199,33 @@ func (s *Store) add(e Ev) bool {
 		p.Units = insert(p.Units, unitsOf(e), func(x UnitsSample) float64 { return x.T })
 		return true
 	case "chat":
-		if from := S(e, "from"); from != "" { // NPC speech, once per agent that heard it: one event, heard = the listeners
-			k := from + "|" + S(e, "msg")
+		// one event per message: an NPC's, once per agent that heard it; a player's, in the speaker's record (no by)
+		// and each listener's (by: the speaker). The first copy stands for all of them: said by the speaker (its n),
+		// heard by everyone who recorded it, the speaker too (no listener's copy: Hears works it out).
+		from, by := S(e, "from"), S(e, "by")
+		speaker := from
+		if speaker == "" && (by != "" || playerChat[N(e, "type")]) {
+			speaker = cmp.Or(by, n)
+		}
+		if speaker != "" {
+			k := speaker + "|" + S(e, "msg")
 			if first, ok := s.npcSaid[k]; ok && math.Abs(t-N(first, "t")) < 3000 {
-				if h, _ := first["heard"].([]string); !slices.Contains(h, n) {
-					first["heard"] = append(h, n)
+				h, listed := first["heard"].([]string)
+				if !listed { // the speaker's record, until now the only one
+					h = []string{S(first, "n")}
 				}
+				if !slices.Contains(h, n) {
+					h = append(h, n)
+				}
+				first["heard"] = h
 				return false
 			}
-			e["heard"] = []string{n}
+			switch {
+			case by != "": // a listener's copy: the speaker said it
+				e["n"], e["heard"] = by, []string{n}
+			case from != "":
+				e["heard"] = []string{n}
+			} // the speaker's own record alone: who heard it is worked out (Hears), as for the server log's
 			s.npcSaid[k] = e
 		}
 	case "group": // older client records repeat the group list unchanged dozens of times per change: keep changes

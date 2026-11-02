@@ -50,7 +50,7 @@ viewer fills it in from `acore_world.creature_template`.
 | `pos` | `m` map, `x` `y` `z` `o`, `hp` `hpmax`, `pt` power type, `pw` `pwmax`, `lvl`, `xp`, `money` (copper), `zone`, `area`, `alive` `ghost` `combat` (0/1), `grp` (group id, 0 = none), `tgt` (current victim, if any); client side, `pet` when one is out: `{e` entry, `n` name, `x` `y` `z`, `hp` `hpmax`, `lvl`, `alive}` | every 1 s | every 1 s |
 | `login` | `race`, `cls`, `lvl` | yes | yes |
 | `logout` | | yes | yes |
-| `chat` | `type` (chat message type), `msg`, `to` (whisper target, `party`, `guild`, channel) | messages a player sends | messages the character receives from others, with `from` = speaker |
+| `chat` | `type` (chat message type), `msg`, `to` (whisper target, `party`, `guild`, channel) | messages a player sends | messages the character says (its whispers with `to`), and messages it hears: from an NPC with `from` = the NPC, from a player with `by` = the player |
 | `dmg` | `src`, `dst`, `amount` | any damage involving a player | melee and spell damage to or from the character, plus `spell` |
 | `heal` | `src`, `dst`, `amount` | yes | no |
 | `cast` | `spell`, `name`, `target` | non-passive casts | spells the character casts (no `target`) |
@@ -77,8 +77,9 @@ Two more kinds come from elsewhere:
   `recent_rate`, `best_window`, `pace`, `score`) to the run's record file. The viewer charts them.
 - `say`: not in any log. The viewer turns each agent's transcript into `say` events (below).
 
-Client-side differences worth knowing: `pos` has `zone` 0 and no `area` or `tgt`, and `chat` from other players
-appears once per listening agent, without a sender guid.
+Client-side differences worth knowing: `pos` has `zone` 0 and no `area` or `tgt`. A message is in the speaker's record and
+in each listener's (`by`): the viewer merges the copies into one event, said by the speaker, `heard` by everyone who
+recorded it. Records from before 2 November 2026 have heard messages without `by` (no speaker), and not the character's own.
 
 `mod-recorder` reads two environment variables on its first write: `RECORDER_FILE` (the path, inside the container)
 and `RECORDER_INTERVAL_MS` (the `pos` interval, default 1000, minimum 100). Neither is set by `override.yml`.
