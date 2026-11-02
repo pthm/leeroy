@@ -4,6 +4,9 @@ import { getEntry, render } from 'astro:content';
 import FinishChart from '../../../components/FinishChart.astro';
 import Deaths from '../../../components/Deaths.astro';
 import CombatPanel from '../../../components/CombatPanel.astro';
+import Targets from '../../../components/Targets.astro';
+import Milestones from '../../../components/Milestones.astro';
+import Heard from '../../../components/Heard.astro';
 import ProgressChart from '../../../components/ProgressChart.astro';
 import RouteMap from '../../../components/RouteMap.astro';
 import SectionHeader from '../../../components/SectionHeader.astro';
@@ -62,8 +65,9 @@ const roster = run.players.toSorted((a, b) =>
 );
 const color = colors(run);
 const hasChat = (run.chat_per_min ?? []).some(h => Object.values(h).some(Boolean));
+const hasHeard = run.players.some(p => Object.keys(p.heard_from ?? {}).length);
 const hasDeaths = run.players.some(p => p.death_list?.length);
-const hasCombat = run.players.some(p => p.combat && (p.combat.damage_dealt || p.combat.healing_done || p.combat.damage_taken));
+const hasCombat = run.players.some(p => (p.combat && (p.combat.damage_dealt || p.combat.healing_done || p.combat.damage_taken)) || p.kills_by?.length);
 const clock = run.minutes >= 1440 ? `${run.minutes / 1440} days` : `${run.minutes} min`;
 
 const best = bestRate(run.players);
@@ -157,7 +161,10 @@ const tiles = [
 
   <Section>
     <SectionHeader eyebrow="Progress" title={levelled ? 'Level over time' : 'Time to the goal'} description={levelled ? 'Level from the judge\'s samples, with deaths marked below. Shading shows time in a dungeon and party wipes.' : 'Time from the start of the run to the goal, fastest first.'} />
-    {levelled ? <ProgressChart run={run} /> : <FinishChart run={run} />}
+    <div class="space-y-4">
+      {levelled ? <ProgressChart run={run} /> : <FinishChart run={run} />}
+      <Milestones run={run} />
+    </div>
   </Section>
 
   {(run.maps ?? []).length > 0 && (
@@ -180,6 +187,7 @@ const tiles = [
       <SectionHeader eyebrow="Combat" title={hasDeaths ? 'Fighting and deaths' : 'Fighting'} description={`Each player's damage, healing and kills from its game log${hasDeaths ? ', then deaths by killer and by zone' : ''}.`} />
       <div class="space-y-4">
         {hasCombat && <CombatPanel run={run} />}
+        {hasCombat && <Targets run={run} />}
         {hasDeaths && <Deaths run={run} />}
       </div>
     </Section>
@@ -207,10 +215,13 @@ const tiles = [
     </Section>
   )}
 
-  {hasChat && run.players.length > 1 && (
+  {(hasChat || hasHeard) && run.players.length > 1 && (
     <Section>
-      <SectionHeader eyebrow="Group" title="Chat and proximity" description="Messages between players over the run, and how often the whole party was within 40 yards of each other." />
-      <Talk run={run} />
+      <SectionHeader eyebrow="Group" title="Chat and proximity" description="Messages between players over the run, who heard whom, and how often the whole party was within 40 yards of each other." />
+      <div class="space-y-4">
+        {hasChat && <Talk run={run} />}
+        {hasHeard && <Heard run={run} />}
+      </div>
     </Section>
   )}
 

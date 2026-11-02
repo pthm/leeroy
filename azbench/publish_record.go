@@ -7,6 +7,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -40,7 +41,34 @@ type recording struct {
 	casts  map[string]int // spell name -> times cast
 	spells map[string]int // spell name -> spell id (the last cast), for its icon
 	deaths []recDeath
+
+	milestones []milestone     // quests turned in, achievements, levels, rare and better loot
+	loot       map[string]int  // items received by quality
+	places     []place2        // the zones it was in, in order
+	kills      map[int]int     // killing blows by creature entry
+	damage     map[int]float64 // damage dealt by creature entry
+	heard      map[string]int  // players' chat it heard, by speaker
+	samples    int             // state records, and those with a pet out and alive
+	petUp      int
 }
+
+// milestone: [s from the start, kind (quest, achievement, level, loot), what, item quality (loot)]
+type milestone struct {
+	T       float64 `json:"t"`
+	Kind    string  `json:"kind"`
+	What    string  `json:"what"`
+	Quality string  `json:"quality,omitempty"`
+	id      int     // achievement: named at the end
+}
+
+// place2: a zone the character entered, s from the start
+type place2 struct {
+	T    float64 `json:"t"`
+	Zone string  `json:"zone"`
+}
+
+// lootQualities: what counts as a milestone
+var lootQualities = map[string]bool{"rare": true, "epic": true, "legendary": true}
 
 // chatKinds: the chat counted as the players' own talk (the SDK's kinds), from the speaker's own game log (self)
 var chatKinds = map[string]string{"party": "party", "whisper_sent": "whisper", "channel": "channel", "say": "say"}
@@ -52,7 +80,7 @@ func readRecording(f, char string, start int64, chat map[string]chatMsg) (*recor
 		return nil, err
 	}
 	defer fh.Close()
-	rec := &recording{casts: map[string]int{}, spells: map[string]int{}}
+	rec := &recording{casts: map[string]int{}, spells: map[string]int{}, loot: map[string]int{}, kills: map[int]int{}, damage: map[int]float64{}, heard: map[string]int{}}
 	last := -1e9
 	var prev place
 	speed := 0.0 // yd/s over the last second
@@ -81,6 +109,10 @@ func readEvent(rec *recording, line []byte, char string, start int64, chat map[s
 	t := float64(l.T-start) / 1000
 	switch e := l.Data.(type) {
 	case types.State:
+		rec.samples++
+		if e.Pet != nil && e.Pet.Alive {
+			rec.petUp++
+		}
 		m, grp := int(e.Map), float64(e.Group)
 		// a jump: over 100 yd within 3 s. A teleport (a portal, a hearthstone, a spirit healer) comes at walking
 		// pace; a boat or zeppelin's path skips stretches too, but the player was moving at its speed (about 30
@@ -126,6 +158,35 @@ func readEvent(rec *recording, line []byte, char string, start int64, chat map[s
 			if kind, ok := chatKinds[e.Kind]; ok {
 				chat[fmt.Sprintf("%s|%d|%s", char, l.T, e.Text)] = chatMsg{t, kind}
 			}
+		} else if _, ok := chatKinds[e.Kind]; (ok || e.Kind == "whisper" || e.Kind == "raid") && e.From != "" {
+			rec.heard[e.From]++ // a player's line this character heard
+		}
+	case types.QuestDone:
+		if l.Type == "quest_turned_in" {
+			rec.milestones = append(rec.milestones, milestone{T: math.Round(t), Kind: "quest", What: e.Title})
+		}
+	case types.AchievementEarned:
+		rec.milestones = append(rec.milestones, milestone{T: math.Round(t), Kind: "achievement", id: int(e.ID)})
+	case types.LevelUp:
+		rec.milestones = append(rec.milestones, milestone{T: math.Round(t), Kind: "level", What: fmt.Sprint(e.Level)})
+	case types.ItemReceived:
+		if e.From == "loot" {
+			rec.loot[e.Item.Quality] += max(1, int(e.Item.Count))
+			if lootQualities[e.Item.Quality] {
+				rec.milestones = append(rec.milestones, milestone{T: math.Round(t), Kind: "loot", What: e.Item.Name, Quality: e.Item.Quality})
+			}
+		}
+	case types.Location:
+		if n := len(rec.places); e.Zone != "" && (n == 0 || rec.places[n-1].Zone != e.Zone) {
+			rec.places = append(rec.places, place2{T: math.Round(t), Zone: e.Zone})
+		}
+	case types.Kill:
+		if l.Type == "kill" && !e.Victim.Player {
+			rec.kills[int(e.Victim.Entry)]++
+		}
+	case types.Damage:
+		if l.Type == "damage" && e.Src.Me && !e.Dst.Player && e.Dst.Entry != 0 {
+			rec.damage[int(e.Dst.Entry)] += float64(e.Amount)
 		}
 	}
 }
@@ -384,4 +445,41 @@ func mapFile(id string, m int) string {
 func fileExists(f string) bool {
 	_, err := os.Stat(f)
 	return err == nil
+}
+
+// gameExtras: what a player's game log adds to its page: milestones (achievements named), loot by quality, the zones
+// it went through, its top killing blows and damage by creature ([name, n], most first), whose chat it heard, and the
+// share of its time with a pet out and alive (hunters, warlocks; none without a pet).
+func gameExtras(rec *recording) map[string]any {
+	var ids []int
+	for id := range rec.kills {
+		ids = append(ids, id)
+	}
+	for id := range rec.damage {
+		ids = append(ids, id)
+	}
+	names := world.CreatureNames(ids)
+	top := func(m map[int]float64) [][2]any {
+		var out [][2]any
+		for id, v := range m {
+			out = append(out, [2]any{cmp.Or(names[id], fmt.Sprint("creature ", id)), math.Round(v)})
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i][1].(float64) > out[j][1].(float64) })
+		return out[:min(10, len(out))]
+	}
+	kills := map[int]float64{}
+	for id, n := range rec.kills {
+		kills[id] = float64(n)
+	}
+	for i := range rec.milestones {
+		if m := &rec.milestones[i]; m.Kind == "achievement" {
+			m.What = cmp.Or(world.Achievements()[m.id].Title, fmt.Sprint("achievement ", m.id))
+		}
+	}
+	out := map[string]any{"milestones": rec.milestones, "loot": rec.loot, "places": rec.places, "kills_by": top(kills),
+		"damage_to": top(rec.damage), "heard_from": rec.heard}
+	if rec.petUp > 0 {
+		out["pet_pct"] = math.Round(100 * float64(rec.petUp) / float64(rec.samples))
+	}
+	return out
 }

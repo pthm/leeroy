@@ -182,6 +182,9 @@ func publish(root, runDir, task, out string) (string, error) {
 		}
 		t := simplify(rec.raw)
 		p["track"], p["death_list"], p["casts"] = t, rec.deaths, ownCasts(rec.casts, p["kit"])
+		for k, v := range gameExtras(rec) {
+			p[k] = v
+		}
 		p["cast_icons"] = castIcons(p["casts"].(map[string]int), rec.spells, filepath.Join(out, "../../../public/icons"))
 		tracks, thin = append(tracks, rec.track), append(thin, t)
 	}

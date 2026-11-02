@@ -32,6 +32,15 @@ export interface Player {
   time_pct_by_state?: Record<string, number>; // the agent: thinking, waiting (a script running), in_call, no_script
   combat?: { damage_dealt: number; damage_taken: number; healing_done: number; kills: number; party_kills?: number; deaths?: number; xp?: number };
   think_median_s?: number;
+  // from the game log: milestones (s from the start), loot by quality, zones in order, killing blows and damage by
+  // creature ([name, n], most first), players' chat heard by speaker, time with a pet out (%)
+  milestones?: { t: number; kind: 'quest' | 'achievement' | 'level' | 'loot'; what: string; quality?: string }[];
+  loot?: Record<string, number>;
+  places?: { t: number; zone: string }[];
+  kills_by?: [string, number][];
+  damage_to?: [string, number][];
+  heard_from?: Record<string, number>;
+  pet_pct?: number;
   // from the agent's trajectory (ATIF): tool calls by what they ran, failures, and model calls where the runtime marks them
   play?: {
     tools: { name: string; calls: number; failed: number; median_s?: number }[];

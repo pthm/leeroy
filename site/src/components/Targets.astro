@@ -1,0 +1,54 @@
+---
+// What the players fought, from their game logs: killing blows and damage dealt by creature, a bar per creature split
+// by player, most first.
+import FigureHead from './FigureHead.astro';
+import { colors, thousands, type Run } from '../lib/results';
+
+interface Props {
+  run: Run;
+}
+
+const { run } = Astro.props;
+const color = colors(run);
+const tally = (get: (p: Run['players'][number]) => [string, number][] | undefined, top: number) => {
+  const by = new Map<string, Map<string, number>>();
+  for (const p of run.players) {
+    for (const [name, n] of get(p) ?? []) {
+      const m = by.get(name) ?? new Map<string, number>();
+      m.set(p.char, (m.get(p.char) ?? 0) + n);
+      by.set(name, m);
+    }
+  }
+  const rows = [...by.entries()].map(([k, m]) => ({ k, n: [...m.values()].reduce((a, b) => a + b, 0), by: [...m.entries()] }));
+  rows.sort((a, b) => b.n - a.n);
+  return rows.slice(0, top);
+};
+const figures = [
+  { title: 'Killing blows', sub: 'Creatures each player landed the killing blow on, most first', rows: tally(p => p.kills_by, 12), fmt: (n: number) => String(n) },
+  { title: 'Damage dealt', sub: 'Damage each player dealt, by creature', rows: tally(p => p.damage_to, 12), fmt: thousands },
+].filter(f => f.rows.length);
+---
+
+{figures.length > 0 && (
+  <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+    {figures.map(({ title, sub, rows, fmt }) => {
+      const max = Math.max(1, ...rows.map(r => r.n));
+      return (
+        <figure class="rounded border border-hairline bg-raised p-4" data-chart>
+          <FigureHead title={title} sub={sub} />
+          <ul class="space-y-1.5">
+            {rows.map(r => (
+              <li class="grid grid-cols-[10rem_1fr_3rem] items-center gap-3 text-xs">
+                <span class="truncate text-fg" title={r.k}>{r.k}</span>
+                <span class="flex h-2.5 overflow-hidden rounded-sm" style={`width:${(r.n / max) * 100}%`}>
+                  {r.by.map(([c, n]) => <span class:list={['h-full', color[c]]} style={`flex:${n};background:currentColor`} title={`${c}: ${fmt(n)} (${r.k})`} />)}
+                </span>
+                <span class="text-right font-mono text-muted">{fmt(r.n)}</span>
+              </li>
+            ))}
+          </ul>
+        </figure>
+      );
+    })}
+  </div>
+)}

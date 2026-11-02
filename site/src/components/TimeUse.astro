@@ -28,7 +28,7 @@ const ps = run.players.filter(p => p.time_use || p.time_pct_by_state);
 const characterNote = (p: (typeof ps)[number]) => {
   const u = p.time_use;
   if (!u) return '';
-  return [run.players.length > 1 && `${u.with_group_pct}% grouped`, u.broken_weapon_pct ? `${u.broken_weapon_pct}% broken` : ''].filter(Boolean).join(' · ');
+  return [run.players.length > 1 && `${u.with_group_pct}% grouped`, p.pet_pct != null && `pet ${p.pet_pct}%`, u.broken_weapon_pct ? `${u.broken_weapon_pct}% broken` : ''].filter(Boolean).join(' · ');
 };
 const agentNote = (p: (typeof ps)[number]) => (p.think_median_s != null ? `${p.think_median_s < 1 ? '<1' : p.think_median_s} s per think` : '');
 ---
@@ -64,8 +64,8 @@ const agentNote = (p: (typeof ps)[number]) => (p.think_median_s != null ? `${p.t
 )}
 {ps.length > 0 && (
   <p class="mt-3 font-mono text-[11px] leading-relaxed text-faint">
-    Grouped is time within 50 yards of a party member, and broken is time alive with a broken main-hand weapon; both
-    overlap the bar. Per think is the median time the model spent before each call. Character time comes from the
+    Grouped is time within 50 yards of a party member, pet is time with a pet out and alive, and broken is time alive
+    with a broken main-hand weapon; they overlap the bar. Per think is the median time the model spent before each call. Character time comes from the
     game log. Fighting means in combat, travelling means moving, and dead means a
     corpse or a ghost. Agent time comes from the harness. Thinking is time the model spends generating, script running
     is time it waits while its Lua plays, and in a call is time a tool command is running.
