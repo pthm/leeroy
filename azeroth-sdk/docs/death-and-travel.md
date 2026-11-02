@@ -22,6 +22,10 @@ Flying, your hearthstone, and coming back from death. The rest of the SDK is in 
   it cannot exceed the shared attempt limit. A hostile or unverified healer site is refused even with
   permission. Available healer metadata includes `durability_loss=true` and `cost_known=false`: the exact
   server-configured penalty is not exposed.
+- Where you come back (the server's rules): releasing puts your ghost at the graveyard nearest your corpse.
+  A spirit healer resurrects you at the graveyard the server picks from your corpse's position among the
+  graveyards linked to the area or zone you're in now; with your corpse on another map it can't compare distances, and takes
+  one of that zone's graveyards regardless of distance (the same one each time).
 - A corpse inside an instance: `death.corpse()` reports `instance` (its map) and `portal=true`, with x, y, z a
   reachable point inside the instance's portal trigger (`radius` yards around it); the server's own corpse
   position is the instance entrance on the outside map at ground height, which can be the surface above the

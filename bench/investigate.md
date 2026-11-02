@@ -15,6 +15,7 @@ holes. A player jumps off and takes the fall; the navmesh has no drop links, so 
 graveyard by the corpse's map and position but the ghost's current zone (`GameGraveyard.cpp` GetClosestGraveyard
 with nearCorpse), so with the corpse on another continent nothing matches and it falls back to a Terokkar
 graveyard, this one, every time (Cosimo about 35 min, Evander about 25 min and a hearth back to redo the route).
+(The rule is now in death-and-travel.md; the island itself is still open.)
 
 - Seen: travel-models (20261101-145156), Cosimo (Opus) stuck on it for 20+ minutes.
 - Reproduce: `NAVMAP=530 go run ./azeroth-sdk/cmd/navprobe data -2434 4661 161 -1793 4932 -22` (ends 602 yd short).
