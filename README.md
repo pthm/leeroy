@@ -2,7 +2,11 @@
 
 **L**ong-horizon **E**valuation of **E**mergent **R**easoning, **O**rganisation and **Y**ield
 
-<img width="1661" height="1123" alt="image" src="https://github.com/user-attachments/assets/fb8168af-c80b-4074-9616-df19c4c2b5c2" />
+![The tank reaches level 14 and can't afford training; the party sorts out a loan in whispers and their own chat channel](docs/screenshots/deadmines-training-loan.jpg)
+
+*Nine hours into a Deadmines run: the tank reaches level 14 without the money for training, the other four all offer
+loans, the paladin's 10 silver goes through by trade, and the tank calls off the rest in the channel they made for
+the group. Nobody asked them to.*
 
 A benchmark for multi-agent cooperation and long-horizon problem solving. Teams of AI agents (Claude Code, Codex)
 each play a World of Warcraft 3.3.5a character on a private AzerothCore server, in the same world at the same time,
