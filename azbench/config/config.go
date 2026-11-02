@@ -72,6 +72,7 @@ type Agent struct {
 	// Provider is who serves the model: "" (the runtime's own: Anthropic for claude, OpenAI for codex, the model's
 	// prefix for opencode) or openrouter (OPENROUTER_API_KEY), for claude and opencode
 	Provider string `yaml:"provider"`
+	Kit      *Kit   `yaml:"kit,omitempty"` // its starting kit, as applied (Member.Kit)
 }
 
 // Place is a starting position: x y z map zone.
@@ -340,6 +341,9 @@ func (b *Bench) Check(s *Scenario) error {
 			return fmt.Errorf("%s: %s: effort %q: minimal, low, medium, high or xhigh for codex", s.Name, a.Name, a.Effort)
 		case a.Provider != "" && (a.Provider != "openrouter" || a.Runtime == "codex" || a.Runtime == "none"):
 			return fmt.Errorf("%s: %s: provider %q: openrouter, for claude or opencode", s.Name, a.Name, a.Provider)
+		}
+		if a.Kit != nil && (strings.HasPrefix(s.Goal, "item:") || strings.HasPrefix(s.Goal, "quality:")) {
+			return fmt.Errorf("%s: %s: a kit with an item or quality goal: the judge counts every item owned, the kit's too", s.Name, a.Name)
 		}
 		seen[a.Name], seen["char:"+a.Char] = true, true
 		if _, err := ID(Races, a.Race); err != nil {

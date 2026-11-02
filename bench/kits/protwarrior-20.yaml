@@ -1,0 +1,22 @@
+# azbench kit gen warrior 20 --spec protwarrior --race human: green gear the character could get by playing (drops,
+# quest rewards, crafted), bags from vendors; edit freely.
+level: 20
+money: 10000 # copper
+trained: true # every spell the class trainers teach and class quests reward up to the level
+spells: [198, 2567]
+gear:
+  neck: 30419 # Brilliant Necklace (item level 25, crafted)
+  shoulders: 3231 # Cutthroat Pauldrons (item level 25, drop)
+  chest: 14730 # War Paint Chestpiece (item level 23, drop)
+  waist: 26038 # Segmented Girdle (item level 20, quest)
+  legs: 4800 # Mighty Chain Pants (item level 23, vendor)
+  feet: 2910 # Gold Militia Boots (item level 25, quest)
+  wrists: 2868 # Patterned Bronze Bracers (item level 25, crafted)
+  hands: 14747 # Hulking Gauntlets (item level 23, drop)
+  finger1: 4998 # Blood Ring (item level 24, drop)
+  finger2: 12054 # Demon Band (item level 24, drop)
+  back: 14745 # Hulking Cloak (item level 20, drop)
+  main_hand: 3491 # Heavy Bronze Mace (item level 25, crafted)
+  off_hand: 4821 # Bear Buckler (item level 23, vendor)
+  ranged: 29201 # Thick Bronze Darts (item level 20, crafted)
+bags: [4497, 4497, 4497, 4497] # Heavy Brown Bag (10 slots, vendor)

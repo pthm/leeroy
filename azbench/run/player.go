@@ -185,7 +185,7 @@ func (p *player) login(ctx context.Context) error {
 	}
 }
 
-// prepare: workspace, account, starting conditions (on the offline character, creating it with a short login
+// prepare: workspace, account, starting conditions and kit (on the offline character, creating it with a short login
 // first), then the session. The player is ready to start when it returns nil.
 func (p *player) prepare(ctx context.Context) error {
 	if err := p.workspace(); err != nil {
@@ -196,7 +196,7 @@ func (p *player) prepare(ctx context.Context) error {
 	}
 	os.WriteFile(filepath.Join(p.ws, "session.log"), nil, 0o644) // the workspace (and old log) persists
 	s := p.r.s
-	if s.Level > 0 || s.Money > 0 || s.Start != nil || len(s.Setup) > 0 {
+	if s.Level > 0 || s.Money > 0 || s.Start != nil || len(s.Setup) > 0 || p.a.Kit != nil {
 		for try := 1; !charExists(p.a.Char) && try <= 3; try++ { // concurrent logins can time out on the auth server
 			if cmd, err := p.daemon("-duration", "8s"); err == nil {
 				for alive(cmd) {
@@ -215,6 +215,11 @@ func (p *player) prepare(ctx context.Context) error {
 		}
 		if err := applyStart(s, p.a.Char); err != nil {
 			return fmt.Errorf("starting conditions: %v", err)
+		}
+		if p.a.Kit != nil {
+			if err := applyKit(p.a.Kit, p.a.Char, p.class); err != nil {
+				return err
+			}
 		}
 	} else if !waitOffline(p.a.Char, 2*time.Minute) {
 		return fmt.Errorf("still online from an earlier session")

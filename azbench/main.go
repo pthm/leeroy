@@ -5,6 +5,7 @@
 //	azbench run <task.yaml> [--model m,...] [--minutes n] [--dry-run] [--reset]  a task, on each of its models (or those
 //	                                                         named); --reset starts each from scratch
 //	azbench check <task.yaml> [--model m,...]                preflight: what the task's runs would meet in the world
+//	azbench kit gen <class> <level> [--spec s] | save <Char>  a starting kit (bench/kits), made or copied
 //	azbench resume <run dir> --message <file> [--minutes n]  continue a paused run
 //	azbench pause|status <run dir>                           control a running run
 //	azbench restart <run dir> <agent> --message <file>       bring one agent back mid-run
@@ -54,6 +55,6 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: azbench run|check|resume|pause|status|restart|maintenance|judge|report|compare|signals|reset|gm|apidoc|prices|standings ...")
+	fmt.Fprintln(os.Stderr, "usage: azbench run|check|kit|resume|pause|status|restart|maintenance|judge|report|compare|signals|reset|gm|apidoc|prices|standings ...")
 	os.Exit(2)
 }

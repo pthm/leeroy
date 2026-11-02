@@ -1,0 +1,22 @@
+# azbench kit gen rogue 20 --spec combat --race human: green gear the character could get by playing (drops,
+# quest rewards, crafted), bags from vendors; edit freely.
+level: 20
+money: 10000 # copper
+trained: true # every spell the class trainers teach and class quests reward up to the level
+spells: [198, 201, 2567]
+gear:
+  neck: 30419 # Brilliant Necklace (item level 25, crafted)
+  shoulders: 4709 # Forest Leather Mantle (item level 25, drop)
+  chest: 14562 # Prospector's Chestpiece (item level 23, drop)
+  waist: 4249 # Dark Leather Belt (item level 25, crafted)
+  legs: 3022 # Bluegill Breeches (item level 23, drop)
+  feet: 14568 # Bristlebark Boots (item level 23, drop)
+  wrists: 4794 # Wolf Bracers (item level 25, vendor)
+  hands: 3058 # Forest Leather Gloves (item level 25, drop)
+  finger1: 1076 # Defias Renegade Ring (item level 25, drop)
+  finger2: 4998 # Blood Ring (item level 24, drop)
+  back: 5751 # Webwing Cloak (item level 25, drop)
+  main_hand: 920 # Wicked Spiked Mace (item level 25, drop)
+  off_hand: 2035 # Sword of the Night Sky (item level 24, drop)
+  ranged: 29201 # Thick Bronze Darts (item level 20, crafted)
+bags: [4497, 4497, 4497, 4497] # Heavy Brown Bag (10 slots, vendor)

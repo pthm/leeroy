@@ -9,6 +9,7 @@ commands below run from the repo root; server and client setup is in the [repo R
 |---|---|
 | `tasks/*.yaml` | the tasks: goal, clock, starting conditions, party, and the models that play it ([tasks/README.md](tasks/README.md)) |
 | `models.yaml` | who plays: runtime, model and reasoning effort, by key |
+| `kits/*.yaml` | starting kits: level, spells, gear and bags for a party member ([tasks/README.md](tasks/README.md#kits)) |
 | `specs.yaml` | class specs a party can take: class and spec, role, what to optimise, key stats |
 | `places.yaml` | named starting positions (`start: goldshire`) |
 | [`versions.yaml`](versions.yaml) | benchmark versions: bump when a change makes results not comparable; each run records the current one (website: results by version) |
@@ -25,6 +26,7 @@ commands below run from the repo root; server and client setup is in the [repo R
 |---|---|
 | `azbench run <task.yaml> [--model m,...] [--minutes n] [--port n] [--reset] [--dry-run]` | a task on each of its models (or those named): a run per model one after another, or one run for a task played together; each run is every session, judge and agent on one clock. `--reset`: delete the run's characters, move its agents' workspaces to `bench/workspaces/.old/` and restart the worldserver first, so every run starts the same. `--port`: the first session's port (default 8090), to run beside another run |
 | `azbench check <task.yaml> [--model m,...]` | preflight: read-only checks of what the task's runs would meet ([tasks/README.md](tasks/README.md#preflight)) |
+| `azbench kit gen <class> <level> [--spec s] [--race r]` / `kit save <Char>` | a starting kit, from items a character could get by playing, or as a character is ([tasks/README.md](tasks/README.md#kits)) |
 | `azbench status <run dir>` | a running run: each player's state, score and level, and the minutes left |
 | `azbench pause <run dir>` | stop a running run cleanly so it can be resumed (Ctrl-C on `azbench run` does the same) |
 | `azbench resume <run dir> --message <file>` | continue a paused run |

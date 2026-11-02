@@ -116,6 +116,12 @@ func prompt(s *config.Scenario, b *config.Bench, a config.Agent, repo string) (s
 		identity = fmt.Sprintf(`You are %s, a %s %s. Your role is %s: %s. The spec's key stats are %s.
 %s is already logged in and waiting.`, a.Char, config.RaceName(race), sp.Title, sp.Role, sp.Optimise, sp.Stats, a.Char)
 	}
+	if k := a.Kit; k != nil { // the facts of the kit, not how to use it
+		identity += fmt.Sprintf("\nIt starts at level %d, with gear equipped and the class spells trained up to its level.", k.Level)
+		if !k.Trained {
+			identity = strings.TrimSuffix(identity, " and the class spells trained up to its level.") + "."
+		}
+	}
 	var roster []string // the other players with a spec: "- Char: Warrior - Protection (Tank)"
 	for _, o := range s.Agents {
 		if sp, ok := b.Specs[o.Spec]; ok && o.Char != a.Char {

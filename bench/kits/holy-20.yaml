@@ -1,0 +1,21 @@
+# azbench kit gen priest 20 --spec holy --race human: green gear the character could get by playing (drops,
+# quest rewards, crafted), bags from vendors; edit freely.
+level: 20
+money: 10000 # copper
+trained: true # every spell the class trainers teach and class quests reward up to the level
+spells: [227, 5009]
+gear:
+  neck: 30419 # Brilliant Necklace (item level 25, crafted)
+  shoulders: 4314 # Double-stitched Woolen Shoulders (item level 22, crafted)
+  chest: 14369 # Mystic's Wrap (item level 23, drop)
+  waist: 14373 # Sanguine Belt (item level 25, drop)
+  legs: 4316 # Heavy Woolen Pants (item level 22, crafted)
+  feet: 14374 # Sanguine Sandals (item level 24, drop)
+  wrists: 3647 # Bright Bracers (item level 23, drop)
+  hands: 3066 # Bright Gloves (item level 24, drop)
+  finger1: 6199 # Black Widow Band (item level 24, drop)
+  finger2: 12053 # Volcanic Rock Ring (item level 21, drop)
+  back: 14376 # Sanguine Cape (item level 22, drop)
+  main_hand: 1300 # Lesser Staff of the Spire (item level 20, drop)
+  ranged: 8071 # Sizzle Stick (item level 23, quest)
+bags: [4497, 4497, 4497, 4497] # Heavy Brown Bag (10 slots, vendor)

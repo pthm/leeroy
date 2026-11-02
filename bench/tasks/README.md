@@ -31,6 +31,7 @@ character names). It refuses if any of the characters is online.
 | `hogger.yaml` | 120 | apart | three new level-5 characters in Goldshire (Protection Paladin, Holy Priest, Frost Mage), goal: "Wanted: Hogger" (quest 176) |
 | `deadmines.yaml` | 10080 | apart | five new level-1 Humans in Northshire, a dungeon party, goal: clear the Deadmines (`achievement:628`). A week on the clock; each stops when it has the achievement |
 | `travel.yaml` | 90 | together | a new level-30 Human warrior in Northshire per model, goal: reach Darnassus (`zone:1657`) on the other continent |
+| `deadmines-geared.yaml` | 2880 | apart | the Deadmines party at level 20 with [kits](#kits): green gear, bags and the class spells trained |
 | `hardcore.yaml` | 240 | apart | a new level-1 Human Arms warrior in Northshire, levelling with `hardcore`: the first death ends the run |
 
 All but the smoke tests set `require_fresh`.
@@ -54,12 +55,50 @@ Unknown fields are errors, so a typo doesn't silently change a run.
 | `hardcore` | a character's first death ends its run; the score is then the total value earned before it ends (binary goals: unmet, 0), and the prompt states the rule |
 | `notice` | added to the prompt: text, or a `.md` file next to the task (e.g. what changed since the agents' last run) |
 | `require_fresh` | refuse to start if any agent's workspace exists |
-| `party` | the characters each model plays: `class`, `spec` (a key from [`specs.yaml`](../specs.yaml): the prompt states class, spec, role, what to optimise and key stats, lists the other players' specs, and the judge puts the role on the board), `race` (default human) |
+| `party` | the characters each model plays: `class`, `spec` (a key from [`specs.yaml`](../specs.yaml): the prompt states class, spec, role, what to optimise and key stats, lists the other players' specs, and the judge puts the role on the board), `race` (default human), `kit` (a starting kit from [`kits/`](../kits), below; none: a new character as the task's other conditions leave it) |
 | `models` | who plays: keys of [`models.yaml`](../models.yaml) |
 | `together` | `false` (default): a run per model, one after another, so none share the world. `true`: one run with every model's party in one world |
 
 Starting conditions (`start`, `level`, `money`, `setup`) are applied in the database while the character is offline;
 a character that doesn't exist yet is created first with a short login.
+
+## Kits
+
+A kit (`bench/kits/<name>.yaml`) starts a character beyond a new one: its level, money, spells, gear, bags and items.
+The harness applies it while the character is offline, after the task's other starting conditions; the run's
+`scenario.yaml` keeps the kit as applied, and the agent's prompt says the character starts at that level with gear
+equipped and its class spells trained (the facts, not how to use them).
+
+```sh
+bin/azbench kit gen warrior 20 --spec protwarrior > bench/kits/protwarrior-20.yaml   # race: --race (default human)
+bin/azbench kit save <Char> > bench/kits/<name>.yaml                                  # a character as it is now
+```
+
+`kit gen` gives each slot the green (uncommon) item that scores best for the spec's stats, among items a character
+of that class, race and level could get by playing:
+- **where from:** dropped by a creature or chest that is spawned in the world, a reward of a quest it can take (given
+  by someone not hostile to its side, at most 2 levels above it), or made by a profession the trainers teach;
+- **what:** armour of the best type the class wears at that level, weapons the class can learn (the kit includes the
+  proficiency, as a weapon master would teach it), within 10 item levels of the character;
+- **left out:** test, deprecated and seasonal items, random-enchantment items ("of the Bear"), and items that need
+  a profession, reputation or rank.
+
+Bags (and a hunter's ammunition) come from vendors. Each item is named in a comment, with where it comes from; edit
+the file freely.
+
+| Field | |
+|---|---|
+| `level` | 1 to 80 |
+| `money` | copper |
+| `trained` | every spell the class trainers teach and the class quests reward (a warrior's stances) up to the level |
+| `spells` | more spells by id: weapon proficiencies, or every spell, from `kit save` |
+| `gear` | slot to item entry: `head` `neck` `shoulders` `shirt` `chest` `waist` `legs` `feet` `wrists` `hands` `finger1` `finger2` `trinket1` `trinket2` `back` `main_hand` `off_hand` `ranged` `tabard`. A slot not listed keeps what the character wears |
+| `bags` | up to 4 bag entries |
+| `items` | `{entry, count}` stacks, in the backpack and then the bags |
+
+The weapon skills and Defense start at their cap for the level (5 per level), as playing there would leave them.
+Talents stay unspent: the server gives the points for the level. A kit can't go with an `item:` or `quality:` goal:
+the judge counts every item owned, the kit's too.
 
 ## Models
 

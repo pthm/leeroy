@@ -24,6 +24,7 @@ type Member struct {
 	Class string `yaml:"class"`
 	Spec  string `yaml:"spec"` // a key from specs.yaml
 	Race  string `yaml:"race"` // default human
+	Kit   string `yaml:"kit"`  // a starting kit, bench/kits/<name>.yaml: level, spells, gear (none: a new character)
 }
 
 // Model is who plays (models.yaml): a runtime, its model, and the reasoning effort, recorded with the run.
@@ -62,11 +63,15 @@ func (b *Bench) LoadTask(f string, only []string) ([]*Scenario, error) {
 		if !ok {
 			return nil, fmt.Errorf("%s: unknown model %q (models.yaml)", t.Name, key)
 		}
+		agents, err := b.agents(t, key, m, names)
+		if err != nil {
+			return nil, err
+		}
 		if t.Together && len(out) == 1 {
-			out[0].Agents = append(out[0].Agents, t.agents(key, m, names)...)
+			out[0].Agents = append(out[0].Agents, agents...)
 			continue
 		}
-		s := &Scenario{Conditions: t.Conditions, Task: t.Name, Agents: t.agents(key, m, names), Dir: filepath.Dir(f)}
+		s := &Scenario{Conditions: t.Conditions, Task: t.Name, Agents: agents, Dir: filepath.Dir(f)}
 		if !t.Together {
 			s.Name = t.Name + "-" + key
 		}
@@ -94,14 +99,22 @@ func readTask(f string) (*Task, error) {
 	return &t, nil
 }
 
-func (t *Task) agents(key string, m Model, names map[string]string) []Agent {
+func (b *Bench) agents(t *Task, key string, m Model, names map[string]string) ([]Agent, error) {
 	var out []Agent
 	for i, p := range t.Party {
 		char := names[seat(t.Name, key, i)]
-		out = append(out, Agent{Name: strings.ToLower(char), Char: char, Race: p.Race, Class: p.Class, Spec: p.Spec,
-			Runtime: m.Runtime, Model: m.Model, Effort: m.Effort, Provider: m.Provider})
+		a := Agent{Name: strings.ToLower(char), Char: char, Race: p.Race, Class: p.Class, Spec: p.Spec,
+			Runtime: m.Runtime, Model: m.Model, Effort: m.Effort, Provider: m.Provider}
+		if p.Kit != "" {
+			k, err := b.LoadKit(p.Kit)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %v", t.Name, err)
+			}
+			a.Kit = k
+		}
+		out = append(out, a)
 	}
-	return out
+	return out, nil
 }
 
 func seat(task, model string, slot int) string { return fmt.Sprintf("%s/%s/%d", task, model, slot) }

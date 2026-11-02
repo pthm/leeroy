@@ -81,6 +81,8 @@ func benchCommand(cmd string, args []string) bool {
 	out := fs.String("out", "", "publish: where to write (default: site/src/data/runs)")
 	model := fs.String("model", "", "run: only these of the task's models (comma-separated keys of bench/models.yaml); publish: the model, for runs that didn't record it")
 	runtime := fs.String("runtime", "", "publish: the harness (claude, codex, opencode), for runs that didn't record it")
+	spec := fs.String("spec", "", "kit gen: the spec the gear is for (a key of bench/specs.yaml; default the class's usual)")
+	race := fs.String("race", "human", "kit gen: the race (some quests and items are for some races)")
 	class := fs.String("class", "warrior", "gm: the GM character's class (warrior: Devgm on 8112; another class: Dev<class> on 8113)")
 	parse := func(n int, usage string) []string {
 		var pos []string // positional arguments, flags anywhere
@@ -200,6 +202,26 @@ func benchCommand(cmd string, args []string) bool {
 			f, err := publish(root, d, *task, *out, *model, *runtime)
 			check(err)
 			fmt.Println(f)
+		}
+	case "kit":
+		pos := parse(2, "gen <class> <level> [--spec s] [--race r] | save <Char>")
+		switch {
+		case pos[0] == "gen" && len(pos) == 3:
+			class, err := config.ID(config.Classes, pos[1])
+			check(err)
+			raceID, err := config.ID(config.Races, *race)
+			check(err)
+			level, err := strconv.Atoi(pos[2])
+			check(err)
+			k, notes, err := run.GenKit(class, raceID, *spec, level)
+			check(err)
+			fmt.Print(run.KitYAML(k, notes, fmt.Sprintf("azbench kit gen %s %d --spec %s --race %s: green gear the character could get by playing (drops,\nquest rewards, crafted), bags from vendors; edit freely.", pos[1], level, *spec, *race)))
+		case pos[0] == "save" && len(pos) == 2:
+			k, notes, err := run.SaveKit(pos[1])
+			check(err)
+			fmt.Print(run.KitYAML(k, notes, "azbench kit save "+pos[1]+": the character as it is."))
+		default:
+			die("usage: azbench kit gen <class> <level> [--spec s] [--race r] | save <Char>")
 		}
 	case "prices":
 		check(judge.Prices(filepath.Join(repoRoot(), "azbench/judge/prices.json")))
