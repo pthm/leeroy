@@ -198,7 +198,8 @@ everywhere: the map follows it, the feed and the stats narrow to it.
   selected group, or everyone, centred, and with Auto zoom (Z, on by default) zoomed to fit them: scrolling then sets
   how much closer or further than a snug fit (remembered), instead of zooming freely. Off, the map stays where you put
   it. Dragging the map turns it off; clicking a card or a group header turns it back on, and so does Fit (F), which also
-  resets the zoom to fit what it follows. A picker chooses the map (Auto: the followed player's, else where most players are).
+  resets the zoom to fit what it follows. A picker chooses the map (Auto: the followed player's, else the one shown while anyone is on it, else where most
+  players are).
 - **Layers** (the map bar's Layers menu, L; remembered). Overlays: **Heatmap** (H) of where the players (or the
   selected player or group) spent their time up to the playhead, or where they died, killed, gained XP, or took or
   dealt damage (each step between position samples adds its seconds along its line; an event adds its count or amount

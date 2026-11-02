@@ -800,7 +800,8 @@ function select(n, followIt = true) {
 function selectGroup(g) { const s = store(); s.grp = g; s.sel = null; if (g != null) { autoCam = true; view.s = Math.max(view.s, 2); } controls(); dirty = true; }
 
 // ---------- map picker ----------
-// Auto shows the map the followed player is on, else the one most players are on; picking a map holds it.
+// Auto shows the map the followed player is on, else the one it's on while anyone is there, else the one most players
+// are on; picking a map holds it.
 let mapMode = "auto", mapOptions = "";
 const SEEN_MAPS = new Set();
 const mapName = (m) => B.maps?.[m] ?? `map ${m}`;
@@ -810,8 +811,8 @@ function updateMaps() {
   for (const name of P.keys()) { const pp = at(name, t); if (pp) { n.set(pp.s.m, (n.get(pp.s.m) ?? 0) + 1); SEEN_MAPS.add(pp.s.m); } }
   if (mapMode === "auto") {
     const f = followed() && at(followed(), t);
-    let best = f ? f.s.m : undefined;
-    if (best === undefined) for (const [m, c] of n) if (best === undefined || c > n.get(best) || (c === n.get(best) && m === M.id)) best = m;
+    let best = f ? f.s.m : n.get(M.id) ? M.id : undefined; // nobody followed: stay while anyone's here (a deselect doesn't jump)
+    if (best === undefined) for (const [m, c] of n) if (best === undefined || c > n.get(best)) best = m;
     showMap(best);
   }
   const seen = new Set([M.id, ...SEEN_MAPS]);
