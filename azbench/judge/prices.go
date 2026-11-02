@@ -97,3 +97,8 @@ func Prices(out string) error {
 	fmt.Printf("%d models from %s\n", len(table), strings.Join(pricedProviders, ", "))
 	return nil
 }
+
+// Cost is cost for callers outside the judge (azbench publish: runs that recorded tokens but no cost).
+func Cost(runtime, provider, model string, in, out, cr, cw float64) (float64, bool) {
+	return cost(runtime, provider, model, in, out, cr, cw)
+}

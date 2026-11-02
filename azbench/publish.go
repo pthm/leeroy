@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pthm/leeroy/azbench/config"
+	"github.com/pthm/leeroy/azbench/judge"
 )
 
 // publish writes a run's results for the website (site/src/data/runs/<run>.json): the scenario, then each player's
@@ -90,6 +91,15 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 			p["think_median_s"] = th["median"]
 		}
 		p["failures"] = failures(r)
+		if p["cost_usd"] == nil { // the first runs recorded tokens but no cost: at list price, as the judge prices them
+			if t, ok := r["tokens"].(map[string]any); ok {
+				f := func(k string) float64 { v, _ := t[k].(float64); return v }
+				provider, _ := r["provider"].(string) // missing from the first reports
+				if usd, ok := judge.Cost(fmt.Sprint(p["runtime"]), provider, fmt.Sprint(p["model"]), f("input"), f("output"), f("cache_read"), f("cache_write")); ok {
+					p["cost_usd"] = math.Round(usd*10) / 10
+				}
+			}
+		}
 		a := agents[char]
 		p["class"], p["spec"], p["race"] = a.Class, a.Spec, a.Race
 		p["met"] = false
