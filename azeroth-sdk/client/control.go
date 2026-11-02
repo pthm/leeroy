@@ -28,11 +28,13 @@ const (
 	unitFlagConfused = 0x00400000
 	unitFlagFleeing  = 0x00800000
 	unitFlagPossess  = 0x01000000
+	playerFlags      = 0x96 // PLAYER_FLAGS
+	playerFlagGhost  = 0x10 // PLAYER_FLAGS_GHOST: a released spirit (health reads 1)
 )
 
 // MovementLock says who's moving your character: "" when you are, else in_flight, teleporting, feared, confused,
-// charmed, stunned or rooted. The first five are server-driven (no movement packets go out); stunned and rooted just
-// can't move.
+// charmed, dead, stunned or rooted. The first five are server-driven (no movement packets go out); the rest just
+// can't move. Dead is a corpse (the server roots it), not a released ghost, who walks.
 func (w *WorldClient) MovementLock() string {
 	w.phaseMu.Lock()
 	ph := w.phase
@@ -41,8 +43,10 @@ func (w *WorldClient) MovementLock() string {
 		return "teleporting"
 	}
 	var flags uint32
+	corpse := false
 	if me := w.GetObject(w.charGUID); me != nil {
 		flags = me.Value(UnitFieldFlags)
+		corpse = me.Value(UnitFieldMaxHealth) != 0 && !me.IsAlive() && me.Value(playerFlags)&playerFlagGhost == 0
 	}
 	switch {
 	case flags&UnitFlagTaxiFlight != 0:
@@ -53,6 +57,8 @@ func (w *WorldClient) MovementLock() string {
 		return "feared"
 	case flags&unitFlagConfused != 0:
 		return "confused"
+	case corpse: // before stunned and rooted: a corpse is both
+		return "dead"
 	case flags&unitFlagStunned != 0:
 		return "stunned"
 	case w.rooted:

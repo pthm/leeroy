@@ -200,7 +200,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `me.level() → number` | your level |  |
 | `me.location() → Location` | where you are, by the game's own zone and area names | [Location](#location) |
 | `me.money() → copper` | your money |  |
-| `me.movement() → Movement` | who's moving you: free, or the server (in_flight, teleporting, feared, confused, charmed: move.to is refused), or stunned / rooted; with where the server is taking you | [Movement](#movement) |
+| `me.movement() → Movement` | who's moving you: free, or the server (in_flight, teleporting, feared, confused, charmed: move.to is refused), or dead (a corpse) / stunned / rooted; with where the server is taking you | [Movement](#movement) |
 | `me.moving() → bool` | walking somewhere (move.to) |  |
 | `me.name() → string` | your character's name |  |
 | `me.pet() → GUID?` | your pet, nil for none |  |
@@ -1030,7 +1030,7 @@ Status is what a player sees on screen, in one call (me.status, `wow status`): e
 |---|---|---|
 | `owner?` | MovementOwner | active local movement owner; server movement lock is independent |
 | `queue?` | MovementOwner[] |  |
-| `state` | string | free (you are), in_flight, teleporting, feared, confused, charmed (the server moves you: move.to is refused), stunned, rooted |
+| `state` | string | free (you are), in_flight, teleporting, feared, confused, charmed (the server moves you: move.to is refused), dead (a corpse, before release), stunned, rooted |
 | `destination?` | Position | where the server is taking you (a flight, fear) |
 | `seconds_left?` | number |  |
 | `flight?` | Flight |  |

@@ -867,7 +867,7 @@ type Movement struct {
 	Owner *MovementOwner  `json:"owner,omitempty" doc:"active local movement owner; server movement lock is independent"`
 	Queue []MovementOwner `json:"queue,omitempty"`
 
-	State       string    `json:"state" doc:"free (you are), in_flight, teleporting, feared, confused, charmed (the server moves you: move.to is refused), stunned, rooted"`
+	State       string    `json:"state" doc:"free (you are), in_flight, teleporting, feared, confused, charmed (the server moves you: move.to is refused), dead (a corpse, before release), stunned, rooted"`
 	Destination *Position `json:"destination,omitempty" doc:"where the server is taking you (a flight, fear)"`
 	SecondsLeft float64   `json:"seconds_left,omitempty"`
 	Flight      *Flight   `json:"flight,omitempty"`

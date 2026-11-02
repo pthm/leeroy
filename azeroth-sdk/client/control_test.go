@@ -30,3 +30,25 @@ func TestSplinePath(t *testing.T) {
 		t.Fatalf("end: %v %v", p, done)
 	}
 }
+
+// A corpse is "dead", not "rooted" (the server roots it); a released ghost walks.
+func TestMovementLockDead(t *testing.T) {
+	w := NewWorldClient("u", nil, func(string, ...interface{}) {})
+	w.charGUID = 5
+	me := &WorldObject{GUID: 5, Values: map[uint16]uint32{UnitFieldHealth: 0, UnitFieldMaxHealth: 700}}
+	w.objects[5] = me
+	w.rooted = true
+	if got := w.MovementLock(); got != "dead" {
+		t.Fatalf("corpse: %q, want dead", got)
+	}
+	me.Values[UnitFieldHealth], me.Values[playerFlags] = 1, playerFlagGhost
+	w.rooted = false
+	if got := w.MovementLock(); got != "" {
+		t.Fatalf("ghost: %q, want free", got)
+	}
+	me.Values[UnitFieldHealth], me.Values[playerFlags] = 700, 0
+	w.rooted = true
+	if got := w.MovementLock(); got != "rooted" {
+		t.Fatalf("alive and rooted: %q", got)
+	}
+}

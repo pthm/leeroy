@@ -608,6 +608,9 @@ func (b *Bot) watchEvents() {
 func (b *Bot) stateEvents() {
 	b.sampleFightLog()
 	combat, alive := b.InCombat(), b.IsAlive() && !b.IsGhost()
+	if me := b.world.GetObject(b.world.CharGUID()); (me == nil || me.Value(client.UnitFieldMaxHealth) == 0) && b.wasAlive != nil {
+		alive = *b.wasAlive // our player object is being rebuilt (a far teleport): no reading, no transition
+	}
 	groupCombat := combat || b.partyInCombat()
 	if b.wasAlive != nil {
 		if alive != *b.wasAlive && b.agent != nil {
