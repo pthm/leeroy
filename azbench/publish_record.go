@@ -140,7 +140,7 @@ func thinTrack(t [][5]float64, every float64) [][5]float64 {
 type mapImage struct {
 	Map  int     `json:"map"`
 	Name string  `json:"name"`
-	File string  `json:"file,omitempty"` // under site/src/assets/runs; none for instances (no terrain to draw)
+	File string  `json:"file,omitempty"` // under site/src/assets/runs: relief (continents) or the navmesh floor plan (instances)
 	XMin float64 `json:"x_min"`
 	XMax float64 `json:"x_max"`
 	YMin float64 `json:"y_min"`
@@ -179,6 +179,15 @@ func mapImages(id string, tracks [][][5]float64, assetDir string) ([]mapImage, e
 			img := world.RenderRelief(uint32(m), mi.XMin, mi.XMax, mi.YMin, mi.YMax, math.Max(1, w/1400))
 			mi.File = fmt.Sprintf("%s-%d.jpg", id, m)
 			if err := writeJPEG(filepath.Join(assetDir, mi.File), img.PNG); err != nil {
+				return nil, err
+			}
+		} else if plan := world.FloorBox(uint32(m), mi.XMin, mi.XMax, mi.YMin, mi.YMax, math.Max(0.5, w/1400)); plan != nil {
+			// an instance: its navmesh floor plan, transparent around it
+			mi.File = fmt.Sprintf("%s-%d.png", id, m)
+			if err := os.MkdirAll(assetDir, 0o755); err != nil {
+				return nil, err
+			}
+			if err := os.WriteFile(filepath.Join(assetDir, mi.File), plan, 0o644); err != nil {
 				return nil, err
 			}
 		}

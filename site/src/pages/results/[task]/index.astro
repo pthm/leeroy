@@ -2,10 +2,11 @@
 import CostChart from '../../../components/CostChart.astro';
 import Leaderboard from '../../../components/Leaderboard.astro';
 import ModelInsights from '../../../components/ModelInsights.astro';
+import RouteMap from '../../../components/RouteMap.astro';
 import Section from '../../../components/Section.astro';
 import SectionHeader from '../../../components/SectionHeader.astro';
 import Layout from '../../../layouts/Layout.astro';
-import { TASKS, dollars, duration, harnessName, modelName, runDate, runsOf, taskTitle, tasks } from '../../../lib/results';
+import { TASKS, dollars, duration, harnessName, leaderboard, modelName, runDate, runsOf, taskTitle, tasks, type MapBox } from '../../../lib/results';
 import { url } from '../../../lib/url';
 
 export function getStaticPaths() {
@@ -16,6 +17,18 @@ const { task } = Astro.params;
 const info = TASKS[task];
 const runs = runsOf(task).toReversed();
 const all = runs.flatMap(r => r.players);
+// one map per map the runs crossed: the widest run's box (its backdrop), every attempt over it in its model's colour
+const models = leaderboard(task).map(r => r.model);
+const modelCls = (m: string) => `pc-${models.indexOf(m) % 8}`;
+const boxes = new Map<number, MapBox>();
+for (const r of runs)
+  for (const b of r.maps ?? []) {
+    const have = boxes.get(b.map);
+    if (!have || (b.x_max - b.x_min) * (b.y_max - b.y_min) > (have.x_max - have.x_min) * (have.y_max - have.y_min)) boxes.set(b.map, b);
+  }
+const attempts = runs.flatMap(r =>
+  r.players.map(p => ({ name: `${modelName(p.model)} · ${runDate(r)}`, cls: modelCls(p.model), track: p.track ?? [], deaths: p.death_list ?? [] })),
+);
 const tiles = [
   { v: String(runs.length), k: runs.length === 1 ? 'run' : 'runs' },
   { v: String(new Set(all.map(p => p.model)).size), k: 'models' },
@@ -44,6 +57,17 @@ const outcome = (p: (typeof runs)[number]['players'][number]) =>
       <CostChart task={task} />
     </div>
   </Section>
+
+  {boxes.size > 0 && (
+    <Section>
+      <SectionHeader eyebrow="Where they went" title="Every route." description="Every attempt in every run, one colour per model, over the server's own terrain (an instance: its floor plan). Hover a line for the attempt, a cross for the killer." />
+      <div class:list={['grid grid-cols-1 gap-4', boxes.size > 1 && 'lg:grid-cols-2']}>
+        {[...boxes.values()].map(box => (
+          <RouteMap box={box} routes={attempts} legend={models.map(m => ({ name: modelName(m), cls: modelCls(m) }))} thin />
+        ))}
+      </div>
+    </Section>
+  )}
 
   <Section>
     <SectionHeader eyebrow="By model" title="Model by model." description="Every attempt rather than the mean alone, where each model's agent spent its time, and the errors it kept running into." />

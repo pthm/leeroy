@@ -59,13 +59,18 @@ func Continent(m uint32) bool { return m == 0 || m == 1 || m == 530 || m == 571 
 // the minimap tiles: walkable floor coloured by height (one scale per map, so tiles agree), the rest transparent.
 // Where floors overlap the highest is drawn. nil if the map has no navmesh.
 func FloorTile(m uint32, gx, gy int, res float64) []byte {
+	xMax, yMax := GridSize*float64(32-gx), GridSize*float64(32-gy)
+	return FloorBox(m, xMax-GridSize, xMax, yMax-GridSize, yMax, res)
+}
+
+// FloorBox is FloorTile for any box x in [xMin, xMax], y in [yMin, yMax].
+func FloorBox(m uint32, xMin, xMax, yMin, yMax, res float64) []byte {
 	p := floorOf(m)
 	if p == nil {
 		return nil
 	}
-	xMax, yMax := GridSize*float64(32-gx), GridSize*float64(32-gy)
-	n := int(math.Ceil(GridSize / res))
-	z := make([]float32, n*n)
+	W, H := int(math.Ceil((yMax-yMin)/res)), int(math.Ceil((xMax-xMin)/res))
+	z := make([]float32, W*H)
 	for i := range z {
 		z[i] = float32(math.Inf(-1))
 	}
@@ -75,8 +80,8 @@ func FloorTile(m uint32, gx, gy int, res float64) []byte {
 		for k, v := range t {
 			c[k], r[k] = (yMax-float64(v.Y))/res, (xMax-float64(v.X))/res
 		}
-		c0, c1 := max(0, int(math.Floor(min(c[0], c[1], c[2])))), min(n-1, int(math.Ceil(max(c[0], c[1], c[2]))))
-		r0, r1 := max(0, int(math.Floor(min(r[0], r[1], r[2])))), min(n-1, int(math.Ceil(max(r[0], r[1], r[2]))))
+		c0, c1 := max(0, int(math.Floor(min(c[0], c[1], c[2])))), min(W-1, int(math.Ceil(max(c[0], c[1], c[2]))))
+		r0, r1 := max(0, int(math.Floor(min(r[0], r[1], r[2])))), min(H-1, int(math.Ceil(max(r[0], r[1], r[2]))))
 		if c0 > c1 || r0 > r1 {
 			continue
 		}
@@ -93,18 +98,18 @@ func FloorTile(m uint32, gx, gy int, res float64) []byte {
 					continue
 				}
 				h := float32(a)*t[0].Z + float32(b)*t[1].Z + float32(1-a-b)*t[2].Z
-				if i := y*n + x; h > z[i] {
+				if i := y*W + x; h > z[i] {
 					z[i] = h
 				}
 			}
 		}
 	}
-	img := image.NewNRGBA(image.Rect(0, 0, n, n))
+	img := image.NewNRGBA(image.Rect(0, 0, W, H))
 	span := max(1, float64(p.hi-p.lo))
 	drawn := false
-	for y := 0; y < n; y++ {
-		for x := 0; x < n; x++ {
-			h := z[y*n+x]
+	for y := 0; y < H; y++ {
+		for x := 0; x < W; x++ {
+			h := z[y*W+x]
 			if math.IsInf(float64(h), -1) {
 				continue
 			}
@@ -113,10 +118,10 @@ func FloorTile(m uint32, gx, gy int, res float64) []byte {
 			// an edge: a neighbour that's empty or a floor over a yard away (a wall, a drop, a level above)
 			for _, d := range [][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
 				nx, ny := x+d[0], y+d[1]
-				if nx < 0 || ny < 0 || nx >= n || ny >= n {
+				if nx < 0 || ny < 0 || nx >= W || ny >= H {
 					continue
 				}
-				if o := z[ny*n+nx]; math.IsInf(float64(o), -1) || math.Abs(float64(o-h)) > 1 {
+				if o := z[ny*W+nx]; math.IsInf(float64(o), -1) || math.Abs(float64(o-h)) > 1 {
 					c = [3]float64{c[0] * 0.45, c[1] * 0.45, c[2] * 0.45}
 					break
 				}
