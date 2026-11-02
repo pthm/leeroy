@@ -47,6 +47,7 @@ type player struct {
 	agentStop *time.Timer   // stops the agent at agentEnd
 	tools     *toolDiagnostics
 	diagMu    sync.Mutex
+	metaMu    sync.Mutex // meta.json
 	diagSeq   uint64
 	diagInit  bool
 }
@@ -585,9 +586,12 @@ func (p *player) meta(spec config.Spec) {
 	p.mu.Lock()
 	p.version = version
 	p.mu.Unlock()
-	b, _ := json.Marshal(map[string]any{"agent": p.a.Name, "char": p.a.Char, "runtime": p.a.Runtime, "version": version,
-		"model": model, "effort": effort, "provider": p.a.Provider, "spec": spec.Title, "role": spec.Role, "goal": p.r.s.Goal, "port": p.port})
-	os.WriteFile(filepath.Join(p.dir, "meta.json"), b, 0o644)
+	p.updateMeta(func(m map[string]any) { // keeps sdk_rev (changes)
+		for k, v := range map[string]any{"agent": p.a.Name, "char": p.a.Char, "runtime": p.a.Runtime, "version": version,
+			"model": model, "effort": effort, "provider": p.a.Provider, "spec": spec.Title, "role": spec.Role, "goal": p.r.s.Goal, "port": p.port} {
+			m[k] = v
+		}
+	})
 	p.r.manifest(func(m *runfiles.Manifest) {
 		for i := range m.Players {
 			if m.Players[i].Agent == p.a.Name {

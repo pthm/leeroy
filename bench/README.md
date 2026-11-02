@@ -54,7 +54,7 @@ error) waits it out without losing clock time. Its character logs out at a safe 
 health and clear of every hostile's aggro range. During the logout the session fights back and cancels the countdown
 if attacked. Its judge's clock holds while it's away, and the provider is checked with a one-line prompt at growing
 intervals. When the provider answers, the character logs back in and the agent resumes, told how long it was away.
-Other players carry on. Each outage is recorded in `<run>/agents/<agent>/outages.jsonl` and in `supervisor.log`, and an outage longer
+Other players carry on. Each outage is recorded in `<run>/diagnostics/<agent>.jsonl` (kind `outage`: its class as `code`, `outcome`, the clock held as `duration_ms`) and alerted in `supervisor.log`, and an outage longer
 than two hours ends that player's run. Other errors, such as a used-up quota or failed authentication, are only
 reported.
 
@@ -115,7 +115,7 @@ Each character logs back in, its judge continues from its samples (same baseline
 count) and its agent's conversation is resumed (Claude `--resume <session id>`, Codex `exec resume <thread>`) with
 the message, where `$LEFT` is replaced with the minutes left. The workspaces' docs (`AGENTS.md`, the SDK docs and
 `example.lua`) are refreshed, so SDK and doc changes reach the agents. When the SDK revision (the last commit under
-`azeroth-sdk` or `bench/agent`, plus a hash of their uncommitted changes) differs from the one in `<agent>/sdk.rev`,
+`azeroth-sdk` or `bench/agent`, plus a hash of their uncommitted changes) differs from the one in `<agent>/meta.json` (`sdk_rev`),
 the message ends with a generated `WHAT CHANGED` section: the subjects of the commits since, and a line when there
 are uncommitted SDK changes (in a jj checkout git's `HEAD` is `@-`, so the working copy's changes count as uncommitted).
 Commit subjects are what agents read there, so they state what changed, not advice.
@@ -153,13 +153,11 @@ by agent name, game and judge files by character. Every JSONL line has `t`, unix
 | `agents/<agent>/transcript.jsonl` | the transcript in the runtime's own format: Claude's `stream-json`, Codex's `--json` events or opencode's, each stamped with a `timestamp` |
 | `agents/<agent>/trajectory.json` | the transcript as an [ATIF](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md) trajectory (`ATIF-v1.7`, with `golang.org/x/exp/eval/trajectory/atif`'s types), the same for every runtime: step 1 the task prompt, then each model turn's message, reasoning, tool calls with their results (`extra`: `ok`, `duration_ms`, `exit_code`), tokens and cost; `agent.version` the runtime's `--version`; `final_metrics` from the runtime's session logs. Rewritten at every stop ([trajectory](../azbench/trajectory/trajectory.go)) |
 | `agents/<agent>/prompt.md` | the task prompt |
-| `agents/<agent>/meta.json` | `agent`, `char`, `runtime`, `version` (the runtime's `--version` when the agent started), `model`, `effort`, `spec`, `role`, `goal`, `port`, as the runtime reported them |
+| `agents/<agent>/meta.json` | `agent`, `char`, `runtime`, `version` (the runtime's `--version` when the agent started), `model`, `effort`, `spec`, `role`, `goal`, `port`, as the runtime reported them; `sdk_rev`, the SDK revision its last start, resume or restart ran on (for `WHAT CHANGED`) |
 | `agents/<agent>/NOTES.md`, `*.md` | the agent's notes, copied from its workspace at every stop |
 | `agents/<agent>/usage.json` | each runtime session's token totals, from the runtime's own logs at every stop |
 | `agents/<agent>/codex-usage.jsonl` | Codex only: every request's `last_token_usage` and the account's `rate_limits`, with `timestamp` and `thread` |
-| `agents/<agent>/outages.jsonl` | provider outages waited out |
 | `agents/<agent>/tasks.json` | the Lua tasks running when its session last stopped |
-| `agents/<agent>/sdk.rev` | the SDK revision its last start, resume or restart ran on (for `WHAT CHANGED`) |
 | `agents/<agent>/kit.json` | the character's gear, talents and abilities when its run ended |
 | `game/<char>/events.jsonl` | the character's game log: the events its agent saw (combat, chat, loot, quests...) and its session's records beside them (state each second, pets, nearby creatures, transports, group changes, API calls); the judge, the report, publish and the viewer read it through `azbench/gamelog` ([format](../azview/README.md#game-log)) |
 | `game/<char>/session.log` | the character's client log, written as it runs (also in the workspace, where the agent reads its `log()` lines) |

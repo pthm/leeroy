@@ -2,6 +2,7 @@ package run
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -47,7 +48,7 @@ func sdkRev(repo string) (string, error) {
 
 // whatChanged is the section a resume or restart message ends with when the SDK revision moved from old to cur: the
 // subjects of the commits under sdkPaths since old, and a line for uncommitted changes. "" when nothing changed or
-// old is unknown (a run from before sdk.rev).
+// old is unknown (a run from before meta.json had it).
 func whatChanged(repo, old, cur string) string {
 	if old == "" || old == cur {
 		return ""
@@ -79,16 +80,32 @@ func whatChanged(repo, old, cur string) string {
 		strings.Join(lines, "\n") + "\n"
 }
 
-// changes records the SDK revision this session starts on in <agent>/sdk.rev and returns WHAT CHANGED since the one
-// recorded before. Per agent, not per run: a restart moves one agent to a new build while the others stay.
+// changes records the SDK revision this session starts on (meta.json's sdk_rev) and returns WHAT CHANGED since the
+// one recorded before. Per agent, not per run: a restart moves one agent to a new build while the others stay.
 func (p *player) changes() string {
 	cur, err := sdkRev(p.r.repo)
 	if err != nil {
 		p.logf("SDK revision: %v", err)
 		return ""
 	}
-	path := filepath.Join(p.dir, "sdk.rev")
-	old, _ := os.ReadFile(path)
-	os.WriteFile(path, []byte(cur+"\n"), 0o644)
-	return whatChanged(p.r.repo, strings.TrimSpace(string(old)), cur)
+	old := ""
+	p.updateMeta(func(m map[string]any) {
+		old, _ = m["sdk_rev"].(string)
+		m["sdk_rev"] = cur
+	})
+	return whatChanged(p.r.repo, old, cur)
+}
+
+// updateMeta changes meta.json (fn gets it, empty if there's none yet) under the player's meta lock.
+func (p *player) updateMeta(fn func(map[string]any)) {
+	p.metaMu.Lock()
+	defer p.metaMu.Unlock()
+	path := filepath.Join(p.dir, "meta.json")
+	m := map[string]any{}
+	if b, err := os.ReadFile(path); err == nil {
+		json.Unmarshal(b, &m)
+	}
+	fn(m)
+	b, _ := json.Marshal(m)
+	os.WriteFile(path, b, 0o644)
 }

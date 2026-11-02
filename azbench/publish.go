@@ -6,6 +6,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"github.com/pthm/leeroy/azeroth-sdk/types"
 	"math"
 	"os"
 	"path/filepath"
@@ -135,14 +136,7 @@ func publish(root, runDir, task, out string) (string, error) {
 				kitIcons(k, filepath.Join(out, "../../../public/icons"))
 				p["kit"] = k
 			}
-			if b, err := os.ReadFile(filepath.Join(adir, "outages.jsonl")); err == nil { // provider outages waited out
-				var outs []map[string]any
-				for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
-					var o map[string]any
-					if json.Unmarshal([]byte(line), &o) == nil {
-						outs = append(outs, o)
-					}
-				}
+			if outs := outages(f.Diagnostics(a.Name)); len(outs) > 0 { // provider outages waited out
 				p["outages"] = outs
 			}
 			if p["effort"] == nil || p["effort"] == "" || p["effort"] == "default" { // unrecorded, or read before Codex wrote it: its session says
@@ -374,6 +368,22 @@ func ownCasts(casts map[string]int, kit any) map[string]int {
 			continue
 		}
 		out[name] = n
+	}
+	return out
+}
+
+// outages: the provider outages an agent's diagnostics recorded (kind outage), as the website shows them.
+func outages(diag string) []map[string]any {
+	b, _ := os.ReadFile(diag)
+	var out []map[string]any
+	for _, l := range strings.Split(string(b), "\n") {
+		var d types.Diagnostic
+		if json.Unmarshal([]byte(l), &d) != nil || d.Kind != "outage" || d.Details.Outage == nil {
+			continue
+		}
+		o := d.Details.Outage
+		out = append(out, map[string]any{"why": d.Code, "start": time.UnixMilli(o.Start).Format(time.RFC3339), "held_s": d.DurationMS / 1000,
+			"safe_wait_s": o.SafeWaitMS / 1000, "probes": o.Probes, "outcome": d.Outcome})
 	}
 	return out
 }

@@ -6,7 +6,7 @@ package run
 // logOut fights off anything that attacks during the logout countdown), its judge's clock holds, and the provider is
 // probed with a one-line prompt at growing intervals. When the probe answers, the character logs back in and the
 // agent's conversation resumes, told how long it was away. The other players carry on throughout. Each outage is a
-// line in <run>/agents/<agent>/outages.jsonl and in supervisor.log; one that lasts longer than outageLimit ends the player's run
+// diagnostic (kind outage) and an alert in supervisor.log; one that lasts longer than outageLimit ends the player's run
 // (a give-up, "provider outage"), since its clock can't hold forever.
 
 import (
@@ -44,16 +44,20 @@ var (
 	safePoll      = 5 * time.Second
 )
 
-// outageRecord is one outage, for outages.jsonl and the website.
-type outageRecord struct {
-	Why       string  `json:"why"`
-	Start     string  `json:"start"`                // when the agent stopped
-	LoggedOut string  `json:"logged_out,omitempty"` // when the character left the world (the clock held from then)
-	End       string  `json:"end,omitempty"`        // when the agent was back
-	SafeWaitS float64 `json:"safe_wait_s"`          // how long it took to find a safe moment
-	HeldS     float64 `json:"held_s"`               // clock time not counted
-	Probes    int     `json:"probes"`               // provider checks until one answered
-	Outcome   string  `json:"outcome"`              // resumed, gave_up (too long), stopped (the run paused or ended)
+// outageCode classifies a runtime's outage error (its text stays out of the diagnostics): capacity, rate_limited,
+// server_error, timeout or network.
+func outageCode(why string) string {
+	for _, c := range []struct{ code, re string }{
+		{"capacity", `(?i)at capacity|overloaded|unavailable|\b529\b`},
+		{"rate_limited", `(?i)rate.?limit|too many requests|\b429\b`},
+		{"timeout", `(?i)timed? ?out|gateway timeout|\b504\b`},
+		{"network", `(?i)connection|network|econn|stream`},
+	} {
+		if regexp.MustCompile(c.re).MatchString(why) {
+			return c.code
+		}
+	}
+	return "server_error"
 }
 
 func (p *player) held() bool {
@@ -71,14 +75,10 @@ func (p *player) setHold(on bool) {
 // outage waits out a provider outage for p (see the top of the file). It runs in its own goroutine.
 func (p *player) outage(why string) {
 	r := p.r
-	rec := outageRecord{Why: why, Start: time.Now().Format(time.RFC3339)}
+	rec, outcome, held := types.DiagnosticOutage{Start: time.Now().UnixMilli()}, "", int64(0)
 	defer func() {
-		b, _ := json.Marshal(rec)
-		f, _ := os.OpenFile(filepath.Join(p.dir, "outages.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-		if f != nil {
-			f.Write(append(b, '\n'))
-			f.Close()
-		}
+		p.harnessEvent(types.Diagnostic{Kind: "outage", Code: outageCode(why), Outcome: outcome, DurationMS: held,
+			Details: types.DiagnosticDetails{Component: "agent", Outage: &rec}})
 	}()
 	r.alert(p, fmt.Sprintf("provider outage (%s): logging out at a safe moment, clock held until the provider answers", why))
 	p.runtimeState("supervisor", types.StatePause)
@@ -99,22 +99,22 @@ func (p *player) outage(why string) {
 		}
 		time.Sleep(safePoll)
 	}
-	rec.SafeWaitS = time.Since(t0).Round(time.Second).Seconds()
+	rec.SafeWaitMS = time.Since(t0).Milliseconds()
 	if r.ctx.Err() != nil {
-		rec.Outcome = "stopped"
+		outcome = "stopped"
 		return
 	}
 	p.stop() // the session logs out (logOut: fights back and retries if attacked during the countdown)
 	p.setHold(true)
 	heldAt := time.Now()
-	rec.LoggedOut = heldAt.Format(time.RFC3339)
-	defer func() { rec.HeldS = time.Since(heldAt).Round(time.Second).Seconds() }()
+	rec.LoggedOut = heldAt.UnixMilli()
+	defer func() { held = time.Since(heldAt).Milliseconds() }()
 
 	for i := 0; ; i++ {
 		wait := outageBackoff[min(i, len(outageBackoff)-1)]
 		if time.Since(heldAt)+wait > outageLimit {
 			p.setHold(false)
-			rec.Outcome = "gave_up"
+			outcome = "gave_up"
 			// the judge ends the player's run unmet at its next poll
 			b, _ := json.Marshal(map[string]any{"reason": "provider outage: " + why, "at": time.Now().UTC().Format(time.RFC3339)})
 			os.WriteFile(tools.GiveUpFile(r.f().Board(), p.a.Char), b, 0o644)
@@ -124,7 +124,7 @@ func (p *player) outage(why string) {
 		select {
 		case <-r.ctx.Done():
 			p.setHold(false)
-			rec.Outcome = "stopped"
+			outcome = "stopped"
 			return
 		case <-time.After(wait):
 		}
@@ -142,7 +142,7 @@ func (p *player) outage(why string) {
 	}
 	if err := p.login(r.ctx); err != nil {
 		p.setHold(false)
-		rec.Outcome = "stopped"
+		outcome = "stopped"
 		r.alert(p, "outage: login failed: "+err.Error())
 		return
 	}
@@ -154,11 +154,11 @@ func (p *player) outage(why string) {
 		"%.0f minutes are left. Your scripts didn't survive the logout: start what you need again. Carry on.",
 		why, away.Minutes(), left.Minutes())
 	if err := p.startAgent(msg+p.restored(), p.conversation(), time.Now().Add(left)); err != nil {
-		rec.Outcome = "stopped"
+		outcome = "stopped"
 		r.alert(p, "outage: agent not resumed: "+err.Error())
 		return
 	}
-	rec.Outcome, rec.End = "resumed", time.Now().Format(time.RFC3339)
+	outcome, rec.End = "resumed", time.Now().UnixMilli()
 	r.alert(p, fmt.Sprintf("provider back after %.0f min (clock held %.0f min): resumed, %.0f min left", time.Since(t0).Minutes(), away.Minutes(), left.Minutes()))
 }
 

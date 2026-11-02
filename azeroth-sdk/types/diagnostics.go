@@ -58,6 +58,7 @@ type DiagnosticDetails struct {
 	Movement *MovementOwner   `json:"movement,omitempty"`
 
 	Gear          *DiagnosticGear        `json:"gear,omitempty"`
+	Outage        *DiagnosticOutage      `json:"outage,omitempty"`
 	Target        string                 `json:"target,omitempty"`
 	Destination   *DiagnosticDestination `json:"destination,omitempty"`
 	SpellID       uint32                 `json:"spell_id,omitempty"`
@@ -122,6 +123,16 @@ type DiagnosticDestination struct {
 }
 
 // DiagnosticGear reports observed equipment condition, not a repair plan.
+// DiagnosticOutage is a provider outage the harness waited out, written when it ends (kind outage: code its class,
+// outcome resumed, gave_up or stopped, duration_ms the clock held). Times are unix ms.
+type DiagnosticOutage struct {
+	Start      int64 `json:"start"`                // the agent stopped
+	LoggedOut  int64 `json:"logged_out,omitempty"` // the character left the world: the clock held from then
+	End        int64 `json:"end,omitempty"`        // the agent was back
+	SafeWaitMS int64 `json:"safe_wait_ms"`         // finding a safe moment to log out
+	Probes     int   `json:"probes"`               // provider checks until one answered
+}
+
 type DiagnosticGear struct {
 	Money          uint32   `json:"money"`
 	MainHandBroken bool     `json:"main_hand_broken"`
