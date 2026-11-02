@@ -14,6 +14,7 @@ package trajectory
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/json"
 	"os"
 	"strings"
@@ -30,6 +31,7 @@ const Version = "ATIF-v1.7"
 type Info struct {
 	Agent, Char     string
 	Runtime         string // claude, codex, opencode
+	Version         string // the runtime's version (its --version); else what the transcript says (Claude Code's)
 	Model, Provider string
 	Effort          string
 	Prompt          string // the task prompt: step 1
@@ -246,7 +248,7 @@ func Read(transcript string, info Info) (*atif.Trajectory, error) {
 		return nil, err
 	}
 	defer f.Close()
-	t := &atif.Trajectory{SchemaVersion: Version, Agent: atif.Agent{Name: runtimeNames[info.Runtime], Version: "unknown",
+	t := &atif.Trajectory{SchemaVersion: Version, Agent: atif.Agent{Name: runtimeNames[info.Runtime], Version: cmp.Or(info.Version, "unknown"),
 		ModelName: info.Model, Extra: map[string]any{"agent": info.Agent, "character": info.Char, "runtime": info.Runtime}},
 		Notes: "Converted by azbench from the " + info.Runtime + " transcript (agents/<agent>/transcript.jsonl)."}
 	if info.Effort != "" {
@@ -278,7 +280,7 @@ func Read(transcript string, info Info) (*atif.Trajectory, error) {
 			if len(sessions) == 0 || sessions[len(sessions)-1] != l.SessionID {
 				sessions = append(sessions, l.SessionID)
 			}
-			if l.Version != "" {
+			if l.Version != "" && info.Version == "" {
 				t.Agent.Version = l.Version
 			}
 		case l.Message != nil && l.Type == "assistant": // Claude: a model response, over one or more lines

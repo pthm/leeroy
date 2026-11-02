@@ -39,3 +39,15 @@ func TestPrompt(t *testing.T) {
 	}
 	t.Log("\n" + text)
 }
+
+// each runtime's --version, as its version number
+func TestCLIVersion(t *testing.T) {
+	for in, want := range map[string]string{"2.1.292 (Claude Code)\n": "2.1.292", "codex-cli 0.165.0\n": "0.165.0", "1.18.22\n": "1.18.22"} {
+		if got := versionRe.FindString(in); got != want {
+			t.Errorf("%q: %q, want %q", in, got, want)
+		}
+	}
+	if cliVersion("none") != "" {
+		t.Error("runtime none has no version")
+	}
+}

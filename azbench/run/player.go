@@ -21,6 +21,7 @@ import (
 
 	"github.com/pthm/leeroy/azbench/config"
 	"github.com/pthm/leeroy/azbench/judge"
+	"github.com/pthm/leeroy/azbench/runfiles"
 	"github.com/pthm/leeroy/azbench/trajectory"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
@@ -31,7 +32,8 @@ type player struct {
 	a           config.Agent
 	race, class int
 	port        int
-	ws, dir     string // workspace (bench/workspaces/<name>), its files in the run (<run>/<name>)
+	ws, dir     string // workspace (bench/workspaces/<name>), its files in the run (<run>/agents/<name>)
+	version     string // the runtime's (cliVersion), once meta has read it
 
 	mu        sync.Mutex
 	state     string // starting, ready, playing, done, paused, failed
@@ -424,7 +426,7 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 		}
 		prompt, _ := os.ReadFile(filepath.Join(p.dir, "prompt.md"))
 		if err := trajectory.Write(filepath.Join(p.dir, "transcript.jsonl"), filepath.Join(p.dir, "trajectory.json"), trajectory.Info{
-			Agent: p.a.Name, Char: p.a.Char, Runtime: p.a.Runtime, Model: p.a.Model, Provider: p.a.Provider, Effort: p.a.Effort,
+			Agent: p.a.Name, Char: p.a.Char, Runtime: p.a.Runtime, Version: p.cliVersionNow(), Model: p.a.Model, Provider: p.a.Provider, Effort: p.a.Effort,
 			Prompt: string(prompt), Usage: filepath.Join(p.dir, "usage.json")}); err != nil {
 			p.logf("trajectory: %v", err)
 		}
@@ -579,9 +581,46 @@ func (p *player) meta(spec config.Spec) {
 		}
 		effort = DetectEffort(p.a.Runtime, filepath.Join(p.dir, "transcript.jsonl"))
 	}
-	b, _ := json.Marshal(map[string]any{"agent": p.a.Name, "char": p.a.Char, "runtime": p.a.Runtime, "model": model,
-		"effort": effort, "provider": p.a.Provider, "spec": spec.Title, "role": spec.Role, "goal": p.r.s.Goal, "port": p.port})
+	version := cliVersion(p.a.Runtime)
+	p.mu.Lock()
+	p.version = version
+	p.mu.Unlock()
+	b, _ := json.Marshal(map[string]any{"agent": p.a.Name, "char": p.a.Char, "runtime": p.a.Runtime, "version": version,
+		"model": model, "effort": effort, "provider": p.a.Provider, "spec": spec.Title, "role": spec.Role, "goal": p.r.s.Goal, "port": p.port})
 	os.WriteFile(filepath.Join(p.dir, "meta.json"), b, 0o644)
+	p.r.manifest(func(m *runfiles.Manifest) {
+		for i := range m.Players {
+			if m.Players[i].Agent == p.a.Name {
+				m.Players[i].Version = version
+			}
+		}
+	})
+}
+
+var versionRe = regexp.MustCompile(`\d+\.\d+(\.\d+)?`)
+
+// cliVersionNow: the version meta read, else read now (a stop before meta finished)
+func (p *player) cliVersionNow() string {
+	p.mu.Lock()
+	v := p.version
+	p.mu.Unlock()
+	if v == "" {
+		v = cliVersion(p.a.Runtime)
+	}
+	return v
+}
+
+// cliVersion: the runtime's version, from its --version ("2.1.292 (Claude Code)", "codex-cli 0.165.0", "1.18.22");
+// "" for none or unreadable.
+func cliVersion(runtime string) string {
+	if runtime == "none" || runtime == "" {
+		return ""
+	}
+	out, err := exec.Command(runtime, "--version").Output()
+	if err != nil {
+		return ""
+	}
+	return versionRe.FindString(string(out))
 }
 
 // DetectEffort is the reasoning effort a runtime used when none was set: Codex writes it in its session file

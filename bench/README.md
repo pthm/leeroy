@@ -146,14 +146,14 @@ by agent name, game and judge files by character. Every JSONL line has `t`, unix
 
 | Path | |
 |---|---|
-| `run.json` | the manifest: task, run name, benchmark version, SDK revision, goal, minutes, the players (agent, character, race, class, spec, runtime, model, effort, kit), when the clock started and the run ended, its pauses, and its status (`starting`, `running`, `paused`, `finished`) |
+| `run.json` | the manifest: task, run name, benchmark version, SDK revision, goal, minutes, the players (agent, character, race, class, spec, runtime and its version, model, effort, kit), when the clock started and the run ended, its pauses, and its status (`starting`, `running`, `paused`, `finished`) |
 | `scenario.yaml` | the run as made from its task (the notice inlined); `resume` reads it |
 | `preflight.json` | what the world looked like for the task before the start ([tasks](tasks/README.md#preflight)) |
 | `supervisor.log` | everything the supervisor printed, dated; `ALERT` lines are agents and sessions that stopped early, outages, give-ups and the Codex quota's alerts |
 | `agents/<agent>/transcript.jsonl` | the transcript in the runtime's own format: Claude's `stream-json`, Codex's `--json` events or opencode's, each stamped with a `timestamp` |
-| `agents/<agent>/trajectory.json` | the transcript as an [ATIF](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md) trajectory (`ATIF-v1.7`, with `golang.org/x/exp/eval/trajectory/atif`'s types), the same for every runtime: step 1 the task prompt, then each model turn's message, reasoning, tool calls with their results (`extra`: `ok`, `duration_ms`, `exit_code`), tokens and cost; `final_metrics` from the runtime's session logs. Rewritten at every stop ([trajectory](../azbench/trajectory/trajectory.go)) |
+| `agents/<agent>/trajectory.json` | the transcript as an [ATIF](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md) trajectory (`ATIF-v1.7`, with `golang.org/x/exp/eval/trajectory/atif`'s types), the same for every runtime: step 1 the task prompt, then each model turn's message, reasoning, tool calls with their results (`extra`: `ok`, `duration_ms`, `exit_code`), tokens and cost; `agent.version` the runtime's `--version`; `final_metrics` from the runtime's session logs. Rewritten at every stop ([trajectory](../azbench/trajectory/trajectory.go)) |
 | `agents/<agent>/prompt.md` | the task prompt |
-| `agents/<agent>/meta.json` | `agent`, `char`, `runtime`, `model`, `effort`, `spec`, `role`, `goal`, `port`, as the runtime reported them |
+| `agents/<agent>/meta.json` | `agent`, `char`, `runtime`, `version` (the runtime's `--version` when the agent started), `model`, `effort`, `spec`, `role`, `goal`, `port`, as the runtime reported them |
 | `agents/<agent>/NOTES.md`, `*.md` | the agent's notes, copied from its workspace at every stop |
 | `agents/<agent>/usage.json` | each runtime session's token totals, from the runtime's own logs at every stop |
 | `agents/<agent>/codex-usage.jsonl` | Codex only: every request's `last_token_usage` and the account's `rate_limits`, with `timestamp` and `thread` |

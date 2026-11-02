@@ -92,6 +92,7 @@ type Player struct {
 	Class   string `json:"class"`
 	Spec    string `json:"spec,omitempty"`
 	Runtime string `json:"runtime"`
+	Version string `json:"version,omitempty"` // the runtime's, its --version when the agent started
 	Model   string `json:"model,omitempty"`
 	Effort  string `json:"effort,omitempty"`
 	Kit     string `json:"kit,omitempty"` // a starting kit's level, as "level 60", when it had one
