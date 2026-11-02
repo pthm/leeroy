@@ -346,6 +346,12 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 	}
 	p.setState(types.JudgeDone)
 	p.logf("done: %s", j.line)
+	var out struct {
+		GaveUp string `json:"gave_up"`
+	}
+	if json.Unmarshal(j.line, &out) == nil && out.GaveUp != "" {
+		r.alert(p, "gave up: "+out.GaveUp)
+	}
 	if j.met {
 		r.wrapUp(p, time.Duration(r.s.WrapUpMinutes)*time.Minute)
 	}

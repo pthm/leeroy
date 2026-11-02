@@ -40,6 +40,7 @@ Which topic file to open:
 - **`wow`**: the game. It runs Lua in your session and prints the result as JSON (`{"error": ...}` on failure).
 - **`azworld`**: the world's static data: where things are, what drops what, who gives which quest (azworld.md).
 - **`standings`**: the score: every player's score, rates and level in this run, and the minutes left.
+  `standings give-up "<why>"` ends your run, the goal not met, if you conclude it can't be reached.
 
 ```sh
 wow 'return me.level(), me.health()'             # query -> {"result":[3,{"current":72,"max":72}], "events": {...}}

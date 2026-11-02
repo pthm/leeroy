@@ -39,6 +39,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/pthm/leeroy/azbench/tools"
 	"github.com/pthm/leeroy/azeroth-sdk/metrics"
 	"math"
 	"os"
@@ -290,6 +291,13 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 			score = timeScore(value >= need, elapsedS)
 		}
 		died := o.Hardcore && sig.get("deaths") > base["deaths"]
+		var gaveUp map[string]any // standings give-up: the agent's reason, and when
+		if board != "" {
+			if b, err := os.ReadFile(tools.GiveUpFile(board, char)); err == nil {
+				gaveUp = map[string]any{}
+				json.Unmarshal(b, &gaveUp)
+			}
+		}
 		if o.Hardcore && !binaryGoal(goal) {
 			score = round1(value / timeout.Hours())
 		}
@@ -329,13 +337,16 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		if record != "" {
 			appendLine(record, append(obj{{"t", nowMs()}, {"ev", "score"}, {"n", char}, {"value", value}, {"level", level}}, rates...))
 		}
-		if value >= need || died || nowMs()-start > timeout.Milliseconds() {
+		if value >= need || died || gaveUp != nil || nowMs()-start > timeout.Milliseconds() {
 			res := obj{{"char", char}, {"goal", goal}, {"met", value >= need}}
 			if runtime != "" {
 				res = append(res, kv{"runtime", runtime})
 			}
 			if o.Hardcore {
 				res = append(res, kv{"died", died})
+			}
+			if gaveUp != nil && value < need {
+				res = append(res, kv{"gave_up", gaveUp["reason"]})
 			}
 			var ttg any // null when unmet
 			if value >= need {

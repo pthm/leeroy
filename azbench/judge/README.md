@@ -58,6 +58,7 @@ n and read the value at timeout.
 | `--events <file>` | the character's event stream (`azsdk -events`); its combat totals, and cooperation from every `<Char>.events.jsonl` beside it, go on the board |
 | `--role <DPS\|Tank\|Healer>` | added to the board |
 | `--runtime <name>` | added to the board and the result |
+| (giving up) | with `--board`, an agent's `standings give-up "<why>"` (a `<Char>.gaveup` file beside its board file) ends the run unmet at the next poll, with `gave_up` (the reason) in the result |
 | `--hardcore` | the first death (the `deaths` signal rising) ends the run unmet, with `died` in the result; non-binary goals score value / the whole clock's hours, so dying early doesn't keep a high rate |
 | `--resume <samples.jsonl>` | continue a paused run: same baseline and curve, and the clock resumes at the last sample |
 

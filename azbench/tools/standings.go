@@ -1,12 +1,15 @@
 package tools
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/pthm/leeroy/azeroth-sdk/jqjson"
 	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+	"time"
 )
 
 const standingsUsage = `standings: where everyone in this run stands, best score first (score = (overall rate + best 15-min rate) / 2,
@@ -15,6 +18,9 @@ the faction: the sum over all players. role, damage_dealt, damage_taken and heal
 plays their role; assist_share (how much of your useful hits and heals also paid a teammate: shared kills, heals
 on others) and contested_hits (hits on mobs whose XP went to someone outside your party) how you cooperate. All
 reported, not scored. minutes_left on the faction line is the time left in the run.
+
+standings give-up "<why>": end your run: you've concluded the goal can't be reached. The judge records it (the goal
+not met) within 15 s and your session and agent stop. Without it, the run goes on until the goal or the clock.
 `
 
 // Standings prints every judge's latest board entry, best score first, then the faction line.
@@ -29,6 +35,9 @@ func Standings(args []string) int {
 		return 1
 	}
 	me := os.Getenv("WOWBENCH_CHAR")
+	if len(args) > 0 && args[0] == "give-up" {
+		return giveUp(b, me, args[1:])
+	}
 	files, _ := filepath.Glob(filepath.Join(b, "*.json"))
 	var all []byte
 	for _, f := range files {
@@ -83,5 +92,23 @@ func Standings(args []string) int {
 	f.Set("progress", sum("progress"))
 	f.Set("recent_rate", sum("recent_rate"))
 	fmt.Println(jqjson.Compact(f))
+	return 0
+}
+
+// GiveUpFile is where standings give-up leaves an agent's reason for the judge (beside its board file).
+func GiveUpFile(board, char string) string { return filepath.Join(board, char+".gaveup") }
+
+func giveUp(board, me string, args []string) int {
+	why := strings.TrimSpace(strings.Join(args, " "))
+	if me == "" || why == "" {
+		fmt.Fprintln(os.Stderr, `standings give-up "<why>": say why the goal can't be reached`)
+		return 1
+	}
+	b, _ := json.Marshal(map[string]any{"reason": why, "at": time.Now().UTC().Format(time.RFC3339)})
+	if err := os.WriteFile(GiveUpFile(board, me), b, 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "standings give-up: %v\n", err)
+		return 2
+	}
+	fmt.Println("given up: the judge records it within 15 s (the goal not met), then your session and agent stop")
 	return 0
 }
