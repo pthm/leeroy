@@ -38,8 +38,9 @@ func squareTris(m uint32, gx, gy int) [][3]pathfinding.Point3D {
 	return t
 }
 
-// NavVersion changes when navmesh tiles do (2: the deeper colour range, 3: tunnels keep their colour), so browsers don't keep old ones.
-const NavVersion = 3
+// NavVersion changes when navmesh tiles do (2: the deeper colour range, 3: tunnels keep their colour, 4: the SDK's 50 degree
+// navmesh), so browsers don't keep old ones.
+const NavVersion = 4
 
 // navStops: a floor's colour by its height over the terrain, yd: sandstone above, grey at the ground, and below it
 // slate blue, indigo, violet and purple, so a mine's levels tell apart down to 50 yd.

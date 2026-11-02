@@ -53,8 +53,8 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   `data.to_map`). Support is sampled at most every 0.25 yards;
   physical heights come from nearby terrain and movement-mask WMO/M2 rays. Overhead terrain does
   not replace a cave floor. Final body segments use continuous capsule sweeps against indexed triangles.
-  The default standing profile is radius 0.3, height 2.03128, step 1.4 yards and maximum slope 60 degrees:
-  it climbs what the server's navmesh climbs (1.6 yards, 60 degrees) as far as a body that tall allows.
+  The default standing profile is radius 0.3, height 2.03128, step 1.4 yards and maximum slope 50 degrees:
+  it climbs what the navmesh climbs (1.6 yards; 50 degrees, as the game client allows a player) as far as a body that tall allows.
   This is a fixed walking profile; mount/shape-specific dimensions and dynamic collision are not modeled.
 - Routes jump what the navmesh climbs but a step can't (a 1.5 yard fence rail): when walking and the bounded
   repairs below fail, preparation looks for a jump from up to 4 yards back, on the client's own jump (1.64 yards

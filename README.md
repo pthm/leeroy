@@ -103,6 +103,16 @@ mkdir -p data/dbc && docker run --rm -v server_ac-client-data:/src:ro -v $PWD/da
    SpellRange.dbc SpellDuration.dbc SpellRadius.dbc SpellDescriptionVariables.dbc AreaTrigger.dbc Talent.dbc TalentTab.dbc TaxiNodes.dbc TaxiPath.dbc TaxiPathNode.dbc SkillLine.dbc SkillLineAbility.dbc Lock.dbc /dst/dbc/'
 ./build.sh && bin/azworld setup   # wowbench schema: achievements, areas, spawn zones, faction hostility, spells
 
+# the SDK's navmesh: the server's is built for creatures (60 degree slopes); players walk 50 degrees at most, so the
+# SDK gets its own (about 15 minutes on 12 cores). Leave the server's alone: it's how creatures path
+docker compose -f server/azerothcore/docker-compose.yml --profile tools build ac-tools
+mkdir -p data/mmaps50 && sed 's/^    walkableSlopeAngle: 60$/    walkableSlopeAngle: 50/' \
+  server/azerothcore/src/tools/mmaps_generator/mmaps-config.yaml > data/mmaps50/mmaps-config.yaml
+docker run --rm -v $PWD/data/maps:/work/maps:ro -v $PWD/data/vmaps:/work/vmaps:ro -v $PWD/data/mmaps50:/work/mmaps \
+  -w /work --entrypoint /azerothcore/env/dist/bin/mmaps_generator acore/ac-wotlk-tools:master \
+  --config /work/mmaps/mmaps-config.yaml --threads 10 --silent
+rm -r data/mmaps && mv data/mmaps50 data/mmaps   # never under a running session: they load tiles as they go
+
 # optional, from a 3.3.5a game install, into data/ (nothing reads the install afterwards): the game's minimap (viewer
 # and `azworld map`), its road textures (`azworld route`) and the terrain and model files the viewer's zoomed-in map
 # draws; ~5 GB for every continent, about 30 s (-maps 0 for Eastern Kingdoms only: ~1 GB)
