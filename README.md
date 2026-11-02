@@ -117,6 +117,7 @@ rm -r data/mmaps && mv data/mmaps50 data/mmaps   # never under a running session
 # and `azworld map`), its road textures (`azworld route`) and the terrain and model files the viewer's zoomed-in map
 # draws; ~5 GB for every continent, about 30 s (-maps 0 for Eastern Kingdoms only: ~1 GB)
 go run ./azeroth-sdk/cmd/clientdata -client <your 3.3.5a game dir> extract data
+go run ./azeroth-sdk/cmd/clientdata roads data   # the road layers again from data/client, after the road rules change (no install needed)
 
 # every tool, into bin/ (azbench run does this too)
 ./build.sh

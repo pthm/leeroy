@@ -455,7 +455,7 @@ function drawRoads(w, h) {
   cx.imageSmoothingEnabled = true;
   for (let gx = Math.max(0, g(xa)); gx <= Math.min(63, g(xb)); gx++) for (let gy = Math.max(0, g(ya)); gy <= Math.min(63, g(yb)); gy++) {
     const key = `${M.id}/${gx}/${gy}`;
-    if (!roadTiles.has(key)) { const im = new Image(); im.onload = () => (dirty = true); im.src = `roads/${key}`; roadTiles.set(key, im); }
+    if (!roadTiles.has(key)) { const im = new Image(); im.onload = () => (dirty = true); im.src = `roads/${key}?v=2`; roadTiles.set(key, im); } // v: the road rasters' version (2: more road textures, bridges)
     const im = roadTiles.get(key);
     if (im.complete && im.naturalWidth) { const [sx, sy] = scr(GRID * (32 - gx), GRID * (32 - gy)); cx.globalAlpha = 0.8; cx.drawImage(im, sx, sy, size + 0.5, size + 0.5); cx.globalAlpha = 1; }
     if (!patrolPaths.has(key)) { patrolPaths.set(key, []); fetch(`patrols?m=${M.id}&gx=${gx}&gy=${gy}`).then((r) => r.json()).then((p) => { patrolPaths.set(key, p); dirty = true; }).catch(() => {}); }

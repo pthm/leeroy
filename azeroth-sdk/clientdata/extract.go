@@ -5,18 +5,31 @@ import (
 	"bytes"
 	"fmt"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
 )
 
 // Maps: the continents (map id -> the client's directory name).
 var Maps = map[int]string{0: "Azeroth", 1: "Kalimdor", 530: "Expansion01", 571: "Northrend"}
 
-// RoadTexture: ground textures that are roads or paved paths (cobblestone streets, stone and dirt roads, brick).
-var RoadTexture = regexp.MustCompile(`(?i)(road|cobble|brick)`)
+// RoadTexture: ground textures that are roads or paved paths (cobblestone streets, stone and dirt roads, brick), and
+// the ones a zone paints its roads with under another name (found by their shape: long thin strips): Ghostlands'
+// path, Hellfire's Path of Glory (bones), Winterspring's roads (its dirt), Tanaris's trails (footprints).
+var RoadTexture = regexp.MustCompile(`(?i)(road|cobble|brick|ghostlandspath|outlandbones|winterspringdirt|tanarisdirtfootprint)`)
+
+// notRoad: textures RoadTexture matches that aren't roads: gravel verges, and the brick of Ahn'Qiraj's plazas
+var notRoad = regexp.MustCompile(`(?i)(gravel|burningsteppsbrick01)`)
+
+// roadModel: models that carry roads over water and chasms (no ground texture there), drawn into the road rasters;
+// not the bricks, lamps, braziers and statues named after bridges
+var roadModel = regexp.MustCompile(`(?i)bridge`)
+var notRoadModel = regexp.MustCompile(`(?i)(brick|brazier|lantern|statue|lamp|teleporter)`)
 
 // Minimap writes <out>/<map id>/<gx>_<gy>.png: the client's minimap image of each 533-yard grid square (gx from x,
 // gy from y, as the server's .map files), north up.
@@ -69,7 +82,10 @@ const RoadCells = 128
 // Roads writes <out>/<map id>/<gx>_<gy>.bin for every square with roads: RoadCells x RoadCells bytes, row-major from
 // the north-west corner (row = x falling, column = y falling, as the minimap), each the share of the cell covered by
 // road textures (0-255).
-func (c *Client) Roads(mapID int, out string) (int, error) {
+func (c *Client) Roads(mapID int, out string) (int, error) { return Roads(c, mapID, out) }
+
+// Roads is Client.Roads from any source of game files (an install, or an extracted Dir).
+func Roads(c Source, mapID int, out string) (int, error) {
 	dir := Maps[mapID]
 	big := false
 	if wdt, err := c.Read(fmt.Sprintf(`World\Maps\%s\%s.wdt`, dir, dir)); err == nil && len(wdt) >= 24 {
@@ -92,12 +108,9 @@ func (c *Client) Roads(mapID int, out string) (int, error) {
 		}
 		roadTex := map[uint32]bool{}
 		for t, n := range a.Textures {
-			if RoadTexture.MatchString(n) && !strings.Contains(strings.ToLower(n), "gravel") {
+			if RoadTexture.MatchString(n) && !notRoad.MatchString(n) {
 				roadTex[uint32(t)] = true
 			}
-		}
-		if len(roadTex) == 0 {
-			return nil
 		}
 		// 1024x1024 alpha points per square (16 chunks x 64), averaged into RoadCells cells
 		const per = 1024 / RoadCells
@@ -126,12 +139,15 @@ func (c *Client) Roads(mapID int, out string) (int, error) {
 				}
 			}
 		}
-		if !any {
-			return nil
-		}
 		cells := make([]byte, RoadCells*RoadCells)
 		for k, s := range sum {
 			cells[k] = byte(min(255, s/(per*per)))
+		}
+		if bridges(c, a, gx, gy, cells) {
+			any = true
+		}
+		if !any {
+			return nil
 		}
 		mu.Lock()
 		written++
@@ -170,4 +186,68 @@ func parallel(n int, fn func(i int) error) (int, error) {
 	close(work)
 	wg.Wait()
 	return done, first
+}
+
+// bridges draws the walkable deck of every bridge placed in square gx, gy into its road cells (full cover): the
+// near-flat triangles (normal within 45 degrees of up) of the model, placed. True if it drew any.
+func bridges(c Source, a *ADT, gx, gy int, cells []byte) bool {
+	const size = 533.33333
+	cell := size / RoadCells
+	x0, y0 := size*float64(32-gx), size*float64(32-gy) // the square's north-west corner (x and y fall from it)
+	drew := false
+	for k, list := range [2][]Placement{a.WMOs, a.Models} {
+		for _, pl := range list {
+			if !roadModel.MatchString(pl.Name) || notRoadModel.MatchString(pl.Name) {
+				continue
+			}
+			var m *Model
+			var err error
+			if k == 0 {
+				m, err = LoadWMO(c, pl.Name)
+			} else {
+				m, err = LoadM2(c, pl.Name)
+			}
+			if err != nil || m == nil {
+				continue
+			}
+			tw := pathfinding.PlacementWorld(pl.Pos, pl.Rot, pl.Scale)
+			w := make([][3]float64, len(m.Verts))
+			for i, v := range m.Verts {
+				p := tw(pathfinding.Vector3{X: v[0], Y: v[1], Z: v[2]})
+				w[i] = [3]float64{float64(p.X), float64(p.Y), float64(p.Z)}
+			}
+			for _, t := range m.Tris {
+				p, q, r := w[t[0]], w[t[1]], w[t[2]]
+				ux, uy, uz := q[0]-p[0], q[1]-p[1], q[2]-p[2]
+				vx, vy, vz := r[0]-p[0], r[1]-p[1], r[2]-p[2]
+				nx, ny, nz := uy*vz-uz*vy, uz*vx-ux*vz, ux*vy-uy*vx
+				if l := math.Sqrt(nx*nx + ny*ny + nz*nz); l == 0 || math.Abs(nz)/l < 0.7 {
+					continue // a wall, a railing's side
+				}
+				// the cells whose centres the triangle covers (rows from x, columns from y)
+				rmin := int(math.Floor((x0 - max(p[0], q[0], r[0])) / cell))
+				rmax := int(math.Ceil((x0 - min(p[0], q[0], r[0])) / cell))
+				cmin := int(math.Floor((y0 - max(p[1], q[1], r[1])) / cell))
+				cmax := int(math.Ceil((y0 - min(p[1], q[1], r[1])) / cell))
+				for row := max(0, rmin); row <= min(RoadCells-1, rmax); row++ {
+					for col := max(0, cmin); col <= min(RoadCells-1, cmax); col++ {
+						x, y := x0-(float64(row)+0.5)*cell, y0-(float64(col)+0.5)*cell
+						if inTriangle(x, y, p, q, r) {
+							cells[row*RoadCells+col] = 255
+							drew = true
+						}
+					}
+				}
+			}
+		}
+	}
+	return drew
+}
+
+func inTriangle(x, y float64, a, b, c [3]float64) bool {
+	d1 := (x-b[0])*(a[1]-b[1]) - (a[0]-b[0])*(y-b[1])
+	d2 := (x-c[0])*(b[1]-c[1]) - (b[0]-c[0])*(y-c[1])
+	d3 := (x-a[0])*(c[1]-a[1]) - (c[0]-a[0])*(y-a[1])
+	neg, pos := d1 < 0 || d2 < 0 || d3 < 0, d1 > 0 || d2 > 0 || d3 > 0
+	return !(neg && pos)
 }

@@ -5,6 +5,7 @@
 //	clientdata -client <game dir> extract data             every continent
 //	clientdata -client <game dir> -maps 0 extract data      Eastern Kingdoms only
 //	clientdata -client <game dir> cat 'textures\Minimap\md5translate.trs'
+//	clientdata roads data                                   the road layers again, from data/client (no install)
 package main
 
 import (
@@ -25,6 +26,21 @@ func main() {
 	dir := flag.String("client", os.Getenv("WOW_CLIENT"), "the game install (contains Data/); default $WOW_CLIENT")
 	mapsFlag := flag.String("maps", "", "extract: the continents' map ids, comma separated (0,1,530,571); default all")
 	flag.Parse()
+	if flag.Arg(0) == "roads" { // roads <data dir>: rebuild <data dir>/roads from the extracted files in <data dir>/client
+		data := flag.Arg(1)
+		src := clientdata.Dir(filepath.Join(data, "client"))
+		if data == "" || !src.Has() {
+			log.Fatal("clientdata roads <data dir>: needs <data dir>/client from an extract")
+		}
+		for _, id := range []int{0, 1, 530, 571} {
+			n, err := clientdata.Roads(src, id, filepath.Join(data, "roads"))
+			if err != nil {
+				log.Fatal(err)
+			}
+			log.Printf("map %d: %d squares with roads", id, n)
+		}
+		return
+	}
 	if *dir == "" {
 		log.Fatal("clientdata: -client <game dir> (or $WOW_CLIENT): a World of Warcraft 3.3.5a install")
 	}
