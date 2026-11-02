@@ -33,6 +33,7 @@ export interface Player {
   combat?: { damage_dealt: number; damage_taken: number; healing_done: number; kills: number };
   think_median_s?: number;
   // provider outages waited out with the clock held (azbench run outage.go)
+  clock_h?: number; // hardcore: the run's whole clock, hours (set on load), which XP per hour divides by
   outages?: { why: string; start: string; held_s: number; safe_wait_s: number; probes: number; outcome: string }[];
 }
 
@@ -127,6 +128,8 @@ export const TASKS: Record<string, { title: string; short: string; summary: stri
 const runs: Run[] = Object.values(
   import.meta.glob<Run>('../data/runs/*.json', { eager: true, import: 'default' }),
 ).sort((a, b) => a.started.localeCompare(b.started));
+// hardcore scores XP over the whole clock, so an early death keeps a low rate: XP per hour divides by it there
+for (const r of runs) if (r.hardcore) for (const p of r.players) p.clock_h = r.minutes / 60;
 
 // Benchmark versions (bench/versions.yaml, copied by azbench publish). Results from different versions aren't
 // compared: every list below takes a version, or 'all'.
@@ -160,7 +163,7 @@ export const isProgress = (task: string) => runsOf(task)[0]?.goal.startsWith('sc
 export function xpRate(p: Player): number | undefined {
   const s = p.series;
   if (!s || s.length < 2 || s.at(-1)![0] <= 0 || s[0][2] < 0) return undefined; // -1: not recorded (the first runs)
-  return (s.at(-1)![2] - s[0][2]) / (s.at(-1)![0] / 3600);
+  return (s.at(-1)![2] - s[0][2]) / (p.clock_h ?? s.at(-1)![0] / 3600);
 }
 export const levelsGained = (p: Player) => (p.series?.length ? p.series.at(-1)![1] - p.series[0][1] : undefined);
 export const rate = (v?: number) => (v == null ? '–' : `${Math.round(v).toLocaleString('en')} XP/h`);
