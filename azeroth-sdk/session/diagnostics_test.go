@@ -13,14 +13,14 @@ import (
 
 func TestHelperDiagnosticsRecordedAcrossSessions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "a1.jsonl")
-	r, err := OpenRecorder("", path)
+	r, err := OpenDiagnostics(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.diag.Close()
+	defer r.f.Close()
 	for range 2 {
 		e := script.NewEngine(func(string, ...any) {}, nil)
-		e.SetDiagnosticSink("a1", r.writeDiagnostic)
+		e.SetDiagnosticSink("a1", r.write)
 		if err := e.DoString(actBase + `units.has_aura = function() return false end`); err != nil {
 			t.Fatal(err)
 		}

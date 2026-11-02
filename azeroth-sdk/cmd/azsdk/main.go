@@ -41,7 +41,6 @@ type config struct {
 	AuthServer string      `json:"auth_server"` // host:port of the authserver, e.g. 127.0.0.1:3724
 	DataDir    string      `json:"data_dir"`    // maps/, mmaps/, vmaps/, dbc/ extracted from the server's data
 	Listen     string      `json:"listen"`      // API address, default 127.0.0.1:8780
-	Record     string      `json:"record"`      // optional event log, see -record
 	Characters []character `json:"characters"`
 }
 
@@ -61,7 +60,6 @@ func main() {
 	auth := flag.String("auth", "", "authserver host:port (overrides the config)")
 	duration := flag.Duration("duration", 0, "stop after this long (0 = until interrupted)")
 	events := flag.String("events", "", "keep each character's event stream in <dir>/<char>.events.jsonl, or with -char in this .jsonl file (survives restarts)")
-	record := flag.String("record", "", "append an event log (recorder JSONL: positions, combat, chat, API calls) to this file")
 	diag := flag.String("diagnostics", "", "append diagnostics (action results, movement, state samples) to this file")
 	flag.Parse()
 
@@ -81,7 +79,7 @@ func main() {
 			log.Fatalf("%s: %v", *path, err)
 		}
 	}
-	for flagVal, field := range map[string]*string{*listen: &cfg.Listen, *dataDir: &cfg.DataDir, *auth: &cfg.AuthServer, *record: &cfg.Record} {
+	for flagVal, field := range map[string]*string{*listen: &cfg.Listen, *dataDir: &cfg.DataDir, *auth: &cfg.AuthServer} {
 		if flagVal != "" {
 			*field = flagVal
 		}
@@ -90,10 +88,10 @@ func main() {
 		cfg.Listen = "127.0.0.1:8780"
 	}
 
-	var rec *session.Recorder
-	if cfg.Record != "" || *diag != "" {
+	var diagnostics *session.Diagnostics
+	if *diag != "" {
 		var err error
-		if rec, err = session.OpenRecorder(cfg.Record, *diag); err != nil {
+		if diagnostics, err = session.OpenDiagnostics(*diag); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -124,7 +122,7 @@ func main() {
 			os.MkdirAll(filepath.Dir(path), 0o755)
 			b.SetEventsFile(path)
 		}
-		b.SetRecorder(rec)
+		b.SetDiagnostics(diagnostics)
 		sessions[c.Name] = b
 		running.Add(1)
 		go func() {

@@ -59,7 +59,7 @@ type Bot struct {
 	castSequences    castSequences
 	pet              petBar                       // the pet's bar (pet.go)
 	totems           totemSlots                   // a shaman's totems (totems.go)
-	rec              *Recorder                    // optional event log (-record)
+	diag             *Diagnostics                 // the diagnostics file (-diagnostics), if any
 	lastAttackReject atomic.Pointer[attackReject] // for bot.last_attack_error() // last move_to found no navmesh path (move_to returns false)
 	id               string
 	config           Config
@@ -595,7 +595,7 @@ func (b *Bot) Run() BotResult {
 	if agent == "" {
 		agent = b.config.CharacterName
 	}
-	eng.SetDiagnosticSink(agent, b.rec.writeDiagnostic)
+	eng.SetDiagnosticSink(agent, b.diag.write)
 	if b.config.LuaWorkspace != "" {
 		if err := eng.SetWorkspace(b.config.LuaWorkspace); err != nil {
 			return b.fail("Lua workspace: %v", err)

@@ -5,7 +5,7 @@ import (
 	"slices"
 )
 
-// Pos is one position sample (the recorder's "pos" event, once a second).
+// Pos is one position sample (the game log's state, once a second).
 type Pos struct {
 	T         int64 // unix ms
 	X, Y, Map float64

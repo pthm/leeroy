@@ -32,9 +32,10 @@ worldserver ──> client ─────> session ─────> script ─�
 - **Transports**: boats and zeppelins (`transports.list`, `board`, `leave`; `session/transports.go`). Where each is
   comes from its path progress and a port of the server's path builder (`transportpath.go`, within 0.05 yd of the
   server's); boarding walks straight onto the deck from the pier while it's docked, and the server then carries you.
-- **Recording**: with `-record`, `session.Recorder` writes the same JSONL format as the server's `mod-recorder`
-  (positions, combat, chat, kills, loot, quests, achievements) plus agent-side events: `api` (each RPC call and
-  its params) and `script_error`. The viewer (`bin/azview`, `../azview`) reads it.
+- **Game log**: with `-events`, the character's event stream file also keeps records beside its events (no `seq`,
+  not shown to the agent): its state each second (position, health, power, money, group, target, pet), nearby
+  creatures, transports, group changes, and the agent-side `api` (each RPC call and its params) and `script_error`.
+  azbench's runs keep it as `game/<char>/events.jsonl`; the viewer (`bin/azview`, `../azview`) reads it.
 
 ## Build and run
 
@@ -64,8 +65,7 @@ config or flags). Agents talk to `http://<listen>/rpc`.
 | `-auth HOST:PORT` | `127.0.0.1:3724` with `-char` | authserver (overrides the config) |
 | `-duration D` | `0` | stop after this long, e.g. `8s` for a first login that only creates the character; `0` runs until interrupted |
 | `-events DIR` | | keep each character's event stream in `DIR/<char>.events.jsonl` (with `-char`, a path ending `.jsonl` is the file itself), so the history survives restarts |
-| `-diagnostics FILE` | | append the session's diagnostics (action results, movement, state samples) to `FILE`, apart from the `-record` log |
-| `-record FILE` | | append the recorder event log to this file (overrides the config) |
+| `-diagnostics FILE` | | append the session's diagnostics (action results, movement, state samples) to `FILE` |
 
 The config file form (`azsdk.example.json`):
 
@@ -100,8 +100,8 @@ daemon runs a single character.
 | `events.query` | `char, since?, types?, match?, last?, limit?` | the event history (nothing is consumed; `last` defaults to 50) |
 | `events.wait` | `char, since?, types?, match?, timeout_s?` | `{events, timed_out, seq}`: blocks until a matching event after `since` (default: now), up to `timeout_s` (default 60, max 600) |
 
-`types` takes patterns like `"quest_*"`. With `-record`, every method except `sessions.list`, `api.docs` and the
-two `events.*` methods is logged as an `api` event.
+`types` takes patterns like `"quest_*"`. With `-events`, every method except `sessions.list`, `api.docs` and the
+two `events.*` methods is logged as an `api` record in the event stream file.
 
 ## Regenerating the API reference
 
@@ -135,7 +135,7 @@ AC_DATA_DIR=$PWD/../data go test ./...         # with it: pathfinding and moveme
 | Package | |
 |---|---|
 | [`client`](client) | protocol: SRP6 login, encryption, packets, world object model, packet hooks |
-| [`session`](session) | one logged-in character (`Bot`): login, tick loop, the Lua API, events, recorder |
+| [`session`](session) | one logged-in character (`Bot`): login, tick loop, the Lua API, events, game log |
 | [`script`](script) | the Lua runtime: engine, tasks, event bus, action requests |
 | [`api`](api) | JSON-RPC handler over a set of sessions |
 | [`types`](types) | the API's data model: every value, result and event payload |

@@ -213,7 +213,7 @@ local choice = ask("Bags full. Destroy greys or go sell?", {"destroy", "sell"}, 
   `log()` lines, script errors, slow ticks, kills, deaths and level-ups. It's the session's own output, so it
   also has its start-up and the odd warning from the client.
 
-When a session recorder is configured, its JSONL file also contains versioned diagnostic records (`kind`,
+With `-diagnostics`, the session writes versioned diagnostic records (`kind`,
 `schema = 1`). Every raw request and waiting helper has an `action_finished` record with a session-unique
 `call`; nested actions reference `parent_call`, and raw actions also identify `request`. These records include
 immediate successes and repeated refusals that the ordinary `result` event stream suppresses. Helper IDs stay
@@ -224,7 +224,7 @@ Diagnostic action fields include only selected identifiers, coordinates, outcome
 not copy command text, chat, arbitrary arguments, result payloads or error messages. Task status remains an
 agent-authored observation, not proof that an action succeeded.
 
-The recorder also samples the complete observed quest log once a second and emits `quest_state` on change,
+The session also samples the complete observed quest log once a second and emits `quest_state` on change,
 including an initial snapshot. It records IDs, completion/failure bits and raw objective counters, without
 quest text. Inventory objectives require item observations. A missing character snapshot is marked unavailable;
 an empty available log means no quests were observed. Removal does not establish turn-in. `group_state` records

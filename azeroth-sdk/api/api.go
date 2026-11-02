@@ -102,7 +102,6 @@ var methods = map[string]method{
 		if se := e.TakeScriptErrors(); se != nil {
 			out["script_errors"] = se
 			if b := session_(s, p.Char); b != nil {
-				b.Record("script_error", se)
 				b.GameLog("script_error", se)
 			}
 		}
@@ -390,7 +389,7 @@ func session_(s Sessions, char string) *session.Bot {
 	return s[char]
 }
 
-// callRecorded runs a method and, with a recorder attached, logs it as an "api" event (params truncated).
+// callRecorded runs a method and logs it as an "api" record in the game log (params truncated).
 // Read-only and waiting methods are skipped.
 func callRecorded(s Sessions, name string, params json.RawMessage, m method) (any, error) {
 	var p charParams
@@ -400,7 +399,6 @@ func callRecorded(s Sessions, name string, params json.RawMessage, m method) (an
 		if len(raw) > 500 {
 			raw = raw[:500] + "..."
 		}
-		b.Record("api", map[string]any{"method": name, "params": raw})
 		b.GameLog("api", map[string]any{"method": name, "params": raw})
 	}
 	return m(s, params)

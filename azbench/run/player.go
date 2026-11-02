@@ -130,7 +130,7 @@ func (p *player) daemon(extra ...string) (*exec.Cmd, error) {
 		"-agent", p.a.Name,
 		"-data", filepath.Join(p.r.repo, "data"), "-workspace", p.ws, "-race", fmt.Sprint(p.race), "-class", fmt.Sprint(p.class)}
 	if len(extra) == 0 {
-		args = append(args, "-record", p.r.f().Record(p.a.Char), "-events", p.r.f().Events(p.a.Char),
+		args = append(args, "-events", p.r.f().Events(p.a.Char),
 			"-diagnostics", p.r.f().Diagnostics(p.a.Name))
 	}
 	cmd := exec.Command(filepath.Join(p.r.repo, "bin", "azsdk"), append(args, extra...)...)

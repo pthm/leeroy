@@ -224,7 +224,7 @@ func (b *Bot) setupControl() {
 	b.setupWatch()
 	b.setupGroupReport()
 	b.setupWorldMessages()
-	b.startRecording()
+	b.startGameLog()
 	e := b.lua
 
 	// ---------- group ----------

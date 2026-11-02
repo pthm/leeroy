@@ -9,8 +9,8 @@
 //	board/                the judges' live standings (the agents' standings tool reads it)
 //	agents/<agent>/       the agent: transcript.jsonl (the runtime's own), trajectory.json (ATIF), meta.json,
 //	                      prompt.md, usage.json, the notes it kept, its kit
-//	game/<char>/          the character: record.jsonl (what happened in the game), events.jsonl (what its agent
-//	                      saw), session.log (its client)
+//	game/<char>/          the character: events.jsonl, its game log (the events its agent saw, and its state each
+//	                      second, nearby creatures, transports, API calls: azbench/gamelog reads it), session.log
 //	judge/<char>/         samples.jsonl (every 15 s), result.json (the final score)
 //	diagnostics/<agent>.jsonl   harness and session diagnostics, one stream
 //	server/               the server's logs over the run's time
@@ -51,7 +51,6 @@ func (r Run) Trajectory(agent string) string      { return r.AgentFile(agent, "t
 func (r Run) Meta(agent string) string            { return r.AgentFile(agent, "meta.json") }
 func (r Run) Diagnostics(agent string) string     { return r.join("diagnostics", agent+".jsonl") }
 func (r Run) Game(char string) string             { return r.join("game", char) }
-func (r Run) Record(char string) string           { return r.join("game", char, "record.jsonl") }
 func (r Run) Events(char string) string           { return r.join("game", char, "events.jsonl") }
 func (r Run) SessionLog(char string) string       { return r.join("game", char, "session.log") }
 func (r Run) Judge(char string) string            { return r.join("judge", char) }
@@ -59,7 +58,6 @@ func (r Run) Samples(char string) string          { return r.join("judge", char,
 func (r Run) Result(char string) string           { return r.join("judge", char, "result.json") }
 func (r Run) EventsGlob() string                  { return r.join("game", "*", "events.jsonl") }
 func (r Run) CharOfEvents(path string) string     { return filepath.Base(filepath.Dir(path)) }
-func (r Run) RecordsGlob() string                 { return r.join("game", "*", "record.jsonl") }
 func (r Run) AgentsGlob() string                  { return r.join("agents", "*") }
 func (r Run) IsRun() bool                         { return exists(r.Manifest()) }
 
