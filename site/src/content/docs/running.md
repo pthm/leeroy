@@ -40,7 +40,9 @@ time was spent) and `team.json`. `azbench compare` pools several runs by model.
 bin/azbench publish bench/runs/<time>-<scenario> --task travel
 ```
 
-writes `site/src/data/runs/<run>.json`: the scenario and each player's model, outcome, time, cost and tokens. Commit
-it; the site rebuilds on push. The results pages group runs by `--task`, and each run gets its own page: the roster,
+writes `site/src/data/runs/<run>.json`: the scenario and, for each player, the model, outcome, time, cost and tokens,
+progress from the judge's samples, the route and deaths from the recording (killers and zones named from the world
+database, so the server must be up), how the time went and the most frequent errors; and a relief map of each
+continent the run crossed into `site/src/assets/runs/`, drawn from the server's height data. Commit both; the site rebuilds on push. The results pages group runs by `--task`, and each run gets its own page: the roster,
 level over time from the judge's samples, and every death. A run's page can also carry hand-written notes, in
 `site/src/content/runs/<run id>.md`: a title, a lede, findings at a glance, and the story phase by phase.

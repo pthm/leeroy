@@ -1,0 +1,105 @@
+---
+// A task's models side by side, across every run: each attempt's time to the goal as a dot (the mean as a bar), how
+// the agent spent its time on average, and its most frequent errors.
+import { duration, harnessName, leaderboard, modelName, runsOf, type Player } from '../lib/results';
+
+interface Props {
+  task: string;
+}
+
+const { task } = Astro.props;
+const rows = leaderboard(task);
+const attempts = (model: string): Player[] => runsOf(task).flatMap(r => r.players.filter(p => p.model === model));
+const maxT = Math.max(...rows.flatMap(r => attempts(r.model).map(p => (p.met ? p.time_to_goal_s ?? 0 : 0))), 1) * 1.05;
+const states = [
+  { k: 'thinking', label: 'thinking', c: 'var(--color-accent)' },
+  { k: 'waiting', label: 'script running', c: 'var(--color-success)' },
+  { k: 'in_call', label: 'in a call', c: 'var(--color-info)' },
+  { k: 'no_script', label: 'nothing running', c: 'var(--color-outline)' },
+];
+const meanState = (ps: Player[], k: string) => ps.reduce((n, p) => n + (p.time_pct_by_state?.[k] ?? 0), 0) / Math.max(1, ps.length);
+const topFailures = (ps: Player[]) => {
+  const by = new Map<string, number>();
+  for (const p of ps) for (const f of p.failures ?? []) by.set(`${f.op} ${f.code}`, (by.get(`${f.op} ${f.code}`) ?? 0) + f.count);
+  return [...by.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+};
+const tickStep = [1, 2, 5, 10, 15, 30, 60, 120, 240].find(m => maxT / 60 / m <= 6)! * 60;
+const ticks = Array.from({ length: Math.floor(maxT / tickStep) + 1 }, (_, i) => i * tickStep);
+---
+
+<div class="space-y-4">
+  <figure class="rounded border border-hairline bg-raised p-4">
+    <p class="mb-4 font-mono text-xs text-muted">Every attempt's time to the goal · ● one attempt · ▏ the mean · ✕ didn't make it</p>
+    <ul class="space-y-2">
+      {rows.map(r => (
+        <li class="grid grid-cols-[8rem_1fr] items-center gap-3 font-mono text-xs">
+          <span class="truncate text-fg">{modelName(r.model)}</span>
+          <span class="relative h-5 rounded-sm bg-elevated">
+            {ticks.map(t => <span class="absolute top-0 h-full w-px bg-hairline" style={`left:${(t / maxT) * 100}%`} />)}
+            {r.meanTime && <span class="absolute -top-0.5 h-6 w-0.5 bg-fg" style={`left:${(r.meanTime / maxT) * 100}%`} title={`mean ${duration(r.meanTime)}`} />}
+            {attempts(r.model).map(p =>
+              p.met ? (
+                <span
+                  class:list={['absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full', r.runtime === 'claude' ? 'bg-accent' : 'bg-info']}
+                  style={`left:${((p.time_to_goal_s ?? 0) / maxT) * 100}%`}
+                  title={`${p.char}: ${duration(p.time_to_goal_s)}`}
+                />
+              ) : (
+                <span class="absolute top-1/2 right-1 -translate-y-1/2 text-warning" title={`${p.char}: not met`}>✕</span>
+              ),
+            )}
+          </span>
+        </li>
+      ))}
+    </ul>
+    <div class="mt-1 grid grid-cols-[8rem_1fr] gap-3 font-mono text-[11px] text-faint">
+      <span />
+      <span class="relative h-4">
+        {ticks.map(t => <span class="absolute -translate-x-1/2" style={`left:${(t / maxT) * 100}%`}>{t / 60} min</span>)}
+      </span>
+    </div>
+  </figure>
+
+  <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+    <figure class="rounded border border-hairline bg-raised p-4">
+      <p class="mb-4 font-mono text-xs text-muted">How the agent spent its time, on average</p>
+      <ul class="space-y-2">
+        {rows.map(r => {
+          const ps = attempts(r.model);
+          return (
+            <li class="grid grid-cols-[8rem_1fr] items-center gap-3 text-xs">
+              <span class="truncate font-mono text-fg">{modelName(r.model)}</span>
+              <span class="flex h-3 overflow-hidden rounded-sm bg-elevated">
+                {states.map(s => {
+                  const v = meanState(ps, s.k);
+                  return v > 0 && <span style={`width:${v}%;background:${s.c}`} title={`${s.label}: ${Math.round(v)}%`} />;
+                })}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <p class="mt-3 flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
+        {states.map(s => <span><span style={`color:${s.c}`}>■</span> {s.label}</span>)}
+      </p>
+    </figure>
+    <figure class="rounded border border-hairline bg-raised p-4">
+      <p class="mb-4 font-mono text-xs text-muted">Most frequent errors, all attempts</p>
+      <ul class="space-y-2.5">
+        {rows.map(r => (
+          <li class="text-xs">
+            <span class="font-mono text-fg">{modelName(r.model)} <span class="text-faint">{harnessName(r.runtime)}</span></span>
+            <ul class="mt-0.5 space-y-0.5 font-mono text-[11px]">
+              {topFailures(attempts(r.model)).map(([k, n]) => (
+                <li class="flex justify-between gap-3">
+                  <span class="truncate text-muted">{k.split(' ')[0]} <span class="text-warning">{k.split(' ')[1]}</span></span>
+                  <span class="text-faint">{n}</span>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </figure>
+  </div>
+</div>

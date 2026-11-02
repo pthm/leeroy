@@ -1,0 +1,54 @@
+---
+// Who killed the players and where, from the recordings: a bar per killer and per place, split by player.
+import { colors, type Run } from '../lib/results';
+
+interface Props {
+  run: Run;
+}
+
+const { run } = Astro.props;
+const color = colors(run);
+const deaths = run.players.flatMap(p => (p.death_list ?? []).map(d => ({ ...d, char: p.char })));
+const tally = (key: (d: (typeof deaths)[number]) => string, top: number) => {
+  const by = new Map<string, Map<string, number>>();
+  for (const d of deaths) {
+    const k = key(d) || 'unknown';
+    const m = by.get(k) ?? new Map();
+    m.set(d.char, (m.get(d.char) ?? 0) + 1);
+    by.set(k, m);
+  }
+  const rows = [...by.entries()].map(([k, m]) => ({ k, n: [...m.values()].reduce((a, b) => a + b, 0), by: [...m.entries()] }));
+  rows.sort((a, b) => b.n - a.n);
+  return { rows: rows.slice(0, top), more: rows.length - top };
+};
+const killers = tally(d => d.killer, 12);
+const places = tally(d => d.place, 12);
+const max = Math.max(...killers.rows.map(r => r.n), ...places.rows.map(r => r.n), 1);
+---
+
+{deaths.length > 0 && (
+  <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+    {[
+      { title: 'Who killed them', t: killers },
+      { title: 'Where they died', t: places },
+    ].map(({ title, t }) => (
+      <figure class="rounded border border-hairline bg-raised p-4">
+        <p class="mb-4 font-mono text-xs text-muted">{title}</p>
+        <ul class="space-y-1.5">
+          {t.rows.map(r => (
+            <li class="grid grid-cols-[10rem_1fr_2rem] items-center gap-3 text-xs">
+              <span class="truncate text-fg" title={r.k}>{r.k}</span>
+              <span class="flex h-2.5 overflow-hidden rounded-sm" style={`width:${(r.n / max) * 100}%`}>
+                {r.by.map(([c, n]) => (
+                  <span class:list={['h-full', color[c]]} style={`flex:${n};background:currentColor`} title={`${c}: ${n}`} />
+                ))}
+              </span>
+              <span class="text-right font-mono text-muted">{r.n}</span>
+            </li>
+          ))}
+        </ul>
+        {t.more > 0 && <p class="mt-3 font-mono text-[11px] text-faint">and {t.more} more</p>}
+      </figure>
+    ))}
+  </div>
+)}

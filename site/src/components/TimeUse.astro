@@ -1,0 +1,54 @@
+---
+// How each player's time went, twice: the character (fighting, travelling, idle, dead, from the recordings) and the
+// agent (thinking, a script running while it waits, in a call, or nothing running, from the harness).
+import { colors, type Run } from '../lib/results';
+
+interface Props {
+  run: Run;
+}
+
+const { run } = Astro.props;
+const color = colors(run);
+const game = [
+  { k: 'fighting_pct', label: 'fighting', c: 'var(--color-error)' },
+  { k: 'travelling_pct', label: 'travelling', c: 'var(--color-info)' },
+  { k: 'idle_pct', label: 'idle', c: 'var(--color-outline)' },
+  { k: 'dead_pct', label: 'dead', c: 'var(--color-faint)' },
+] as const;
+const agent = [
+  { k: 'thinking', label: 'thinking', c: 'var(--color-accent)' },
+  { k: 'waiting', label: 'script running', c: 'var(--color-success)' },
+  { k: 'in_call', label: 'in a call', c: 'var(--color-info)' },
+  { k: 'no_script', label: 'nothing running', c: 'var(--color-outline)' },
+] as const;
+const ps = run.players.filter(p => p.time_use || p.time_pct_by_state);
+---
+
+{ps.length > 0 && (
+  <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+    {[
+      { title: 'The character', parts: game, get: (p: (typeof ps)[number], k: string) => (p.time_use as any)?.[k] ?? 0 },
+      { title: 'The agent', parts: agent, get: (p: (typeof ps)[number], k: string) => p.time_pct_by_state?.[k] ?? 0 },
+    ].map(({ title, parts, get }) => (
+      <figure class="rounded border border-hairline bg-raised p-4">
+        <p class="mb-4 font-mono text-xs text-muted">{title}</p>
+        <ul class="space-y-2">
+          {ps.map(p => (
+            <li class="grid grid-cols-[6rem_1fr] items-center gap-3 text-xs">
+              <span class:list={['truncate', color[p.char]]}>{p.char}</span>
+              <span class="flex h-3 overflow-hidden rounded-sm bg-elevated">
+                {parts.map(part => {
+                  const v = get(p, part.k);
+                  return v > 0 && <span style={`width:${v}%;background:${part.c}`} title={`${part.label}: ${Math.round(v)}%`} />;
+                })}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p class="mt-3 flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
+          {parts.map(part => <span><span style={`color:${part.c}`}>■</span> {part.label}</span>)}
+        </p>
+      </figure>
+    ))}
+  </div>
+)}

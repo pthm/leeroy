@@ -2,12 +2,18 @@
 // One run: tiles, findings, the roster, charts, and the story (src/content/runs/<id>.md, when written).
 import { getEntry, render } from 'astro:content';
 import FinishChart from '../../../components/FinishChart.astro';
+import Deaths from '../../../components/Deaths.astro';
 import ProgressChart from '../../../components/ProgressChart.astro';
+import RouteMap from '../../../components/RouteMap.astro';
+import SectionHeader from '../../../components/SectionHeader.astro';
+import Spend from '../../../components/Spend.astro';
+import Talk from '../../../components/Talk.astro';
+import TimeUse from '../../../components/TimeUse.astro';
 import Section from '../../../components/Section.astro';
 import Layout from '../../../layouts/Layout.astro';
 import {
   allRuns,
-  classColor,
+  colors,
   dollars,
   duration,
   harnessName,
@@ -37,6 +43,9 @@ const lede = notes?.data.lede ?? TASKS[run.task]?.summary ?? run.description;
 const roster = run.players.toSorted(
   (a, b) => Number(b.met) - Number(a.met) || (a.time_to_goal_s ?? Infinity) - (b.time_to_goal_s ?? Infinity),
 );
+const color = colors(run);
+const hasChat = (run.chat_per_hour ?? []).some(h => Object.values(h).some(Boolean));
+const hasDeaths = run.players.some(p => p.death_list?.length);
 const clock = run.minutes >= 1440 ? `${run.minutes / 1440} days` : `${run.minutes} min`;
 
 const tiles = [
@@ -81,7 +90,7 @@ const tiles = [
     </Section>
   )}
 
-  <Section last={!Story}>
+  <Section>
     <p class="eyebrow mb-6">The players</p>
     <div class="overflow-x-auto rounded border border-hairline bg-raised">
       <table class="data">
@@ -102,7 +111,7 @@ const tiles = [
         <tbody>
           {roster.map(p => (
             <tr>
-              <td class:list={['font-medium', classColor(p.class)]}>{p.char}</td>
+              <td class:list={['font-medium', color[p.char]]}>{p.char}</td>
               <td class="text-muted">{specLabel(p)}{p.role && <span class="text-faint"> · {p.role}</span>}</td>
               <td class="text-fg">{modelName(p.model)} <span class="text-faint">{harnessName(p.runtime)}</span></td>
               <td class:list={[p.met ? 'text-success' : 'text-warning']} title={p.gave_up}>{outcome(p)}</td>
@@ -117,9 +126,44 @@ const tiles = [
         </tbody>
       </table>
     </div>
-    <div class="mt-8">
-      {levelled ? <ProgressChart run={run} /> : <FinishChart run={run} />}
-    </div>
+  </Section>
+
+  <Section>
+    <SectionHeader eyebrow="Progress" title={levelled ? 'Level by level.' : 'Who got there, and when.'} description={levelled ? 'Each player\'s level over the run from the judge\'s samples, every death below it, wipes and time inside the dungeon shaded. Hover for details.' : 'Time from the start to the goal, fastest first.'} />
+    {levelled ? <ProgressChart run={run} /> : <FinishChart run={run} />}
+  </Section>
+
+  {(run.maps ?? []).length > 0 && (
+    <Section>
+      <SectionHeader eyebrow="Where they went" title="The routes." description="Every player's path, sampled from their recordings, over the server's own terrain. Crosses are deaths; hover one for the killer." />
+      <div class:list={['grid grid-cols-1 gap-4', run.maps!.length > 1 && 'lg:grid-cols-2']}>
+        {run.maps!.map(box => <RouteMap run={run} box={box} />)}
+      </div>
+    </Section>
+  )}
+
+  {hasDeaths && (
+    <Section>
+      <SectionHeader eyebrow="Deaths" title="What killed them." description="Every death in the recordings, by killer and by zone, split by player." />
+      <Deaths run={run} />
+    </Section>
+  )}
+
+  <Section>
+    <SectionHeader eyebrow="Time" title="How the time went." description="The character's time in the game, and the agent's: thinking, a script running while it waits, in a call, or nothing running at all." />
+    <TimeUse run={run} />
+  </Section>
+
+  {hasChat && run.players.length > 1 && (
+    <Section>
+      <SectionHeader eyebrow="Together" title="Talking and staying close." description="Messages between the players per hour of the run, and how often the whole party stood together." />
+      <Talk run={run} />
+    </Section>
+  )}
+
+  <Section last={!Story}>
+    <SectionHeader eyebrow="Cost and errors" title="What it cost, what went wrong." description="List-price cost per player with tokens by kind, and the errors the SDK returned most often." />
+    <Spend run={run} />
   </Section>
 
   {Story && (

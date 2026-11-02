@@ -37,6 +37,17 @@ type Map struct {
 // with set(worldX, worldY, colour).
 func RenderMap(m uint32, xMin, xMax, yMin, yMax, res float64, heightRange *[2]float64,
 	overlay func(set func(wx, wy float64, c [3]uint8))) Map {
+	return renderMap(m, xMin, xMax, yMin, yMax, res, heightRange, overlay, true)
+}
+
+// RenderRelief is RenderMap from the server's data alone, without the game's minimap: for images published outside
+// the bench (the minimap is the game's own art).
+func RenderRelief(m uint32, xMin, xMax, yMin, yMax, res float64) Map {
+	return renderMap(m, xMin, xMax, yMin, yMax, res, nil, nil, false)
+}
+
+func renderMap(m uint32, xMin, xMax, yMin, yMax, res float64, heightRange *[2]float64,
+	overlay func(set func(wx, wy float64, c [3]uint8)), minimap bool) Map {
 	W, H := int(math.Ceil((yMax-yMin)/res)), int(math.Ceil((xMax-xMin)/res))
 	zoneOf := Areas(m).ZoneOf
 	heights, water, zone := make([]float64, W*H), make([]float64, W*H), make([]int, W*H)
@@ -79,7 +90,7 @@ func RenderMap(m uint32, xMin, xMax, yMin, yMax, res float64, heightRange *[2]fl
 				d := math.Min(1, (water[k]-h)/20)
 				col = [3]float64{70 - d*30, 120 - d*30, 170 - d*20}
 			}
-			if mm, ok := MinimapAt(m, xMax-float64(r)*res, yMax-float64(c)*res); ok {
+			if mm, ok := MinimapAt(m, xMax-float64(r)*res, yMax-float64(c)*res); ok && minimap {
 				col = [3]float64{float64(mm[0]), float64(mm[1]), float64(mm[2])}
 			}
 			if z := zone[k]; (c+1 < W && zone[k+1] != z) || (r+1 < H && zone[k+W] != z) {

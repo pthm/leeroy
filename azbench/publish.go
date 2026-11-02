@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -62,9 +63,16 @@ func publish(root, runDir, task, out string) (string, error) {
 		return o
 	}
 	var players []map[string]any
+	chat := map[string]chatMsg{}
+	var recs []*recording
+	recOf := map[string]*recording{}
 	for _, r := range report.Agents {
 		char := fmt.Sprint(r["char"])
-		p := pick(r, "char", "runtime", "model", "hours", "deaths", "cost_usd", "tokens", "calls")
+		p := pick(r, "char", "runtime", "model", "hours", "deaths", "cost_usd", "tokens", "calls", "time_pct_by_state", "time_use", "combat")
+		if th, ok := r["think_s"].(map[string]any); ok {
+			p["think_median_s"] = th["median"]
+		}
+		p["failures"] = failures(r)
 		a := agents[char]
 		p["class"], p["spec"], p["race"] = a.Class, a.Spec, a.Race
 		p["met"] = false
@@ -80,8 +88,33 @@ func publish(root, runDir, task, out string) (string, error) {
 				p["spec_name"], p["role"] = meta.Spec, meta.Role
 			}
 			p["series"], p["deaths_at"] = series(filepath.Join(runDir, a.Name, "samples.jsonl"))
+			if rec, err := readRecording(filepath.Join(runDir, a.Name+".record.jsonl"), char, started.UnixMilli(), chat); err == nil {
+				recs, recOf[char] = append(recs, rec), rec
+			}
 		}
 		players = append(players, p)
+	}
+	nameDeaths(recs)
+	var tracks, thin [][][5]float64
+	end := 0.0
+	for _, rec := range recs {
+		if n := len(rec.track); n > 0 {
+			end = math.Max(end, rec.track[n-1][0])
+		}
+	}
+	every := math.Max(15, end/2000) // a short run keeps every 15 s, a long one about 2000 points a player
+	for _, p := range players {
+		rec := recOf[p["char"].(string)]
+		if rec == nil {
+			continue
+		}
+		t := thinTrack(rec.track, every)
+		p["track"], p["death_list"] = t, rec.deaths
+		tracks, thin = append(tracks, rec.track), append(thin, t)
+	}
+	maps, err := mapImages(id, thin, filepath.Join(out, "../../assets/runs"))
+	if err != nil {
+		return "", err
 	}
 	if task == "" {
 		task = name
@@ -89,14 +122,34 @@ func publish(root, runDir, task, out string) (string, error) {
 	doc := map[string]any{
 		"id": id, "task": task, "scenario": name, "description": strings.TrimSpace(s.Description), "goal": s.Goal,
 		"minutes": s.Minutes, "hardcore": s.Hardcore, "level": s.Level, "started": started.Format(time.RFC3339),
-		"players": players,
+		"players": players, "maps": maps, "together": together(tracks, end), "chat_per_hour": chatPerHour(chat),
 	}
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return "", err
 	}
 	f := filepath.Join(out, id+".json")
-	data, _ := json.MarshalIndent(doc, "", "  ")
+	data, _ := json.Marshal(doc) // compact: routes and series are thousands of numbers
 	return f, os.WriteFile(f, append(data, '\n'), 0o644)
+}
+
+// benign: failures that are the SDK working as meant (a script replacing its own move, a swing that missed, a spell
+// still on the global cooldown), not mistakes worth showing
+var benign = map[string]bool{"replaced_by_owner": true, "cancelled": true, "task_stopped": true, "miss": true,
+	"dodge": true, "parry": true, "not_ready": true}
+
+// failures: a player's most frequent failed calls, [{op, code, count}], at most 6.
+func failures(r map[string]any) []map[string]any {
+	diag, _ := r["diagnostics"].(map[string]any)
+	ops, _ := diag["by_operation"].([]any)
+	var out []map[string]any
+	for _, o := range ops {
+		m, _ := o.(map[string]any)
+		if m["outcome"] == "failed" && !benign[fmt.Sprint(m["code"])] {
+			out = append(out, map[string]any{"op": m["op"], "code": m["code"], "count": m["count"]})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i]["count"].(float64) > out[j]["count"].(float64) })
+	return out[:min(6, len(out))]
 }
 
 // seriesPoints: about how many points a player's progress keeps for the charts

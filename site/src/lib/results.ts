@@ -23,6 +23,23 @@ export interface Player {
   role?: string; // Tank, Healer, DPS
   series?: [number, number, number, number, number, number][]; // [elapsed s, level, XP earned, deaths, quests, kills]
   deaths_at?: number[]; // elapsed s
+  track?: [number, number, number, number, number][]; // [s from the start, map, x, y, group id]
+  death_list?: { t: number; map: number; x: number; y: number; killer: string; place: string }[];
+  failures?: { op: string; code: string; count: number }[];
+  time_use?: { seconds: number; fighting_pct: number; travelling_pct: number; idle_pct: number; dead_pct: number; with_group_pct: number };
+  time_pct_by_state?: Record<string, number>; // the agent: thinking, waiting (a script running), in_call, no_script
+  combat?: { damage_dealt: number; damage_taken: number; healing_done: number; kills: number };
+  think_median_s?: number;
+}
+
+export interface MapBox {
+  map: number;
+  name: string;
+  file?: string; // src/assets/runs/<file>: a relief image of the box (continents)
+  x_min: number;
+  x_max: number;
+  y_min: number;
+  y_max: number;
 }
 
 export interface Run {
@@ -36,6 +53,9 @@ export interface Run {
   level: number;
   started: string;
   players: Player[];
+  maps?: MapBox[];
+  together?: number[]; // per 5 minutes: the share of minutes all players stood within 40 yd
+  chat_per_hour?: Record<string, number>[];
 }
 
 // What each task is, for the pages. A task without an entry here still shows, under its id.
@@ -162,4 +182,50 @@ export function timeTicks(maxS: number): { s: number; label: string }[] {
   }
   const step = [1, 2, 4, 6, 12, 24].find(h => maxS / 3600 / h <= 9)! * 3600;
   return Array.from({ length: Math.floor(maxS / step) + 1 }, (_, i) => ({ s: i * step, label: `${(i * step) / 3600} h` }));
+}
+
+// Each player's colour: their class colour when every class is different, else one of eight distinct colours.
+export function colors(run: Run): Record<string, string> {
+  const unique = new Set(run.players.map(p => p.class)).size === run.players.length;
+  return Object.fromEntries(run.players.map((p, i) => [p.char, unique ? classColor(p.class) : `pc-${i % 8}`]));
+}
+
+export const isContinent = (map: number) => [0, 1, 530, 571].includes(map);
+
+// Wipes: three or more of the party dead within two minutes, from the judge's death times. [start, end] s.
+export function wipes(run: Run): [number, number][] {
+  if (run.players.length < 3) return [];
+  const ds = run.players.flatMap(p => (p.deaths_at ?? []).map(t => ({ t, c: p.char }))).sort((a, b) => a.t - b.t);
+  const out: [number, number][] = [];
+  for (let i = 0; i < ds.length; ) {
+    let j = i;
+    while (j + 1 < ds.length && ds[j + 1].t - ds[i].t <= 120) j++;
+    if (new Set(ds.slice(i, j + 1).map(d => d.c)).size >= 3) {
+      out.push([ds[i].t, ds[j].t]);
+      i = j + 1;
+    } else i++;
+  }
+  return out;
+}
+
+// Stretches anyone in the run spent in an instance (off the continents), merged: [start, end] s.
+export function instanceTime(run: Run): [number, number][] {
+  const spans: [number, number][] = [];
+  for (const p of run.players) {
+    const tr = p.track ?? [];
+    for (let i = 0; i < tr.length; i++) {
+      if (isContinent(tr[i][1])) continue;
+      const start = tr[i][0];
+      while (i + 1 < tr.length && !isContinent(tr[i + 1][1])) i++;
+      spans.push([start, tr[Math.min(i + 1, tr.length - 1)][0]]);
+    }
+  }
+  spans.sort((a, b) => a[0] - b[0]);
+  const out: [number, number][] = [];
+  for (const s of spans) {
+    const last = out.at(-1);
+    if (last && s[0] <= last[1] + 300) last[1] = Math.max(last[1], s[1]);
+    else out.push([...s]);
+  }
+  return out;
 }

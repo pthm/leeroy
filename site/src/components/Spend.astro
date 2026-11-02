@@ -1,0 +1,58 @@
+---
+// What each player cost and what they got wrong: list-price cost with tokens by kind, and their most frequent failed
+// calls (the SDK's own error codes; the harmless ones, like a script replacing its own move, are left out).
+import { colors, dollars, type Run, thousands } from '../lib/results';
+
+interface Props {
+  run: Run;
+}
+
+const { run } = Astro.props;
+const color = colors(run);
+const maxCost = Math.max(...run.players.map(p => p.cost_usd ?? 0), 0.01);
+const withFailures = run.players.filter(p => p.failures?.length);
+---
+
+<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+  <figure class="rounded border border-hairline bg-raised p-4">
+    <p class="mb-4 font-mono text-xs text-muted">Cost at list prices · tokens read from cache / written / output</p>
+    <ul class="space-y-2.5">
+      {run.players.map(p => (
+        <li class="text-xs">
+          <div class="flex justify-between">
+            <span class={color[p.char]}>{p.char}</span>
+            <span class="font-mono text-fg">{dollars(p.cost_usd)}</span>
+          </div>
+          <span class="mt-1 block h-2 rounded-sm bg-accent" style={`width:${((p.cost_usd ?? 0) / maxCost) * 100}%`} />
+          {p.tokens && (
+            <span class="mt-0.5 block font-mono text-[11px] text-faint">
+              {thousands(p.tokens.cache_read)} / {thousands(p.tokens.cache_write)} / {thousands(p.tokens.output)}
+              {p.calls ? ` · ${p.calls.toLocaleString('en')} calls` : ''}
+              {p.think_median_s ? ` · ${p.think_median_s} s median think` : ''}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  </figure>
+  {withFailures.length > 0 && (
+    <figure class="rounded border border-hairline bg-raised p-4">
+      <p class="mb-4 font-mono text-xs text-muted">Most frequent failed calls</p>
+      <ul class="space-y-3">
+        {withFailures.map(p => (
+          <li class="text-xs">
+            <span class={color[p.char]}>{p.char}</span>
+            <ul class="mt-1 space-y-0.5 font-mono text-[11px]">
+              {p.failures!.slice(0, 3).map(f => (
+                <li class="flex justify-between gap-3">
+                  <span class="truncate text-muted">{f.op} <span class="text-warning">{f.code}</span></span>
+                  <span class="text-faint">{f.count.toLocaleString('en')}</span>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </figure>
+  )}
+</div>

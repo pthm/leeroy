@@ -1,19 +1,21 @@
 ---
-// Level over the run, one line per player in their class colour, and under it a row per player with a tick at each
-// death. From the judge's samples (azbench publish). Hover a line or tick for details.
-import { classColor, duration, type Run, timeTicks } from '../lib/results';
+// Level over the run, one line per player, and under it a row per player with a tick at each death. Shaded: time
+// inside an instance (amber) and party wipes (red). From the judge's samples and the recordings (azbench publish).
+import { colors, duration, instanceTime, type Run, timeTicks, wipes } from '../lib/results';
 
 interface Props {
   run: Run;
 }
 
-const ps = Astro.props.run.players.filter(p => p.series?.length);
+const { run } = Astro.props;
+const ps = run.players.filter(p => p.series?.length);
+const color = colors(run);
 const end = Math.max(...ps.map(p => p.series!.at(-1)![0]));
 const levels = ps.flatMap(p => p.series!.map(s => s[1]));
 const lo = Math.floor(Math.min(...levels)), hi = Math.ceil(Math.max(...levels));
 const W = 900, L = 76, R = 16, T = 12, CH = 260, ROW = 18, GAP = 34;
 const H = T + CH + GAP + ps.length * ROW + 24;
-const x = (s: number) => L + (s / end) * (W - L - R);
+const x = (s: number) => L + (Math.min(s, end) / end) * (W - L - R);
 const y = (lvl: number) => T + CH - ((lvl - lo) / Math.max(1, hi - lo)) * CH;
 const step = hi - lo > 20 ? 5 : hi - lo > 8 ? 2 : 1;
 const yTicks = Array.from({ length: Math.floor((hi - lo) / step) + 1 }, (_, i) => lo + i * step);
@@ -22,31 +24,42 @@ const lines = ps.map(p => ({
   d: p.series!.map((s, i) => `${i ? 'L' : 'M'}${x(s[0]).toFixed(1)},${y(s[1]).toFixed(1)}`).join(''),
 }));
 const stripTop = T + CH + GAP;
-const ticks = timeTicks(end);
+const bottom = stripTop + ps.length * ROW;
+const inside = instanceTime(run);
+const wiped = wipes(run);
 ---
 
 <figure class="rounded border border-hairline bg-raised p-4">
-  <p class="mb-2 font-mono text-xs text-muted">Level over the run · deaths below</p>
   <div class="overflow-x-auto">
     <svg viewBox={`0 0 ${W} ${H}`} class="w-full min-w-[640px]" role="img" aria-label="Each player's level over the run, and when each died">
+      {inside.map(([a, b]) => (
+        <rect x={x(a)} y={T} width={Math.max(1, x(b) - x(a))} height={bottom - T} fill="var(--color-accent)" opacity="0.08">
+          <title>In an instance, {duration(a)} to {duration(b)}</title>
+        </rect>
+      ))}
+      {wiped.map(([a, b]) => (
+        <rect x={x(a) - 2} y={T} width={Math.max(4, x(b) - x(a) + 4)} height={bottom - T} fill="var(--color-error)" opacity="0.28">
+          <title>Wipe at {duration(a)}</title>
+        </rect>
+      ))}
       {yTicks.map(v => (
         <g>
           <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="var(--color-hairline)" />
           <text x={L - 8} y={y(v) + 4} text-anchor="end" class="fill-faint font-mono text-[11px]">{v}</text>
         </g>
       ))}
-      {ticks.map(t => (
+      {timeTicks(end).map(t => (
         <text x={x(t.s)} y={H - 6} text-anchor="middle" class="fill-faint font-mono text-[11px]">{t.label}</text>
       ))}
       {lines.map(({ p, d }) => (
-        <path d={d} fill="none" stroke="currentColor" stroke-width="2" class={classColor(p.class)}>
+        <path d={d} fill="none" stroke="currentColor" stroke-width="2" class={color[p.char]}>
           <title>{p.char}: level {p.series!.at(-1)![1].toFixed(1)} at the end</title>
         </path>
       ))}
       {ps.map((p, i) => {
         const cy = stripTop + i * ROW + ROW / 2;
         return (
-          <g class={classColor(p.class)}>
+          <g class={color[p.char]}>
             <line x1={L} x2={W - R} y1={cy} y2={cy} stroke="var(--color-hairline)" />
             <text x={L - 8} y={cy + 4} text-anchor="end" class="fill-current font-mono text-[11px]">{p.char}</text>
             {(p.deaths_at ?? []).map(s => (
@@ -59,4 +72,9 @@ const ticks = timeTicks(end);
       })}
     </svg>
   </div>
+  <figcaption class="mt-2 font-mono text-[11px] text-faint">
+    Level over the run; a tick per death below.
+    {inside.length > 0 && <span><span class="text-accent">▮</span> inside an instance</span>}
+    {wiped.length > 0 && <span> · <span class="text-error">▮</span> {wiped.length} wipes (three or more dead within two minutes)</span>}
+  </figcaption>
 </figure>

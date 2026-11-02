@@ -263,3 +263,11 @@ table.data th.num {
   font-style: normal;
   color: var(--color-faint);
 }
+
+/* Player colours when classes repeat (a travel run of six warriors). */
+.pc-0 { color: #f5a623 } .pc-1 { color: #79c0ff } .pc-2 { color: #34d399 } .pc-3 { color: #f472b6 }
+.pc-4 { color: #c4b5fd } .pc-5 { color: #fb923c } .pc-6 { color: #a3e635 } .pc-7 { color: #f87171 }
+:root[data-theme='light'] .pc-0 { color: #b45309 } :root[data-theme='light'] .pc-1 { color: #0663d0 }
+:root[data-theme='light'] .pc-2 { color: #0b7656 } :root[data-theme='light'] .pc-3 { color: #be185d }
+:root[data-theme='light'] .pc-4 { color: #6d28d9 } :root[data-theme='light'] .pc-5 { color: #c2410c }
+:root[data-theme='light'] .pc-6 { color: #4d7c0f } :root[data-theme='light'] .pc-7 { color: #b91c1c }

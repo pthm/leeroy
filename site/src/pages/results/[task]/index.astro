@@ -1,6 +1,7 @@
 ---
 import CostChart from '../../../components/CostChart.astro';
 import Leaderboard from '../../../components/Leaderboard.astro';
+import ModelInsights from '../../../components/ModelInsights.astro';
 import Section from '../../../components/Section.astro';
 import SectionHeader from '../../../components/SectionHeader.astro';
 import Layout from '../../../layouts/Layout.astro';
@@ -42,6 +43,11 @@ const outcome = (p: (typeof runs)[number]['players'][number]) =>
     <div class="mt-8">
       <CostChart task={task} />
     </div>
+  </Section>
+
+  <Section>
+    <SectionHeader eyebrow="By model" title="Model by model." description="Every attempt rather than the mean alone, where each model's agent spent its time, and the errors it kept running into." />
+    <ModelInsights task={task} />
   </Section>
 
   <Section last>

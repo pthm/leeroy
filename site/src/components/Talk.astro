@@ -1,0 +1,67 @@
+---
+// The party talking and standing together: messages per hour of the run by kind (each once, however many heard it),
+// and the share of each 5 minutes in which every player stood within 40 yd of the others.
+import { type Run, timeTicks } from '../lib/results';
+
+interface Props {
+  run: Run;
+}
+
+const { run } = Astro.props;
+const hours = run.chat_per_hour ?? [];
+const kinds = [
+  { k: 'party', label: 'party', c: 'var(--color-info)' },
+  { k: 'whisper', label: 'whisper', c: 'var(--color-accent)' },
+  { k: 'channel', label: 'channel', c: 'var(--color-success)' },
+  { k: 'say', label: 'say', c: 'var(--color-outline)' },
+];
+const total = (h: Record<string, number>) => kinds.reduce((n, k) => n + (h[k.k] ?? 0), 0);
+const max = Math.max(1, ...hours.map(total));
+const sum = hours.reduce((n, h) => n + total(h), 0);
+const tog = run.together ?? [];
+const W = 900, H = 120, L = 40, R = 10;
+const end = tog.length * 300;
+const tx = (s: number) => L + (s / Math.max(end, 1)) * (W - L - R);
+const area = tog.length
+  ? `M${tx(0)},${H - 20}` + tog.map((v, i) => `L${tx(i * 300).toFixed(1)},${(H - 20 - v * (H - 30)).toFixed(1)}L${tx((i + 1) * 300).toFixed(1)},${(H - 20 - v * (H - 30)).toFixed(1)}`).join('') + `L${tx(end)},${H - 20}Z`
+  : '';
+const share = tog.length ? Math.round((tog.reduce((a, b) => a + b, 0) / tog.length) * 100) : 0;
+---
+
+{sum > 0 && (
+  <div class="grid grid-cols-1 gap-4">
+    <figure class="rounded border border-hairline bg-raised p-4">
+      <p class="mb-4 font-mono text-xs text-muted">Messages per hour · {sum.toLocaleString('en')} in all</p>
+      <div class="flex h-40 items-end gap-[2px]">
+        {hours.map((h, i) => (
+          <span class="flex h-full flex-1 flex-col-reverse" title={`hour ${i}: ${total(h)} messages`}>
+            {kinds.map(k => (h[k.k] ? <span style={`height:${(h[k.k] / max) * 100}%;background:${k.c}`} /> : null))}
+          </span>
+        ))}
+      </div>
+      <div class="mt-1 flex justify-between font-mono text-[11px] text-faint">
+        <span>0 h</span><span>{hours.length} h</span>
+      </div>
+      <p class="mt-3 flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
+        {kinds.map(k => <span><span style={`color:${k.c}`}>■</span> {k.label}</span>)}
+      </p>
+    </figure>
+    {tog.length > 0 && (
+      <figure class="rounded border border-hairline bg-raised p-4">
+        <p class="mb-2 font-mono text-xs text-muted">All {run.players.length} within 40 yd of each other · {share}% of the run</p>
+        <svg viewBox={`0 0 ${W} ${H}`} class="w-full" role="img" aria-label="Share of each 5 minutes the whole party stood together">
+          {[0, 0.5, 1].map(v => (
+            <g>
+              <line x1={L} x2={W - R} y1={H - 20 - v * (H - 30)} y2={H - 20 - v * (H - 30)} stroke="var(--color-hairline)" />
+              <text x={L - 6} y={H - 16 - v * (H - 30)} text-anchor="end" class="fill-faint font-mono text-[10px]">{v * 100}%</text>
+            </g>
+          ))}
+          <path d={area} fill="var(--color-success)" opacity="0.5" />
+          {timeTicks(end).map(t => (
+            <text x={tx(t.s)} y={H - 4} text-anchor="middle" class="fill-faint font-mono text-[10px]">{t.label}</text>
+          ))}
+        </svg>
+      </figure>
+    )}
+  </div>
+)}
