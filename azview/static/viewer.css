@@ -187,6 +187,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px;
 .lpanel h5:first-child { margin-top: 0; }
 .lpanel label { display: flex; align-items: center; gap: 8px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
 .lpanel select { margin-left: auto; padding-top: 1px; padding-bottom: 1px; font-size: 12px; }
+.lpanel .slider input[type=range] { margin-left: auto; width: 120px; accent-color: var(--accent); }
 [x-cloak] { display: none !important; }
 
 /* short transitions between states, so updates ease in rather than snap (off for reduced motion) */

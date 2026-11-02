@@ -211,12 +211,13 @@ func (v *server) detail(w http.ResponseWriter, r *http.Request) {
 		n[i], _ = strconv.Atoi(strings.TrimSuffix(r.PathValue(k), ".jpg"))
 	}
 	m, _ := strconv.Atoi(r.PathValue("m"))
-	key := fmt.Sprint("d", m, n)
+	leaves := r.URL.Query().Get("leaves") != "0" // ?leaves=0: without foliage (the viewer's foliage slider mixes the two)
+	key := fmt.Sprint("d", m, n, leaves)
 	v.tileMu.Lock()
 	t, ok := v.tiles[key]
 	v.tileMu.Unlock()
 	if !ok {
-		t = world.DetailTile(uint32(m), n[1], n[2], n[0], n[3], n[4]) // rendered outside the lock: tiles render in parallel
+		t = world.DetailTileLeaves(uint32(m), n[1], n[2], n[0], n[3], n[4], leaves) // rendered outside the lock: tiles render in parallel
 		v.tileMu.Lock()
 		if len(v.tiles) > 4000 { // ponytail: drop the lot past ~120 MB; an LRU if zooming around a big area makes that churn
 			v.tiles = map[string][]byte{}

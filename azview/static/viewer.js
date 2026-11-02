@@ -19,11 +19,11 @@ const V = {
   t: 0, sel: null, grp: null, tab: "feed", sort: "score", bygroup: true,
   cats: Object.fromEntries(B.cats.map((c) => [c.key, c.on])),
   metric: "dmg", range: "all", chart: "total", per: "0", heat: false, heatKind: "time", roads: false, nav: false,
-  trails: true, transports: true, groups: true, targets: true, marks: true, units: true, unitNames: "targets", aggro: false, combat: true,
+  trails: true, transports: true, foliage: 1, groups: true, targets: true, marks: true, units: true, unitNames: "targets", aggro: false, combat: true,
   ...saved,
 };
 V.sel = V.grp = null; V.t = 0;
-const PERSIST = ["tab", "sort", "bygroup", "cats", "metric", "range", "chart", "per", "heat", "heatKind", "roads", "nav", "trails", "transports", "groups", "targets", "marks", "units", "unitNames", "aggro", "combat"];
+const PERSIST = ["tab", "sort", "bygroup", "cats", "metric", "range", "chart", "per", "heat", "heatKind", "roads", "nav", "trails", "transports", "foliage", "groups", "targets", "marks", "units", "unitNames", "aggro", "combat"];
 document.addEventListener("alpine:init", () => {
   Alpine.store("v", V);
   Alpine.effect(() => { // any change to what the panels show: save it and refresh them
@@ -226,15 +226,16 @@ function drawDetail(xa, ya, xb, yb) {
   let fading = false;
   const r = cv.getBoundingClientRect();
   cx.imageSmoothingEnabled = true;
-  // one level's tiles over the screen at opacity alpha; the base level fills gaps from coarser tiles already here
-  const layer = (L, alpha, fillGaps) => {
+  // one level's tiles over the screen at opacity alpha; the base level fills gaps from coarser tiles already here.
+  // bare: the tiles without foliage (detail?leaves=0), keyed with a "~" after the place
+  const layer = (L, alpha, fillGaps, bare) => {
     const n = 1 << L, sub = GRID / n, size = (sub / RES) * view.s, idx = (v) => Math.floor((MAX - v) / sub);
     const cr = idx(MAX - ((r.height / 2 - view.oy) / view.s) * RES), cc = idx(MAX - ((r.width / 2 - view.ox) / view.s) * RES);
     for (let R = Math.max(0, idx(xa)); R <= Math.min(64 * n - 1, idx(xb)); R++) for (let C = Math.max(0, idx(ya)); C <= Math.min(64 * n - 1, idx(yb)); C++) {
       const [sx, sy] = scr(MAX - R * sub, MAX - C * sub);
       for (let l = L; l >= (fillGaps ? 1 : L); l--) { // this level, or the part of a coarser one already here
         const f = 1 << (L - l), rr = Math.floor(R / f), c = Math.floor(C / f), m = 1 << l;
-        const key = `${M.id}/${l}/${Math.floor(rr / m)}/${Math.floor(c / m)}/${rr % m}/${c % m}`;
+        const key = `${M.id}/${l}/${Math.floor(rr / m)}/${Math.floor(c / m)}/${rr % m}/${c % m}` + (bare ? "~" : "");
         if (l === L) want.add(key);
         const im = detail.get(key);
         if (!im?.complete || !im.naturalWidth) { if (l === L && !im) missing.push([Math.hypot(R - cr, C - cc) + (fillGaps ? 0 : 1e4), key]); continue; }
@@ -248,8 +249,14 @@ function drawDetail(xa, ya, xb, yb) {
     }
     cx.globalAlpha = 1;
   };
-  if (base) layer(base, 1, true);
-  if (fine && mix > 0.01) layer(fine, mix, false);
+  // the foliage slider: the bare tiles, then the full ones over them at its opacity, which is the same as foliage that
+  // see-through (only one of them at either end)
+  const leaves = +store().foliage, levels = (L, alpha, fill) => {
+    if (leaves < 0.99) layer(L, alpha, fill, true);
+    if (leaves > 0.01) layer(L, leaves < 0.99 ? alpha * leaves : alpha, fill, false);
+  };
+  if (base) levels(base, 1, true);
+  if (fine && mix > 0.01) levels(fine, mix, false);
   // tiles on their way that aren't wanted any more (zoomed or panned past) are dropped, and the nearest to the
   // middle of the screen are asked for first, the coarser level before the finer
   let loading = 0;
@@ -257,7 +264,7 @@ function drawDetail(xa, ya, xb, yb) {
   missing.sort((a, b) => a[0] - b[0]);
   for (const [, key] of missing.slice(0, Math.max(0, DETAIL_LOADS - loading))) {
     const im = new Image(); im.onload = () => { im.loaded = performance.now(); dirty = true; }; im.onerror = () => (dirty = true);
-    im.src = `detail/${key}.jpg?v=${B.detailVersion}`; detail.set(key, im);
+    im.src = `detail/${key.replace("~", "")}.jpg?v=${B.detailVersion}${key.endsWith("~") ? "&leaves=0" : ""}`; detail.set(key, im);
     if (detail.size > 1500) for (const [k, old] of detail) { if (old.complete && !want.has(k)) { detail.delete(k); break; } } // the oldest drawn one
   }
   if (missing.length || fading) dirty = true; // more to ask for, or a tile still fading in: draw again next frame

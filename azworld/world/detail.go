@@ -285,7 +285,11 @@ func (p *paint) groundAt(x, y float64, mip int) (rgb [3]float64, ok bool) {
 
 // DetailTile is a 256x256 JPEG of sub-square (sx, sy) of grid square gx, gy of continent m, the square cut into
 // 2^level x 2^level (sx from x, north first; sy from y, west first), or nil (no client, not a continent, no minimap).
-func DetailTile(m uint32, gx, gy, level, sx, sy int) []byte {
+func DetailTile(m uint32, gx, gy, level, sx, sy int) []byte { return DetailTileLeaves(m, gx, gy, level, sx, sy, true) }
+
+// DetailTileLeaves is DetailTile with or without its foliage (leaves, fences' and banners' see-through textures) and
+// the shadows it casts: the viewer mixes the two to make foliage as see-through as asked.
+func DetailTileLeaves(m uint32, gx, gy, level, sx, sy int, leaves bool) []byte {
 	if level < 1 || level > MaxDetail || !HasDetail(m) || minimapRGBA(m, gx, gy) == nil {
 		return nil
 	}
@@ -340,7 +344,7 @@ func DetailTile(m uint32, gx, gy, level, sx, sy int) []byte {
 			}
 		}
 	})
-	drawModels(out, p, xN, yW, res)
+	drawModels(out, p, xN, yW, res, leaves)
 	var buf bytes.Buffer
 	jpeg.Encode(&buf, out, &jpeg.Options{Quality: 85})
 	return buf.Bytes()
@@ -359,7 +363,7 @@ const shadowLen = 10.0
 // surface's texture (pixels a leaf or fence texture leaves transparent let what's below show), lit by its face's
 // slope from the north-west (the minimap's light), outlined where it drops to a wall, casting a short shadow on what's
 // below.
-func drawModels(out *image.RGBA, p *paint, xN, yW, res float64) {
+func drawModels(out *image.RGBA, p *paint, xN, yW, res float64, leaves bool) {
 	m := p.m
 	n := out.Rect.Dx()
 	zm := int(math.Ceil(shadowLen / res)) // margin: shadows cast from beyond the tile's edge
@@ -460,7 +464,7 @@ func drawModels(out *image.RGBA, p *paint, xN, yW, res float64) {
 					}
 					i := r*Z + c
 					z := float32(l1*H[0] + l2*H[1] + l3*H[2])
-					if z <= top[i] || q.alpha && z <= leafTop[i] {
+					if z <= top[i] || q.alpha && (!leaves || z <= leafTop[i]) {
 						continue
 					}
 					u, v := l1*q.U[0]+l2*q.U[1]+l3*q.U[2], l1*q.V[0]+l2*q.V[1]+l3*q.V[2]
