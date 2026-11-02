@@ -1,8 +1,8 @@
 # Benchmark tasks
 
 The tasks the benchmark is meant to grow into: what each measures, how it's scored, and what it still needs. For
-people planning runs; agents never see this. Tasks are in [tasks/](tasks), the models in
-[models.yaml](models.yaml); open tooling work is in [investigate.md](investigate.md).
+people planning runs; agents never see this. Tasks are in [tasks/](../suite/tasks), the models in
+[models.yaml](../suite/models.yaml); open tooling work is in [investigate.md](investigate.md).
 
 What makes a good task: a fixed start (fresh characters, `azbench run --reset`), a score no one has to judge (met or
 not, then time and cost), partial credit where it can be had so weaker models still spread out, and runs short and

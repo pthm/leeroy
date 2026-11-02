@@ -1,6 +1,6 @@
 description: >
   The Deadmines party at level 20 instead of level 1: five Humans in Northshire with green gear, bags and the class
-  spells trained (bench/kits), and one goal: clear the Deadmines (achievement 628, earned when Edwin VanCleef dies).
+  spells trained (suite/kits), and one goal: clear the Deadmines (achievement 628, earned when Edwin VanCleef dies).
   Two days on the clock; each agent stops when it has the achievement.
 goal: achievement:628
 minutes: 2880

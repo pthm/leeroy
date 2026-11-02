@@ -16,7 +16,7 @@ import (
 	"github.com/pthm/leeroy/internal/bench/run"
 )
 
-// repoRoot: the LEEROY checkout: above the working directory or the binary (bin/), the first with bench/specs.yaml.
+// repoRoot: the LEEROY checkout: above the working directory or the binary (bin/), the first with suite/specs.yaml.
 func repoRoot() string {
 	var starts []string
 	if wd, err := os.Getwd(); err == nil {
@@ -30,7 +30,7 @@ func repoRoot() string {
 	}
 	for _, d := range starts {
 		for ; ; d = filepath.Dir(d) {
-			if _, err := os.Stat(filepath.Join(d, "bench/specs.yaml")); err == nil {
+			if _, err := os.Stat(filepath.Join(d, "suite/specs.yaml")); err == nil {
 				return d
 			}
 			if filepath.Dir(d) == d {
@@ -38,7 +38,7 @@ func repoRoot() string {
 			}
 		}
 	}
-	die("can't find the LEEROY checkout (bench/specs.yaml) above here or the binary")
+	die("can't find the LEEROY checkout (suite/specs.yaml) above here or the binary")
 	return ""
 }
 
@@ -77,12 +77,12 @@ func benchCommand(cmd string, args []string) bool {
 	dry := fs.Bool("dry-run", false, "print the plan (and the first prompt) without starting anything")
 	message := fs.String("message", "", "file: the message an agent's resumed conversation starts with ($LEFT = minutes left)")
 	noBuild := fs.Bool("no-build", false, "don't rebuild bin/ first")
-	reset := fs.Bool("reset", false, "run: start from scratch: delete the task's characters, move its agents' workspaces to bench/workspaces/.old, restart the worldserver")
+	reset := fs.Bool("reset", false, "run: start from scratch: delete the task's characters, move its agents' workspaces to var/workspaces/.old, restart the worldserver")
 	port := fs.Int("port", 0, "run: the first session's port (default 8090), to run beside another run")
 	task := fs.String("task", "", "publish: the task the runs belong to on the site (default: the run's, from run.json)")
 	out := fs.String("out", "", "publish: where to write (default: site/src/data/runs)")
-	model := fs.String("model", "", "run, check: only these of the task's models (comma-separated keys of bench/models.yaml)")
-	spec := fs.String("spec", "", "kit gen: the spec the gear is for (a key of bench/specs.yaml; default the class's usual)")
+	model := fs.String("model", "", "run, check: only these of the task's models (comma-separated keys of suite/models.yaml)")
+	spec := fs.String("spec", "", "kit gen: the spec the gear is for (a key of suite/specs.yaml; default the class's usual)")
 	quality := fs.String("quality", "uncommon", "kit gen: the best quality of gear: uncommon (green), rare (blue) or epic")
 	notFrom := fs.Int("not-from", 0, "kit gen: a map (dungeon) whose loot and quests the kit leaves out: the one it's for")
 	maxIlvl := fs.Int("max-ilvl", 0, "kit gen: the highest item level (default the level + 10)")
@@ -106,7 +106,7 @@ func benchCommand(cmd string, args []string) bool {
 	case "check":
 		pos := parse(1, "<task.yaml> [--model m,...]")
 		repo := repoRoot()
-		b, err := config.LoadBench(filepath.Join(repo, "bench"))
+		b, err := config.LoadBench(filepath.Join(repo, "suite"))
 		check(err)
 		ss, err := b.LoadTask(pos[0], models(*model))
 		check(err)
@@ -121,7 +121,7 @@ func benchCommand(cmd string, args []string) bool {
 	case "run":
 		pos := parse(1, "<task.yaml> [--model m,...] [--minutes n] [--port n] [--dry-run] [--no-build] [--reset]")
 		repo := repoRoot()
-		b, err := config.LoadBench(filepath.Join(repo, "bench"))
+		b, err := config.LoadBench(filepath.Join(repo, "suite"))
 		check(err)
 		ss, err := b.LoadTask(pos[0], models(*model))
 		check(err)
@@ -148,7 +148,7 @@ func benchCommand(cmd string, args []string) bool {
 	case "resume":
 		pos := parse(1, "<run dir> --message <file> [--minutes n] [--no-build]")
 		repo := repoRoot()
-		b, err := config.LoadBench(filepath.Join(repo, "bench"))
+		b, err := config.LoadBench(filepath.Join(repo, "suite"))
 		check(err)
 		s, err := b.LoadScenario(filepath.Join(pos[0], "scenario.yaml"))
 		check(err)
@@ -237,7 +237,7 @@ func benchCommand(cmd string, args []string) bool {
 			fmt.Print(run.KitYAML(k, notes, fmt.Sprintf("azbench kit gen %s %d --spec %s --race %s --quality %s --max-ilvl %d --not-from %d: gear the\ncharacter could get by playing (drops, quest rewards, crafted), bags from vendors; edit freely.", pos[1], level, *spec, *race, *quality, *maxIlvl, *notFrom)))
 		case pos[0] == "apply" && len(pos) == 3: // for testing a kit: on an offline character
 			repo := repoRoot()
-			b, err := config.LoadBench(filepath.Join(repo, "bench"))
+			b, err := config.LoadBench(filepath.Join(repo, "suite"))
 			check(err)
 			k, err := b.LoadKit(strings.TrimSuffix(filepath.Base(pos[2]), ".yaml"))
 			check(err)

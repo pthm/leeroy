@@ -1,4 +1,4 @@
-// azview movecheck <game log...> [--chars A,B] [--from ms]   (bench/runs/<run>/game/<char>/events.jsonl)
+// azview movecheck <game log...> [--chars A,B] [--from ms]   (var/runs/<run>/game/<char>/events.jsonl)
 //
 // Checks recorded movement against the terrain: speed (median per 1 s sample; sustained over 5 s), the steepest
 // slope crossed on each step, and whether the player was under water (a real client swims at the surface). One JSON

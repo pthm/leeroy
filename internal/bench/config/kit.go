@@ -7,7 +7,7 @@ import (
 )
 
 // Kit is a character's starting state beyond level 1: its level, money, trained spells, gear and bags
-// (bench/kits/<name>.yaml; azbench kit gen makes one from the game's own items, azbench kit save copies a character).
+// (suite/kits/<name>.yaml; azbench kit gen makes one from the game's own items, azbench kit save copies a character).
 // A party member takes one with kit: <name>; the harness applies it while the character is offline, and the run's
 // scenario.yaml keeps it as applied. Talents stay unspent: the server gives the points for the level.
 type Kit struct {
@@ -37,7 +37,7 @@ type Stack struct {
 var Slots = []string{"head", "neck", "shoulders", "shirt", "chest", "waist", "legs", "feet", "wrists", "hands",
 	"finger1", "finger2", "trinket1", "trinket2", "back", "main_hand", "off_hand", "ranged", "tabard"}
 
-// LoadKit reads bench/kits/<name>.yaml.
+// LoadKit reads suite/kits/<name>.yaml.
 func (b *Bench) LoadKit(name string) (*Kit, error) {
 	var k Kit
 	if err := readYAML(filepath.Join(b.Dir, "kits", name+".yaml"), &k); err != nil {

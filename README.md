@@ -47,7 +47,7 @@ Each agent gets a fresh character and a non-GM account, a race, class, spec and 
 the first death ends it, and the score is the total XP earned by then. An agent that concludes it can't get further can give up; one that stops early without
 giving up is told to carry on. Damage dealt, damage taken and healing done are shown
 for each role but not scored. Agents can see the standings during the run. The tasks, and results so far, are in
-[bench/benchmarks.md](bench/benchmarks.md).
+[docs/benchmarks.md](docs/benchmarks.md).
 
 The SDK gives agents utilities, not strategies: movement, targeting, casting, looting, quests, trading, grouping,
 events and a typed view of the world. Rotations, pulling, assisting, healing priorities and group tactics are
@@ -96,14 +96,16 @@ sandboxed: they can write only in their workspace, read the docs and source, and
 
 | Folder | What's in it |
 |---|---|
-| [`server/`](server/README.md) | The AzerothCore server: upstream checkout (`azerothcore/`, gitignored), config overrides (`override.yml`) and account creation (`account/`) |
-| [`bench/`](bench/README.md) | The benchmark's configs and data: tasks and models (YAML), specs and places, what agents get (`agent/`: task docs and their tools), agent `workspaces/` and `runs/` |
-| [`cmd/azbench/`](cmd/azbench) | `azbench`: runs the benchmark from those configs (one supervisor per run: sessions, judges, agents; pause, resume, restart), the judge and report card, and the agents' `standings` |
-| [`azsdk/`](azsdk/README.md) | `azsdk`: the Go headless client and daemon the agents drive, plus the Lua API docs and example scripts. Only a game client: no database access |
-| [`cmd/azview/`](cmd/azview/README.md) | `azview`: the viewer (live or finished runs) and movement audit, from the recordings |
-| [`cmd/azworld/`](cmd/azworld/README.md) | `azworld`: world queries for agents, from the server's databases and the game data; `azworld setup` builds the `wowbench` schema they read |
+| [`azsdk/`](azsdk/README.md) | `azsdk`, its own Go module: the headless game client and daemon the agents drive, the agents' `wow` command, the Lua API docs and example scripts. Only a game client: no database access |
+| [`cmd/`](cmd) | The benchmark's binaries: [`azbench`](cmd/azbench) runs it (one supervisor per run: sessions, judges, agents; pause, resume, restart; the report card, `publish`, kits, accounts, the agents' `standings`), [`azview`](cmd/azview/README.md) is the viewer and movement audit, [`azworld`](cmd/azworld/README.md) answers agents' world queries (`azworld setup` builds the `wowbench` schema they read) |
+| `world/`, `runfiles/`, `gamelog/`, `trajectory/` | Libraries the tools share and others can import: the world database and game data, a run directory's layout, reading game logs, transcripts as ATIF trajectories |
+| `internal/` | The harness behind `azbench` (`internal/bench`: the supervisor, judge, configs, diagnostics, accounts) |
+| [`suite/`](suite/README.md) | The benchmark's definition: tasks and models (YAML), specs, places, versions, starting kits, and what agents get (`agent/`: their instructions and tools) |
+| [`docs/`](docs) | Planning notes and specs, acceptance evidence, the e2e prompt, reference guides (not for agents) |
+| [`server/`](server/README.md) | The AzerothCore server: upstream checkout (`azerothcore/`, gitignored) and config overrides (`override.yml`) |
 | [`site/`](site/README.md) | The website (Astro): results from `azbench publish`, write-ups and setup docs, deployed to GitHub Pages |
 | `data/` | Game data, shared by all of the above (gitignored): `maps/`, `vmaps/`, `dbc/` copied out of the server, the SDK's 50° navmesh `mmaps/`, and from a game install `client/` (minimap, terrain, models) and `roads/` |
+| `var/` | What runs produce (gitignored): `runs/` (each run's directory) and `workspaces/` (each agent's) |
 
 All Go code builds with `./build.sh` (binaries in `bin/`; `go.work` ties the root module to `azsdk`). All
 commands below run from the repo root.
@@ -149,19 +151,19 @@ The compose project is pinned to `server` (`server/override.yml`), so the volume
 ## Run a benchmark
 
 ```sh
-bin/azbench run bench/tasks/smoke.yaml                  # 2 minutes, no agents: checks the harness end to end
-bin/azbench run bench/tasks/hardcore.yaml --model opus  # one model on one task
-bin/azbench run --reset bench/tasks/travel.yaml         # six models to Darnassus, from the same start every time
+bin/azbench run suite/tasks/smoke.yaml                  # 2 minutes, no agents: checks the harness end to end
+bin/azbench run suite/tasks/hardcore.yaml --model opus  # one model on one task
+bin/azbench run --reset suite/tasks/travel.yaml         # six models to Darnassus, from the same start every time
 ```
 
 `--reset` deletes the task's characters, sets its agents' workspaces aside and restarts the worldserver first, so
 repeats start alike.
 
-A task ([bench/tasks/README.md](bench/tasks/README.md)) sets the goal, the clock, the starting conditions and the
-party, and lists the models that play it ([bench/models.yaml](bench/models.yaml)): each plays its own run, or all play
-one together. Each agent gets a fresh non-GM account and runs as headless Claude Code (or Codex CLI) inside `bench/workspaces/<name>/` (its
+A task ([suite/tasks/README.md](suite/tasks/README.md)) sets the goal, the clock, the starting conditions and the
+party, and lists the models that play it ([suite/models.yaml](suite/models.yaml)): each plays its own run, or all play
+one together. Each agent gets a fresh non-GM account and runs as headless Claude Code (or Codex CLI) inside `var/workspaces/<name>/` (its
 persistent script library). It can read and write only there, read the client and server source, and run `wow` (the game),
-`azworld` (the world's data), `standings` (the score) and read-only shell commands. Results go to `bench/runs/<time>-<task>-<model>/`:
+`azworld` (the world's data), `standings` (the score) and read-only shell commands. Results go to `var/runs/<time>-<task>-<model>/`:
 - `run.json`: what the run was (task, players, versions) and how it went (start, end, status);
 - `supervisor.log`;
 - `agents/<agent>/`: the transcript, an [ATIF](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md) trajectory (`trajectory.json`, the same for every runtime), notes and usage;
@@ -170,13 +172,13 @@ persistent script library). It can read and write only there, read the client an
 - `diagnostics/`: the harness's and the sessions' diagnostics;
 - `team.json` and `report.json` (the report card).
 
-The layout is in [bench/README.md](bench/README.md#run-directories).
+The layout is in [suite/README.md](suite/README.md#run-directories).
 
 Goals: `level:<n>`, `item:<entry>`, `quality:<n>` (3 = rare), `money:<copper>`, `quests:<n>`, `quest:<id>`,
 `achievement:<id>`, `achpoints:<n>`, `skill:<id>:<n>`, `zone:<id>` (arrive there), and `score:<n>`: progress per hour (`internal/bench/judge/score.json` sets which signals count; v6 counts XP
 earned). For "as much as possible" goals pass a large n and read `value` at timeout. `hardcore: true` in a task
 ends a character's run at its first death and scores the total earned by then; `standings give-up "<why>"` ends an agent's run unmet. Team runs, tasks, pausing and
-resuming, and resetting characters are in [bench/README.md](bench/README.md); scoring in
+resuming, and resetting characters are in [suite/README.md](suite/README.md); scoring in
 [internal/bench/judge/README.md](internal/bench/judge/README.md).
 
 ## Replays and live view
@@ -187,7 +189,7 @@ creatures, boats and zeppelins, group changes and each API call ([azview](cmd/az
 client side, so it works on any AzerothCore server.
 
 Viewers ([`cmd/azview/`](cmd/azview/README.md)):
-- `bin/azview live [log ...] [--run bench/runs/<ts>-team] [--port 8800] [--since 60]`: the viewer at
+- `bin/azview live [log ...] [--run var/runs/<ts>-team] [--port 8800] [--since 60]`: the viewer at
   http://localhost:8800/, for a running or finished run (`--run` reads a run's game logs, judge samples and agent
   transcripts); the playhead follows the newest data until you seek back.
 - `bin/azview movecheck [log]` audits recorded movement for speed, slopes and swimming.
@@ -206,7 +208,7 @@ time, map and place, so a link opens on the same moment and a refresh keeps it.
 bin/azbench account agent1 agent1                                 # non-GM account
 bin/azsdk -char Agentone -account agent1 -race 1 -class 1 -listen 127.0.0.1:8090 -data data > agent1.log 2>&1 &
 bin/azbench judge Agentone level:10 --timeout 4h                  # prints JSON + elapsed_s when met
-# ...give the agent the docs (see bench/README.md#the-agent) + the goal; it drives the session with bench/agent/bin/wow
+# ...give the agent the docs (see suite/README.md#the-agent) + the goal; it drives the session with suite/agent/bin/wow
 ```
 
 ## License

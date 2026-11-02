@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare saved judge samples over the common observed horizon, without rescoring.
 
-Usage: python3 bench/acceptance/compare.py BASELINE_RUN CANDIDATE_RUN
+Usage: python3 docs/acceptance/compare.py BASELINE_RUN CANDIDATE_RUN
 The full-run diagnostics are reported separately: old missing counters stay null.
 """
 import argparse

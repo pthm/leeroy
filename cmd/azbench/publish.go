@@ -23,7 +23,7 @@ import (
 
 // publish writes a run's results for the website (site/src/data/runs/<run>.json): the scenario, then each player's
 // model, outcome, time, cost and tokens, from the run's scenario.yaml, report.json and team.json. Small and committed:
-// the site builds from these, never from bench/runs.
+// the site builds from these, never from var/runs.
 func publish(root, runDir, task, out string) (string, error) {
 	id := filepath.Base(filepath.Clean(runDir))
 	f := runfiles.Run(runDir)
@@ -33,7 +33,7 @@ func publish(root, runDir, task, out string) (string, error) {
 	}
 	started := time.UnixMilli(man.Started)
 	name := man.Scenario
-	b, err := config.LoadBench(filepath.Join(root, "bench"))
+	b, err := config.LoadBench(filepath.Join(root, "suite"))
 	if err != nil {
 		return "", err
 	}

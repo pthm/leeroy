@@ -108,7 +108,7 @@ func Reset(names []string) error {
 }
 
 // Fresh readies a scenario to run again from scratch (azbench run --reset): its characters deleted and the
-// worldserver restarted (Reset), and its agents' workspaces moved aside to bench/workspaces/.old/<agent>-<time>, as
+// worldserver restarted (Reset), and its agents' workspaces moved aside to var/workspaces/.old/<agent>-<time>, as
 // require_fresh wants (kept, not deleted: they hold the last run's notes and scripts).
 func Fresh(repo string, s *config.Scenario) error {
 	var names []string
@@ -120,10 +120,10 @@ func Fresh(repo string, s *config.Scenario) error {
 			return fmt.Errorf("%s is online: stop its run first", n)
 		}
 	}
-	old := filepath.Join(repo, "bench", "workspaces", ".old")
+	old := filepath.Join(repo, "var", "workspaces", ".old")
 	stamp := time.Now().Format("20060102-150405")
 	for _, a := range s.Agents {
-		ws := filepath.Join(repo, "bench", "workspaces", a.Name)
+		ws := filepath.Join(repo, "var", "workspaces", a.Name)
 		if _, err := os.Stat(ws); err != nil {
 			continue
 		}

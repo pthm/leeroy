@@ -320,7 +320,7 @@ func GenKit(class, race int, spec string, level, quality, maxIlvl, notFrom int) 
 	return k, notes, nil
 }
 
-// KitYAML writes a kit as bench/kits keeps it, each item named in a comment.
+// KitYAML writes a kit as suite/kits keeps it, each item named in a comment.
 func KitYAML(k *config.Kit, notes map[int]string, header string) string {
 	var b strings.Builder
 	for _, l := range strings.Split(strings.TrimSpace(header), "\n") {

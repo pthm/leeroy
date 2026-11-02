@@ -5,21 +5,21 @@ in its list. The models are in [`models.yaml`](../models.yaml), so a task is def
 and adding a model to a task is one word.
 
 ```sh
-bin/azbench run bench/tasks/hardcore.yaml                      # every model, one after another
-bin/azbench run bench/tasks/hardcore.yaml --model sonnet,opus  # just these
-bin/azbench run bench/tasks/travel.yaml --dry-run              # the players and the first prompt, nothing started
-bin/azbench run bench/tasks/hogger.yaml --minutes 60
-bin/azbench run bench/tasks/travel.yaml --reset                # again from scratch (below)
+bin/azbench run suite/tasks/hardcore.yaml                      # every model, one after another
+bin/azbench run suite/tasks/hardcore.yaml --model sonnet,opus  # just these
+bin/azbench run suite/tasks/travel.yaml --dry-run              # the players and the first prompt, nothing started
+bin/azbench run suite/tasks/hogger.yaml --minutes 60
+bin/azbench run suite/tasks/travel.yaml --reset                # again from scratch (below)
 ```
 
 Each model's party plays its own run, one after another so none share the world; with `together: true` every model's
 party plays one run in one world (everyone starts at the same moment once all sessions are up, so times are
 comparable). Each character gets a name from [`names.txt`](../../internal/bench/config/names.txt), picked by the task, the
 model and the party slot: neutral (chat doesn't say who is which model), the same each time, and no two characters of
-any task share one. The agent and its workspace, `bench/workspaces/<name>/`, take it in lowercase. Names of
+any task share one. The agent and its workspace, `var/workspaces/<name>/`, take it in lowercase. Names of
 characters already on the server are left out of the list. A task with
 `require_fresh` therefore runs again with `--reset`: its characters are deleted (soft, as the game does), its agents'
-workspaces moved to `bench/workspaces/.old/<agent>-<time>`, and the worldserver restarted and waited for (it caches
+workspaces moved to `var/workspaces/.old/<agent>-<time>`, and the worldserver restarted and waited for (it caches
 character names). It refuses if any of the characters is online.
 
 | Task | Minutes | Models | What it sets up |
@@ -65,16 +65,16 @@ a character that doesn't exist yet is created first with a short login.
 
 ## Kits
 
-A kit (`bench/kits/<name>.yaml`) starts a character beyond a new one: its level, money, spells, gear, bags and items.
+A kit (`suite/kits/<name>.yaml`) starts a character beyond a new one: its level, money, spells, gear, bags and items.
 The harness applies it while the character is offline, after the task's other starting conditions; the run's
 `scenario.yaml` keeps the kit as applied, and the agent's prompt says the character starts at that level with gear
 equipped and its class spells trained (the facts, not how to use them).
 
 ```sh
-bin/azbench kit gen warrior 20 --spec protwarrior > bench/kits/protwarrior-20.yaml   # race: --race (default human)
-bin/azbench kit gen priest 60 --spec holy --quality rare --max-ilvl 63 --not-from 229 > bench/kits/holy-60.yaml
-bin/azbench kit save <Char> > bench/kits/<name>.yaml                                  # a character as it is now
-bin/azbench kit apply <Char> bench/kits/<name>.yaml                                   # try one on an offline character
+bin/azbench kit gen warrior 20 --spec protwarrior > suite/kits/protwarrior-20.yaml   # race: --race (default human)
+bin/azbench kit gen priest 60 --spec holy --quality rare --max-ilvl 63 --not-from 229 > suite/kits/holy-60.yaml
+bin/azbench kit save <Char> > suite/kits/<name>.yaml                                  # a character as it is now
+bin/azbench kit apply <Char> suite/kits/<name>.yaml                                   # try one on an offline character
 ```
 
 `kit gen` gives each slot the item that scores best for the spec's stats (a slot with nothing for them stays as it

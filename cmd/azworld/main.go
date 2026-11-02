@@ -1,6 +1,6 @@
 // azworld answers questions about the game world from the server's databases and the extracted game data, as JSON:
 // where an NPC stands, what a quest needs, where an item drops, safe routes, map images. Agents call it through
-// bench/agent/bin/azworld; `azworld help` lists the commands. See world.Run.
+// suite/agent/bin/azworld; `azworld help` lists the commands. See world.Run.
 //
 //	azworld setup [-schema wowbench]   build the wowbench schema the queries read (client DBC data the world DB
 //	                                   lacks, plus precomputed joins). Needs data/dbc, data/maps and admin access to

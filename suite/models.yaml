@@ -1,4 +1,4 @@
-# Who plays: the models tasks list (bench/tasks), by key. Each is a runtime, its model and the reasoning effort,
+# Who plays: the models tasks list (suite/tasks), by key. Each is a runtime, its model and the reasoning effort,
 # recorded with every run; to compare another effort, add another key (opus-high). Effort is required for claude
 # and codex; opencode takes the provider's variant names, or none.
 

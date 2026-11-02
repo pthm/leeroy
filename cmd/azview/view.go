@@ -1,6 +1,6 @@
 // Reading bench runs: the characters' game logs (gamelog), agent transcripts and bench
 // run directories, for the viewer (live.go, store.go) and movecheck. Map rendering, area names and item/creature
-// names come from cmd/azworld/world.
+// names come from world (package world).
 package main
 
 import (

@@ -30,7 +30,7 @@ func TestLifecycleAndSkillGoalLive(t *testing.T) {
 		t.Fatal("fresh artifact directory required")
 	}
 	repo, _ := filepath.Abs("../..")
-	b, err := config.LoadBench(filepath.Join(repo, "bench"))
+	b, err := config.LoadBench(filepath.Join(repo, "suite"))
 	if err != nil {
 		t.Fatal(err)
 	}

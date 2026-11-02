@@ -1,4 +1,4 @@
-# bench
+# suite
 
 The benchmark: headless agents (Claude Code or Codex CLI) each play one character through an `azsdk` session, write
 their own Lua scripts, and are scored by a judge that reads the character database. Everything runs through one
@@ -13,9 +13,9 @@ commands below run from the repo root; server and client setup is in the [repo R
 | `specs.yaml` | class specs a party can take: class and spec, role, what to optimise, key stats |
 | `places.yaml` | named starting positions (`start: goldshire`) |
 | [`versions.yaml`](versions.yaml) | benchmark versions: bump when a change makes results not comparable; each run records the current one (website: results by version) |
-| [`benchmarks.md`](benchmarks.md) | the tasks the benchmark is growing into: what each measures, how it's scored, results so far, what each needs |
-| [`investigate.md`](investigate.md) | what runs turned up that needs a closer look (navigation, SDK, harness) |
-| [`tooling-reliability-spec.md`](tooling-reliability-spec.md) | unified spec for API signatures and results, diagnostics, routing, movement, casting, recovery, and runtime shell contracts |
+| [`benchmarks.md`](../docs/benchmarks.md) | the tasks the benchmark is growing into: what each measures, how it's scored, results so far, what each needs |
+| [`investigate.md`](../docs/investigate.md) | what runs turned up that needs a closer look (navigation, SDK, harness) |
+| [`tooling-reliability-spec.md`](../docs/tooling-reliability-spec.md) | unified spec for API signatures and results, diagnostics, routing, movement, casting, recovery, and runtime shell contracts |
 | `agent/` | what the agent is given: `AGENTS.md` and its three tools in `bin/` (links to `bin/wow`, `bin/azworld`, `bin/azbench`) |
 | `workspaces/<agent>/` | each agent's persistent script library and notes (gitignored) |
 | `runs/` | results (gitignored) |
@@ -24,7 +24,7 @@ commands below run from the repo root; server and client setup is in the [repo R
 
 | Command | |
 |---|---|
-| `azbench run <task.yaml> [--model m,...] [--minutes n] [--port n] [--reset] [--dry-run]` | a task on each of its models (or those named): a run per model one after another, or one run for a task played together; each run is every session, judge and agent on one clock. `--reset`: delete the run's characters, move its agents' workspaces to `bench/workspaces/.old/` and restart the worldserver first, so every run starts the same. `--port`: the first session's port (default 8090), to run beside another run |
+| `azbench run <task.yaml> [--model m,...] [--minutes n] [--port n] [--reset] [--dry-run]` | a task on each of its models (or those named): a run per model one after another, or one run for a task played together; each run is every session, judge and agent on one clock. `--reset`: delete the run's characters, move its agents' workspaces to `var/workspaces/.old/` and restart the worldserver first, so every run starts the same. `--port`: the first session's port (default 8090), to run beside another run |
 | `azbench check <task.yaml> [--model m,...]` | preflight: read-only checks of what the task's runs would meet ([tasks/README.md](tasks/README.md#preflight)) |
 | `azbench kit gen <class> <level> [--spec s] [--race r] [--quality q] [--max-ilvl n] [--not-from map]` / `kit save <Char>` / `kit apply <Char> <kit>` | a starting kit, from items a character could get by playing, or as a character is ([tasks/README.md](tasks/README.md#kits)) |
 | `azbench status <run dir>` | a running run: each player's state, score and level, and the minutes left |
@@ -61,9 +61,9 @@ reported.
 ## A run
 
 ```sh
-bin/azbench run bench/tasks/levelling-party.yaml --model opus
-bin/azview live --run bench/runs/<time>-levelling-party-opus    # watch it: http://localhost:8800/
-bin/azbench status bench/runs/<time>-levelling-party-opus
+bin/azbench run suite/tasks/levelling-party.yaml --model opus
+bin/azview live --run var/runs/<time>-levelling-party-opus    # watch it: http://localhost:8800/
+bin/azbench status var/runs/<time>-levelling-party-opus
 ```
 
 One supervisor process owns the run. For each agent, logins staggered 10 s apart (concurrent logins time out on
@@ -108,14 +108,14 @@ limit reached; at the start, that refuses to run.
 calms its character and logs it out, and marks the run `paused`. Then:
 
 ```sh
-bin/azbench resume bench/runs/<time>-levelling-party-opus --message resume.md
+bin/azbench resume var/runs/<time>-levelling-party-opus --message resume.md
 ```
 
 Each character logs back in, its judge continues from its samples (same baseline and curve; the pause doesn't
 count) and its agent's conversation is resumed (Claude `--resume <session id>`, Codex `exec resume <thread>`) with
 the message, where `$LEFT` is replaced with the minutes left. The workspaces' docs (`AGENTS.md`, the SDK docs and
 `example.lua`) are refreshed, so SDK and doc changes reach the agents. When the SDK revision (the last commit under
-`azsdk` or `bench/agent`, plus a hash of their uncommitted changes) differs from the one in `<agent>/meta.json` (`sdk_rev`),
+`azsdk` or `suite/agent`, plus a hash of their uncommitted changes) differs from the one in `<agent>/meta.json` (`sdk_rev`),
 the message ends with a generated `WHAT CHANGED` section: the subjects of the commits since, and a line when there
 are uncommitted SDK changes (in a jj checkout git's `HEAD` is `@-`, so the working copy's changes count as uncommitted).
 Commit subjects are what agents read there, so they state what changed, not advice.
@@ -285,16 +285,16 @@ Accounts are non-GM.
 
 `azbench gm [x y z [map]]` starts the GM test character Devgm (account `devgm`, GM level 3) on port 8112, with
 `.gm on` and `.cheat god on`, optionally teleported; its log is `/tmp/devgm.log`. Query it with
-`WOW_PORT=8112 bench/agent/bin/wow '...'`. Never use a GM account in a scored run. `azbench apidoc` rebuilds
+`WOW_PORT=8112 suite/agent/bin/wow '...'`. Never use a GM account in a scored run. `azbench apidoc` rebuilds
 everything, restarts Devgm on the new build and regenerates `azsdk/docs/api-reference.md` from its function
 registry: run it after changing the Lua API or package types.
 
 `--class mage` (any class but warrior) starts a second GM character, Dev<class> (Devmage), on port 8113, for what a
-warrior can't test: spells, mana, a caster's spellbook. `bench/e2e/sdk-fixes.md` is an end-to-end checklist for the
+warrior can't test: spells, mana, a caster's spellbook. `docs/e2e/sdk-fixes.md` is an end-to-end checklist for the
 SDK, written for an agent to run against it:
 
 ```sh
 bin/azbench gm --class mage
-cd bench/e2e && WOW_PORT=8113 PATH=$PWD/../agent/bin:$PATH claude -p "$(cat sdk-fixes.md)" \
+cd docs/e2e && WOW_PORT=8113 PATH=$PWD/../agent/bin:$PATH claude -p "$(cat sdk-fixes.md)" \
   --allowedTools "Bash(wow:*)" "Bash(azworld:*)" "Bash(sleep:*)" "Bash(time:*)" "Bash(cat:*)" "Bash(grep:*)" "Read"
 ```

@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// Task is the benchmark's unit, one file in bench/tasks: a goal, a clock, starting conditions and a party, played by
+// Task is the benchmark's unit, one file in suite/tasks: a goal, a clock, starting conditions and a party, played by
 // each model in its list. Apart (the default), every model's party plays its own run, one after another, so none
 // share the world; together, every model's party plays one run in one world.
 type Task struct {
@@ -24,7 +24,7 @@ type Member struct {
 	Class string `yaml:"class"`
 	Spec  string `yaml:"spec"` // a key from specs.yaml
 	Race  string `yaml:"race"` // default human
-	Kit   string `yaml:"kit"`  // a starting kit, bench/kits/<name>.yaml: level, spells, gear (none: a new character)
+	Kit   string `yaml:"kit"`  // a starting kit, suite/kits/<name>.yaml: level, spells, gear (none: a new character)
 }
 
 // Model is who plays (models.yaml): a runtime, its model, and the reasoning effort, recorded with the run.

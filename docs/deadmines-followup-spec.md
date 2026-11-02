@@ -2,7 +2,7 @@
 
 ## Purpose and scope
 
-Run `bench/runs/20261030-212149-deadmines` put five fresh Codex agents (gpt-6.1-sol) on one goal, achievement 628 (the Deadmines cleared). They met it together after 17.7 hours, with 18 party wipes and 115 deaths, for about $307. The run report is "Into the Deadmines" (claude.ai artifact). The agents' notes, scripts and transcripts, plus a read of the code at 1f436d1, surfaced SDK bugs, harness failures, scoring gaps and documentation errors. This spec says what to change and how to verify it.
+Run `var/runs/20261030-212149-deadmines` put five fresh Codex agents (gpt-6.1-sol) on one goal, achievement 628 (the Deadmines cleared). They met it together after 17.7 hours, with 18 party wipes and 115 deaths, for about $307. The run report is "Into the Deadmines" (claude.ai artifact). The agents' notes, scripts and transcripts, plus a read of the code at 1f436d1, surfaced SDK bugs, harness failures, scoring gaps and documentation errors. This spec says what to change and how to verify it.
 
 It covers the session SDK and its Lua API (`azsdk`), the supervisor, judge and report (`azbench`), the agents' docs (`azsdk/docs`, copied into each workspace), and `azworld` where it serves the agents. It builds on [tooling-reliability-spec.md](tooling-reliability-spec.md) and keeps its contracts (`Request`, `ActionResult`, `ActResult`, typed errors, one movement owner, bounded helpers).
 
@@ -23,7 +23,7 @@ Clean breaks are fine, as in the reliability spec. Workspaces from this run are 
 
 ## Findings
 
-Evidence paths are relative to the run directory or `bench/workspaces/<agent>/`. Agents: a44 Aldous (warrior), a45 Isolde (priest), a46 Merrin (rogue), a47 Thessaly (mage), a48 Corbin (paladin).
+Evidence paths are relative to the run directory or `var/workspaces/<agent>/`. Agents: a44 Aldous (warrior), a45 Isolde (priest), a46 Merrin (rogue), a47 Thessaly (mage), a48 Corbin (paladin).
 
 ### SDK defects
 
@@ -80,7 +80,7 @@ Out of scope, because they encode tactics: a pull helper, a crowd-control lock o
 |---|---|---|---|
 | H1 | Stopping an agent kills its whole process group at once. Codex loses the in-flight tool call and logs "custom tool call output is missing" on every later request. | `internal/bench/run/player.go:546`. Corbin 1,139 lines, Thessaly 358, Isolde 297. | A single graceful-stop routine (H8): stop the agent's tool processes, wait up to 3 s for the runtime to record their output, then stop the runtime. Test: resume after stopping during `sleep 60`; no missing-output line. |
 | H2 | Resume and restart don't refresh workspace docs. Only first start does. | `p.workspace()` runs only in `prepare()` (`run.go:189`, `control.go`). Workspace docs dated 10-30 21:21 missed the trade, corpse-run, routing and `world.los_spot` changes. | Refresh docs on resume and restart. |
-| H3 | Resume messages don't say what changed. Five SDK deploys landed mid-run. | The 14:15 resume said "latest build". | Record the SDK revision in the run dir (`sdk.rev`) at start and at each resume or restart. When it changes, append a generated `WHAT CHANGED` section: commit subjects under `azsdk` and `bench/agent` since the last recorded revision, plus a line when the jj working copy has uncommitted SDK changes. Descriptions are factual (API added, bug fixed), never advice. |
+| H3 | Resume messages don't say what changed. Five SDK deploys landed mid-run. | The 14:15 resume said "latest build". | Record the SDK revision in the run dir (`sdk.rev`) at start and at each resume or restart. When it changes, append a generated `WHAT CHANGED` section: commit subjects under `azsdk` and `suite/agent` since the last recorded revision, plus a line when the jj working copy has uncommitted SDK changes. Descriptions are factual (API added, bug fixed), never advice. |
 | H4 | A restart drops every running Lua task and stops a character mid-dungeon without telling the agent its state. | `control.go:76`, `rpc.go:44-80`. Characters stood unscripted 50-75 s; Merrin logged back in dead. | Before stopping, record running task names. After login, run `autorun.lua` from the workspace if present. Add to the restart message: tasks that were running, alive or dead, position. |
 | H5 | The judge clock kept running 35 s after the game session lost its world connection. | Daemon exit unobserved (`player.go:129`, `cmd/azsdk/main.go:145`). | When a session process exits while the run isn't stopping: alert, pause the run, and stop the judge at its last sample. |
 | H6 | A crashed supervisor shows as "not answering". Its agents and sessions keep playing, unjudged. `resume` doesn't check whether a supervisor is alive. | `run.go:120-150`, `control.go:118`, `player.go:122,276`. | `status` reports `crashed` when control.json's pid is gone. `resume` refuses while that pid lives. The supervisor writes a pids file, and resume stops leftover process groups first. |
@@ -95,7 +95,7 @@ Out of scope, because they encode tactics: a pull helper, a crowd-control lock o
 
 | ID | Defect | Evidence | Required change |
 |---|---|---|---|
-| J1 | Binary goals (achievement, quest, item, quality) score `(rate + best_window) / 2`, which is 2.1 for every agent here. | `metrics/rates.go:49-56`, `judge/main.go:236,266`, `judge/report.go:666-721`. | Score binary goals by time: score = 3600 / time_to_goal_s, with `time_to_goal_s` on the result line, report card and team summary. Unmet goals score 0, with progress signals reported separately. Document `achievement:` in bench/README.md. |
+| J1 | Binary goals (achievement, quest, item, quality) score `(rate + best_window) / 2`, which is 2.1 for every agent here. | `metrics/rates.go:49-56`, `judge/main.go:236,266`, `judge/report.go:666-721`. | Score binary goals by time: score = 3600 / time_to_goal_s, with `time_to_goal_s` on the result line, report card and team summary. Unmet goals score 0, with progress signals reported separately. Document `achievement:` in suite/README.md. |
 | J2 | The reliability block covers 28 minutes and shows `dead_ms` 0. The state names don't match. | `diagnostics/reliability.go:34,37` expects `running/started/resumed`; the harness writes `resume`, `playing`, `pause`. | Share one typed set of state names between harness and diagnostics. Test: start, pause, resume, sample. |
 | J3 | Failure counts mix combat outcomes and preemption with failures, and count nested calls twice. | `judge/diagnostics.go:110-116`, `diagnostics/report.go:265-280`. 46,453 "failures", about half preemption. | Count top-level calls only (`ParentCall == ""`). Bucket codes into `combat_outcome` (miss, dodge, parry, block, resist, evade, immune), `preempted` (superseded, task_*, session_closed) and `failure`. |
 | J4 | Stall events are all `no_xp`, which is normal while resting or in a goal run. | 390 events (`session/events.go:794`, `judge/report.go:527-533`). | Split stalls by reason. Skip `no_xp` while eating, drinking, dead, or when the goal isn't XP-based. |

@@ -1,9 +1,9 @@
 server/azerothcore/
-bench/runs/
-bench/workspaces/*/
+/var/
 /data/
 node_modules/
 *.log
 .playwright-mcp/
 /bin/
 *.test
+.DS_Store

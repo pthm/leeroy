@@ -11,7 +11,7 @@ import (
 )
 
 // sdkPaths: what the agents run and read: the SDK (its docs too) and their tools.
-var sdkPaths = []string{"azsdk", "bench/agent"}
+var sdkPaths = []string{"azsdk", "suite/agent"}
 
 func git(repo string, args ...string) ([]byte, error) {
 	return exec.Command("git", append([]string{"-C", repo}, args...)...).Output()

@@ -91,7 +91,7 @@ export interface Run {
   level: number;
   started: string;
   players: Player[];
-  version: string; // benchmark version (bench/versions.yaml)
+  version: string; // benchmark version (suite/versions.yaml)
   sdk_rev?: string;
   maps?: MapBox[];
   together?: number[]; // per minute: 1 when all players stood within 40 yd
@@ -164,7 +164,7 @@ const runs: Run[] = Object.values(
 // hardcore is scored on total XP earned before death or the clock (how far it got without dying), not on a rate
 for (const r of runs) if (r.hardcore) for (const p of r.players) p.hardcore = true;
 
-// Benchmark versions (bench/versions.yaml, copied by azbench publish). Results from different versions aren't
+// Benchmark versions (suite/versions.yaml, copied by azbench publish). Results from different versions aren't
 // compared: every list below takes a version, or 'all'.
 export interface Version {
   version: string;

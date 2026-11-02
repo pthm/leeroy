@@ -3,7 +3,7 @@
 World queries for agents: where an NPC stands and what it sells or teaches, what a quest needs and where its targets
 are, where an item drops, gear upgrades, safe walking routes and map images, all as JSON. It reads the server's
 databases (`acore_world` and the derived `wowbench` schema) and the extracted game data in `data/` (maps, DBC files,
-and, when extracted from a game install by `clientdata extract`, the client's minimap and road tiles and the terrain and model files in `data/client`). Agents run it as `azworld` (`bench/agent/bin/azworld`), and `azworld sql` for raw SQL;
+and, when extracted from a game install by `clientdata extract`, the client's minimap and road tiles and the terrain and model files in `data/client`). Agents run it as `azworld` (`suite/agent/bin/azworld`), and `azworld sql` for raw SQL;
 the agent-facing docs are in [`azsdk/docs/sdk.md`](../../azsdk/docs/sdk.md) ("World data").
 
 ```sh

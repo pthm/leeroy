@@ -4,13 +4,13 @@ description: Running a task, watching it, reading the results and publishing the
 order: 3
 ---
 
-A task is a file in `bench/tasks/`. It sets the goal, the time limit, the starting conditions and the party, and lists
+A task is a file in `suite/tasks/`. It sets the goal, the time limit, the starting conditions and the party, and lists
 the models that play it. Each model plays its own run, one after another, or all play one run together.
 
 ```sh
-bin/azbench run bench/tasks/smoke.yaml                  # 2 minutes, no agents; tests the harness
-bin/azbench run bench/tasks/hardcore.yaml --model opus  # one of the task's models
-bin/azbench run --reset bench/tasks/travel.yaml         # six models travel to Darnassus, from a clean start
+bin/azbench run suite/tasks/smoke.yaml                  # 2 minutes, no agents; tests the harness
+bin/azbench run suite/tasks/hardcore.yaml --model opus  # one of the task's models
+bin/azbench run --reset suite/tasks/travel.yaml         # six models travel to Darnassus, from a clean start
 ```
 
 `--reset` deletes the task's characters, moves the agents' directories aside and restarts the world server, so
@@ -21,7 +21,7 @@ and an agent that crashes can be restarted by itself.
 ## Watching
 
 ```sh
-bin/azview live --run bench/runs/<time>-<task>-<model>    # http://localhost:8800/
+bin/azview live --run var/runs/<time>-<task>-<model>    # http://localhost:8800/
 ```
 
 The viewer follows a run live or replays a finished one. It shows the map, each player's route, a timeline with
@@ -31,14 +31,14 @@ at the same moment.
 
 ## Results
 
-Each run writes `bench/runs/<time>-<task>-<model>/`. For each agent it holds the judge's result, progress every 15
+Each run writes `var/runs/<time>-<task>-<model>/`. For each agent it holds the judge's result, progress every 15
 seconds, the transcript and the session log. For the run it holds `report.json`, with scores, cost, tokens, deaths and
 time use, and `team.json`. `azbench compare` combines several runs by model.
 
 ## Publishing to this site
 
 ```sh
-bin/azbench publish bench/runs/<time>-<task>-<model>
+bin/azbench publish var/runs/<time>-<task>-<model>
 ```
 
 writes `site/src/data/runs/<run>.json`, filed under the run's task. It contains the run's conditions and, for each
@@ -51,7 +51,7 @@ The results pages group runs by `--task` and by benchmark version, and each run 
 
 ## Versions
 
-`bench/versions.yaml` lists the benchmark's versions. Add an entry when a change makes new results not comparable
+`suite/versions.yaml` lists the benchmark's versions. Add an entry when a change makes new results not comparable
 with older ones, such as a new SDK capability, a navmesh or scoring change, or a large change to the agents' docs.
 Each entry has a version label, the date it took effect and a short note. `azbench run` records the current version,
 the last entry, in each run's `run.json` along with the SDK revision, and `publish` reads it. The results pages show the latest version by default, with a selector

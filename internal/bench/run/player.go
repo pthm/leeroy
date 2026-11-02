@@ -33,7 +33,7 @@ type player struct {
 	a           config.Agent
 	race, class int
 	port        int
-	ws, dir     string // workspace (bench/workspaces/<name>), its files in the run (<run>/agents/<name>)
+	ws, dir     string // workspace (var/workspaces/<name>), its files in the run (<run>/agents/<name>)
 	version     string // the runtime's (cliVersion), once meta has read it
 
 	mu        sync.Mutex
@@ -75,7 +75,7 @@ func (p *player) account() string {
 // workspaceFiles: what each run refreshes in the workspace, from the repo. AGENTS.md is where the agent starts (Codex
 // loads it by itself; CLAUDE.md imports it for Claude Code, so both start from the same text) and points to the rest.
 var workspaceFiles = map[string]string{
-	"AGENTS.md":           "bench/agent/AGENTS.md",
+	"AGENTS.md":           "suite/agent/AGENTS.md",
 	"game.md":             "azsdk/docs/game.md",
 	"sdk.md":              "azsdk/docs/sdk.md",
 	"moving.md":           "azsdk/docs/moving.md",
@@ -313,14 +313,14 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 		os.MkdirAll(cfg, 0o755)
 		env = append(env, "XDG_CONFIG_HOME="+cfg, "OPENCODE_CONFIG_CONTENT="+opencodeConfig(repo, p.ws))
 	}
-	cmd.Env = append(env, "PATH="+filepath.Join(repo, "bench/agent/bin")+":"+os.Getenv("PATH"),
+	cmd.Env = append(env, "PATH="+filepath.Join(repo, "suite/agent/bin")+":"+os.Getenv("PATH"),
 		"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "WOWBENCH_BOARD="+p.r.f().Board(),
 		"WOWBENCH_CHAR="+a.Char, fmt.Sprintf("WOW_MAX_WAIT=%d", agentMaxWaitSeconds), fmt.Sprintf("WOW_PORT=%d", p.port))
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // so stopping it stops its tools too
 	return cmd
 }
 
-// agentCommands: the shell commands an agent may run (bench/agent/AGENTS.md lists them): its three tools and
+// agentCommands: the shell commands an agent may run (suite/agent/AGENTS.md lists them): its three tools and
 // read-only file and text commands, so output can be piped through head or grep
 var agentCommands = []string{"wow", "azworld", "standings", "sleep", "tail", "cat", "ls", "grep", "mkdir", "head", "wc",
 	"sort", "uniq", "cut", "rg"}

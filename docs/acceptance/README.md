@@ -9,16 +9,16 @@ Evidence collected on 2026-10-30. These are execution and contract checks, not a
 | Complete Go suite | Pass: `go test ./... ./azsdk/...` | `/tmp/reliability-full-tests.log` |
 | Race suite | Pass: script, session, pathfinding, diagnostics and run packages | `/tmp/reliability-race-tests.log` |
 | Real-map paths and concurrency | Pass: real terrain/collision agreement, multiple maps, floor reference and concurrent path/height access | `/tmp/reliability-realdata-tests.log` |
-| Combined GM suite | 25/25 pass: contracts, routes, errands, full bags, crafting, gathering, death and recovery | `bench/runs/20261030-reliability-gm-complete/summary.json` |
-| Casting | 6/6 pass: stop owned movement, cooldown, lost target, overlapping same-spell correlation, facing, blocked healing across floors | `bench/runs/20261030-reliability-casting3/summary.json` |
-| Two-session coordination | 2/2 pass: moving-target cast without chasing; recovery preempts travel and a queued errand | `bench/runs/20261030-reliability-coordination3/summary.json` |
-| Fresh skill/lifecycle | Pass: actual Cooking training, SDK/server rank agreement, pause, saved provisional report, resume, session restart, natural completion, three session diagnostic streams | `bench/runs/20261030-reliability-lifecycle/` |
-| Claude shell | All 15 command families; background completion measured from notification, not launch | `bench/runs/20261030-reliability-shell-notify/claude/` |
-| Codex shell | All 15 command families; requested early yield and completion polling | `bench/runs/20261030-reliability-shell-poll/codex/` |
-| OpenCode shell | All 15 command families through authenticated `openai/gpt-6.1-sol` | `bench/runs/20261030-reliability-shell-authenticated/opencode/` |
-| Comparison utility | Two unit tests: common-horizon sampling/missing evidence, overlapping episode duration | `python3 -m unittest discover -s bench/acceptance -p 'test_*.py'` |
+| Combined GM suite | 25/25 pass: contracts, routes, errands, full bags, crafting, gathering, death and recovery | `var/runs/20261030-reliability-gm-complete/summary.json` |
+| Casting | 6/6 pass: stop owned movement, cooldown, lost target, overlapping same-spell correlation, facing, blocked healing across floors | `var/runs/20261030-reliability-casting3/summary.json` |
+| Two-session coordination | 2/2 pass: moving-target cast without chasing; recovery preempts travel and a queued errand | `var/runs/20261030-reliability-coordination3/summary.json` |
+| Fresh skill/lifecycle | Pass: actual Cooking training, SDK/server rank agreement, pause, saved provisional report, resume, session restart, natural completion, three session diagnostic streams | `var/runs/20261030-reliability-lifecycle/` |
+| Claude shell | All 15 command families; background completion measured from notification, not launch | `var/runs/20261030-reliability-shell-notify/claude/` |
+| Codex shell | All 15 command families; requested early yield and completion polling | `var/runs/20261030-reliability-shell-poll/codex/` |
+| OpenCode shell | All 15 command families through authenticated `openai/gpt-6.1-sol` | `var/runs/20261030-reliability-shell-authenticated/opencode/` |
+| Comparison utility | Two unit tests: common-horizon sampling/missing evidence, overlapping episode duration | `python3 -m unittest discover -s docs/acceptance -p 'test_*.py'` |
 
-The final Go/race/real-map/lifecycle/runtime logs and binary hashes are copied to `bench/runs/20261030-reliability-validation/`; `/tmp` paths above name their original capture locations.
+The final Go/race/real-map/lifecycle/runtime logs and binary hashes are copied to `var/runs/20261030-reliability-validation/`; `/tmp` paths above name their original capture locations.
 
 Each GM directory contains `replies.jsonl` with timestamps, exact Lua calls, replies and command exit status. A Lua assertion/task failure cannot count as a pass. Runtime directories contain stamped transcripts and `commands.json`. The lifecycle fixture saves the complete run. Run artifacts are intentionally ignored by version control; this record and the reproducible fixtures are tracked.
 
@@ -32,10 +32,10 @@ Build binaries and regenerate the reference before starting the fixtures:
 
 ```sh
 go run ./azbench apidoc
-python3 bench/acceptance/reliability.py --artifacts bench/runs/NEW-GM-DIRECTORY
+python3 docs/acceptance/reliability.py --artifacts var/runs/NEW-GM-DIRECTORY
 go run ./azbench gm --class mage
-python3 bench/acceptance/reliability.py --port 8113 --suite casting --artifacts bench/runs/NEW-CAST-DIRECTORY
-python3 bench/acceptance/reliability.py --suite coordination --artifacts bench/runs/NEW-COORDINATION-DIRECTORY
+python3 docs/acceptance/reliability.py --port 8113 --suite casting --artifacts var/runs/NEW-CAST-DIRECTORY
+python3 docs/acceptance/reliability.py --suite coordination --artifacts var/runs/NEW-COORDINATION-DIRECTORY
 ```
 
 Artifact directories must be new. Run these sequentially because they share the two GM sessions. `all` covers the 25 warrior-GM checks; casting and coordination are separate because they require the mage session. Tests restore the GM's position, alive state, GM/god mode and equipment durability. Profession fixtures deliberately learn skills and consume/create items on the disposable GM.
@@ -50,9 +50,9 @@ The runtime smoke uses configured paid model access; normal unit tests skip both
 
 ## Matched benchmark
 
-Final candidate: `bench/runs/20261030-172848-hogger-reliability`, agents a57–a59, started **17:29:44 PDT**, configured for 120 minutes and observed for a 15-minute regression smoke window. It uses the SDK through `ee8f7b91` and harness through `f171f5cf`, plus the fresh-name scenario change. Runtime, model, level, classes, specs, initial location/resources and goal match the saved original scenario. Workspaces are fresh. No tactics or code are supplied to the agents during play.
+Final candidate: `var/runs/20261030-172848-hogger-reliability`, agents a57–a59, started **17:29:44 PDT**, configured for 120 minutes and observed for a 15-minute regression smoke window. It uses the SDK through `ee8f7b91` and harness through `f171f5cf`, plus the fresh-name scenario change. Runtime, model, level, classes, specs, initial location/resources and goal match the saved original scenario. Workspaces are fresh. No tactics or code are supplied to the agents during play.
 
-Baseline: `bench/runs/20261030-100559-hogger-trio`, configured for 120 minutes but with **5,236 seconds** of saved judge samples per character. Its original report remains untouched. The comparison utility uses the first 900 seconds on each character’s judge-sample clock for progress, XP, deaths and kills. The final candidate is deliberately paused at that observation boundary; its score remains provisional, and the test does not establish full-run encounter performance. Full-run diagnostic durations have their own coverage and are not silently normalized to that horizon.
+Baseline: `var/runs/20261030-100559-hogger-trio`, configured for 120 minutes but with **5,236 seconds** of saved judge samples per character. Its original report remains untouched. The comparison utility uses the first 900 seconds on each character’s judge-sample clock for progress, XP, deaths and kills. The final candidate is deliberately paused at that observation boundary; its score remains provisional, and the test does not establish full-run encounter performance. Full-run diagnostic durations have their own coverage and are not silently normalized to that horizon.
 
 The earlier candidate `20261030-164436-hogger-reliability` used 60 minutes and was paused after about 37 minutes when the saved baseline mismatch was found. `20261030-172246-hogger-reliability` was stopped during startup to include the healer-observation fix. Neither is counted as a matched trial.
 
@@ -83,7 +83,7 @@ The priest's episodes include 47,625 `act.cast/cooldown` refusals and 5,554 `act
 Reproduce the saved comparison:
 
 ```sh
-python3 bench/acceptance/compare.py bench/runs/20261030-100559-hogger-trio bench/runs/20261030-172848-hogger-reliability --seconds 900 > bench/runs/20261030-172848-hogger-reliability/comparison.json
+python3 docs/acceptance/compare.py var/runs/20261030-100559-hogger-trio var/runs/20261030-172848-hogger-reliability --seconds 900 > var/runs/20261030-172848-hogger-reliability/comparison.json
 ```
 
 Sample size is one three-agent run per condition. The shared world contains persistent changes and other sessions; GM probes used separate characters and were completed before the final benchmark. Contention and model variation prevent causal attribution or model ranking from this sample. The original baseline lacks the new failure-episode, ownership, route-timeout and sampled dead/broken-weapon counters; these comparisons must remain unavailable, not zero.
@@ -103,11 +103,11 @@ The API contract and limits are documented in `azsdk/docs/moving.md`.
 
 | Check | Result | Evidence |
 |---|---|---|
-| Complete repository and SDK suite with extracted map data | Pass on final controller | `bench/runs/20261030-navigation-clearance3/nav-final-tests.log` |
-| Prepared corner packets and session race checks | Pass | `bench/runs/20261030-navigation-clearance3/nav-corner-race-tests.log`; final `TestPrepared` movement race run also passed |
-| Synthetic race suite for those four packages | Pass | `bench/runs/20261030-navigation-clearance2/nav-synthetic-race-tests.log` |
-| Real interior surfaces and prepared paths under race detection | Pass | `bench/runs/20261030-navigation-clearance2/nav-interior-race-tests.log` |
-| Non-scored Devgm clearance suite | 5/5 pass on final controller | `bench/runs/20261030-navigation-clearance3/summary.json` and `replies.jsonl` |
+| Complete repository and SDK suite with extracted map data | Pass on final controller | `var/runs/20261030-navigation-clearance3/nav-final-tests.log` |
+| Prepared corner packets and session race checks | Pass | `var/runs/20261030-navigation-clearance3/nav-corner-race-tests.log`; final `TestPrepared` movement race run also passed |
+| Synthetic race suite for those four packages | Pass | `var/runs/20261030-navigation-clearance2/nav-synthetic-race-tests.log` |
+| Real interior surfaces and prepared paths under race detection | Pass | `var/runs/20261030-navigation-clearance2/nav-interior-race-tests.log` |
+| Non-scored Devgm clearance suite | 5/5 pass on final controller | `var/runs/20261030-navigation-clearance3/summary.json` and `replies.jsonl` |
 
 The live suite traversed the bridge (10.510 s), road (4.949 s), upper cave (3.247 s)
 and lower cave (3.863 s). The lower cave required a validated alternative around
@@ -134,14 +134,14 @@ budgets: `TestMovementCollisionRealInteriorRoutes/bridge` (5 s),
 Its output is retained as `nav-race-tests.log`; ordinary real-data validation and the
 focused real-interior race run passed. These timing failures were not counted as passes.
 The first live attempt could not reach the GM session after its launch command exited;
-its reply is retained in `bench/runs/20261030-navigation-clearance/`. Running launch and
+its reply is retained in `var/runs/20261030-navigation-clearance/`. Running launch and
 validation within one command kept the session alive for the successful suite.
 
 Reproduce the focused acceptance after rebuilding the binaries:
 
 ```sh
 go run ./azbench apidoc
-go run ./azbench gm && python3 bench/acceptance/reliability.py --suite clearance --artifacts bench/runs/NEW-CLEARANCE-DIRECTORY
+go run ./azbench gm && python3 docs/acceptance/reliability.py --suite clearance --artifacts var/runs/NEW-CLEARANCE-DIRECTORY
 AC_DATA_DIR=/Users/pthm/wowbench/data go test ./azsdk/pathfinding ./azsdk/navigation ./azsdk/movement ./azsdk/session -count=1 -timeout=120s
 go test -race ./azsdk/pathfinding ./azsdk/navigation ./azsdk/movement ./azsdk/session -count=1 -timeout=120s
 AC_DATA_DIR=/Users/pthm/wowbench/data go test -race ./azsdk/pathfinding -run 'TestPreparedReal|TestInteriorReal' -count=1 -v -timeout=120s

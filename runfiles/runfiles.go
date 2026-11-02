@@ -1,5 +1,5 @@
 // Package runfiles is a run directory's layout: where the harness writes each file, and where the judge, the report,
-// publish and the viewer read it. One run, bench/runs/<time>-<task>[-<model>]/:
+// publish and the viewer read it. One run, var/runs/<time>-<task>[-<model>]/:
 //
 //	run.json              the manifest: task, players, benchmark version, SDK revision, start, end, status (when
 //	                      each player played, its pauses and outages: the harness's runtime_state diagnostics)
@@ -66,7 +66,7 @@ func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 type Manifest struct {
 	Task     string   `json:"task"`     // the task it was made from
 	Scenario string   `json:"scenario"` // the run's own name (<task>-<model>)
-	Version  string   `json:"version"`  // the benchmark version (bench/versions.yaml)
+	Version  string   `json:"version"`  // the benchmark version (suite/versions.yaml)
 	SDKRev   string   `json:"sdk_rev"`  // the SDK revision it started on
 	Goal     string   `json:"goal"`
 	Minutes  int      `json:"minutes"`

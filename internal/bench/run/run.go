@@ -57,13 +57,13 @@ func New(b *config.Bench, s *config.Scenario, o Options) (*Runner, error) {
 	}
 	r := &Runner{repo: o.Repo, b: b, s: s, dir: o.Dir}
 	if r.dir == "" {
-		r.dir = filepath.Join(o.Repo, "bench/runs", time.Now().Format("20060102-150405")+"-"+s.Name)
+		r.dir = filepath.Join(o.Repo, "var/runs", time.Now().Format("20060102-150405")+"-"+s.Name)
 	}
 	for i, a := range s.Agents {
 		race, _ := config.ID(config.Races, a.Race)
 		class, _ := config.ID(config.Classes, a.Class)
 		r.players = append(r.players, &player{r: r, a: a, race: race, class: class, port: o.BasePort + i,
-			ws: filepath.Join(o.Repo, "bench/workspaces", a.Name), dir: runfiles.Run(r.dir).Agent(a.Name), state: "starting"})
+			ws: filepath.Join(o.Repo, "var/workspaces", a.Name), dir: runfiles.Run(r.dir).Agent(a.Name), state: "starting"})
 	}
 	return r, nil
 }
@@ -184,9 +184,9 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 		os.WriteFile(r.f().Scenario(), y, 0o644)
 	}
 	if !resume {
-		// the benchmark version (bench/versions.yaml) and the SDK revision the run starts on, for the results
+		// the benchmark version (suite/versions.yaml) and the SDK revision the run starts on, for the results
 		r.manifest(func(m *runfiles.Manifest) {
-			if b, err := config.LoadBench(filepath.Join(r.repo, "bench")); err == nil {
+			if b, err := config.LoadBench(filepath.Join(r.repo, "suite")); err == nil {
 				m.Version = b.Current().Version
 			}
 			m.SDKRev, _ = sdkRev(r.repo)

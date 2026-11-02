@@ -1,7 +1,7 @@
-// Package config reads the benchmark's YAML: tasks (bench/tasks: a goal, a clock and a party, played by each of a
-// list of models), the runs made from them (Scenario) and the shared tables they refer to: bench/models.yaml (the
-// models), bench/specs.yaml (class specs and roles) and bench/places.yaml (named starting positions). See
-// bench/tasks/README.md for the fields.
+// Package config reads the benchmark's YAML: tasks (suite/tasks: a goal, a clock and a party, played by each of a
+// list of models), the runs made from them (Scenario) and the shared tables they refer to: suite/models.yaml (the
+// models), suite/specs.yaml (class specs and roles) and suite/places.yaml (named starting positions). See
+// suite/tasks/README.md for the fields.
 package config
 
 import (
@@ -54,7 +54,7 @@ type Conditions struct {
 	RequireFresh bool `yaml:"require_fresh"`
 }
 
-// Agent is one player: an agent (its workspace, bench/workspaces/<name>) and the character it plays.
+// Agent is one player: an agent (its workspace, var/workspaces/<name>) and the character it plays.
 type Agent struct {
 	Name    string `yaml:"name"`
 	Char    string `yaml:"char"`
@@ -172,9 +172,9 @@ var (
 	agentRe = regexp.MustCompile(`^[a-z0-9-]{1,16}$`)
 )
 
-// Bench is the bench directory's shared tables.
+// Bench is the suite directory's shared tables (suite/).
 type Bench struct {
-	Dir      string // bench/
+	Dir      string // docs/
 	Specs    map[string]Spec
 	Places   map[string]Place
 	Models   map[string]Model // models.yaml
@@ -207,7 +207,7 @@ func (b *Bench) VersionAt(t time.Time) Version {
 	return v
 }
 
-// LoadBench reads models.yaml, specs.yaml, places.yaml and versions.yaml from the bench directory.
+// LoadBench reads models.yaml, specs.yaml, places.yaml and versions.yaml from the suite directory (suite/).
 func LoadBench(dir string) (*Bench, error) {
 	b := &Bench{Dir: dir, Specs: map[string]Spec{}, Places: map[string]Place{}}
 	if err := readYAML(filepath.Join(dir, "specs.yaml"), &b.Specs); err != nil {

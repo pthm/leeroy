@@ -1,11 +1,11 @@
-// azbench: the LEEROY benchmark. One binary for running the benchmark's tasks (bench/tasks), judging and reporting them, and the agents' standings (bench/agent/bin/standings is a link to
+// azbench: the LEEROY benchmark. One binary for running the benchmark's tasks (suite/tasks), judging and reporting them, and the agents' standings (suite/agent/bin/standings is a link to
 // it: it acts as the one it's called by). The agents' other tools are the game's (wow, in azsdk) and the
 // world's (azworld).
 //
 //	azbench run <task.yaml> [--model m,...] [--minutes n] [--dry-run] [--reset]  a task, on each of its models (or those
 //	                                                         named); --reset starts each from scratch
 //	azbench check <task.yaml> [--model m,...]                preflight: what the task's runs would meet in the world
-//	azbench kit gen <class> <level> [--spec s] | save <Char>  a starting kit (bench/kits), made or copied
+//	azbench kit gen <class> <level> [--spec s] | save <Char>  a starting kit (suite/kits), made or copied
 //	azbench resume <run dir> --message <file> [--minutes n]  continue a paused run
 //	azbench pause|status <run dir>                           control a running run
 //	azbench restart <run dir> <agent> --message <file>       bring one agent back mid-run

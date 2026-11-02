@@ -7,16 +7,16 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// every scenario and matrix in bench/ loads and checks out
+// every scenario and matrix in docs/ loads and checks out
 func TestBenchConfigs(t *testing.T) {
-	b, err := LoadBench("../../../bench")
+	b, err := LoadBench("../../../suite")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(b.Specs) < 10 || b.Places["goldshire"].Zone != 12 {
 		t.Fatalf("tables: %d specs, goldshire %+v", len(b.Specs), b.Places["goldshire"])
 	}
-	files, _ := filepath.Glob("../../../bench/tasks/*.yaml")
+	files, _ := filepath.Glob("../../../suite/tasks/*.yaml")
 	chars := map[string]string{} // every task's characters and agents are their own
 	for _, f := range files {
 		ss, err := b.LoadTask(f, nil)
@@ -39,12 +39,12 @@ func TestBenchConfigs(t *testing.T) {
 	if len(files) == 0 || len(chars) < 20 {
 		t.Fatalf("%d tasks, %d characters", len(files), len(chars))
 	}
-	if ss, err := b.LoadTask("../../../bench/tasks/hardcore.yaml", []string{"sol"}); err != nil || len(ss) != 1 || ss[0].Name != "hardcore-sol" || ss[0].Task != "hardcore" || ss[0].Agents[0].Effort != "xhigh" {
+	if ss, err := b.LoadTask("../../../suite/tasks/hardcore.yaml", []string{"sol"}); err != nil || len(ss) != 1 || ss[0].Name != "hardcore-sol" || ss[0].Task != "hardcore" || ss[0].Agents[0].Effort != "xhigh" {
 		t.Fatalf("hardcore, sol only: %v %+v", err, ss)
 	} else if y, _ := yaml.Marshal(ss[0]); readYAMLBytes(y, &Scenario{}) != nil { // as a run dir keeps it
 		t.Fatalf("scenario.yaml doesn't read back:\n%s", y)
 	}
-	if ss, _ := b.LoadTask("../../../bench/tasks/travel.yaml", nil); len(ss) != 1 || len(ss[0].Agents) != 6 {
+	if ss, _ := b.LoadTask("../../../suite/tasks/travel.yaml", nil); len(ss) != 1 || len(ss[0].Agents) != 6 {
 		t.Fatalf("travel is played together: %d runs", len(ss))
 	}
 }

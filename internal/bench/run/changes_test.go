@@ -38,7 +38,7 @@ func TestWhatChanged(t *testing.T) {
 	first := rev()
 	commit("azsdk/a.go", "azsdk: spells.stop_casting")
 	commit("cmd/azbench/x.go", "azbench: unrelated")
-	commit("bench/agent/AGENTS.md", "agent: wow wait coalesces chat")
+	commit("suite/agent/AGENTS.md", "agent: wow wait coalesces chat")
 	second := rev()
 	if strings.Contains(second, "+") {
 		t.Fatalf("clean tree has a dirty revision: %s", second)
