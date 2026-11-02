@@ -27,6 +27,7 @@ restarted and waited for (it caches character names). It refuses if any of the c
 | `deadmines-sonnet.yaml` | 10080 | the same party and goal on Claude Code with Sonnet 5.5, a49-a53 |
 | `travel-darnassus.yaml` | 90 | smoke test for getting around: a new level-30 Human warrior (a54, Sonnet) in Northshire, goal: reach Darnassus (`zone:1657`) on the other continent |
 | `hardcore-warrior.yaml` | 240 | a new level-1 Human Arms warrior (a55, Sonnet) levelling with `hardcore`: the first death ends the run |
+| `hardcore/*.yaml` | 240 | hardcore levelling, one file per model (Haiku, Sonnet, Opus, Luna, Terra, Sol; a68-a73): a new level-1 Human Arms warrior in Northshire, the first death ends the run; run one after another so none share the world |
 | `travel-models.yaml` | 90 | travel-darnassus on six models at once, each on its local harness: Claude Code Haiku, Sonnet, Opus (a56-a58) and Codex GPT-6 Luna, GPT-6.1 Terra, Sol (a59-a61) |
 
 All but the smoke tests set `require_fresh`: they refuse to start if any agent's workspace exists.
