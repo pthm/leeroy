@@ -54,10 +54,8 @@ func Playing(d DiagnosticDetails) (playing, ok bool) {
 // DiagnosticDetails is an allowlist: arbitrary request arguments, results, error messages, commands,
 // prompts and chat are never copied here. Status is explicitly agent-authored and limited to 512 bytes.
 type DiagnosticDetails struct {
-	Route           *DiagnosticRoute `json:"route,omitempty"`
-	Movement        *MovementOwner   `json:"movement,omitempty"`
-	Alive           *bool            `json:"alive,omitempty"`
-	SampleAvailable *bool            `json:"sample_available,omitempty"`
+	Route    *DiagnosticRoute `json:"route,omitempty"`
+	Movement *MovementOwner   `json:"movement,omitempty"`
 
 	Gear          *DiagnosticGear        `json:"gear,omitempty"`
 	Target        string                 `json:"target,omitempty"`

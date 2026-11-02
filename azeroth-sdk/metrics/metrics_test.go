@@ -61,13 +61,16 @@ func TestTeam(t *testing.T) {
 func TestUse(t *testing.T) {
 	var me, mate []Pos
 	for s := int64(0); s < 10; s++ {
-		p := Pos{T: s * 1000, X: float64(s * 2 * min(s, 5)), Alive: s < 8, Combat: s >= 6, Group: 1}
+		p := Pos{T: s * 1000, X: float64(s * 2 * min(s, 5)), Alive: s < 8, Combat: s >= 6, Group: 1, Broken: s >= 7}
 		me = append(me, p)
 		mate = append(mate, Pos{T: s * 1000, X: 10, Alive: true, Group: 1})
 	}
-	u := Use("me", map[string][]Pos{"me": me, "mate": mate})
-	if u.Seconds != 10 || u.DeadPct != 20 || u.FightingPct != 20 || u.TravellingPct != 50 || u.IdlePct != 10 {
+	u := Use("me", map[string][]Pos{"me": me, "mate": mate}, nil)
+	if u.Seconds != 10 || u.DeadPct != 20 || u.FightingPct != 20 || u.TravellingPct != 50 || u.IdlePct != 10 || u.BrokenWeaponPct != 10 {
 		t.Fatalf("use %+v", u)
+	}
+	if u := Use("me", map[string][]Pos{"me": me}, func(t int64) bool { return t < 5000 }); u.Seconds != 5 || u.DeadPct != 0 {
+		t.Fatalf("played only: %+v", u)
 	}
 }
 

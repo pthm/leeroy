@@ -120,22 +120,10 @@ func (b *Bot) startGameLog() {
 	onGroup(w.GroupState())
 	w.AddGroupListHook(onGroup)
 
-	// its state once a second, nearby creatures every 2 s and transports every 4, and the diagnostics' samples
+	// its state once a second (none while the character isn't in the world: a loading screen), nearby creatures
+	// every 2 s and transports every 4; quest log changes go to the diagnostics
 	go func() {
 		b.lua.RecordObservation("runtime_state", types.DiagnosticDetails{Component: "tooling", State: "instrumented_v1"})
-		var previousGear *types.DiagnosticGear
-		sampleCondition := func() {
-			available := w.GetObject(w.CharGUID()) != nil
-			alive := b.IsAlive() && !b.IsGhost()
-			g := b.gear()
-			gear := types.DiagnosticGear{Money: w.Money(), MainHandBroken: g.Weapon != nil && g.Weapon.Broken, BrokenSlots: g.Broken}
-			if available && (previousGear == nil || !reflect.DeepEqual(*previousGear, gear)) {
-				b.lua.RecordObservation("gear_state", types.DiagnosticDetails{Gear: &gear})
-				previousGear = &gear
-			}
-			b.lua.RecordObservation("character_state", types.DiagnosticDetails{SampleAvailable: &available, Alive: &alive, Gear: &gear})
-		}
-		sampleCondition()
 		var previous *types.DiagnosticQuestLog
 		observeQuests := func() {
 			current := observedQuests(w.GetObject(w.CharGUID()))
@@ -154,17 +142,20 @@ func (b *Bot) startGameLog() {
 				b.gameLog("logout", nil)
 				return
 			case <-t.C:
-				sampleCondition()
 				observeQuests()
+				me := w.GetObject(w.CharGUID())
+				if me == nil {
+					continue
+				}
 				x, y, z, o, m := w.Position()
 				hp, hpmax := b.GetHealth()
 				pw, pwmax := b.GetPower()
 				st := types.State{Position: types.Position{X: round1(x), Y: round1(y), Z: round1(z), O: facing(o), Map: m},
 					Level: w.PlayerLevel(), Money: w.Money(), Group: groupID(w),
 					Health: types.Resource{Current: hp, Max: hpmax}, Power: types.Resource{Current: pw, Max: pwmax, Type: name(powerNames, b.GetPowerType())},
-					Alive: b.IsAlive(), Ghost: b.IsGhost(), InCombat: b.InCombat()}
-				if me := w.GetObject(w.CharGUID()); me != nil {
-					st.XP = me.Value(0x27A)
+					Alive: b.IsAlive(), Ghost: b.IsGhost(), InCombat: b.InCombat(), XP: me.Value(0x27A)}
+				if g := b.gear(); len(g.Broken) > 0 {
+					st.Broken = g.Broken
 				}
 				if pg := b.GetPetGUID(); pg != 0 {
 					if u := b.GetUnitInfo(pg); u != nil {

@@ -149,7 +149,7 @@ run it at the end. Per agent:
 | `cost_usd` | the tokens at the model's list price ([models.dev](https://models.dev), `prices.json`; `azbench prices` refreshes it), the same way for every runtime and plan. Claude Code's cache writes are its 1-hour ones (2x input) from Anthropic, the 5-minute rate through OpenRouter. Null when usage or pricing is unavailable |
 | `combat` | `metrics.Combat`: damage dealt and taken, healing, kills, party kills, deaths, XP |
 | `coop` | `metrics.Team`: `assist_share`, `assists`, `useful`, `hits`, `contested_hits` |
-| `time_use` | `metrics.Use` from the position samples: fighting, travelling, idle, dead, with the group (%) |
+| `time_use` | `metrics.Use` from the game log's state records, while the character was playing: fighting, travelling, idle, dead, with the group, alive with a broken weapon (%); the one source for the character's time |
 | `judge_state`, `score_provisional` | observed judge state; board scores stay provisional until `judge/<char>/result.json` exists. Missing lifecycle evidence produces `unknown`, not a guessed result |
 | `diagnostics` | schema 1: action aggregates, repeated-failure episodes, tool outcomes, bounded evidence and explicit coverage |
 

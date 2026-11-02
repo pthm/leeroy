@@ -1,98 +1,38 @@
 package diagnostics
 
-import "github.com/pthm/leeroy/azeroth-sdk/types"
-
-// Duration metrics are sampled observed intervals, not extrapolated wall time.
-// Missing samples, pauses and session boundaries never become dead/broken time.
+// Reliability is the tooling's: movement, routes and recovery. Time dead or with a broken weapon is the character's,
+// in the report's time_use (from the game log's state records).
 type Reliability struct {
 	MovementPreemptions *int64 `json:"movement_preemptions"`
 	MovementWaitMS      *int64 `json:"movement_wait_ms"`
 	RouteTimeouts       *int64 `json:"route_timeouts"`
 	RecoveryAttempts    *int64 `json:"recovery_attempts"`
-	DeadMS              *int64 `json:"dead_ms"`
-	BrokenWeaponMS      *int64 `json:"broken_weapon_ms"`
-	ObservedMS          int64  `json:"observed_ms"`
 }
 
 func (s *Summary) summarizeReliability(events []recorded) {
-	var preempt, wait, timeouts, attempts, dead, broken int64
-	instrumented, sampled := false, false
-	previous := map[string]recorded{}
-	sequences := map[string]uint64{}
-	paused := false
+	var preempt, wait, timeouts, attempts int64
+	instrumented := false
 	for _, e := range events {
-		if e.Seq != 0 {
-			if seq := sequences[e.Session]; seq != 0 && e.Seq != seq+1 {
-				delete(previous, e.Session)
-			}
-			sequences[e.Session] = e.Seq
-		}
-		if e.Kind == "runtime_state" {
-			if e.Details.Component == "tooling" && e.Details.State == "instrumented_v1" {
-				instrumented = true
-			}
-			if playing, ok := types.Playing(e.Details); ok {
-				paused = !playing
-				clear(previous)
-			}
-			if e.Details.Component == "session" {
-				delete(previous, e.Session)
-			}
-		}
-		if e.Kind == "movement_owner" {
+		switch {
+		case e.Kind == "runtime_state" && e.Details.Component == "tooling" && e.Details.State == "instrumented_v1":
+			instrumented = true
+		case e.Kind == "movement_owner":
 			if e.Code == "preempted" {
 				preempt++
 			}
 			if e.Details.State == "acquired" {
 				wait += max(0, e.DurationMS)
 			}
-		}
-		if e.Kind == "route_finished" && e.Code == "route_timeout" {
+		case e.Kind == "route_finished" && e.Code == "route_timeout":
 			timeouts++
-		}
-		if e.Kind == "action_finished" && (e.Op == "death.reclaim" || e.Op == "death.spirit_res") {
+		case e.Kind == "action_finished" && (e.Op == "death.reclaim" || e.Op == "death.spirit_res"):
 			attempts++
 		}
-		if e.Kind != "character_state" {
-			continue
-		}
-		valid := e.Details.SampleAvailable != nil && *e.Details.SampleAvailable && e.Details.Alive != nil && e.Details.Gear != nil
-		if !valid || paused {
-			delete(previous, e.Session)
-			continue
-		}
-		sampled = true
-		if p, ok := previous[e.Session]; ok {
-			dt := e.T - p.T
-			// At most 2.5 sampling intervals. Changed states make this boundary unknown.
-			if dt > 0 && dt <= 2500 {
-				s.Reliability.ObservedMS += dt
-				if !*p.Details.Alive && !*e.Details.Alive {
-					dead += dt
-				}
-				if p.Details.Gear.MainHandBroken && e.Details.Gear.MainHandBroken {
-					broken += dt
-				}
-			}
-		}
-		previous[e.Session] = e
 	}
-	s.Unavailable = nil
+	s.Unavailable = []string{}
 	if instrumented {
-		s.Reliability.MovementPreemptions = &preempt
-		s.Reliability.MovementWaitMS = &wait
-		s.Reliability.RouteTimeouts = &timeouts
-		s.Reliability.RecoveryAttempts = &attempts
+		s.Reliability = Reliability{MovementPreemptions: &preempt, MovementWaitMS: &wait, RouteTimeouts: &timeouts, RecoveryAttempts: &attempts}
 	} else {
 		s.Unavailable = append(s.Unavailable, "movement_preemptions", "movement_wait_ms", "route_timeouts", "recovery_attempts")
-	}
-	if sampled {
-		s.Reliability.DeadMS = &dead
-		s.Reliability.BrokenWeaponMS = &broken
-	} else {
-		s.Unavailable = append(s.Unavailable, "dead_ms", "broken_weapon_ms")
-	}
-	if s.Unavailable == nil {
-		s.Unavailable = []string{}
 	}
 }

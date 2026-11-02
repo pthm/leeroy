@@ -176,7 +176,7 @@ func TestLifecycleAndSkillGoalLive(t *testing.T) {
 	judge.Report(dir)
 	report("completed", false)
 	d := diagnostics.Read(name, diagnostics.Paths(dir, name)...)
-	if len(d.Coverage.Sessions) < 3 || d.Reliability.DeadMS == nil || len(d.Coverage.Gaps) > 0 {
+	if len(d.Coverage.Sessions) < 3 || d.Reliability.RouteTimeouts == nil || len(d.Coverage.Gaps) > 0 {
 		t.Fatalf("lifecycle evidence: %+v", d.Coverage)
 	}
 	t.Logf("saved rank=%d; %d session streams; artifacts %s", savedRank, len(d.Coverage.Sessions), dir)

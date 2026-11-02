@@ -562,7 +562,7 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 	for _, e := range teamEvents[char] {
 		combat.Add(e)
 	}
-	co, use := coop[char], metrics.Use(char, pos)
+	co, use := coop[char], metrics.Use(char, pos, func(t int64) bool { return played(t, t) })
 	diag := diagnostics.Read(ar.agent, ar.diag)
 	if costOut != nil {
 		diag.Coverage.CostStatus = "estimated"
@@ -597,7 +597,8 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 		{"coop", obj{{"assist_share", round3(co.AssistShare)}, {"assists", co.Assists},
 			{"useful", co.Useful}, {"hits", co.Hits}, {"contested_hits", co.Contested}}},
 		{"time_use", obj{{"seconds", use.Seconds}, {"fighting_pct", use.FightingPct}, {"travelling_pct", use.TravellingPct},
-			{"idle_pct", use.IdlePct}, {"dead_pct", use.DeadPct}, {"with_group_pct", use.WithGroupPct}}},
+			{"idle_pct", use.IdlePct}, {"dead_pct", use.DeadPct}, {"with_group_pct", use.WithGroupPct},
+			{"broken_weapon_pct", use.BrokenWeaponPct}}},
 	}
 }
 
@@ -642,7 +643,7 @@ func readPositions(dir string) map[string][]metrics.Pos {
 			if e, ok := metrics.Decode(l); ok {
 				if p, ok := e.Data.(types.State); ok {
 					out[char] = append(out[char], metrics.Pos{T: e.T, X: p.X, Y: p.Y, Map: float64(p.Map), Alive: p.Alive,
-						Combat: p.InCombat, Group: float64(p.Group)})
+						Combat: p.InCombat, Group: float64(p.Group), Broken: slices.Contains(p.Broken, "main_hand")})
 				}
 			}
 		}

@@ -141,7 +141,7 @@ type recorded struct {
 func Read(agent string, paths ...string) Summary {
 	s := Summary{Schema: 1, Coverage: Coverage{Status: "unavailable", CostStatus: "unavailable", Files: []string{}, MissingFiles: []string{}, Sessions: []string{}, ReadErrors: []string{}, Gaps: []Gap{}},
 		ByOperation: []Aggregate{}, Episodes: []Episode{}, Evidence: []Evidence{}, Tools: ToolSummary{Status: "unavailable", ByTool: []ToolAggregate{}},
-		Unavailable: []string{"movement_preemptions", "movement_wait_ms", "route_timeouts", "recovery_attempts", "dead_ms", "broken_weapon_ms"}}
+		Unavailable: []string{"movement_preemptions", "movement_wait_ms", "route_timeouts", "recovery_attempts"}}
 	var events []recorded
 	seen := map[string]bool{}
 	for _, path := range paths {

@@ -15,6 +15,7 @@ type State struct {
 	Alive    bool      `json:"alive"`
 	Ghost    bool      `json:"ghost,omitempty"`
 	InCombat bool      `json:"in_combat,omitempty"`
+	Broken   []string  `json:"broken,omitempty" doc:"gear slots at 0 durability (main_hand, chest, ...)"`
 	Target   *UnitRef  `json:"target,omitempty"`
 	Pet      *PetState `json:"pet,omitempty" doc:"the pet out: a hunter's beast, a warlock's demon, a water elemental"`
 }

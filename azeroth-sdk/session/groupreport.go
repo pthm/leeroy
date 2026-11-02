@@ -141,7 +141,7 @@ func (b *Bot) setupGroupReport() {
 			}
 			r := types.GroupReport{Minutes: minutes, Members: []types.GroupMemberReport{}}
 			for _, n := range names {
-				u := metrics.Use(n, window)
+				u := metrics.Use(n, window, nil)
 				sight := g.sight[n][len(g.sight[n])-len(window[n]):]
 				seen := 0
 				for _, s := range sight {

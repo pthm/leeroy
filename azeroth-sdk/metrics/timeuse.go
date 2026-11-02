@@ -12,19 +12,23 @@ type Pos struct {
 	Alive     bool
 	Combat    bool
 	Group     float64 // party id, 0 = none
+	Broken    bool    // its main hand weapon is broken
 }
 
 // TimeUse is how a character's sampled time went, in percent. Each second is one of dead, fighting (in combat),
 // travelling (moved over 1.5 yd since the last sample) or idle (alive, not fighting, not moving: usually waiting).
-// WithGroup: within 50 yd of a member of the same party (within a second either way), counted separately.
+// WithGroup: within 50 yd of a member of the same party (within a second either way), and BrokenWeapon: alive with a
+// broken main hand weapon, are counted separately. Seconds the character wasn't playing (played false: a pause, its
+// agent stopped) don't count.
 type TimeUse struct {
 	Seconds                                      int
 	FightingPct, TravellingPct, IdlePct, DeadPct float64
-	WithGroupPct                                 float64
+	WithGroupPct, BrokenWeaponPct                float64
 }
 
-// Use computes TimeUse for one character from everyone's samples (char -> samples, any order).
-func Use(char string, pos map[string][]Pos) TimeUse {
+// Use computes TimeUse for one character from everyone's samples (char -> samples, any order); played (nil: always)
+// says whether the character was playing at a time (unix ms).
+func Use(char string, pos map[string][]Pos, played func(t int64) bool) TimeUse {
 	at := map[string]map[int64]Pos{}
 	for n, ps := range pos {
 		at[n] = map[int64]Pos{}
@@ -53,10 +57,12 @@ func Use(char string, pos map[string][]Pos) TimeUse {
 	}
 	secs := make([]int64, 0, len(at[char]))
 	for s := range at[char] {
-		secs = append(secs, s)
+		if played == nil || played(at[char][s].T) {
+			secs = append(secs, s)
+		}
 	}
 	slices.Sort(secs)
-	var dead, fighting, moving, idle, grouped int
+	var dead, fighting, moving, idle, grouped, broken int
 	var prev *Pos
 	for _, sec := range secs {
 		p := at[char][sec]
@@ -74,6 +80,9 @@ func Use(char string, pos map[string][]Pos) TimeUse {
 		if near(sec, p) {
 			grouped++
 		}
+		if p.Alive && p.Broken {
+			broken++
+		}
 		prev = &p
 	}
 	pct := func(a int) float64 {
@@ -83,5 +92,5 @@ func Use(char string, pos map[string][]Pos) TimeUse {
 		return math.Floor(100*float64(a)/float64(len(secs)) + 0.5)
 	}
 	return TimeUse{Seconds: len(secs), FightingPct: pct(fighting), TravellingPct: pct(moving), IdlePct: pct(idle),
-		DeadPct: pct(dead), WithGroupPct: pct(grouped)}
+		DeadPct: pct(dead), WithGroupPct: pct(grouped), BrokenWeaponPct: pct(broken)}
 }

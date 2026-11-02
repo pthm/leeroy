@@ -36,7 +36,7 @@ for a creature, `level`, `player`):
 
 | `type` | `data` | When |
 |---|---|---|
-| `state` | `State`: `map`, `x` `y` `z` `o`, `level`, `xp`, `health` and `power` (`current`, `max`, power `type`), `money`, `group` (the server's group id), `alive`, `ghost`, `in_combat`, `target`, `pet` (a `UnitRef` with `x` `y` `z`, `health`, `alive`) | every 1 s |
+| `state` | `State`: `map`, `x` `y` `z` `o`, `level`, `xp`, `health` and `power` (`current`, `max`, power `type`), `money`, `group` (the server's group id), `alive`, `ghost`, `in_combat`, `broken` (gear slots at 0 durability), `target`, `pet` (a `UnitRef` with `x` `y` `z`, `health`, `alive`) | every 1 s |
 | `units` | `Nearby`: `map`, `units`: the creatures within 60 yd, each `[entry, level, x, y, health %, state]` (state 0 hostile, 1 neutral, 2 friendly, +4 dead); pets are in their master's `state`, totems are here | every 2 s |
 | `transports` | a list of `TransportState`: each boat and zeppelin on the map, `guid`, `entry`, `name`, `map`, `x` `y` `o` | every 4 s |
 | `login` | `Login`: `race`, `class`, `level` | at login |
