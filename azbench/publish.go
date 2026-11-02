@@ -16,7 +16,7 @@ import (
 // publish writes a run's results for the website (site/src/data/runs/<run>.json): the scenario, then each player's
 // model, outcome, time, cost and tokens, from the run's scenario.yaml, report.json and team.json. Small and committed:
 // the site builds from these, never from bench/runs.
-func publish(root, runDir, task, out string) (string, error) {
+func publish(root, runDir, task, out, model, runtime string) (string, error) {
 	id := filepath.Base(filepath.Clean(runDir))
 	started, err := time.ParseInLocation("20060102-150405", id[:min(len(id), 15)], time.Local)
 	if err != nil {
@@ -80,6 +80,11 @@ func publish(root, runDir, task, out string) (string, error) {
 	recOf := map[string]*recording{}
 	for _, r := range report.Agents {
 		char := fmt.Sprint(r["char"])
+		for k, v := range map[string]string{"model": model, "runtime": runtime} { // the first runs didn't record them
+			if v != "" && (r[k] == nil || r[k] == "") {
+				r[k] = v
+			}
+		}
 		p := pick(r, "char", "runtime", "model", "hours", "deaths", "cost_usd", "tokens", "calls", "time_pct_by_state", "time_use", "combat")
 		if th, ok := r["think_s"].(map[string]any); ok {
 			p["think_median_s"] = th["median"]
@@ -130,6 +135,9 @@ func publish(root, runDir, task, out string) (string, error) {
 		rec := recOf[p["char"].(string)]
 		if rec == nil {
 			continue
+		}
+		if p["class"] == "" {
+			p["class"] = rec.class
 		}
 		t := simplify(rec.raw)
 		p["track"], p["death_list"] = t, rec.deaths
@@ -200,8 +208,8 @@ func series(f string) ([][6]float64, []float64) {
 			Elapsed float64 `json:"elapsed_s"`
 			Signals struct {
 				Level, Deaths, Quests float64
-				XP                    float64 `json:"xp_earned"`
-				Kills                 float64 `json:"creatures_killed"`
+				XP                    *float64 `json:"xp_earned"` // missing from the first runs' samples: -1
+				Kills                 float64  `json:"creatures_killed"`
 			} `json:"signals"`
 		}
 		if json.Unmarshal([]byte(line), &s) != nil {
@@ -211,7 +219,11 @@ func series(f string) ([][6]float64, []float64) {
 		if n := len(all); n > 0 && g.Deaths > all[n-1][3] {
 			deaths = append(deaths, s.Elapsed)
 		}
-		all = append(all, [6]float64{s.Elapsed, math.Round(g.Level*100) / 100, g.XP, g.Deaths, g.Quests, g.Kills})
+		xp := -1.0
+		if g.XP != nil {
+			xp = *g.XP
+		}
+		all = append(all, [6]float64{s.Elapsed, math.Round(g.Level*100) / 100, xp, g.Deaths, g.Quests, g.Kills})
 	}
 	step := max(1, len(all)/seriesPoints)
 	var out [][6]float64

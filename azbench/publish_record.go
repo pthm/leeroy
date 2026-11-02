@@ -15,7 +15,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
+	"github.com/pthm/leeroy/azbench/config"
 	"github.com/pthm/leeroy/azworld/world"
 )
 
@@ -34,6 +36,7 @@ type recDeath struct {
 type recording struct {
 	track  [][5]float64 // t, map, x, y, group id: every 15 s; map -1 marks a teleport, -2 a ride (boat, zeppelin)
 	raw    [][5]float64 // the same every second, for drawing (simplify)
+	class  string       // from the login event: runs that kept no meta.json
 	deaths []recDeath
 }
 
@@ -66,6 +69,7 @@ func readRecording(f, char string, start int64, chat map[string]chatMsg) (*recor
 			Type       int
 			X, Y       float64
 			Killer     struct{ ID int }
+			Cls        int
 		}
 		if json.Unmarshal(sc.Bytes(), &e) != nil || e.N != char {
 			continue
@@ -94,6 +98,10 @@ func readRecording(f, char string, start int64, chat map[string]chatMsg) (*recor
 			if t-last >= 15 || len(rec.track) > 0 && rec.track[len(rec.track)-1][1] != float64(e.M) {
 				rec.track = append(rec.track, [5]float64{math.Round(t), float64(e.M), math.Round(e.X), math.Round(e.Y), float64(e.Grp)})
 				last = t
+			}
+		case "login":
+			if e.Cls != 0 {
+				rec.class = strings.ToLower(config.ClassName(e.Cls))
 			}
 		case "death":
 			d := recDeath{T: math.Round(t), entry: e.Killer.ID}

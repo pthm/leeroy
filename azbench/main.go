@@ -17,7 +17,7 @@
 //	azbench gm [x y z [map]] [--class mage]                  a GM dev character: Devgm on 8112, Dev<class> on 8113
 //	azbench apidoc                                           regenerate the API reference from a live session
 //	azbench prices                                           refresh the price table (judge/prices.json) from models.dev
-//	azbench publish <run dir>... [--task name]               a run's results for the website (site/src/data/runs)
+//	azbench publish <run dir>... [--task name] [--model m]   a run's results for the website (site/src/data/runs)
 //	azbench standings                                        the agents' standings
 package main
 

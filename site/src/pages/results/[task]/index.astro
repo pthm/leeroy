@@ -7,7 +7,7 @@ import Section from '../../../components/Section.astro';
 import SectionHeader from '../../../components/SectionHeader.astro';
 import Layout from '../../../layouts/Layout.astro';
 import { Icon } from 'astro-icon/components';
-import { TASKS, dollars, duration, harnessName, isProgress, leaderboard, modelName, outcome, rate, runDate, runsOf, specLabel, taskTitle, tasks, totals, xpRate, type MapBox } from '../../../lib/results';
+import { TASKS, dollars, duration, harnessName, isProgress, leaderboard, modelName, outcome, bestRate, meanRate, rate, runDate, runsOf, specLabel, taskTitle, tasks, totals, xpRate, type MapBox } from '../../../lib/results';
 import { url } from '../../../lib/url';
 
 export function getStaticPaths() {
@@ -35,7 +35,7 @@ const tiles = [
   { v: String(new Set(all.map(p => p.model)).size), k: 'models' },
   { v: String(all.length), k: 'attempts' },
   isProgress(task)
-    ? { v: rate(all.reduce((n, p) => n + (xpRate(p) ?? 0), 0) / all.length), k: 'mean, all attempts' }
+    ? { v: rate(meanRate(all)), k: 'mean, all attempts' }
     : { v: `${Math.round((all.filter(p => p.met).length / all.length) * 100)}%`, k: 'reached the goal' },
   { v: dollars(all.reduce((n, p) => n + (p.cost_usd ?? 0), 0)), k: 'spent, all runs' },
 ];
@@ -64,7 +64,7 @@ const tiles = [
                 <span class="block font-mono text-sm text-fg">{runDate(r)}</span>
                 <span class="mt-1 block text-xs text-muted">
                   {isProgress(task)
-                    ? `${r.players.length} players · best ${rate(Math.max(...r.players.map(p => xpRate(p) ?? 0)))} · ${dollars(t.cost)}`
+                    ? `${r.players.length} players · best ${rate(bestRate(r.players))} · ${dollars(t.cost)}`
                     : `${t.met}/${r.players.length} reached the goal · ${t.first ? `first in ${duration(t.first)}` : 'none in time'} · ${dollars(t.cost)}`}
                 </span>
               </span>

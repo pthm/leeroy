@@ -21,7 +21,7 @@ export interface Player {
   tokens?: { input: number; output: number; cache_read: number; cache_write: number };
   spec_name?: string; // "Warrior - Protection"
   role?: string; // Tank, Healer, DPS
-  series?: [number, number, number, number, number, number][]; // [elapsed s, level, XP earned, deaths, quests, kills]
+  series?: [number, number, number, number, number, number][]; // [elapsed s, level, XP earned (-1: not recorded), deaths, quests, kills]
   deaths_at?: number[]; // elapsed s
   track?: [number, number, number, number, number][]; // [s from the start, map, x, y, group id]; map -1: a teleport
   death_list?: { t: number; map: number; x: number; y: number; killer: string; place: string }[];
@@ -88,6 +88,13 @@ export const TASKS: Record<string, { title: string; summary: string; scoring: st
     scoring: 'XP earned per hour. Same class, harness, start and clock: the model is the only difference.',
     order: 5,
   },
+  'early-team': {
+    title: 'The first team: ten Opus agents',
+    summary:
+      'The first runs of the benchmark: ten Claude Code agents on Opus 5.5, one of each class twice, in Northshire, scored on a weighted mix of progress with "Wanted: Hogger" as a suggested target. The same ten characters played three sessions in a row, from level 1 to about 11.',
+    scoring: 'An early weighted progress score; shown here as levels and XP per hour (the first session did not record XP). Each session starts where the last ended, so later ones are at higher levels.',
+    order: 7,
+  },
   hardcore: {
     title: 'Hardcore levelling',
     summary: 'A new level-1 Human Arms warrior in Northshire, four hours on the clock, and the first death ends the run.',
@@ -120,7 +127,7 @@ export const isProgress = (task: string) => runsOf(task)[0]?.goal.startsWith('sc
 // XP earned per hour of play, from the judge's samples
 export function xpRate(p: Player): number | undefined {
   const s = p.series;
-  if (!s || s.length < 2 || s.at(-1)![0] <= 0) return undefined;
+  if (!s || s.length < 2 || s.at(-1)![0] <= 0 || s[0][2] < 0) return undefined; // -1: not recorded (the first runs)
   return (s.at(-1)![2] - s[0][2]) / (s.at(-1)![0] / 3600);
 }
 export const levelsGained = (p: Player) => (p.series?.length ? p.series.at(-1)![1] - p.series[0][1] : undefined);
@@ -179,7 +186,7 @@ export function leaderboard(task: string): ModelRow[] {
         meanCost: mean(ps.flatMap(p => (p.cost_usd != null ? [p.cost_usd] : []))),
         meanOutputTokens: mean(ps.flatMap(p => (p.tokens ? [p.tokens.output] : []))),
         meanRate: mean(ps.flatMap(p => (xpRate(p) != null ? [xpRate(p)!] : []))),
-        bestRate: Math.max(...ps.map(p => xpRate(p) ?? 0)),
+        bestRate: bestRate(ps),
         meanLevels: mean(ps.flatMap(p => (levelsGained(p) != null ? [levelsGained(p)!] : []))),
       };
     })
@@ -300,3 +307,13 @@ export const harnessColor = (runtime: string) =>
   ({ claude: { bg: 'bg-accent', text: 'text-accent', fill: 'var(--color-accent)' }, codex: { bg: 'bg-info', text: 'text-info', fill: 'var(--color-info)' } })[
     runtime
   ] ?? { bg: 'bg-success', text: 'text-success', fill: 'var(--color-success)' };
+
+// The best and the mean XP per hour of some players, over those whose XP was recorded; undefined if none was.
+export function bestRate(ps: Player[]): number | undefined {
+  const rs = ps.flatMap(p => (xpRate(p) != null ? [xpRate(p)!] : []));
+  return rs.length ? Math.max(...rs) : undefined;
+}
+export function meanRate(ps: Player[]): number | undefined {
+  const rs = ps.flatMap(p => (xpRate(p) != null ? [xpRate(p)!] : []));
+  return rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : undefined;
+}

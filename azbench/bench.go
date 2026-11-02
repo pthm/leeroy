@@ -70,6 +70,8 @@ func benchCommand(cmd string, args []string) bool {
 	reset := fs.Bool("reset", false, "run: start from scratch: delete the scenario's characters, move its agents' workspaces to bench/workspaces/.old, restart the worldserver")
 	task := fs.String("task", "", "publish: the task the runs belong to on the site (default: the scenario's name)")
 	out := fs.String("out", "", "publish: where to write (default: site/src/data/runs)")
+	model := fs.String("model", "", "publish: the model, for runs that didn't record it")
+	runtime := fs.String("runtime", "", "publish: the harness (claude, codex, opencode), for runs that didn't record it")
 	class := fs.String("class", "warrior", "gm: the GM character's class (warrior: Devgm on 8112; another class: Dev<class> on 8113)")
 	parse := func(n int, usage string) []string {
 		var pos []string // positional arguments, flags anywhere
@@ -187,13 +189,13 @@ func benchCommand(cmd string, args []string) bool {
 	case "apidoc":
 		check(run.APIDoc(repoRoot()))
 	case "publish":
-		pos := parse(1, "<run dir>... [--task name] [--out dir]")
+		pos := parse(1, "<run dir>... [--task name] [--out dir] [--model m --runtime r]")
 		root := repoRoot()
 		if *out == "" {
 			*out = filepath.Join(root, "site/src/data/runs")
 		}
 		for _, d := range pos {
-			f, err := publish(root, d, *task, *out)
+			f, err := publish(root, d, *task, *out, *model, *runtime)
 			check(err)
 			fmt.Println(f)
 		}

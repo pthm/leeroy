@@ -24,6 +24,7 @@ import {
   isProgress,
   levelsGained,
   outcome,
+  bestRate,
   rate,
   xpRate,
   taskTitle,
@@ -53,7 +54,7 @@ const hasChat = (run.chat_per_hour ?? []).some(h => Object.values(h).some(Boolea
 const hasDeaths = run.players.some(p => p.death_list?.length);
 const clock = run.minutes >= 1440 ? `${run.minutes / 1440} days` : `${run.minutes} min`;
 
-const best = Math.max(...run.players.map(p => xpRate(p) ?? 0));
+const best = bestRate(run.players);
 const meanLevels = run.players.reduce((n, p) => n + (levelsGained(p) ?? 0), 0) / run.players.length;
 const tiles = [
   ...(progress
