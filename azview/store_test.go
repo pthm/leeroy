@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pthm/leeroy/azbench/gamelog"
 	"github.com/pthm/leeroy/azbench/runfiles"
 )
 
@@ -113,21 +114,22 @@ func TestLineReadsLikeTheGame(t *testing.T) {
 
 func TestPollTailsFiles(t *testing.T) {
 	dir := t.TempDir()
-	rec, tr := filepath.Join(dir, "a.record.jsonl"), filepath.Join(dir, "agent.jsonl")
-	os.WriteFile(rec, []byte(`{"t":500,"ev":"pos","n":"A","x":1,"y":1}
-{"t":1000,"ev":"pos","n":"A","x":1,"y":1}
-{"t":1100,"op":"no ev: an action record"}
-{"t":1200,"ev":"xp","n":"A","amount":`), 0o644) // the last line is half written
+	rec, tr := filepath.Join(dir, "game", "A", "events.jsonl"), filepath.Join(dir, "agent.jsonl")
+	os.MkdirAll(filepath.Dir(rec), 0o755)
+	os.WriteFile(rec, []byte(`{"t":500,"type":"state","data":{"m":0,"x":1,"y":1}}
+{"t":1000,"type":"state","data":{"m":0,"x":1,"y":1}}
+{"seq":1,"t":1100,"type":"result","data":{"op":"move.to","ok":true}}
+{"seq":2,"t":1200,"type":"xp","data":{"amount":`), 0o644) // the last line is half written
 	os.WriteFile(tr, []byte(`{"type":"assistant","timestamp":"1970-01-01T00:00:01.300Z","message":{"content":[{"type":"text","text":"hello"}]}}
 `), 0o644)
 	s := NewStore()
-	src := &Source{Files: []string{rec, tr}, Transcripts: map[string]string{tr: "A"}, Since: 900}
+	src := &Source{Files: []string{rec, tr}, Games: map[string]*gamelog.Reader{}, Scores: map[string]string{}, Transcripts: map[string]string{tr: "A"}, Since: 900}
 	s.Poll(src)
 	if p := s.byName["A"]; p == nil || len(p.Track) != 1 || len(p.says) != 1 || len(s.events) != 1 {
 		t.Fatalf("want one sample after since and one say, got %+v %v", p, s.events)
 	}
 	f, _ := os.OpenFile(rec, os.O_APPEND|os.O_WRONLY, 0)
-	f.WriteString("10}\n")
+	f.WriteString("10}}\n")
 	f.Close()
 	s.Poll(src)
 	if len(s.byEv["xp"]) != 1 || N(s.byEv["xp"][0], "amount") != 10 {
@@ -141,23 +143,23 @@ func TestPollFindsLateAgents(t *testing.T) {
 	m := runfiles.Manifest{Players: []runfiles.Player{{Agent: "a1", Char: "A"}, {Agent: "a2", Char: "B"}}, Status: "starting"}
 	f.WriteManifest(m)
 	os.MkdirAll(f.Game("A"), 0o755)
-	os.WriteFile(f.Record("A"), []byte(`{"t":1000,"ev":"pos","n":"A","x":1,"y":1}`+"\n"), 0o644)
+	os.WriteFile(f.Events("A"), []byte(`{"t":1000,"type":"state","data":{"m":0,"x":1,"y":1}}`+"\n"), 0o644)
 	s := NewStore()
-	src := &Source{Dir: string(f), Transcripts: map[string]string{}, RunChars: map[string]bool{}}
+	src := &Source{Dir: string(f), Games: map[string]*gamelog.Reader{}, Scores: map[string]string{}, Transcripts: map[string]string{}}
 	s.Poll(src)
 	if s.byName["A"] == nil || s.byName["B"] != nil {
 		t.Fatalf("want only A, got %v", s.byName)
 	}
 	os.MkdirAll(f.Game("B"), 0o755)
-	os.WriteFile(f.Record("B"), []byte(`{"t":2000,"ev":"pos","n":"B","x":2,"y":2}`+"\n"), 0o644)
+	os.WriteFile(f.Events("B"), []byte(`{"t":2000,"type":"state","data":{"m":0,"x":2,"y":2}}`+"\n"), 0o644)
 	os.MkdirAll(f.Agent("a2"), 0o755)
 	os.WriteFile(f.Transcript("a2"), nil, 0o644)
 	m.Started = 1500
 	f.WriteManifest(m)
 	src.scanned = time.Time{}
 	s.Poll(src)
-	if p := s.byName["B"]; p == nil || len(p.Track) != 1 || !src.RunChars["B"] || s.Start != 1500 {
-		t.Fatalf("want B with its sample and Start from run.json, got %+v %v %v", p, src.RunChars, s.Start)
+	if p := s.byName["B"]; p == nil || len(p.Track) != 1 || src.Transcripts[f.Transcript("a2")] != "B" || s.Start != 1500 {
+		t.Fatalf("want B with its sample and Start from run.json, got %+v %v %v", p, src.Transcripts, s.Start)
 	}
 }
 

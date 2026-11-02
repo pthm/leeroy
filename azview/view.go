@@ -1,4 +1,4 @@
-// Reading recorder-format logs (the server's mod-recorder log and azsdk -record files), agent transcripts and bench
+// Reading bench runs: the characters' game logs (azbench/gamelog), agent transcripts and bench
 // run directories, for the viewer (live.go, store.go) and movecheck. Map rendering, area names and item/creature
 // names come from azworld/world.
 package main
@@ -27,11 +27,6 @@ type Ev = map[string]any
 
 // Repo is the repository root (the parent of data/).
 func Repo() string { return filepath.Dir(world.DataDir()) }
-
-// ServerLog is the server's mod-recorder log.
-func ServerLog() string {
-	return filepath.Join(Repo(), "server", "azerothcore", "env", "dist", "logs", "recorder.jsonl")
-}
 
 // N is a numeric field (0 if missing or not a number); S a string field ("" if missing).
 func N(e Ev, k string) float64 {
@@ -158,87 +153,31 @@ func AgentMeta(ts []Transcript) map[string]any {
 
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 
-// RunSources is what a bench run has for the viewer (azbench/runfiles): each player's game record and its agent's
-// transcript, with the character it plays (run.json).
-func RunSources(dir string) (records []string, transcripts []Transcript) {
+// RunSources is what a bench run has for the viewer (azbench/runfiles), by run.json: each player's game log
+// (game/<char>/events.jsonl) and judge samples (its score), and its agent's transcript, each with the character.
+func RunSources(dir string) (games, scores, transcripts []Transcript) {
 	f := runfiles.Run(dir)
 	m, err := f.ReadManifest()
 	if err != nil {
-		return nil, nil
+		return
 	}
 	for _, p := range m.Players {
-		if exists(f.Record(p.Char)) {
-			records = append(records, f.Record(p.Char))
+		if exists(f.Events(p.Char)) {
+			games = append(games, Transcript{p.Char, f.Events(p.Char)})
+		}
+		if exists(f.Samples(p.Char)) {
+			scores = append(scores, Transcript{p.Char, f.Samples(p.Char)})
 		}
 		if exists(f.Transcript(p.Agent)) {
 			transcripts = append(transcripts, Transcript{p.Char, f.Transcript(p.Agent)})
 		}
 	}
-	return records, transcripts
-}
-
-// ServerEvents is what the server's recorder log has better than the agents' own records, for the run's characters:
-//   - player chat, one event per message, n = sender, to = channel/party/whisper target (every agent's client log has
-//     its own copy of each message it received, with no sender name)
-//   - damage and heals, every one involving a player (client logs have only melee and spell damage, no heals)
-//   - transports: every boat and zeppelin, a sample a second
-//   - targets: a "tgt" event each time a character's target (the pos samples' tgt) changes, tgt absent for none.
-//     lastTgt holds each character's current target across calls, for a log read in pieces.
-func ServerEvents(text string, chars map[string]bool, lastTgt map[string]string) []Ev {
-	var out []Ev
-	for _, l := range lines(text) {
-		if strings.Contains(l, `"ev":"transport"`) { // boats and zeppelins: everyone's
-			var e Ev
-			if json.Unmarshal([]byte(l), &e) == nil && e != nil {
-				out = append(out, e)
-			}
-			continue
-		}
-		pos := strings.Contains(l, `"ev":"pos"`)
-		if !pos && !strings.Contains(l, `"ev":"chat"`) && !strings.Contains(l, `"ev":"dmg"`) && !strings.Contains(l, `"ev":"heal"`) {
-			continue
-		}
-		var e Ev
-		if json.Unmarshal([]byte(l), &e) != nil || e == nil || !chars[S(e, "n")] {
-			continue
-		}
-		if !pos {
-			out = append(out, e)
-			continue
-		}
-		n := S(e, "n")
-		tgt, _ := json.Marshal(e["tgt"])
-		if string(tgt) == lastTgt[n] {
-			continue
-		}
-		lastTgt[n] = string(tgt)
-		t := Ev{"t": e["t"], "ev": "tgt", "n": n, "p": e["p"]}
-		if e["tgt"] != nil {
-			t["tgt"] = e["tgt"]
-		}
-		out = append(out, t)
-	}
-	return out
+	return
 }
 
 // player chat (say, party, raid, guild, officer, yell, whisper and its echo, emote, channel, raid leader and warning,
 // party leader) and the achievement broadcast (the achievement event has it)
 var playerChat = map[float64]bool{1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 9: true, 10: true, 17: true, 39: true, 40: true, 48: true, 51: true}
-
-// ClientChatFilter keeps client events minus player chat (that comes from ServerEvents). NPC speech is kept once per
-// listener: the page merges the copies and knows who heard it. With the server log (server), damage comes from there too.
-// ponytail: the server log's existence stands in for "it covers this run"; check its time range if old runs lose damage.
-func ClientChatFilter(server bool) func(Ev) bool {
-	return func(e Ev) bool {
-		switch {
-		case server && S(e, "ev") == "dmg":
-			return false
-		case S(e, "ev") == "chat":
-			return !playerChat[N(e, "type")]
-		}
-		return true
-	}
-}
 
 // NameUnits fills in what SDK recordings carry only as ids: creature names, quest titles, achievement titles and points.
 func NameUnits(events []Ev) {

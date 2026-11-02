@@ -1,4 +1,4 @@
-// azview movecheck [recorder.jsonl] [--chars A,B] [--from ms]
+// azview movecheck <game log...> [--chars A,B] [--from ms]   (bench/runs/<run>/game/<char>/events.jsonl)
 //
 // Checks recorded movement against the terrain: speed (median per 1 s sample; sustained over 5 s), the steepest
 // slope crossed on each step, and whether the player was under water (a real client swims at the surface). One JSON
@@ -8,8 +8,11 @@
 package main
 
 import (
+	"path/filepath"
+
 	"encoding/json"
 	"fmt"
+	"github.com/pthm/leeroy/azbench/gamelog"
 	"math"
 	"os"
 	"slices"
@@ -45,9 +48,16 @@ func med(a []float64) *float64 {
 }
 
 func runMovecheck(args []string) {
-	file := ServerLog()
-	if len(args) > 0 && !strings.HasPrefix(args[0], "--") {
-		file = args[0]
+	var files []string
+	for _, a := range args {
+		if strings.HasPrefix(a, "--") {
+			break
+		}
+		files = append(files, a)
+	}
+	if len(files) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: azview movecheck <game/<char>/events.jsonl ...> [--chars A,B] [--from ms]")
+		os.Exit(2)
 	}
 	var chars []string
 	if v, ok := Flag(args, "chars"); ok {
@@ -57,14 +67,19 @@ func runMovecheck(args []string) {
 	if v, ok := Flag(args, "from"); ok {
 		from, _ = strconv.ParseFloat(v, 64)
 	}
-	b, err := os.ReadFile(file)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	var evs []Ev
+	for _, file := range files {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		r := gamelog.Reader{Char: filepath.Base(filepath.Dir(file))}
+		evs = append(evs, r.Lines(string(b))...)
 	}
 	n, s := N, S
 	by, order := map[string][]Ev{}, []string{}
-	for _, e := range ParseLines(string(b)) {
+	for _, e := range evs {
 		if s(e, "ev") != "pos" || n(e, "t") < from || (chars != nil && !slices.Contains(chars, s(e, "n"))) {
 			continue
 		}

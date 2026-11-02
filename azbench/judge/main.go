@@ -306,7 +306,7 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		}
 		rates := obj{{"rate", round1(r.Rate)}, {"recent_rate", round1(r.Recent)}, {"best_window", round1(r.BestWindow)},
 			{"pace", round1(r.Pace)}, {"score", score}}
-		smp := append(append(obj{{"elapsed_s", elapsedS}, {"level", level}, {"xp", xp}, {"money", money}, {"value", value}}, rates...),
+		smp := append(append(obj{{"t", nowMs()}, {"elapsed_s", elapsedS}, {"level", level}, {"xp", xp}, {"money", money}, {"value", value}}, rates...),
 			kv{"signals", sig})
 		if samples != "" {
 			appendLine(samples, smp)

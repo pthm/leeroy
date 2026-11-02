@@ -6,6 +6,7 @@ package main
 import (
 	"cmp"
 	"encoding/json"
+	"github.com/pthm/leeroy/azbench/gamelog"
 	"github.com/pthm/leeroy/azbench/runfiles"
 	"math"
 	"os"
@@ -433,13 +434,13 @@ func (s *Store) GroupsAt(t float64) (groups []*Group, solo []*Player) {
 
 // ---------- reading the logs ----------
 
-// Source is the logs a store reads: files to tail, which are transcripts (path -> character), the server log, the
-// characters to keep and the earliest time.
+// Source is the logs a store reads: files to tail, which are game logs, judge samples or transcripts (each path ->
+// its character), the characters to keep and the earliest time.
 type Source struct {
 	Files       []string
+	Games       map[string]*gamelog.Reader // game/<char>/events.jsonl
+	Scores      map[string]string          // judge/<char>/samples.jsonl
 	Transcripts map[string]string
-	ServerLog   string
-	RunChars    map[string]bool
 	Chars       []string
 	Since       float64
 	Dir         string    // a bench run dir: scanned for agents that come up after the viewer started
@@ -447,16 +448,12 @@ type Source struct {
 	goRead      bool      // Start is the run's go file (not the first event)
 	offsets     map[string]int64
 	partial     map[string]string
-	lastTgt     map[string]string
-	keep        func(Ev) bool
 }
 
 // Poll reads what the files gained since the last call and files it; new events also go to live subscribers.
 func (s *Store) Poll(src *Source) {
 	if src.offsets == nil {
-		src.offsets, src.partial, src.lastTgt = map[string]int64{}, map[string]string{}, map[string]string{}
-		_, err := os.Stat(src.ServerLog)
-		src.keep = ClientChatFilter(err == nil && src.ServerLog != "")
+		src.offsets, src.partial = map[string]int64{}, map[string]string{}
 	}
 	if src.Dir != "" && time.Since(src.scanned) > 2*time.Second {
 		s.scan(src)
@@ -548,19 +545,15 @@ func (src *Source) parse(f, lines string) []Ev {
 	var got []Ev
 	if name, ok := src.Transcripts[f]; ok {
 		got = TranscriptEvents(lines, name)
-	} else if f == src.ServerLog && len(src.RunChars) > 0 {
-		got = ServerEvents(lines, src.RunChars, src.lastTgt)
+	} else if name, ok := src.Scores[f]; ok {
+		got = gamelog.Samples(lines, name)
 	} else {
-		for _, l := range strings.Split(lines, "\n") {
-			// the SDK's action and diagnostic records (no "ev"): two thirds of a record file, nothing the viewer shows
-			if l == "" || !strings.Contains(l, `"ev":`) {
-				continue
-			}
-			var e Ev
-			if json.Unmarshal([]byte(l), &e) == nil && e != nil && (len(src.RunChars) == 0 || src.keep(e)) {
-				got = append(got, e)
-			}
+		r := src.Games[f]
+		if r == nil { // a game log named on the command line: game/<char>/events.jsonl
+			r = &gamelog.Reader{Char: filepath.Base(filepath.Dir(f))}
+			src.Games[f] = r
 		}
+		got = r.Lines(lines)
 	}
 	out := got[:0]
 	for _, e := range got {
@@ -793,16 +786,23 @@ func (s *Store) mapMark(e Ev) map[string]any {
 // run.json's start. A record file's events from before Since are still dropped, so a late file reads from the start.
 func (s *Store) scan(src *Source) {
 	src.scanned = time.Now()
-	records, transcripts := RunSources(src.Dir)
+	games, scores, transcripts := RunSources(src.Dir)
 	have := map[string]bool{}
 	for _, f := range src.Files {
 		have[f] = true
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, f := range records {
-		if !have[f] {
-			src.Files = append(src.Files, f)
+	for _, g := range games {
+		if !have[g.Path] {
+			src.Games[g.Path] = &gamelog.Reader{Char: g.Name}
+			src.Files = append(src.Files, g.Path)
+		}
+	}
+	for _, sc := range scores {
+		if !have[sc.Path] {
+			src.Scores[sc.Path] = sc.Name
+			src.Files = append(src.Files, sc.Path)
 		}
 	}
 	for _, t := range transcripts {
@@ -810,12 +810,8 @@ func (s *Store) scan(src *Source) {
 			continue
 		}
 		src.Transcripts[t.Path] = t.Name
-		src.RunChars[t.Name] = true
 		src.Files = append(src.Files, t.Path)
 		s.player(t.Name)
-	}
-	if _, err := os.Stat(src.ServerLog); err == nil && len(src.RunChars) > 0 && !have[src.ServerLog] {
-		src.Files = append(src.Files, src.ServerLog)
 	}
 	s.agents = AgentMeta(transcripts)
 	if !src.goRead { // the run's clock started (run.json)
@@ -828,20 +824,14 @@ func (s *Store) scan(src *Source) {
 	}
 }
 
-// OpenRun is a store for a bench run dir (its record files, transcripts and, for chat, damage, heals and targets, the
-// server log: the run's own copy, server/recorder.jsonl, once it has one), or for log files when dir is "" (default:
-// the server log). It reads from the run's start (run.json), else from sinceMin minutes ago. Call Poll to read.
+// OpenRun is a store for a bench run dir (its game logs, judge samples and transcripts), or for game log files when
+// dir is "". It reads from the run's start (run.json), else from sinceMin minutes ago. Call Poll to read.
 func OpenRun(dir string, files []string, sinceMin float64) (*Store, *Source) {
-	s, src := NewStore(), &Source{Transcripts: map[string]string{}, RunChars: map[string]bool{}, ServerLog: ServerLog()}
-	if own := filepath.Join(runfiles.Run(dir).Server(), "recorder.jsonl"); dir != "" && exists(own) {
-		src.ServerLog = own
-	}
+	s, src := NewStore(), &Source{Games: map[string]*gamelog.Reader{}, Scores: map[string]string{}, Transcripts: map[string]string{}}
 	src.Since = float64(time.Now().UnixMilli()) - sinceMin*60_000
 	src.Files, src.Dir = files, dir
 	if dir != "" {
 		s.scan(src)
-	} else if len(src.Files) == 0 {
-		src.Files = []string{src.ServerLog}
 	}
 	for _, r := range world.MustRows(world.Bench(), "SELECT id, name FROM area") {
 		id, _ := strconv.Atoi(r[0])
