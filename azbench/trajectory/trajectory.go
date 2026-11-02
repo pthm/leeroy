@@ -67,6 +67,7 @@ type line struct {
 
 type claudeMsg struct {
 	ID      string          `json:"id"`
+	Model   string          `json:"model"`
 	Content json.RawMessage `json:"content"`
 	Usage   *struct {
 		Input      int `json:"input_tokens"`
@@ -224,6 +225,7 @@ func (b *builder) result(t int64, id, content string, ok bool, extra map[string]
 }
 
 // metrics: a model call's tokens (input not cached, output, cache reads, cache writes) and their cost at list price
+// (the step's model's, else the run's)
 func (b *builder) metrics(s *atif.Step, in, out, cr, cw, reasoning int) {
 	m := &atif.Metrics{PromptTokens: in + cr + cw, CompletionTokens: out, CachedTokens: cr, Extra: map[string]any{}}
 	if cw > 0 {
@@ -232,7 +234,7 @@ func (b *builder) metrics(s *atif.Step, in, out, cr, cw, reasoning int) {
 	if reasoning > 0 {
 		m.Extra["reasoning_tokens"] = reasoning
 	}
-	if usd, ok := judge.Cost(b.info.Runtime, b.info.Provider, b.info.Model, float64(in), float64(out+reasoning), float64(cr), float64(cw)); ok {
+	if usd, ok := judge.Cost(b.info.Runtime, b.info.Provider, cmp.Or(s.ModelName, b.info.Model), float64(in), float64(out+reasoning), float64(cr), float64(cw)); ok {
 		m.CostUSD = usd
 	}
 	if len(m.Extra) == 0 {
@@ -290,6 +292,9 @@ func Read(transcript string, info Info) (*atif.Trajectory, error) {
 				b.closeStep()
 				b.agentStep(at)
 				msgStep[l.Message.ID] = b.open
+			}
+			if l.Message.Model != "" { // Claude Code makes some calls on another model
+				b.steps[b.open].ModelName = l.Message.Model
 			}
 			var blocks []claudeBlock
 			json.Unmarshal(l.Message.Content, &blocks)

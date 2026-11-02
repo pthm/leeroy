@@ -32,6 +32,14 @@ export interface Player {
   time_pct_by_state?: Record<string, number>; // the agent: thinking, waiting (a script running), in_call, no_script
   combat?: { damage_dealt: number; damage_taken: number; healing_done: number; kills: number; party_kills?: number; deaths?: number; xp?: number };
   think_median_s?: number;
+  // from the agent's trajectory (ATIF): tool calls by what they ran, failures, and model calls where the runtime marks them
+  play?: {
+    tools: { name: string; calls: number; failed: number; median_s?: number }[];
+    calls: number;
+    failed_pct: number;
+    model_calls?: number;
+    output_per_call?: number;
+  };
   // the report's: progress per hour while the agent was thinking, waiting on a script, in a call or with nothing running
   progress_per_hour_by_state?: Record<string, number | null>;
   coop?: { assist_share: number; assists: number; useful: number; hits: number; contested_hits: number };

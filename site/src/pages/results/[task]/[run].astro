@@ -13,6 +13,7 @@ import KitPanel from '../../../components/KitPanel.astro';
 import Talk from '../../../components/Talk.astro';
 import TimeUse from '../../../components/TimeUse.astro';
 import AgentPanel from '../../../components/AgentPanel.astro';
+import ToolMix from '../../../components/ToolMix.astro';
 import Section from '../../../components/Section.astro';
 import Layout from '../../../layouts/Layout.astro';
 import {
@@ -189,10 +190,13 @@ const tiles = [
     <TimeUse run={run} />
   </Section>
 
-  {run.players.some(p => p.idle_gaps || p.reliability || p.coop) && (
+  {run.players.some(p => p.idle_gaps || p.reliability || p.coop || p.play) && (
     <Section>
-      <SectionHeader eyebrow="Agent" title="How the agents worked" description="Progress by what each agent was doing, the time it left its character idle, and how often the tooling got in its way." />
-      <AgentPanel run={run} />
+      <SectionHeader eyebrow="Agent" title="How the agents worked" description="What each agent's tool calls ran, its progress by what it was doing, the time it left its character idle, and how often the tooling got in its way." />
+      <div class="space-y-4">
+        <ToolMix run={run} />
+        <AgentPanel run={run} />
+      </div>
     </Section>
   )}
 

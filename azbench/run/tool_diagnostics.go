@@ -41,7 +41,10 @@ func toolName(s string) string {
 	}
 	return s
 }
-func commandFamily(command string) string {
+
+// CommandFamily is the program a shell command runs (inside a bash -lc wrapper too): one of the agents' tools, else
+// unknown.
+func CommandFamily(command string) string {
 	words := strings.Fields(command)
 	if len(words) == 0 {
 		return "unknown"
@@ -77,7 +80,7 @@ func (d *toolDiagnostics) begin(id, tool, command string, at int64) {
 		d.emit(types.Diagnostic{Kind: "runtime_state", Code: "diagnostic_overflow", Details: types.DiagnosticDetails{Component: "agent", State: "coverage_gap", Runtime: d.runtime}})
 		return
 	}
-	d.pending[id] = pendingTool{start: at, tool: toolName(tool), family: commandFamily(command)}
+	d.pending[id] = pendingTool{start: at, tool: toolName(tool), family: CommandFamily(command)}
 }
 func (d *toolDiagnostics) end(id string, at int64, failed bool, exit *int, code string, known bool) {
 	p, ok := d.pending[id]

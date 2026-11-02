@@ -6,6 +6,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"github.com/pthm/leeroy/azbench/trajectory"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 	"math"
 	"os"
@@ -127,7 +128,15 @@ func publish(root, runDir, task, out string) (string, error) {
 				}
 			}
 			p["series"], p["deaths_at"] = series(f.Samples(char))
-			cs := costSeries(fmt.Sprint(p["runtime"]), fmt.Sprint(r["provider"]), fmt.Sprint(p["model"]), adir, started)
+			traj := readTrajectory(adir, trajectory.Info{Agent: a.Name, Char: char, Runtime: fmt.Sprint(p["runtime"]),
+				Model: fmt.Sprint(p["model"]), Provider: fmt.Sprint(r["provider"]), Effort: fmt.Sprint(p["effort"])})
+			if pl := playOf(traj); pl != nil && pl.Calls > 0 {
+				p["play"] = pl
+			}
+			cs := trajectoryCost(traj, started) // Claude Code, opencode: their steps price each model call
+			if cs == nil {                      // Codex: its session files' running totals
+				cs = costSeries(fmt.Sprint(p["runtime"]), fmt.Sprint(r["provider"]), fmt.Sprint(p["model"]), adir, started)
+			}
 			// the transcript misses some requests (Claude Code's background calls): keep its shape, end at the run's cost
 			if total, ok := p["cost_usd"].(float64); ok && len(cs) > 0 && cs[len(cs)-1][1] > 0 {
 				k := total / cs[len(cs)-1][1]
@@ -146,7 +155,7 @@ func publish(root, runDir, task, out string) (string, error) {
 			if p["effort"] == nil || p["effort"] == "" || p["effort"] == "default" { // unrecorded, or read before Codex wrote it: its session says
 				p["effort"] = run.DetectEffort(fmt.Sprint(p["runtime"]), f.Transcript(a.Name))
 			}
-			if t := trajectory(f.Events(char), started.UnixMilli()); len(t) > 0 {
+			if t := callsPerMinute(f.Events(char), started.UnixMilli()); len(t) > 0 {
 				p["trajectory"] = t
 			}
 			if rec, err := readRecording(f.Events(char), char, started.UnixMilli(), chat); err == nil {
@@ -217,10 +226,10 @@ func publish(root, runDir, task, out string) (string, error) {
 var benign = map[string]bool{"replaced_by_owner": true, "cancelled": true, "task_stopped": true, "miss": true,
 	"dodge": true, "parry": true, "not_ready": true}
 
-// trajectory: a player's SDK calls minute by minute, from its session's events: [minute, succeeded, failed, the
+// callsPerMinute: a player's SDK calls minute by minute, from its game log's results: [minute, succeeded, failed, the
 // minute's most frequent failure ("op code"), its count], minutes with no calls left out. Benign failures count as
-// succeeded.
-func trajectory(f string, start int64) [][5]any {
+// succeeded. Published as "trajectory" (the name runs on the site have); the agent's ATIF trajectory is "play".
+func callsPerMinute(f string, start int64) [][5]any {
 	fh, err := os.Open(f)
 	if err != nil {
 		return nil

@@ -1,0 +1,65 @@
+---
+// What each agent's tool calls ran, from its trajectory: a bar of shares by kind (Lua evals, waits, other wow
+// commands, world lookups, reading and writing files, standings), with its call count, failure rate and, where the
+// runtime marks its model calls, how many and the output tokens per call.
+import FigureHead from './FigureHead.astro';
+import { colors, type Run } from '../lib/results';
+
+interface Props {
+  run: Run;
+}
+
+const { run } = Astro.props;
+const color = colors(run);
+const kinds = [
+  { k: 'eval', label: 'Lua eval', c: 'var(--color-accent)' },
+  { k: 'wait', label: 'wait', c: 'var(--color-success)' },
+  { k: 'wow', label: 'other wow', c: 'var(--color-info)' },
+  { k: 'world', label: 'world lookups', c: 'var(--color-warning)' },
+  { k: 'read', label: 'reading files', c: 'var(--color-outline)' },
+  { k: 'write', label: 'writing files', c: 'var(--color-error)' },
+  { k: 'other', label: 'other', c: 'var(--color-faint)' },
+] as const;
+const kindOf = (name: string) => {
+  if (name === 'wow eval') return 'eval';
+  if (name === 'wow wait') return 'wait';
+  if (name.startsWith('wow ')) return 'wow';
+  if (name === 'azworld' || name === 'standings') return 'world';
+  if (['cat', 'rg', 'grep', 'head', 'tail', 'ls', 'wc', 'sort', 'uniq', 'cut', 'read', 'glob', 'list'].includes(name)) return 'read';
+  if (['apply_patch', 'edit', 'write', 'multiedit', 'mkdir', 'patch'].includes(name)) return 'write';
+  return 'other';
+};
+const ps = run.players.filter(p => p.play?.calls);
+const rows = ps.map(p => {
+  const by: Record<string, { n: number; names: string[] }> = {};
+  for (const t of p.play!.tools) {
+    const k = kindOf(t.name);
+    by[k] ??= { n: 0, names: [] };
+    by[k].n += t.calls;
+    by[k].names.push(`${t.name} ${t.calls}${t.failed ? ` (${t.failed} failed)` : ''}`);
+  }
+  const pl = p.play!;
+  const note = [`${pl.calls} calls`, `${pl.failed_pct}% failed`, pl.model_calls ? `${pl.model_calls} model calls, ${pl.output_per_call} out each` : ''].filter(Boolean).join(' · ');
+  return { p, by, note };
+});
+---
+
+{rows.length > 0 && (
+  <figure class="rounded border border-hairline bg-raised p-4" data-chart>
+    <FigureHead title="Tool calls" sub="What each agent's tool calls ran, from its trajectory. Hover a segment for the commands in it." />
+    <ul class="space-y-2">
+      {rows.map(({ p, by, note }) => (
+        <li class="grid grid-cols-[6rem_1fr_16rem] items-center gap-3 text-xs">
+          <span class:list={['truncate', color[p.char]]}>{p.char}</span>
+          <span class="flex h-3 overflow-hidden rounded-sm bg-elevated">
+            {kinds.map(k => by[k.k] && <span style={`flex:${by[k.k].n};background:${k.c}`} title={`${k.label}: ${by[k.k].names.join(', ')}`} />)}
+          </span>
+          <span class="truncate text-right font-mono text-[11px] text-faint" title={note}>{note}</span>
+        </li>
+      ))}
+    </ul>
+    <p class="mt-3 flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
+      {kinds.map(k => <span><span style={`color:${k.c}`}>■</span> {k.label}</span>)}
+    </p>
+  </figure>
+)}

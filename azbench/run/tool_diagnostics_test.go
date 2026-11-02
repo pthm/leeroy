@@ -49,7 +49,7 @@ func TestToolDiagnosticsRuntimeOutcomes(t *testing.T) {
 
 func TestCommandFamilyShellWrapper(t *testing.T) {
 	for _, command := range []string{"/bin/zsh -lc 'wow help'", `/bin/bash -lc "wow help"`, "wow help"} {
-		if commandFamily(command) != "wow" {
+		if CommandFamily(command) != "wow" {
 			t.Fatal(command)
 		}
 	}

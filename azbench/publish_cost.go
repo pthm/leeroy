@@ -1,10 +1,9 @@
 package main
 
-// A player's cost over the run, for the website: cumulative list-price cost at each point where the runtime reported
-// token usage, priced the way the judge prices a whole run (judge.Cost). Claude Code reports usage per model request in
-// its transcript (one request can span several transcript lines, each with the same message id: counted once); Codex
-// keeps running totals in its own session files (~/.codex/sessions), named in usage.json. Thinned to about
-// costPoints points of [s from the start, cumulative USD].
+// A Codex player's cost over the run, for the website: Codex's trajectory steps aren't model calls, so its cost comes
+// from the running totals in its own session files (~/.codex/sessions), named in usage.json, priced the way the judge
+// prices a whole run (judge.Cost). Thinned to about costPoints points of [s from the start, cumulative USD]. The other
+// runtimes' cost comes from their trajectories (trajectoryCost).
 
 import (
 	"bufio"
@@ -29,10 +28,7 @@ type usageAt struct {
 
 func costSeries(runtime, provider, model, adir string, start time.Time) [][2]float64 {
 	var us []usageAt
-	switch runtime {
-	case "claude":
-		us = claudeUsage(filepath.Join(adir, "transcript.jsonl"), start)
-	case "codex":
+	if runtime == "codex" {
 		us = codexUsage(filepath.Join(adir, "usage.json"), start)
 	}
 	if len(us) == 0 {
@@ -53,43 +49,6 @@ func costSeries(runtime, provider, model, adir string, start time.Time) [][2]flo
 		if i%step == 0 || i == len(us)-1 {
 			out = append(out, [2]float64{math.Round(u.t), math.Round(total*1000) / 1000})
 		}
-	}
-	return out
-}
-
-func claudeUsage(f string, start time.Time) []usageAt {
-	fh, err := os.Open(f)
-	if err != nil {
-		return nil
-	}
-	defer fh.Close()
-	seen := map[string]bool{}
-	var out []usageAt
-	sc := bufio.NewScanner(fh)
-	sc.Buffer(make([]byte, 1<<20), 1<<26)
-	for sc.Scan() {
-		if !strings.Contains(sc.Text(), `"usage"`) {
-			continue
-		}
-		var e struct {
-			Type      string
-			Timestamp time.Time
-			Message   struct {
-				ID, Model string
-				Usage     struct {
-					Input  float64 `json:"input_tokens"`
-					Output float64 `json:"output_tokens"`
-					Read   float64 `json:"cache_read_input_tokens"`
-					Write  float64 `json:"cache_creation_input_tokens"`
-				}
-			}
-		}
-		if json.Unmarshal(sc.Bytes(), &e) != nil || e.Type != "assistant" || e.Message.ID == "" || seen[e.Message.ID] {
-			continue
-		}
-		seen[e.Message.ID] = true
-		u := e.Message.Usage
-		out = append(out, usageAt{t: e.Timestamp.Sub(start).Seconds(), in: u.Input, out: u.Output, cr: u.Read, cw: u.Write, model: e.Message.Model})
 	}
 	return out
 }
