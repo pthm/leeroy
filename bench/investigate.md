@@ -58,6 +58,31 @@ the Deeprun Tram's cars (map 369; agents walk the tunnel) and some in instances.
 - Test on Thousand Needles' Great Lift and an Undercity lift. Needed before a Horde or Northrend task, or levelling
   that may reach Thousand Needles (Alliance, 25-35).
 
+### Falls that hit things
+
+A fall (a jump, a knockback, a drop after a teleport or a flight's end) runs the game's own motion (client/selfmove.go:
+gravity 19.29 yd/s^2, terminal 60 yd/s, 7 under feather fall) to the navmesh floor under the falling point
+(SetGroundFunc), with heartbeats and a FALL_LAND the server takes fall damage from. Nothing in between counts: a jump
+into a wall or under a ledge goes straight through to the floor below, and a knockback off a cliff lands wherever the
+floor under its line is. A drop after a teleport settles only if the floor is 2-13.5 yd down (deeper is taken for a
+floor the navmesh hasn't got, so it hovers).
+
+- Needs the collision data during a fall: a ray along each step against the vmaps (pathfinding has them, and capsule
+  sweeps for routes), stopping on a wall (sliding down it) and landing on a ledge or a model's top (a deck, a roof),
+  not only the navmesh floor. Then a deeper drop after a teleport can be trusted too.
+- With the survivable drops in the Lake Jorune item, it's what makes jumping off things work as for a player.
+
+### Diving
+
+Swimming (movement/movement.go) is always at the surface: water deeper than 1.6 yd over the floor is swum 1.4 yd under
+the surface, so a route can't go down underwater (a sunken chest, an underwater cave or tunnel, a quest object on a
+lake bed), and a destination below the surface is reached at the point above it. Breath timers already come through
+(me.status: mirror timers).
+
+- Needs: swimming with pitch (the movement packets carry it when swimming), a route that may leave the surface (the
+  navmesh's water areas have their floor; a path at depth between the surface and the floor), surfacing for breath, and
+  an act helper that dives to a point and comes back up. Test on a sunken chest and an underwater quest object.
+
 ### Better boat and zeppelin handling
 
 Boarding and leaving work (transports.go: a straight walk onto a crew member's spot with ONTRANSPORT, and off onto
