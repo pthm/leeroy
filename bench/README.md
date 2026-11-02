@@ -2,7 +2,7 @@
 
 The benchmark: headless agents (Claude Code or Codex CLI) each play one character through an `azsdk` session, write
 their own Lua scripts, and are scored by a judge that reads the character database. Everything runs through one
-binary, [`azbench`](../azbench) (built into `bin/` by `./build.sh`), from YAML configs in this directory. All
+binary, [`azbench`](../cmd/azbench) (built into `bin/` by `./build.sh`), from YAML configs in this directory. All
 commands below run from the repo root; server and client setup is in the [repo README](../README.md).
 
 | Path | |
@@ -36,7 +36,7 @@ commands below run from the repo root; server and client setup is in the [repo R
 | `azbench compare <run dir>...` | the players of several runs pooled by runtime and model, as `by_model`: a table, then JSON |
 | `azbench publish <run dir>...` | a run's results for the website, under its task (`--task` for runs from before tasks): `site/src/data/runs/<run>.json`, committed ([site](../site/README.md)) |
 | `azbench prices` | refresh the price table for `cost_usd` from [models.dev](https://models.dev) |
-| `azbench judge <Char> <goal> [flags]` | score one character by hand ([judge](../azbench/judge/README.md)) |
+| `azbench judge <Char> <goal> [flags]` | score one character by hand ([judge](../internal/bench/judge/README.md)) |
 | `azbench signals <Char>` | a character's progress signals |
 | `azbench reset <Char>...` | delete characters so a fresh run can reuse their names |
 | `azbench gm [x y z [map]] [--class mage]` | a GM dev character, for SDK work |
@@ -141,7 +141,7 @@ and whether the character is alive, dead or a ghost, and where.
 ## Run directories
 
 `runs/<time>-<task>-<model>/` (a task played together: `runs/<time>-<task>/`), laid out in
-[`azbench/runfiles`](../azbench/runfiles/runfiles.go), which everything that reads a run goes through. Agent files are
+[`runfiles`](../runfiles/runfiles.go), which everything that reads a run goes through. Agent files are
 by agent name, game and judge files by character. Every JSONL line has `t`, unix milliseconds.
 
 | Path | |
@@ -151,7 +151,7 @@ by agent name, game and judge files by character. Every JSONL line has `t`, unix
 | `preflight.json` | what the world looked like for the task before the start ([tasks](tasks/README.md#preflight)) |
 | `supervisor.log` | everything the supervisor printed, dated; `ALERT` lines are agents and sessions that stopped early, outages, give-ups and the Codex quota's alerts |
 | `agents/<agent>/transcript.jsonl` | the transcript in the runtime's own format: Claude's `stream-json`, Codex's `--json` events or opencode's, each stamped with a `timestamp` |
-| `agents/<agent>/trajectory.json` | the transcript as an [ATIF](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md) trajectory (`ATIF-v1.7`, with `golang.org/x/exp/eval/trajectory/atif`'s types), the same for every runtime: step 1 the task prompt, then each model turn's message, reasoning, tool calls with their results (`extra`: `ok`, `duration_ms`, `exit_code`), tokens and cost; `agent.version` the runtime's `--version`; `final_metrics` from the runtime's session logs. Rewritten at every stop ([trajectory](../azbench/trajectory/trajectory.go)) |
+| `agents/<agent>/trajectory.json` | the transcript as an [ATIF](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md) trajectory (`ATIF-v1.7`, with `golang.org/x/exp/eval/trajectory/atif`'s types), the same for every runtime: step 1 the task prompt, then each model turn's message, reasoning, tool calls with their results (`extra`: `ok`, `duration_ms`, `exit_code`), tokens and cost; `agent.version` the runtime's `--version`; `final_metrics` from the runtime's session logs. Rewritten at every stop ([trajectory](../trajectory/trajectory.go)) |
 | `agents/<agent>/prompt.md` | the task prompt |
 | `agents/<agent>/meta.json` | `agent`, `char`, `runtime`, `version` (the runtime's `--version` when the agent started), `model`, `effort`, `spec`, `role`, `goal`, `port`, as the runtime reported them; `sdk_rev`, the SDK revision its last start, resume or restart ran on (for `WHAT CHANGED`) |
 | `agents/<agent>/NOTES.md`, `*.md` | the agent's notes, copied from its workspace at every stop |
@@ -159,7 +159,7 @@ by agent name, game and judge files by character. Every JSONL line has `t`, unix
 | `agents/<agent>/codex-usage.jsonl` | Codex only: every request's `last_token_usage` and the account's `rate_limits`, with `timestamp` and `thread` |
 | `agents/<agent>/tasks.json` | the Lua tasks running when its session last stopped |
 | `agents/<agent>/kit.json` | the character's gear, talents and abilities when its run ended |
-| `game/<char>/events.jsonl` | the character's game log: the events its agent saw (combat, chat, loot, quests...) and its session's records beside them (state each second, pets, nearby creatures, transports, group changes, API calls); the judge, the report, publish and the viewer read it through `azbench/gamelog` ([format](../azview/README.md#game-log)) |
+| `game/<char>/events.jsonl` | the character's game log: the events its agent saw (combat, chat, loot, quests...) and its session's records beside them (state each second, pets, nearby creatures, transports, group changes, API calls); the judge, the report, publish and the viewer read it through `gamelog` ([format](../cmd/azview/README.md#game-log)) |
 | `game/<char>/session.log` | the character's client log, written as it runs (also in the workspace, where the agent reads its `log()` lines) |
 | `judge/<char>/samples.jsonl` | the judge's sample every 15 s |
 | `judge/<char>/result.json` | the judge's final result |
@@ -167,7 +167,7 @@ by agent name, game and judge files by character. Every JSONL line has `t`, unix
 | `board/<char>.json` | each judge's latest result (with `minutes_left`), read by `standings` |
 | `codex-quota.json` | the Codex quota at the start and the latest read (runs with a Codex agent) |
 | `.live/` | while the supervisor runs: `control.json` (its control API), `pids` (the process groups of its sessions and agents); removed when the run finishes |
-| `team.json`, `report.json` | the results and the report card ([judge](../azbench/judge/README.md#azbench-report)) |
+| `team.json`, `report.json` | the results and the report card ([judge](../internal/bench/judge/README.md#azbench-report)) |
 
 `team.json`:
 
@@ -180,7 +180,7 @@ by agent name, game and judge files by character. Every JSONL line has `t`, unix
 
 ## Goals and scoring
 
-Goals are the judge's (see [judge](../azbench/judge/README.md)), and the prompt asks for them:
+Goals are the judge's (see [judge](../internal/bench/judge/README.md)), and the prompt asks for them:
 
 | Goal | Prompt |
 |---|---|
@@ -211,7 +211,7 @@ line.
 
 The judge polls the character database every 15 s (the server saves characters every 15 s, see
 `server/override.yml`), so the client can't fake progress. For `score:` goals, progress is XP earned since the start
-(`azbench/judge/score.json`, version 6), and
+(`internal/bench/judge/score.json`, version 6), and
 
 ```
 score = (rate + best_window) / 2      in XP per hour
@@ -241,7 +241,7 @@ The agent's context comes in layers, each its own file:
 
 | | File | |
 |---|---|---|
-| task | `prompt.md` (`azbench/run/prompt.tmpl`) | who it plays, the goal, how it's scored, the run's length, the other players, the rules |
+| task | `prompt.md` (`internal/bench/run/prompt.tmpl`) | who it plays, the goal, how it's scored, the run's length, the other players, the rules |
 | how it works | `AGENTS.md` (`agent/AGENTS.md`) | the workspace, the three tools, how scripts, events and subscriptions fit together; points to the rest |
 | the game | `game.md` (`../azsdk/docs/`) | the rules of the game, described, not coached |
 | reference | `sdk.md`, the topic files, `azworld.md`, `api-reference.md` (`../azsdk/docs/`) | the runtime and the Lua API; how it behaves, a file per topic; `azworld`; every function, type and event |
@@ -256,8 +256,8 @@ one per thing the agent deals with: the game, the world's data, and its score.
 | Tool | Is | |
 |---|---|---|
 | `wow` | the game (`azsdk/cmd/wow`) | the session on `$WOW_PORT`: `wow '<lua>'`, `wow < file`, `wow -f file.lua`, `wow status`, `wow tasks`, `wow events [--types a,b] [--last n] [--since seq] [--match s]`, `wow wait [--types ...] [--match s] [seconds]` (max 600), `wow subscribe [types]`, `wow answer <id> <choice>`, `wow -w <s> '<lua>'`. Subscribed chat, invites, trades and script questions also go to stderr. Everything in the game, including how the party spends its time (`group.report()`) |
-| `azworld` | the world's data (`azworld/`) | structured lookups (`azworld help`) and raw read-only SQL (`azworld sql`, tab-separated, at most 300 rows) over the world database |
-| `standings` | the score (`azbench/tools`) | every player's rank, score, rates, level, role stats, cooperation, item level and money from `$WOWBENCH_BOARD`, plus a faction total and the minutes left in the run |
+| `azworld` | the world's data (`cmd/azworld/`) | structured lookups (`azworld help`) and raw read-only SQL (`azworld sql`, tab-separated, at most 300 rows) over the world database |
+| `standings` | the score (`internal/bench/tools`) | every player's rank, score, rates, level, role stats, cooperation, item level and money from `$WOWBENCH_BOARD`, plus a faction total and the minutes left in the run |
 
 The agent's environment: `PATH` with `agent/bin/` first, `WOW_PORT`, `WOWBENCH_BOARD` (the board directory) and
 `WOWBENCH_CHAR` (its character).

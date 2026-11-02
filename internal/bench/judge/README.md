@@ -1,0 +1,194 @@
+# judge
+
+Scoring and reporting, in one place. The judge scores one character by polling the character database (the
+server's record, not the client's); `azbench report` writes the report card and `team.json` after a run. All three are
+`azbench` subcommands. Every measure they share (the score's rates, combat totals, cooperation, time use) is
+defined once, in [`azsdk/metrics`](../../../azsdk/metrics), which the client's in-game progress events use
+too. The server saves characters every 15 s (`server/override.yml`), and the judge polls every 15 s by default.
+
+| Command | |
+|---|---|
+| `azbench judge <Char> <goal> [flags]` | score a character live: samples, rates, score, board; exits when the goal is met or time runs out |
+| `azbench report <run dir \| team dir>` | live, paused or completed run: `report.json` (the report card) and, for a team, `team.json` |
+| `azbench signals <Char>` | every progress signal for a character |
+
+| File | |
+|---|---|
+| `main.go` | the live judge |
+| `signals.go` | the progress signals |
+| `report.go` | `azbench report` |
+| `diagnostics.go` | saved lifecycle and usage evidence, pause boundaries, compact team diagnostics |
+| `streams.go` | tails the event streams in a run or team dir |
+| `obj.go` | key-ordered JSON objects for samples, the board and the result line |
+| `score.json` | the weights for `score:` goals, and their version (built into the binary: rebuild with `./build.sh`) |
+
+## The judge
+
+Part of `bin/azbench` (built by `./build.sh`); `azbench run` judges every player in-process.
+
+```sh
+bin/azbench judge <Character> <goal> [flags]
+bin/azbench judge Agentone level:10 --timeout 4h
+```
+
+| Goal | Value |
+|---|---|
+| `level:<n>` | character level |
+| `money:<copper>` | money held |
+| `quests:<n>` | quests turned in |
+| `quest:<id>` | 1 once that quest is turned in |
+| `skill:<id>:<n>` | that skill line's level (e.g. 164 Blacksmithing, 186 Mining); met at n |
+| `item:<entry>` | 1 once the character owns that item |
+| `quality:<0-5>` | 1 once it owns any item of that quality or better (3 = rare) |
+| `achievement:<id>` | 1 once the character has earned that achievement (e.g. 628 Deadmines: Edwin VanCleef killed) |
+| `zone:<id>` | 1 once the character is in that zone (an AreaTable id, e.g. 1657 Darnassus; the `wowbench.area` table) |
+| `achpoints:<n>` | achievement points earned since the judge started (needs the `wowbench` schema from `bin/azworld setup`) |
+| `score:<n>` | weighted change in the signals since the judge started (weights in `score.json`) |
+
+The goal is met when the value reaches n (1 for `quest`, `achievement`, `item`, `quality`, `zone`). For "as much as possible", pass a large
+n and read the value at timeout.
+
+| Flag | |
+|---|---|
+| `--timeout 4h` | stop after this long (`s`, `m` or `h`); default 4h |
+| `--every 15s` | poll interval; default 15s |
+| `--samples <file>` | append each sample as a JSON line |
+| `--board <dir>` | write `<dir>/<Char>.json` with the latest result each poll (read by `standings`) |
+| `--events <file>` | the character's event stream (`azsdk -events`); its combat totals, and cooperation from every `game/<char>/events.jsonl` of the run beside it, go on the board |
+| `--role <DPS\|Tank\|Healer>` | added to the board |
+| `--runtime <name>` | added to the board and the result |
+| (giving up) | with `--board`, an agent's `standings give-up "<why>"` (a `<Char>.gaveup` file beside its board file) ends the run unmet at the next poll, with `gave_up` (the reason) in the result |
+| `--hardcore` | the first death (the `deaths` signal rising) ends the run unmet, with `died` in the result; non-binary goals score the total value earned before the death or the clock, so dying early doesn't keep a high rate |
+| `--resume <samples.jsonl>` | continue a paused run: same baseline and curve, and the clock resumes at the last sample |
+
+On exit it prints one JSON line and exits 0 if the goal was met, 1 if it timed out.
+
+## Rates and score
+
+Computed for every goal from the value curve, in value per hour (`metrics.Curve`):
+
+| Field | |
+|---|---|
+| `rate` | value / hours since the start (the first 10 minutes count as 10) |
+| `recent_rate` | over the last 10 minutes |
+| `best_window` | the best rate over any 15-minute window (before 15 minutes: value / max(elapsed, 10 min)) |
+| `pace` | time-average of the value so far (area under the curve / time) |
+| `score` | `(rate + best_window) / 2`; for binary goals, `3600 / time_to_goal_s` (0 until met) |
+
+Binary goals (`achievement`, `quest`, `item`, `quality`, `zone`) are met or not, so their score is by time:
+`3600 / time_to_goal_s`, 1 for a goal met in an hour, 0 while unmet. `score` is the headline for `score:` goals. Time spent trying a new strategy lowers `rate` but not `best_window`;
+deaths and stalls cost through the time they lose.
+
+## score.json
+
+Version 6: progress is `xp_earned` with weight 1, so `score` is in XP per hour. Gear, money and the other signals
+are reported in each sample but not scored. Change the weights here to score on other signals.
+
+## Signals
+
+| Signal | |
+|---|---|
+| `level` | fractional: 10.5 is halfway to 11 |
+| `xp_earned` | total XP to reach the current level plus XP into it |
+| `achievement_points` | from `wowbench.achievement` |
+| `avg_item_level` | mean over 17 gear slots (shirt and tabard excluded), empty = 0 |
+| `wealth_copper` | money plus vendor value of everything carried, worn or banked |
+| `money_copper` | money |
+| `honor`, `arena_points`, `honorable_kills` | PvP |
+| `quests` | quests turned in |
+| `reputation` | sum of standings |
+| `profession_skill` | sum of first aid, cooking, fishing and primary profession skills |
+| `explored_areas`, `flight_paths` | bits set in the explored-zones and taxi masks |
+| `deaths`, `creatures_killed` | from the achievement statistics |
+| `played_s` | played time |
+
+They're read over the database port (`world`, `$LEEROY_DB_ADDR`, default 127.0.0.1:3306).
+
+## Outputs
+
+A sample (`--samples`, and the last one in the final result):
+
+```
+{elapsed_s, level, xp, money, value, rate, recent_rate, best_window, pace, score, signals}
+```
+
+The final line adds `char`, `goal`, `met`, `runtime` (if given), `time_to_goal_s` (`elapsed_s` when met, else null)
+and `at` (ISO time). The board file has `char`,
+`level` (fractional), `progress` (the value), the rates, `elapsed_s`, `minutes_left` (on the run's clock), `money`, `avg_item_level`, and `role`,
+`runtime`, and `damage_dealt`, `damage_taken`, `healing_done`, `assist_share`, `contested_hits` when those flags are given.
+
+## Cooperation
+
+From every player's event stream (`metrics.Team`), after AgentWorld's causal collaboration effectiveness but traced
+by rules: success is XP, which every player who shares a kill logs, naming the victim. A hit is useful if its mob
+gave you XP; a heal is useful if its target lands a useful hit within 30 s.
+
+| Field | |
+|---|---|
+| `assist_share` | of your useful hits and heals, the share that also paid someone else: kills a teammate shared, heals on other players. Solo play is ~0 |
+| `contested_hits` | hits on mobs whose XP went only to players outside your party: fighting someone for the kill |
+
+Reported, not scored. Last run: 0.61 while grouped vs 0.02 solo; the healer led (0.37 overall).
+
+## azbench report
+
+`azbench report <run dir | team dir>` writes `report.json` and prints a table; for a team dir it also writes
+`team.json` (each judge's result ranked by score, `faction_score`, `by_model`, `team_s`). `azbench run` and `resume`
+run it at the end. Per agent:
+
+| Field | |
+|---|---|
+| `score` | the judge's last value and rates; for binary goals, the time score and `time_to_goal_s` from its result |
+| `duty_cycle_pct`, `idle_gaps` | time with a script task running; the gaps without one |
+| `progress_per_hour_by_state`, `time_pct_by_state` | progress while the agent waited (`wow wait`, sleep), thought, was in a call, or had no script |
+| `wakes` | waits, early wakes per hour, what woke them and whether a script restart followed |
+| `restarts` | restart calls, script starts per hour, progress in a script's first minute vs settled |
+| `stalls` | the session's stall events by reason: `no_xp` (null when the goal isn't XP-based: anything but `score` and `level`) and `slow` |
+| `deaths`, `calls`, `think_s` | |
+| `tokens` | input, output (reasoning included), cache read and write, from the saved transcript and `usage.json`; the supervisor snapshots runtime-local usage after each agent attempt (and, for Codex, every request's usage and rate limits in `codex-usage.jsonl`) |
+| `cost_usd` | the tokens at the model's list price ([models.dev](https://models.dev), `prices.json`; `azbench prices` refreshes it), the same way for every runtime and plan. Claude Code's cache writes are its 1-hour ones (2x input) from Anthropic, the 5-minute rate through OpenRouter. Null when usage or pricing is unavailable |
+| `combat` | `metrics.Combat`: damage dealt and taken, healing, kills, party kills, deaths, XP |
+| `coop` | `metrics.Team`: `assist_share`, `assists`, `useful`, `hits`, `contested_hits` |
+| `time_use` | `metrics.Use` from the game log's state records, while the character was playing: fighting, travelling, idle, dead, with the group, alive with a broken weapon (%); the one source for the character's time |
+| `judge_state`, `score_provisional` | observed judge state; board scores stay provisional until `judge/<char>/result.json` exists. Missing lifecycle evidence produces `unknown`, not a guessed result |
+| `diagnostics` | schema 1: action aggregates, repeated-failure episodes, tool outcomes, bounded evidence and explicit coverage |
+
+Diagnostics read only `diagnostics/<agent>.jsonl` (the harness's and the session's). Each finding links to a file and line,
+plus session/sequence when available. Three matching failures within 30 seconds start an episode; success,
+session replacement or judge pause/completion closes it. Targets, tasks and sessions stay separate. Durations
+are inclusive per operation: adding nested helper and raw-action durations would double-count time.
+
+`by_operation` counts top-level calls only (no `parent_call`); calls made inside another call are counted in
+`nested_calls`, since their outcome is also their parent's. Each failed aggregate has a `class`: `combat_outcome`
+(miss, dodge, parry, block, resist, evade, immune, deflect, absorb, reflect: the server's outcome of an attack that
+was made), `preempted` (replaced_by_owner, preempted, cancelled, session_closed, task_*: replaced or stopped by the
+agent's own task or session), or `failure`. `team.json`'s diagnostics give `failures`, `combat_outcomes` and
+`preempted` per agent.
+
+`sight_refused` counts the spells the server refused for line of sight, and `predicted_clear` those where the SDK's
+own `in_sight` said clear at that moment: the places its collision model is wrong. Each refusal is in the evidence
+with the map, caster and target positions and the prediction.
+
+`azbench status` shows up to three fresh active episodes, ranked by recorded action time and episode span.
+This is observed failed-action time, not an estimate of all time lost to a problem. The evidence view keeps
+the last 200 action, status, tool, quest/group observation and lifecycle records and reports how many were omitted. Task status is an
+agent claim; it does not prove quest completion or a planning mistake.
+
+Quest observations are complete client-log snapshots sampled once a second and emitted on change. Completion
+bits indicate completed objectives, not turn-in; disappearing from the log can also mean abandonment. Raw
+counters do not include inventory objectives. Group observations contain roster GUIDs, without assuming a
+shared plan or readiness. Both appear in the evidence sequence without altering action counts or judge scores.
+
+Tool diagnostics recognize Claude tool-use/result pairs, Codex command-execution items and OpenCode tool-use
+parts. `tools.observed_timeouts` and `observed_denials` count explicit structured codes, not words in error
+messages or a guessed meaning of an exit status. An unfinished call has an unknown outcome; a missing start
+has an unknown duration. Enabled collection with no observed matching failures produces zero; absent
+collection produces null. A collector cannot reveal causes the runtime does not expose. Quota codes are
+recorded as observed usage-limit events, without asserting that they caused a later process exit.
+
+Coverage lists missing artifacts, malformed/truncated lines, unsupported schemas, duplicate events and
+sequence gaps. Missing movement/recovery/gear metrics appear in `unavailable`. Old runs have unavailable
+diagnostics. Reporting does not query the game server or runtime home directories and never writes judge
+results. Runtime usage snapshots survive restart and moving the run directory. Short pauses are excluded
+from sampled progress attribution using lifecycle boundaries; an interval crossing a pause is omitted
+because its progress cannot be assigned reliably. Judge scores themselves are unchanged.

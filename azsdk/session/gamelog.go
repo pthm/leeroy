@@ -3,7 +3,7 @@ package session
 // The character's game log: the records its session keeps in its event stream file beside the events (script.Bus.Write:
 // no seq, not shown to the agent): its state each second (position, health, power, money, group, target, pet), the
 // creatures near it every 2 s and the transports on its map every 4, its group changes, login and logout, and the API
-// calls (api, script_error). With the events it saw, that's the run's record of the game (azbench/gamelog reads it).
+// calls (api, script_error). With the events it saw, that's the run's record of the game (gamelog reads it).
 // And Diagnostics: the session's diagnostic stream, in its own file.
 
 import (

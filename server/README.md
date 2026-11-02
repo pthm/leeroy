@@ -6,7 +6,6 @@ The local AzerothCore 3.3.5a server the agents play on, and the tools around it.
 |---|---|
 | `azerothcore/` | Upstream [azerothcore-wotlk](https://github.com/azerothcore/azerothcore-wotlk) checkout (gitignored) |
 | `override.yml` | Compose overrides layered on `azerothcore/docker-compose.yml` |
-| `account/` | Create or reset a game account (and its GM level): `bin/account` |
 
 All commands run from the repo root. First-time setup (clone, build, client data) is in the [root README](../README.md).
 
@@ -42,10 +41,10 @@ Ports are upstream's defaults and the override doesn't touch them:
 ## Accounts
 
 ```sh
-./build.sh                          # builds bin/account (and the other tools)
-bin/account <user> <pass> [gmLevel]
-bin/account agent1 agent1           # non-GM
-bin/account dev dev 3               # GM level 3
+./build.sh                          # builds bin/azbench (and the other tools)
+bin/azbench account <user> <pass> [gmLevel]
+bin/azbench account agent1 agent1   # non-GM
+bin/azbench account dev dev 3       # GM level 3
 ```
 
 `account` computes the SRP6 salt and verifier itself and writes them to `acore_auth.account` over the database
@@ -71,7 +70,7 @@ set realmlist 127.0.0.1
 The realm list the authserver hands out comes from `acore_auth.realmlist`; its `address` must be reachable from the
 client (`127.0.0.1` when the client runs on the same machine).
 
-Log in with a GM account (`bin/account dev dev 3`) and, in game:
+Log in with a GM account (`bin/azbench account dev dev 3`) and, in game:
 
 | Command | Effect |
 |---|---|

@@ -14,7 +14,7 @@ bin/azbench run bench/tasks/travel.yaml --reset                # again from scra
 
 Each model's party plays its own run, one after another so none share the world; with `together: true` every model's
 party plays one run in one world (everyone starts at the same moment once all sessions are up, so times are
-comparable). Each character gets a name from [`names.txt`](../../azbench/config/names.txt), picked by the task, the
+comparable). Each character gets a name from [`names.txt`](../../internal/bench/config/names.txt), picked by the task, the
 model and the party slot: neutral (chat doesn't say who is which model), the same each time, and no two characters of
 any task share one. The agent and its workspace, `bench/workspaces/<name>/`, take it in lowercase. Names of
 characters already on the server are left out of the list. A task with
@@ -45,7 +45,7 @@ Unknown fields are errors, so a typo doesn't silently change a run.
 |---|---|
 | `name` | default the file name; the website groups runs by it. A run directory is `runs/<time>-<task>-<model>/` (together: `runs/<time>-<task>/`) |
 | `description` | for people |
-| `goal` | a judge goal: `score:100000` (XP per hour; "as much as possible"), `level:10`, `quest:176`, `achievement:628`, `quests:5`, `skill:164:75`, `money:<copper>`, `item:<entry>`, `quality:<0-5>`, `achpoints:<n>`, `zone:<id>` (in that zone, an AreaTable id) ([judge](../../azbench/judge/README.md)) |
+| `goal` | a judge goal: `score:100000` (XP per hour; "as much as possible"), `level:10`, `quest:176`, `achievement:628`, `quests:5`, `skill:164:75`, `money:<copper>`, `item:<entry>`, `quality:<0-5>`, `achpoints:<n>`, `zone:<id>` (in that zone, an AreaTable id) ([judge](../../internal/bench/judge/README.md)) |
 | `minutes` | the run's length; default 60 |
 | `wrap_up_minutes` | how long an agent and its session keep going after its judge records the goal (its score is final; a `goal_met` event tells it); default 5 |
 | `start` | where every character starts: a name from [`places.yaml`](../places.yaml), `"x y z map zone"`, or `{x, y, z, map, zone}`. Omitted: where they are (new characters: their race's start) |
