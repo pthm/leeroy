@@ -57,22 +57,23 @@ document.addEventListener("htmx:beforeSwap", (e) => { // the feed sticks to its 
 document.addEventListener("htmx:afterSwap", (e) => { const p = e.detail.target; if (p.id === "pane" && p.dataset.bottom && store().tab === "feed") p.scrollTop = p.scrollHeight; });
 
 // ---------- players and their samples ----------
-// P: name -> {name, cls, color, nth, dash}. S: name -> samples in time order [{t, x, y, m, a, g, c, grp, ld, tg}],
-// times relative to B.start; U: name -> units samples; R: name -> a selected player's whole route [[t, x, y, m]].
-// TR: transport id -> {n, s: [{t, m, x, y, o}]}, boats and zeppelins.
+// The server's names are the game log's. P: name -> {name, class, color, nth, dash}. S: name -> samples in time order
+// [{t, x, y, map, alive, ghost, in_combat, level, group, leader, target, pet}], times relative to B.start; U: name ->
+// units samples {t, map, units}; R: name -> a selected player's whole route [[t, x, y, map]].
+// TR: transport guid -> {name, entry, track: [{t, map, x, y, o}]}, boats and zeppelins.
 const P = new Map(), S = {}, U = {}, R = {}, TR = {};
-const trSample = ([tt, m, x, y, o]) => ({ t: tt - B.start, m, x, y, o });
+const trSample = ([tt, map, x, y, o]) => ({ t: tt - B.start, map, x, y, o });
 function player(name, cls) {
   let p = P.get(name);
-  if (!p) { p = { name, cls: "" }; P.set(name, p); }
-  if (cls && !p.cls) p.cls = cls;
+  if (!p) { p = { name, class: "" }; P.set(name, p); }
+  if (cls && !p.class) p.class = cls;
   styleByClass(); return p;
 }
 function styleByClass() { // class colours; a second player of a class gets #2 and a dashed line
   const seen = {};
-  for (const p of P.values()) { p.color = CLASS_COLOR[p.cls] ?? "#888888"; p.nth = (seen[p.cls] = (seen[p.cls] ?? 0) + 1); p.dash = p.nth > 1 ? [6, 4] : []; }
+  for (const p of P.values()) { p.color = CLASS_COLOR[p.class] ?? "#888888"; p.nth = (seen[p.class] = (seen[p.class] ?? 0) + 1); p.dash = p.nth > 1 ? [6, 4] : []; }
 }
-for (const p of B.players) player(p.name, p.cls);
+for (const p of B.players) player(p.name, p.class);
 const rel = (s) => ({ ...s, t: s.t - B.start });
 const sampleT = (s) => s.t;
 // the index of the first element after t in a list sorted by time
@@ -87,8 +88,8 @@ function at(name, t) {
   const a = S[name]; if (!a) return null;
   const i = upto(a, t) - 1; if (i < 0) return null;
   const s = a[i], n = a[i + 1];
-  if (!n || jump(s.t, s.x, s.y, s.m, n.t, n.x, n.y, n.m)) return { s, x: s.x, y: s.y, pet: s.pet };
-  const f = (t - s.t) / (n.t - s.t), pet = s.pet && n.pet ? [s.pet[0] + (n.pet[0] - s.pet[0]) * f, s.pet[1] + (n.pet[1] - s.pet[1]) * f, s.pet[2], s.pet[3]] : s.pet;
+  if (!n || jump(s.t, s.x, s.y, s.map, n.t, n.x, n.y, n.map)) return { s, x: s.x, y: s.y, pet: s.pet };
+  const f = (t - s.t) / (n.t - s.t), pet = s.pet && n.pet ? { ...s.pet, x: s.pet.x + (n.pet.x - s.pet.x) * f, y: s.pet.y + (n.pet.y - s.pet.y) * f } : s.pet;
   return { s, x: s.x + (n.x - s.x) * f, y: s.y + (n.y - s.y) * f, pet };
 }
 
@@ -102,12 +103,12 @@ async function need(t) {
   const from = Math.max(0, t - BEHIND - 30000), to = t + ahead;
   loading = fetch(`samples?from=${Math.round(B.start + from)}&to=${Math.round(B.start + to)}`).then((r) => r.json()).then((d) => {
     const overlap = from <= have.to && to >= have.from;
-    for (const [n, a] of Object.entries(d.s)) { player(n, d.cls?.[n]); const got = a.map(rel); S[n] = overlap ? merge(S[n] ?? [], got) : got; }
-    for (const [n, a] of Object.entries(d.u)) { const got = a.map(rel); U[n] = overlap ? merge(U[n] ?? [], got) : got; }
+    for (const [n, a] of Object.entries(d.samples)) { player(n, d.class?.[n]); const got = a.map(rel); S[n] = overlap ? merge(S[n] ?? [], got) : got; }
+    for (const [n, a] of Object.entries(d.units)) { const got = a.map(rel); U[n] = overlap ? merge(U[n] ?? [], got) : got; }
     if (!overlap) HITS.length = 0;
     for (const h of d.hits ?? []) addHit(rel(h));
-    for (const [id, v] of Object.entries(d.tr ?? {})) { const got = v.s.map(trSample); TR[id] = { n: v.n, e: v.e, s: overlap ? merge(TR[id]?.s ?? [], got) : got }; }
-    if (!overlap) for (const n of Object.keys(S)) if (!(n in d.s)) S[n] = [];
+    for (const [id, v] of Object.entries(d.transports ?? {})) { const got = v.track.map(trSample); TR[id] = { name: v.name, entry: v.entry, track: overlap ? merge(TR[id]?.track ?? [], got) : got }; }
+    if (!overlap) for (const n of Object.keys(S)) if (!(n in d.samples)) S[n] = [];
     have = overlap ? { from: Math.min(from, have.from), to: Math.max(to, have.to) } : { from, to };
     trim(); dirty = true; updateMaps();
   }).catch(() => {}).finally(() => { loading = null; });
@@ -115,7 +116,7 @@ async function need(t) {
 const merge = (a, b) => { const m = new Map(a.map((s) => [s.t, s])); for (const s of b) m.set(s.t, s); return [...m.values()].sort((x, y) => x.t - y.t); };
 function trim() { // keep memory bounded: samples more than 15 minutes from the playhead go
   const lo = t - 900000, hi = t + Math.max(900000, speed * 60000);
-  for (const a of [...Object.values(S), ...Object.values(U), ...Object.values(TR).map((v) => v.s)]) { const i = upto(a, lo); if (i > 0) a.splice(0, i); const j = upto(a, hi); if (j < a.length) a.splice(j); }
+  for (const a of [...Object.values(S), ...Object.values(U), ...Object.values(TR).map((v) => v.track)]) { const i = upto(a, lo); if (i > 0) a.splice(0, i); const j = upto(a, hi); if (j < a.length) a.splice(j); }
   have.from = Math.max(have.from, lo); have.to = Math.min(have.to, hi);
 }
 async function loadRoute(n) {
@@ -132,12 +133,12 @@ const MARKS = B.marks.map(rel), TICKS = B.ticks.map(([tt, k]) => ({ t: tt - B.st
 // samples and marks as they arrive; the newest data's time (dataEnd) and when anything last came (lastLive)
 let dataEnd = B.last - B.start, lastLive = -Infinity, dirty = true;
 const es = new EventSource("live");
-es.addEventListener("s", (m) => { const d = JSON.parse(m.data), s = rel(d.s); player(d.n, d.cls); live(s.t, false);
-  if (have.to >= s.t - 10000) { ins(S[d.n] ??= [], s); have.to = Math.max(have.to, s.t); }
-  if (R[d.n]?.length) R[d.n].push([s.t, s.x, s.y, s.m]); });
-es.addEventListener("u", (m) => { const d = JSON.parse(m.data), u = rel(d.u); live(u.t, false); if (have.to >= u.t - 10000) ins(U[d.n] ??= [], u); });
-es.addEventListener("tr", (m) => { const d = JSON.parse(m.data), s = trSample(d.s), v = (TR[d.id] ??= { n: d.n, e: d.e, s: [] });
-  if (have.to >= s.t - 10000) { ins(v.s, s); dirty = true; } }); // not live(): the server's, not the run's
+es.addEventListener("s", (m) => { const d = JSON.parse(m.data), s = rel(d.sample); player(d.char, d.class); live(s.t, false);
+  if (have.to >= s.t - 10000) { ins(S[d.char] ??= [], s); have.to = Math.max(have.to, s.t); }
+  if (R[d.char]?.length) R[d.char].push([s.t, s.x, s.y, s.map]); });
+es.addEventListener("u", (m) => { const d = JSON.parse(m.data), u = rel(d.units); live(u.t, false); if (have.to >= u.t - 10000) ins(U[d.char] ??= [], u); });
+es.addEventListener("tr", (m) => { const d = JSON.parse(m.data), s = trSample(d.sample), v = (TR[d.guid] ??= { name: d.name, entry: d.entry, track: [] });
+  if (have.to >= s.t - 10000) { ins(v.track, s); dirty = true; } }); // not live(): the server's, not the run's
 es.addEventListener("hit", (m) => { addHit(rel(JSON.parse(m.data))); dirty = true; });
 es.addEventListener("mark", (m) => { const e = rel(JSON.parse(m.data)); ins(MARKS, e); live(e.t); });
 es.addEventListener("tick", (m) => { const [tt, k] = JSON.parse(m.data); ins(TICKS, { t: tt - B.start, type: k }); });
@@ -162,7 +163,7 @@ function fitBox(xMin, xMax, yMin, yMax) {
   view.s = Math.min(r.width / Math.max(1, x1 - x0), r.height / Math.max(1, y1 - y0));
   view.ox = (r.width - (x1 + x0) * view.s) / 2; view.oy = (r.height - (y1 + y0) * view.s) / 2;
 }
-const placed = () => [...P.keys()].map((n) => at(n, t)).filter((pp) => pp && pp.s.m === M.id);
+const placed = () => [...P.keys()].map((n) => at(n, t)).filter((pp) => pp && pp.s.map === M.id);
 function fit() {
   const pts = placed(); if (!pts.length) return sizeCanvas();
   const xs = pts.map((q) => q.x), ys = pts.map((q) => q.y), pad = 120;
@@ -393,14 +394,14 @@ function drawCombatText() {
   const by = {};
   cx.font = "bold 12px system-ui"; cx.textAlign = "center"; cx.lineWidth = 3; cx.strokeStyle = "#000c";
   for (let i = upto(HITS, t) - 1; i >= 0 && t - HITS[i].t < HIT_MS; i--) {
-    const h = HITS[i], pp = at(h.n, t); if (!pp || pp.s.m !== M.id) continue;
-    const k = (by[h.n + h.k] = (by[h.n + h.k] ?? 0) + 1); if (k > 4) continue; // the latest four of each, per player
+    const h = HITS[i], pp = at(h.char, t); if (!pp || pp.s.map !== M.id) continue;
+    const k = (by[h.char + h.kind] = (by[h.char + h.kind] ?? 0) + 1); if (k > 4) continue; // the latest four of each, per player
     let x = pp.x, y = pp.y;
-    if (h.k === "d" && pp.s.tg && pp.s.tg[2] === M.id) [x, y] = pp.s.tg; // dealt: over what they hit
+    if (h.kind === "dealt" && pp.s.target?.map === M.id) ({ x, y } = pp.s.target); // dealt: over what they hit
     const [sx, sy] = scr(x, y), age = (t - h.t) / HIT_MS, jitter = ((Math.round(h.t / 97) % 5) - 2) * 7;
     cx.globalAlpha = Math.max(0, 1 - age * age);
-    cx.fillStyle = h.k === "t" ? "#ff5050" : h.k === "h" ? "#50ff70" : "#ffe040";
-    const label = (h.k === "t" ? "-" : h.k === "h" ? "+" : "") + Math.round(h.a);
+    cx.fillStyle = h.kind === "taken" ? "#ff5050" : h.kind === "healed" ? "#50ff70" : "#ffe040";
+    const label = (h.kind === "taken" ? "-" : h.kind === "healed" ? "+" : "") + Math.round(h.amount);
     cx.strokeText(label, sx + jitter, sy - 14 - 26 * age); cx.fillText(label, sx + jitter, sy - 14 - 26 * age);
   }
   cx.globalAlpha = 1;
@@ -410,18 +411,18 @@ function drawCombatText() {
 // works it out (Creature::GetAggroRange): its detection range, a yard less for each level the nearest player is
 // above it, at least 5 yd and at most 45.
 function drawAggro() {
-  const placed = [...P.keys()].map((n) => at(n, t)).filter((pp) => pp && pp.s.m === M.id && pp.s.a);
+  const placed = [...P.keys()].map((n) => at(n, t)).filter((pp) => pp && pp.s.map === M.id && pp.s.alive);
   if (!placed.length) return;
   const seen = new Set();
   for (const n of P.keys()) {
     const a = U[n]; if (!a) continue;
-    const u = a[upto(a, t) - 1]; if (!u || t - u.t > 5000 || u.m !== M.id) continue;
-    for (const [name, lvl, x, y, , state, , detect] of u.u) {
+    const u = a[upto(a, t) - 1]; if (!u || t - u.t > 5000 || u.map !== M.id) continue;
+    for (const [name, lvl, x, y, , state, , detect] of u.units) {
       if ((state & 3) !== 0 || state & 4 || !detect) continue; // hostile and alive only
       const key = `${name}/${Math.round(x)}/${Math.round(y)}`; if (seen.has(key)) continue; seen.add(key);
       let near = placed[0], nd = Infinity;
       for (const pp of placed) { const d = Math.hypot(pp.x - x, pp.y - y); if (d < nd) { nd = d; near = pp; } }
-      const radius = Math.max(5, Math.min(45, detect - ((near.s.l ?? lvl) - lvl)));
+      const radius = Math.max(5, Math.min(45, detect - ((near.s.level ?? lvl) - lvl)));
       const [sx, sy] = scr(x, y), rp = radius * yd(), close = nd <= radius;
       cx.beginPath(); cx.arc(sx, sy, rp, 0, 7);
       cx.fillStyle = close ? "#ff30301f" : "#ff303010"; cx.fill();
@@ -506,7 +507,7 @@ function drawRoads(w, h) {
   cx.setLineDash([]);
 }
 const groupMembers = () => { const s = store(); if (s.grp == null) return null; const g = Number(s.grp);
-  return new Set([...P.keys()].filter((n) => at(n, t)?.s.grp === g)); };
+  return new Set([...P.keys()].filter((n) => at(n, t)?.s.group === g)); };
 const focusSet = () => { const s = store(); return s.sel ? new Set([s.sel]) : groupMembers(); };
 let markerHits = [];
 let combatShown = false, unitHits = []; // unitHits: each creature drawn, [x, y, radius, name, level, health %, state], for hovering
@@ -521,7 +522,7 @@ function drawMap() {
   const follow = followed(), frame = !autoCam || follow ? null : gm ? [...gm] : [...P.keys()];
   if (follow) centre = at(follow, t);
   else if (frame) {
-    const pts = frame.map((n) => at(n, t)).filter((pp) => pp && pp.s.m === M.id);
+    const pts = frame.map((n) => at(n, t)).filter((pp) => pp && pp.s.map === M.id);
     if (pts.length) {
       const xs = pts.map((q) => q.x), ys = pts.map((q) => q.y), pad = 45, half = 40;
       const hx = Math.max(half, (Math.max(...xs) - Math.min(...xs)) / 2 + pad), hy = Math.max(half, (Math.max(...ys) - Math.min(...ys)) / 2 + pad);
@@ -556,11 +557,11 @@ function drawMap() {
   // players so a player's name always wins, and skipped where one would overlap a name already drawn
   const unitLabels = [];
   unitHits = [];
-  const aims = s.unitNames === "targets" ? [...P.keys()].map((n) => at(n, t)?.s.tg).filter((g) => g && g[2] === M.id) : [];
+  const aims = s.unitNames === "targets" ? [...P.keys()].map((n) => at(n, t)?.s.target).filter((g) => g && g.map === M.id) : [];
   if (s.units) for (const n of P.keys()) {
     const a = U[n]; if (!a) continue;
-    const u = a[upto(a, t) - 1]; if (!u || t - u.t > 5000 || u.m !== M.id) continue;
-    for (const [name, lvl, x, y, hp, state, rad] of u.u) {
+    const u = a[upto(a, t) - 1]; if (!u || t - u.t > 5000 || u.map !== M.id) continue;
+    for (const [name, lvl, x, y, hp, state, rad] of u.units) {
       const key = `${name}/${Math.round(x)}/${Math.round(y)}`; if (drawn.has(key)) continue; drawn.add(key);
       const [sx, sy] = scr(x, y), dead = state & 4, r = Math.max(dead ? 2.5 : 3.5, (rad || 0.5) * yd());
       cx.beginPath(); cx.arc(sx, sy, r, 0, 7);
@@ -568,7 +569,7 @@ function drawMap() {
       cx.lineWidth = 1; cx.strokeStyle = "#000a"; cx.stroke();
       unitHits.push([sx, sy, r, name, lvl, hp, state]);
       if (dead) continue;
-      const aimed = aims.some((g) => Math.hypot(g[0] - x, g[1] - y) < 2);
+      const aimed = aims.some((g) => Math.hypot(g.x - x, g.y - y) < 2);
       const named = s.unitNames === "all" ? view.s >= 3 : s.unitNames === "hostile" ? view.s >= 3 && (state & 3) === 0 : s.unitNames === "targets" ? aimed && view.s >= 1.5 : false;
       if (named) unitLabels.push([sx, sy, r, `${name} ${lvl}${hp < 100 ? ` ${hp}%` : ""}`, aimed]);
     }
@@ -613,23 +614,23 @@ function drawMap() {
     cx.beginPath(); for (const run of runs(route, Math.max(0, i), route.length - 1)) smooth(run);
     cx.globalAlpha = 0.18; cx.lineWidth = 2.5; cx.strokeStyle = "#000"; cx.stroke();
     cx.setLineDash(p?.dash ?? []); cx.lineWidth = 1.6; cx.strokeStyle = p?.color ?? "#888"; cx.stroke(); cx.setLineDash([]); cx.globalAlpha = 1;
-    if (i >= 0) for (const run of runs(route, 0, i, pp?.s.m === M.id ? pp : null)) fadeLine(p?.color ?? "#888", run, BEHIND, 0.35, [3, 1.8]);
+    if (i >= 0) for (const run of runs(route, 0, i, pp?.s.map === M.id ? pp : null)) fadeLine(p?.color ?? "#888", run, BEHIND, 0.35, [3, 1.8]);
   }
   // with nobody selected, a short trail behind everyone, fading out with age
   if (!sel && s.trails) for (const p of P.values()) {
-    const a = S[p.name], pp = at(p.name, t); if (!a || !pp || pp.s.m !== M.id) continue;
+    const a = S[p.name], pp = at(p.name, t); if (!a || !pp || pp.s.map !== M.id) continue;
     const i = upto(a, t) - 1; let from = i; while (from > 0 && t - a[from - 1].t <= TRAIL) from--;
-    const pts = runs(a.map((q) => [q.t, q.x, q.y, q.m]), from, i, pp).at(-1); if (!pts || pts.length < 2) continue;
+    const pts = runs(a.map((q) => [q.t, q.x, q.y, q.map]), from, i, pp).at(-1); if (!pts || pts.length < 2) continue;
     fadeLine(p.color, pts, TRAIL, 0, [4, 2.2]);
   }
   // targets: a thin red line from each player to what they're targeting, and a health bar over it
   const bars = new Map(), focus = focusSet();
   if (s.targets) for (const n of P.keys()) {
     if (focus && !focus.has(n)) continue;
-    const pp = at(n, t), tg = pp?.s.tg; if (!tg || pp.s.m !== M.id || tg[2] !== M.id || t - pp.s.t > 3000) continue;
-    const [ax, ay] = scr(pp.x, pp.y), [bx, by] = scr(tg[0], tg[1]);
+    const pp = at(n, t), tg = pp?.s.target; if (!tg || pp.s.map !== M.id || tg.map !== M.id || t - pp.s.t > 3000) continue;
+    const [ax, ay] = scr(pp.x, pp.y), [bx, by] = scr(tg.x, tg.y);
     cx.globalAlpha = 0.8; cx.strokeStyle = "#ff3b3b"; cx.lineWidth = 1.2; cx.beginPath(); cx.moveTo(ax, ay); cx.lineTo(bx, by); cx.stroke(); cx.globalAlpha = 1;
-    bars.set(`${Math.round(bx)}/${Math.round(by)}`, [bx, by, tg[3]]);
+    bars.set(`${Math.round(bx)}/${Math.round(by)}`, [bx, by, tg.health_pct]);
   }
   for (const [bx, by, hp] of bars.values()) {
     if (hp < 0) continue;
@@ -639,10 +640,10 @@ function drawMap() {
   }
   // groups: dashed line from each member to its leader
   const groups = new Map();
-  if (s.groups) for (const n of P.keys()) { const pp = at(n, t); if (pp?.s.grp && pp.s.m === M.id) (groups.get(pp.s.grp) ?? groups.set(pp.s.grp, []).get(pp.s.grp)).push([n, pp]); }
+  if (s.groups) for (const n of P.keys()) { const pp = at(n, t); if (pp?.s.group && pp.s.map === M.id) (groups.get(pp.s.group) ?? groups.set(pp.s.group, []).get(pp.s.group)).push([n, pp]); }
   cx.setLineDash([4, 4]); cx.lineWidth = 1.5; cx.strokeStyle = "#fffc";
   for (const members of groups.values()) {
-    const head = members.find(([n, pp]) => n === pp.s.ld) ?? members[0], [hx, hy] = scr(head[1].x, head[1].y);
+    const head = members.find(([n, pp]) => n === pp.s.leader) ?? members[0], [hx, hy] = scr(head[1].x, head[1].y);
     for (const m of members) { if (m === head) continue; const [mx, my] = scr(m[1].x, m[1].y); cx.beginPath(); cx.moveTo(hx, hy); cx.lineTo(mx, my); cx.stroke(); }
   }
   cx.setLineDash([]);
@@ -650,18 +651,18 @@ function drawMap() {
   markerHits = [];
   cx.font = "bold 13px system-ui"; cx.textAlign = "center"; cx.strokeStyle = "#000"; cx.lineWidth = 1;
   for (let i = 0, end = s.marks ? upto(MARKS, t) : 0; i < end; i++) {
-    const e = MARKS[i]; if (e.m !== M.id || e.x == null || (focus && !focus.has(e.n))) continue;
+    const e = MARKS[i]; if (e.map !== M.id || e.x == null || (focus && !focus.has(e.char))) continue;
     const [sx, sy] = scr(e.x, e.y); if (sx < -10 || sy < -10 || sx > r.width + 10 || sy > r.height + 10) continue;
     const [g, c] = GLYPH[e.type]; cx.fillStyle = css(c);
     cx.strokeText(g, sx, sy + 4); cx.fillText(g, sx, sy + 4);
     markerHits.push([sx, sy, e]);
   }
-  // pets (pp.pet: [x, y, health % or -1 dead, name]): a smaller, hollow dot in the master's colour, joined to the master
+  // pets (pp.pet: {x, y, health_pct (-1: dead), name}): a smaller, hollow dot in the master's colour, joined to the master
   // by a line (outlined, so it shows over the master's own route); named under the dot, after the players' names
   const petLabels = [], petDots = new Map(); // master -> [x, y, r] of its pet, so its name can keep clear
   for (const p of P.values()) {
-    const pp = at(p.name, t), pet = pp?.pet; if (!pet || pp.s.m !== M.id || (focus && !focus.has(p.name))) continue;
-    const [ax, ay] = scr(pp.x, pp.y), [px, py] = scr(pet[0], pet[1]), pr = Math.max(4.5, playerR() * 0.75), dead = pet[2] < 0;
+    const pp = at(p.name, t), pet = pp?.pet; if (!pet || pp.s.map !== M.id || (focus && !focus.has(p.name))) continue;
+    const [ax, ay] = scr(pp.x, pp.y), [px, py] = scr(pet.x, pet.y), pr = Math.max(4.5, playerR() * 0.75), dead = pet.health_pct < 0;
     cx.lineCap = "round"; cx.beginPath(); cx.moveTo(ax, ay); cx.lineTo(px, py);
     cx.strokeStyle = "#000c"; cx.lineWidth = 4; cx.stroke(); cx.strokeStyle = dead ? "#888" : p.color; cx.lineWidth = 2; cx.stroke();
     cx.beginPath(); cx.arc(px, py, pr, 0, 7); cx.fillStyle = dead ? "#555" : "#000c"; cx.fill();
@@ -670,21 +671,21 @@ function drawMap() {
     petDots.set(p.name, [px, py, pr]);
     const dx = px - ax, dy = py - ay, len = Math.hypot(dx, dy); // the name on the far side from the master (below when on top of it)
     petLabels.push(len < 2 ? [px, py + pr + 11] : [px + (dx / len) * (pr + 14), py + (dy / len) * (pr + 14) + 4]);
-    petLabels.at(-1).push(pet[3] + (dead ? " (dead)" : ""));
+    petLabels.at(-1).push(pet.name + (dead ? " (dead)" : ""));
   }
   // players now; each name nudged down until it doesn't overlap one already drawn
   const names = [];
   for (const p of P.values()) {
-    const pp = at(p.name, t); if (!pp || pp.s.m !== M.id) continue;
-    const [sx, sy] = scr(pp.x, pp.y), dead = !pp.s.a, ghost = pp.s.g, r = playerR();
-    if (s.combat && pp.s.c && !dead) { // in combat: a pulsing red ring
+    const pp = at(p.name, t); if (!pp || pp.s.map !== M.id) continue;
+    const [sx, sy] = scr(pp.x, pp.y), dead = !pp.s.alive, ghost = pp.s.ghost, r = playerR();
+    if (s.combat && pp.s.in_combat && !dead) { // in combat: a pulsing red ring
       const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 160);
       cx.beginPath(); cx.arc(sx, sy, r + 4 + 3 * pulse, 0, 7); cx.lineWidth = 2; cx.strokeStyle = `rgba(255, 64, 64, ${0.35 + 0.45 * pulse})`; cx.stroke();
       combatShown = true;
     }
     cx.beginPath(); cx.arc(sx, sy, r, 0, 7);
     cx.fillStyle = ghost ? "#fff4" : p.color; cx.fill();
-    cx.lineWidth = sel === p.name ? 3 : 1.5; cx.strokeStyle = pp.s.c ? css("--death") : "#000"; cx.stroke();
+    cx.lineWidth = sel === p.name ? 3 : 1.5; cx.strokeStyle = pp.s.in_combat ? css("--death") : "#000"; cx.stroke();
     if (dead && !ghost) { cx.strokeStyle = css("--death"); cx.lineWidth = 2; cx.beginPath(); cx.moveTo(sx - 5, sy - 5); cx.lineTo(sx + 5, sy + 5); cx.moveTo(sx + 5, sy - 5); cx.lineTo(sx - 5, sy + 5); cx.stroke(); }
     cx.font = "600 12px system-ui"; cx.textAlign = "left"; cx.lineWidth = 3; cx.strokeStyle = "#000b"; cx.fillStyle = "#fff";
     const label = p.name + (ghost ? " (ghost)" : ""), w = cx.measureText(label).width;
@@ -724,18 +725,18 @@ let SHAPES = {};
 fetch("transport-shapes").then((r) => r.json()).then((d) => { SHAPES = d; dirty = true; }).catch(() => {});
 function drawTransports(t) {
   for (const v of Object.values(TR)) {
-    const a = v.s, i = upto(a, t) - 1;
+    const a = v.track, i = upto(a, t) - 1;
     if (i < 0) continue;
     const p = a[i], n = a[i + 1];
-    if (p.m !== M.id || (!n && t - p.t > 10000)) continue; // another map, or its samples stopped
+    if (p.map !== M.id || (!n && t - p.t > 10000)) continue; // another map, or its samples stopped
     let x = p.x, y = p.y, o = p.o;
-    if (n && n.m === p.m && n.t - p.t <= 10000) {
+    if (n && n.map === p.map && n.t - p.t <= 10000) {
       const f = (t - p.t) / (n.t - p.t);
       x += (n.x - p.x) * f; y += (n.y - p.y) * f;
       o += Math.atan2(Math.sin(n.o - p.o), Math.cos(n.o - p.o)) * f;
     }
-    const zep = /zeppelin/i.test(v.n), c = Math.cos(o), sn = Math.sin(o);
-    const outline = SHAPES[v.e] ?? [[-25, -7], [25, -7], [25, 7], [-25, 7]];
+    const zep = /zeppelin/i.test(v.name), c = Math.cos(o), sn = Math.sin(o);
+    const outline = SHAPES[v.entry] ?? [[-25, -7], [25, -7], [25, 7], [-25, 7]];
     cx.beginPath();
     outline.forEach(([u, w], k) => { const [sx, sy] = scr(x + u * c - w * sn, y + u * sn + w * c); k ? cx.lineTo(sx, sy) : cx.moveTo(sx, sy); });
     cx.closePath();
@@ -744,7 +745,7 @@ function drawTransports(t) {
     const [sx, sy] = scr(x, y), size = 80 * view.s;
     if (size < 8) { cx.beginPath(); cx.arc(sx, sy, 4, 0, 2 * Math.PI); cx.fillStyle = zep ? "#9aa0b4" : "#b88a4e"; cx.fill(); cx.stroke(); }
     if (size > 30 || store().unitNames === "all") {
-      const name = v.n.replace(/^[^(]*\((.*)\)$/, "$1");
+      const name = v.name.replace(/^[^(]*\((.*)\)$/, "$1");
       cx.font = "600 11px system-ui"; cx.textAlign = "center"; cx.lineWidth = 3; cx.strokeStyle = "#000a"; cx.fillStyle = "#f2dcb0";
       cx.strokeText(name, sx, sy); cx.fillText(name, sx, sy);
     }
@@ -784,7 +785,7 @@ function wire() {
     if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) return;
     const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
     let best = null, bd = Math.max(14, playerR() + 4);
-    for (const n of P.keys()) { const pp = at(n, t); if (!pp || pp.s.m !== M.id) continue;
+    for (const n of P.keys()) { const pp = at(n, t); if (!pp || pp.s.map !== M.id) continue;
       const [sx, sy] = scr(pp.x, pp.y), d = Math.hypot(sx - mx, sy - my); if (d < bd) { bd = d; best = n; } }
     const evs = markersAt(e); if (evs.length && bd >= 7) return setT(evs[0].t);
     select(best, false);
@@ -867,10 +868,10 @@ const mapName = (m) => B.maps?.[m] ?? `map ${m}`;
 function showMap(m) { if (m === undefined || m === M.id) return; M.id = m; fit(); dirty = true; }
 function updateMaps() {
   const n = new Map();
-  for (const name of P.keys()) { const pp = at(name, t); if (pp) { n.set(pp.s.m, (n.get(pp.s.m) ?? 0) + 1); SEEN_MAPS.add(pp.s.m); } }
+  for (const name of P.keys()) { const pp = at(name, t); if (pp) { n.set(pp.s.map, (n.get(pp.s.map) ?? 0) + 1); SEEN_MAPS.add(pp.s.map); } }
   if (mapMode === "auto") {
     const f = followed() && at(followed(), t);
-    let best = f ? f.s.m : n.get(M.id) ? M.id : undefined; // nobody followed: stay while anyone's here (a deselect doesn't jump)
+    let best = f ? f.s.map : n.get(M.id) ? M.id : undefined; // nobody followed: stay while anyone's here (a deselect doesn't jump)
     if (best === undefined) for (const [m, c] of n) if (best === undefined || c > n.get(best)) best = m;
     showMap(best);
   }

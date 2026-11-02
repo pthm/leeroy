@@ -140,7 +140,7 @@ func sortCards(cs []Card, by string) {
 		switch by {
 		case "name":
 			c = cmp.Compare(a.Name, b.Name)
-		case "cls":
+		case "class":
 			c = cmp.Compare(a.What, b.What)
 		case "hp":
 			c = cmp.Compare(a.sortKeys["hp"], b.sortKeys["hp"])

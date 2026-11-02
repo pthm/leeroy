@@ -15,7 +15,7 @@
   <section id="roster">
     <div class="rhead"><b>Players</b> <span class="muted">· {{len .Boot.Players}}</span>
       <label class="muted" title="Sort by"><select aria-label="Sort by" x-model="$store.v.sort">
-        <option value="score">score</option><option value="level">level</option><option value="hp">health</option><option value="name">name</option><option value="cls">class</option></select></label>
+        <option value="score">score</option><option value="level">level</option><option value="hp">health</option><option value="name">name</option><option value="class">class</option></select></label>
       <label class="muted" title="Group players by party"><input type="checkbox" x-model="$store.v.bygroup"> groups</label></div>
     <div class="rlist" id="rlist" hx-get="panel/roster" hx-trigger="roster from:body" hx-vals="js:{...viewerQuery()}" hx-swap="morph:innerHTML" hx-sync="this:queue last"></div>
     <div class="rlegend"><span style="--c:var(--death)">in combat</span><span style="--c:#6b6a66">dead</span><span class="lg-ghost" style="--c:#8fb8ff">ghost</span><span style="--c:var(--accent)">selected</span></div>

@@ -77,9 +77,9 @@ reads the files every 50 ms (starting over if one shrinks; an idle check is a do
 | Endpoint | |
 |---|---|
 | `/` | the page, with the players, map names, labels, marks and seek bar ticks |
-| `/samples?from=&to=` | every player's samples and units samples in a window (unix ms), as the map draws them: position, level, state, group and leader, and the target with where it is; each creature with its size and detection range; and the damage and heals involving a player (combat text) |
+| `/samples?from=&to=` | `{samples, units, class, hits, transports}` in a window (unix ms), as the map draws them, in the game log's names: each sample `{t, x, y, map, alive, ghost, in_combat, level, group, leader, target: {x, y, map, health_pct}, pet: {x, y, health_pct, name}}`; units `{t, map, units}`, rows as the log's plus each creature's size and detection range; hits `{t, amount, kind: dealt, taken or healed, char}`; transports by guid `{name, entry, track}` |
 | `/route?n=` | a player's whole route, `[t, x, y, map]` per sample |
-| `/live` | new data as server-sent events: `s` (a sample), `u` (units), `hit` (combat text), `mark`, `tick`, `data` (anything else) |
+| `/live` | new data as server-sent events: `s` (`{char, class, sample}`), `u` (`{char, units}`), `tr` (`{guid, name, entry, sample}`), `hit`, `mark` (`{t, type, char, html, x, y, map}`), `tick` (`[t, type]`), `data` (`{t}`: anything else) |
 | `/panel/roster`, `/panel/pane` | the roster, and the feed or stats, as HTML for a moment and the UI state (`viewerQuery` in `viewer.js`) |
 | `/tile/<map>/<gx>/<gy>.png` | map tiles |
 | `/heat?m=&t=&kind=&sel=&grp=` | the heatmap: where the players (or the selected one or group) spent their time on a map up to t, or where they died, killed, gained XP, took or dealt damage (`kind`: time, deaths, kills, xp, taken, dealt), as one image of the visited area (3 yd a pixel) and where it lies |

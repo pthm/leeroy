@@ -339,9 +339,9 @@ func (p *Player) SayAt(t float64) Ev   { return last(p.says, t) }
 
 // Target is what a player is targeting, and where it is.
 type Target struct {
-	Name     string   `json:"n"`
-	Player   bool     `json:"pl,omitempty"`
-	Lvl      int      `json:"lvl,omitempty"`
+	Name     string   `json:"name"`
+	Player   bool     `json:"player,omitempty"`
+	Lvl      int      `json:"level,omitempty"`
 	X, Y     *float64 `json:"-"`
 	M        int      `json:"-"`
 	HP       *int     `json:"-"`
@@ -686,14 +686,14 @@ func (s *Store) broadcast(evs []Ev) {
 		p := s.byName[S(e, "char")]
 		switch kind := S(e, "type"); {
 		case kind == "state" && p != nil:
-			msgs = append(msgs, s.liveJSON("s", map[string]any{"n": p.Name, "cls": p.Cls, "s": s.mapSample(p, sampleOf(e))}))
+			msgs = append(msgs, s.liveJSON("s", map[string]any{"char": p.Name, "class": p.Cls, "sample": s.mapSample(p, sampleOf(e))}))
 		case kind == "transports":
 			for _, r := range transports(e) {
-				msgs = append(msgs, s.liveJSON("tr", map[string]any{"id": S(r, "guid"), "n": S(r, "name"), "e": N(r, "entry"),
-					"s": TrSample{N(e, "t"), N(r, "map"), N(r, "x"), N(r, "y"), N(r, "o")}}))
+				msgs = append(msgs, s.liveJSON("tr", map[string]any{"guid": S(r, "guid"), "name": S(r, "name"), "entry": N(r, "entry"),
+					"sample": TrSample{N(e, "t"), N(r, "map"), N(r, "x"), N(r, "y"), N(r, "o")}}))
 			}
 		case kind == "units" && p != nil:
-			msgs = append(msgs, s.liveJSON("u", map[string]any{"n": p.Name, "u": s.mapUnits(unitsOf(e))}))
+			msgs = append(msgs, s.liveJSON("u", map[string]any{"char": p.Name, "units": s.mapUnits(unitsOf(e))}))
 		default:
 			if (kind == "damage" || kind == "heal") && N(e, "amount") > 0 {
 				for _, h := range mapHits(e) {
@@ -734,18 +734,19 @@ func (s *Store) liveJSON(typ string, v any) liveMsg {
 
 // ---------- what the map draws ----------
 
-// mapSample is a sample as the map draws it: where, state, group and leader, the target with where it is, and the pet.
+// mapSample is a sample as the map draws it, in the game log's names: where, state, group and leader, the target with
+// where it is, and the pet (health_pct -1: dead).
 func (s *Store) mapSample(p *Player, a Sample) map[string]any {
-	out := map[string]any{"t": a.T, "x": a.X, "y": a.Y, "m": a.M, "a": a.Alive, "g": a.Ghost, "c": a.Combat, "l": a.Lvl}
+	out := map[string]any{"t": a.T, "x": a.X, "y": a.Y, "map": a.M, "alive": a.Alive, "ghost": a.Ghost, "in_combat": a.Combat, "level": a.Lvl}
 	if a.Grp != 0 {
-		out["grp"], out["ld"] = a.Grp, s.LeaderAt(a.Grp, a.T)
+		out["group"], out["leader"] = a.Grp, s.LeaderAt(a.Grp, a.T)
 	}
-	if pt := a.Pet; pt != nil { // [x, y, health % (-1 dead), name]
+	if pt := a.Pet; pt != nil {
 		hp := -1
 		if pt.Alive {
 			hp = 100 * pt.HP / max(1, pt.HPMax)
 		}
-		out["pet"] = []any{pt.X, pt.Y, hp, pt.Name}
+		out["pet"] = map[string]any{"x": pt.X, "y": pt.Y, "health_pct": hp, "name": pt.Name}
 	}
 	if a.Alive {
 		if tg := s.TargetOf(p, a.T); tg != nil && tg.X != nil {
@@ -753,14 +754,14 @@ func (s *Store) mapSample(p *Player, a Sample) map[string]any {
 			if tg.HP != nil && !tg.Dead {
 				hp = *tg.HP
 			}
-			out["tg"] = []any{*tg.X, *tg.Y, tg.M, hp}
+			out["target"] = map[string]any{"x": *tg.X, "y": *tg.Y, "map": tg.M, "health_pct": hp}
 		}
 	}
 	return out
 }
 
-// mapUnits is a units sample as the map draws it: [name, level, x, y, health %, state, radius in yd, detection range
-// in yd] per creature.
+// mapUnits is a units sample as the map draws it: rows as the game log's (types.NearbyUnit), the name for the entry
+// and two more columns: [name, level, x, y, health %, state, radius in yd, detection range in yd].
 func (s *Store) mapUnits(u UnitsSample) map[string]any {
 	rows := make([][]any, len(u.U))
 	for i, r := range u.U {
@@ -770,11 +771,11 @@ func (s *Store) mapUnits(u UnitsSample) map[string]any {
 		}
 		rows[i] = []any{name, r.Lvl, r.X, r.Y, r.HP, r.State, math.Round(s.radii[int(r.Entry)]*100) / 100, s.detect[int(r.Entry)]}
 	}
-	return map[string]any{"t": u.T, "m": u.M, "u": rows}
+	return map[string]any{"t": u.T, "map": u.M, "units": rows}
 }
 
-// mapHits is a damage or heal event as the map's combat text: per player it concerns, the amount and how (d: dealt, by
-// the player, shown over their target; t: taken; h: healed), and that player.
+// mapHits is a damage or heal event as the map's combat text: per player it concerns, the amount and kind (dealt, by
+// the player, shown over their target; taken; healed), and that player.
 func mapHits(e Ev) []map[string]any {
 	unit := func(k string) (string, bool) {
 		u := Unit(e, k)
@@ -786,25 +787,25 @@ func mapHits(e Ev) []map[string]any {
 	var out []map[string]any
 	if S(e, "type") == "heal" {
 		if dstPl {
-			out = append(out, map[string]any{"t": t, "a": a, "k": "h", "n": dst})
+			out = append(out, map[string]any{"t": t, "amount": a, "kind": "healed", "char": dst})
 		}
 		return out
 	}
 	if dstPl {
-		out = append(out, map[string]any{"t": t, "a": a, "k": "t", "n": dst})
+		out = append(out, map[string]any{"t": t, "amount": a, "kind": "taken", "char": dst})
 	}
 	if srcPl {
-		out = append(out, map[string]any{"t": t, "a": a, "k": "d", "n": src})
+		out = append(out, map[string]any{"t": t, "amount": a, "kind": "dealt", "char": src})
 	}
 	return out
 }
 
 // mapMark is a marked event with where it happened (its player's position then) and its line for the tooltip.
 func (s *Store) mapMark(e Ev) map[string]any {
-	out := map[string]any{"t": N(e, "t"), "type": S(e, "type"), "n": S(e, "char"), "html": string(s.Line(e, ""))}
+	out := map[string]any{"t": N(e, "t"), "type": S(e, "type"), "char": S(e, "char"), "html": string(s.Line(e, ""))}
 	if p := s.byName[S(e, "char")]; p != nil {
 		if pp, ok := p.At(N(e, "t")); ok {
-			out["x"], out["y"], out["m"] = pp.X, pp.Y, pp.M
+			out["x"], out["y"], out["map"] = pp.X, pp.Y, pp.M
 		}
 	}
 	return out

@@ -131,8 +131,8 @@ func (v *server) page(w http.ResponseWriter, r *http.Request) {
 	s := v.s
 	s.mu.RLock()
 	type pl struct {
-		Name string `json:"name"`
-		Cls  string `json:"cls"`
+		Name  string `json:"name"`
+		Class string `json:"class"`
 	}
 	var players []pl
 	for _, p := range s.players {
@@ -283,14 +283,14 @@ func (v *server) samples(w http.ResponseWriter, r *http.Request) {
 			hits = append(hits, h)
 		}
 	}
-	trs := map[string]any{} // id -> {n, s: [[t, map, x, y, o]...]}, from the sample before the window
+	trs := map[string]any{} // guid -> {name, entry, track: [[t, map, x, y, o]...]}, from the sample before the window
 	tat := func(x TrSample) float64 { return x[0] }
 	for id, tr := range s.trs {
 		if a := tr.Track[max(0, upto(tr.Track, from-1, tat)-1):upto(tr.Track, to, tat)]; len(a) > 0 {
-			trs[fmt.Sprint(id)] = map[string]any{"n": tr.Name, "e": tr.Entry, "s": a}
+			trs[id] = map[string]any{"name": tr.Name, "entry": tr.Entry, "track": a}
 		}
 	}
-	writeJSON(w, map[string]any{"s": out, "u": units, "cls": cls, "hits": hits, "tr": trs})
+	writeJSON(w, map[string]any{"samples": out, "units": units, "class": cls, "hits": hits, "transports": trs})
 }
 
 // route is a player's whole route: [t, x, y, map] per sample.
