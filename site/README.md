@@ -17,8 +17,15 @@ npm run check:links  # after a build: every internal link and anchor resolves
 | `src/data/runs/*.json` | one file per published run, written by `bin/azbench publish <run dir> --task <task>` (needs the server's database up, for names); never edited by hand |
 | `src/assets/runs/*` | the maps behind a run's routes, written by `publish`: the viewer's detail map in grey (continents, `.jpg`) or the navmesh floor plan (instances, `.png`) |
 | `src/lib/results.ts` | the runs grouped by task and model; `TASKS` titles and describes each task |
-| `src/pages/results/` | every task; a page per task (tiles, the leaderboard, time against cost, the runs); a page per run (tiles, the roster, level over time with wipes and instance time or time to the goal, route maps, killers and places, time use, chat and time together, cost and errors, its notes); task pages compare models across runs (every attempt, agent time, errors) |
+| `src/pages/results/` | every task; a page per task (tiles, the leaderboard, time against cost, the runs); a page per run (tiles, the roster, level over time with wipes and instance time or time to the goal, milestones and zones, route maps, fighting (damage, healing, kills, killing blows and damage by creature, killers and places), time use, how the agents worked (tool calls from their trajectories, progress by agent state, idle gaps, the tooling's reliability), calls and errors, chat, who heard whom and time together, gear and casts, cost, its notes); task pages compare models across runs (every attempt, agent time, errors) |
 | `src/content/runs/<run id>.md` | optional notes for a run's page: a title, a lede, findings at a glance (frontmatter) and the story (body) |
 | `src/content/blog/` | write-ups (Markdown; images relative, from `src/assets/media`) |
 | `src/content/docs/` | the docs pages, in sidebar order by `order` |
 | `src/assets/media/` | screenshots (also used by the repo README) |
+
+## Later
+
+- **Trajectory downloads.** Each run's agents have ATIF trajectories (`agents/<agent>/trajectory.json`), a standard
+  format others could analyse, and run pages could offer them for download. They're megabytes per agent, too big to
+  commit into the site's repo, so this waits on somewhere to publish static assets (a CDN or object store) that
+  `azbench publish` can upload to and the pages can link.
