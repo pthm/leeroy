@@ -296,6 +296,15 @@ func GenKit(class, race int, spec string, level, quality, maxIlvl, notFrom int) 
 		if err == nil && len(r) > 0 {
 			k.Pet = &config.Pet{Entry: atoi(r[0][0]), Name: r[0][1]}
 		}
+		// and food for it (feeding keeps it happy): the best meat a vendor sells for its level; beasts that hunters
+		// tame eat meat but for a few (ponytail: meat for any family; the family's diet is in CreatureFamily.dbc)
+		f, err := world.Rows(world.DB(world.Admin, "acore_world"), `SELECT it.entry, it.name FROM item_template it
+  WHERE it.FoodType = 1 AND it.ItemLevel <= ? AND EXISTS (SELECT 1 FROM npc_vendor v WHERE v.item = it.entry)
+  ORDER BY it.ItemLevel DESC, it.entry LIMIT 1`, level)
+		if err == nil && len(f) > 0 && k.Pet != nil {
+			k.Items = append(k.Items, config.Stack{Entry: atoi(f[0][0]), Count: 40})
+			notes[atoi(f[0][0])] = f[0][1] + " (vendor: pet food)"
+		}
 	}
 	var bag *kitItem // four of the roomiest bag a vendor sells
 	for _, it := range items {

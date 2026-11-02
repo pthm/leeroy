@@ -25,3 +25,4 @@ bags: [4499, 4499, 4499, 4499] # Huge Brown Sack (12 slots, vendor)
 pet: {entry: 7432, name: "Frostsaber Stalker"} # a hunter's tamed beast, at the kit's level
 items:
   - {entry: 11285, count: 1000} # Jagged Arrow (vendor)
+  - {entry: 8952, count: 40} # Roasted Quail (vendor: pet food)
