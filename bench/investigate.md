@@ -66,9 +66,8 @@ mountains to the Wetlands (up to z 445 at -4367 -2212, climbs of 55-58 degrees b
 
 ## azworld
 
-- **`route` fails past about 900 yd**: "plan needs more than 64 waypoints", or `terrain_unreachable` for roads that
-  are walked fine (Darkshire to Deadwind Pass). Haiku took a `terrain_unreachable` as proof there was no route.
-  Return a coarser or partial plan instead of failing, and find why the terrain grid breaks on that road.
+(nothing open)
+
 ## Harness
 
 - **An agent that exits early stays stopped.** Haiku quit with 78 minutes left and Sonnet with 64 (alerts.log; exit 0,

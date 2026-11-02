@@ -55,16 +55,19 @@ navmesh check. Preserve explicit Z values instead of replacing them with outdoor
 Planning has one 15-second deadline for admission, data queries, terrain sampling and search. At most one
 plan computes per process. Endpoints must be at most 4096 yards apart (3D for explicit Z), X/Y must lie in
 -17066..17066, and the padded search rectangle is capped at 400,000 eight-yard cells. Data queries are
-capped at 20,000 road waypoints and 20,000 hostile spawns. Output is capped at 64 waypoints so it can be
-submitted directly to the session validator; complex or long routes may require shorter queries.
+capped at 20,000 road waypoints and 20,000 hostile spawns. Output is at most 64 waypoints, so it can be
+submitted directly to the session validator: a longer plan is thinned (its straightest stretches lose points first).
+Where the terrain grid can't connect the endpoints (a pass too steep for its cells, a bridge, a town built on terrain
+holes), the plan is the local navmesh's path instead, with `source="navmesh"`.
 Cancellation reaches SQL, cache-lock waits, terrain reads and search steps. Terrain files are limited to
 16 MiB and road tiles to their fixed 16 KiB format. An already-running filesystem operation must return
 before cancellation takes effect; a stalled kernel read is not covered by a hard wall-clock guarantee.
 
 Failures return `status="failed"`, `reason`, and `error={code,message}`, with exit status 1:
 `invalid_arguments`, `route_limit`, `route_timeout`, `cancelled`, `not_available`, or
-`terrain_unreachable`. The latter means the terrain grid cannot connect the endpoints, not that the
-session navmesh has proved the destination unreachable. Failed plans do not publish usable-looking
+`terrain_unreachable`. The latter means neither the terrain grid nor the local navmesh connected the endpoints at
+the heights tried (the terrain's, a little above and below it), not that the session navmesh has proved the
+destination unreachable from where you stand. Failed plans do not publish usable-looking
 waypoints.
 
 `exposure` is a static 2D estimate: `source="static_spawns_2d"`, `floor_checked=false`,

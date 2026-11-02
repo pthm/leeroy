@@ -617,7 +617,7 @@ var commands = []command{
 		return out
 	}},
 
-	{"route", "route <x1> <y1> <x2> <y2> [--map 0] OR <x1> <y1> <z1> <x2> <y2> <z2> <map> --level N [--horde]  unverified terrain proposal; preserves explicit Z; 15s deadline, max 4096 yd and 64 waypoints; validate with world.route before walking", func(a []string, _ []bool, f map[string]string) any { return routeCommand(a, f) }},
+	{"route", "route <x1> <y1> <x2> <y2> [--map 0] OR <x1> <y1> <z1> <x2> <y2> <z2> <map> --level N [--horde]  unverified terrain proposal (the navmesh's path where the terrain grid can't connect them); preserves explicit Z; 15s deadline, max 4096 yd, at most 64 waypoints; validate with world.route before walking", func(a []string, _ []bool, f map[string]string) any { return routeCommand(a, f) }},
 
 	{"map", "map <x> <y> --level <your level> [--radius 300] [--to <x2>,<y2>] [--out map.png] [--map 0]  PNG of terrain, roads and hostile mobs (open it with your Read tool)", func(a []string, _ []bool, f map[string]string) any {
 		sx, okx := arg(a, 0)

@@ -262,20 +262,43 @@ func searchTerrain(ctx context.Context, src routeSource, m float64, from, to [2]
 			}
 		}
 	}
-	if prev[goal] < 0 && goal != start {
-		panic(routeError{"terrain_unreachable", "terrain grid cannot connect these endpoints; this does not establish navmesh reachability"})
-	}
 	var cells []int
-	for i := goal; i >= 0; i = int(prev[i]) {
-		checkRouteContext(ctx)
-		cells = append(cells, i)
+	source, navZ := "terrain_grid", map[int]float64{}
+	if prev[goal] < 0 && goal != start {
+		// the grid can't connect them; the navmesh may (a steep pass, a bridge): its path, on the grid's cells
+		var path [][3]float64
+		if src.navmesh != nil {
+			path = src.navmesh(ctx, mapID, [3]float64{from[0], from[1], float64(h[start])}, [3]float64{to[0], to[1], float64(h[goal])})
+		}
+		if path == nil {
+			panic(routeError{"terrain_unreachable", "neither the terrain grid nor the navmesh connects these endpoints"})
+		}
+		source = "navmesh"
+		for _, p := range path {
+			if p[0] < x0 || p[0] > x1 || p[1] < y0 || p[1] > y1 {
+				continue
+			}
+			if i := idx(p[0], p[1]); len(cells) == 0 || cells[len(cells)-1] != i {
+				cells = append(cells, i)
+				navZ[i] = p[2]
+			}
+		}
+	} else {
+		for i := goal; i >= 0; i = int(prev[i]) {
+			checkRouteContext(ctx)
+			cells = append(cells, i)
+		}
+		slices.Reverse(cells)
 	}
-	slices.Reverse(cells)
 	// waypoints: a point every ~40 yd or where the direction turns
 	pts := make([][3]float64, len(cells))
 	for k, i := range cells {
 		checkRouteContext(ctx)
-		pts[k] = [3]float64{cx(i), cy(i), jsRound(float64(h[i])*10) / 10}
+		z, ok := navZ[i] // the navmesh's floor (a bridge, a pass) over the terrain under it
+		if !ok {
+			z = float64(h[i])
+		}
+		pts[k] = [3]float64{cx(i), cy(i), jsRound(z*10) / 10}
 	}
 	way := [][3]float64{pts[0]}
 	for k := 1; k < len(pts)-1; k++ {
@@ -327,7 +350,7 @@ func searchTerrain(ctx context.Context, src routeSource, m float64, from, to [2]
 		passes[i] = p.o
 	}
 	checkRouteContext(ctx)
-	return newObj("road_fraction", onRoad/math.Max(1, length), "waypoints", way,
+	return newObj("source", source, "road_fraction", onRoad/math.Max(1, length), "waypoints", way,
 		"exposure", newObj("source", "static_spawns_2d", "floor_checked", false, "los_checked", false, "passes_near", passes))
 }
 

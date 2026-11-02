@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"time"
+
+	"github.com/pthm/leeroy/azeroth-sdk/navigation"
 )
 
 const routeTimeout = 15 * time.Second
@@ -35,10 +38,85 @@ type routeSource struct {
 	roadAt  func(context.Context, uint32, float64, float64) uint8
 	roads   func(context.Context, float64, float64, float64, float64, float64) [][][2]float64
 	threats func(context.Context, float64, float64, float64, float64, float64, bool) []threat
+	// navmesh: the navmesh's path between two points (nil if none or no navmesh), for when the terrain grid can't
+	// connect them: a pass too steep for its 8-yard cells, a bridge, a town on terrain holes
+	navmesh func(ctx context.Context, m uint32, from, to [3]float64) [][3]float64
 }
 
 func defaultRouteSource() routeSource {
-	return routeSource{sampleRouteTerrain, roadAtContext, roadPathsContext, threatsContext}
+	return routeSource{sampleRouteTerrain, roadAtContext, roadPathsContext, threatsContext, navmeshPath}
+}
+
+var navigator = sync.OnceValue(func() navigation.Navigator { return navigation.NewEmbeddedNavigator(DataDir()) })
+
+func navmeshPath(ctx context.Context, m uint32, from, to [3]float64) [][3]float64 {
+	n := navigator()
+	p := func(v [3]float64, z float32) navigation.Point3D {
+		return navigation.Point3D{X: float32(v[0]), Y: float32(v[1]), Z: z}
+	}
+	// The endpoints' z is the terrain's, which can be under the floor the navmesh has there (a town's raised
+	// streets, a bridge), and detour then snaps to a poly nobody can leave and returns a partial path as found: try
+	// a few heights over the terrain, and take a path only if it ends at the destination.
+	for _, dz := range []float32{0, 8, 16, -8} {
+		z := [2]float32{float32(from[2]) + dz, float32(to[2]) + dz}
+		res, err := n.FindPathContext(ctx, m, p(from, z[0]), p(to, z[1]))
+		if err != nil || res == nil || !res.Found || len(res.Points) == 0 {
+			continue
+		}
+		if e := res.Points[len(res.Points)-1]; math.Hypot(float64(e.X)-to[0], float64(e.Y)-to[1]) > 5 {
+			continue
+		}
+		out := make([][3]float64, len(res.Points))
+		for i, q := range res.Points {
+			out[i] = [3]float64{float64(q.X), float64(q.Y), float64(q.Z)}
+		}
+		return out
+	}
+	return nil
+}
+
+// thin keeps at most n of a polyline's points, its ends among them: Ramer-Douglas-Peucker on x and y, with a
+// tolerance that doubles from 2 yards until it fits.
+func thin(pts [][3]float64, n int) [][3]float64 {
+	if len(pts) <= n {
+		return pts
+	}
+	off := func(p, a, b [3]float64) float64 { // p's distance from the segment a-b
+		dx, dy := b[0]-a[0], b[1]-a[1]
+		t := 0.0
+		if l := dx*dx + dy*dy; l > 0 {
+			t = math.Max(0, math.Min(1, ((p[0]-a[0])*dx+(p[1]-a[1])*dy)/l))
+		}
+		return math.Hypot(p[0]-a[0]-t*dx, p[1]-a[1]-t*dy)
+	}
+	for tol := 2.0; ; tol *= 2 {
+		keep := make([]bool, len(pts))
+		keep[0], keep[len(pts)-1] = true, true
+		var split func(a, b int)
+		split = func(a, b int) {
+			far, at := tol, -1
+			for k := a + 1; k < b; k++ {
+				if d := off(pts[k], pts[a], pts[b]); d > far {
+					far, at = d, k
+				}
+			}
+			if at >= 0 {
+				keep[at] = true
+				split(a, at)
+				split(at, b)
+			}
+		}
+		split(0, len(pts)-1)
+		var out [][3]float64
+		for k, p := range pts {
+			if keep[k] {
+				out = append(out, p)
+			}
+		}
+		if len(out) <= n {
+			return out
+		}
+	}
 }
 
 var routeSlot = make(chan struct{}, 1)
@@ -126,10 +204,8 @@ func planRoute(parent context.Context, r routeRequest, src routeSource) (out *ob
 	defer func() { <-routeSlot }()
 	checkRouteContext(ctx)
 	result := searchTerrain(ctx, src, r.Map, [2]float64{r.From[0], r.From[1]}, [2]float64{r.To[0], r.To[1]}, r.Level, r.Horde)
-	way := result.get("waypoints").([][3]float64)
-	if len(way) > maxRouteWaypoints {
-		panic(routeError{"route_limit", "plan needs more than 64 waypoints; split into shorter queries before submitting to world.route"})
-	}
+	way := thin(result.get("waypoints").([][3]float64), maxRouteWaypoints) // fewer, further apart: world.route walks between them
+	result.set("waypoints", way)
 	fromGround, _, _ := src.sample(ctx, uint32(r.Map), r.From[0], r.From[1])
 	checkRouteContext(ctx)
 	toGround, _, _ := src.sample(ctx, uint32(r.Map), r.To[0], r.To[1])

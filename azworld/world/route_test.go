@@ -167,8 +167,10 @@ func TestTerrainLimitsBeforeIOAndOutputBound(t *testing.T) {
 	assertRouteCode(t, planRoute(context.Background(), req, src), "invalid_arguments")
 	req = routeFixture()
 	req.From[2], req.To[2] = 0, 0
-	req.To[0] = 4096
-	assertRouteCode(t, planRoute(context.Background(), req, flatRouteSource()), "route_limit")
+	req.To[0] = 4096 // a waypoint every 40 yd would be over 100: thinned to the limit, not refused
+	if plan := planRoute(context.Background(), req, flatRouteSource()); plan.get("status") != "unverified" || len(plan.get("waypoints").([][3]float64)) > maxRouteWaypoints {
+		t.Fatalf("long plan: %v", plan)
+	}
 }
 func TestRouteCLIRejectsAmbiguousAndMalformedInputs(t *testing.T) {
 	cases := [][]string{
@@ -222,4 +224,34 @@ func TestRoadCacheLockCancellation(t *testing.T) {
 	plan := planRoute(ctx, routeFixture(), src)
 	roadMu.Unlock()
 	assertRouteCode(t, plan, "route_timeout")
+}
+
+// Where the terrain grid can't connect two points, the navmesh's path is the plan; a long plan is thinned to the
+// waypoint limit, its ends kept, instead of failing.
+func TestRouteFallsBackToNavmeshAndThins(t *testing.T) {
+	req := routeFixture()
+	req.From[0], req.To[0] = -40, 40
+	src := flatRouteSource()
+	src.sample = func(_ context.Context, _ uint32, x, y float64) (float64, float64, uint16) {
+		if x >= 0 {
+			return 1000, math.NaN(), 0
+		}
+		return 0, math.NaN(), 0
+	}
+	var path [][3]float64
+	for k := 0; k <= 400; k++ { // a zigzag from start to destination: hundreds of turns
+		path = append(path, [3]float64{-40 + float64(k)*0.2, req.From[1] + float64(k%2)*6, 0})
+	}
+	src.navmesh = func(context.Context, uint32, [3]float64, [3]float64) [][3]float64 { return path }
+	plan := planRoute(context.Background(), req, src)
+	way, _ := plan.get("waypoints").([][3]float64)
+	if plan.get("status") != "unverified" || plan.get("source") != "navmesh" || len(way) < 2 || len(way) > maxRouteWaypoints {
+		t.Fatalf("navmesh plan: %v %v, %d waypoints", plan.get("status"), plan.get("source"), len(way))
+	}
+	if way[0][0] != req.From[0] || way[len(way)-1][0] != req.To[0] {
+		t.Fatalf("ends: %v .. %v", way[0], way[len(way)-1])
+	}
+	if got := thin(path, 10); len(got) > 10 || got[0] != path[0] || got[len(got)-1] != path[len(path)-1] {
+		t.Fatalf("thin: %d points, ends %v %v", len(got), got[0], got[len(got)-1])
+	}
 }
