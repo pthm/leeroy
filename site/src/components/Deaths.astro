@@ -32,15 +32,18 @@ const max = Math.max(...killers.rows.map(r => r.n), ...places.rows.map(r => r.n)
       { title: 'Who killed them', t: killers },
       { title: 'Where they died', t: places },
     ].map(({ title, t }) => (
-      <figure class="rounded border border-hairline bg-raised p-4">
-        <p class="mb-4 font-mono text-xs text-muted">{title}</p>
+      <figure class="rounded border border-hairline bg-raised p-4" data-chart>
+        <p class="mb-2 font-mono text-xs text-muted">{title}</p>
+        <p class="mb-4 flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
+          {run.players.map(p => <button type="button" class={color[p.char]} data-toggle={p.char} aria-pressed="true">● <span class="text-muted">{p.char}</span></button>)}
+        </p>
         <ul class="space-y-1.5">
           {t.rows.map(r => (
             <li class="grid grid-cols-[10rem_1fr_2rem] items-center gap-3 text-xs">
               <span class="truncate text-fg" title={r.k}>{r.k}</span>
               <span class="flex h-2.5 overflow-hidden rounded-sm" style={`width:${(r.n / max) * 100}%`}>
                 {r.by.map(([c, n]) => (
-                  <span class:list={['h-full', color[c]]} style={`flex:${n};background:currentColor`} title={`${c}: ${n}`} />
+                  <span class:list={['h-full', color[c]]} style={`flex:${n};background:currentColor`} title={`${c}: ${n} (${r.k})`} data-key={c} />
                 ))}
               </span>
               <span class="text-right font-mono text-muted">{r.n}</span>

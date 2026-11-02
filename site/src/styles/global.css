@@ -271,3 +271,61 @@ table.data th.num {
 :root[data-theme='light'] .pc-2 { color: #0b7656 } :root[data-theme='light'] .pc-3 { color: #be185d }
 :root[data-theme='light'] .pc-4 { color: #6d28d9 } :root[data-theme='light'] .pc-5 { color: #c2410c }
 :root[data-theme='light'] .pc-6 { color: #4d7c0f } :root[data-theme='light'] .pc-7 { color: #b91c1c }
+
+/* Chart interactivity (scripts/interact.ts). */
+.chart-tip {
+  position: fixed;
+  z-index: 100;
+  pointer-events: none;
+  max-width: 320px;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-outline);
+  border-radius: 4px;
+  background: var(--color-raised);
+  color: var(--color-fg);
+  font: 11px/1.5 var(--font-mono);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
+}
+.chart-tip-head { color: var(--color-faint); }
+[data-chart] [data-key] { transition: opacity 0.15s; }
+[data-chart].is-hl [data-key]:not(.is-on) { opacity: 0.12; }
+[data-chart] [data-key].is-off { opacity: 0 !important; pointer-events: none; }
+[data-toggle] { cursor: pointer; border-radius: 3px; padding: 0 0.25rem; }
+[data-toggle]:hover { background: var(--color-elevated); }
+[data-toggle][aria-pressed='false'] { opacity: 0.4; text-decoration: line-through; }
+.enlarge-btn {
+  font: 11px var(--font-mono);
+  color: var(--color-muted);
+  border: 1px solid var(--color-hairline);
+  border-radius: 4px;
+  padding: 0.1rem 0.5rem;
+  cursor: zoom-in;
+}
+.enlarge-btn:hover { color: var(--color-accent); border-color: var(--color-accent); }
+dialog.enlarge {
+  width: min(96vw, 1800px);
+  max-width: none;
+  max-height: 94vh;
+  margin: auto;
+  padding: 1.25rem;
+  border: 1px solid var(--color-outline);
+  border-radius: 6px;
+  background: var(--color-base);
+  color: var(--color-fg);
+}
+dialog.enlarge::backdrop { background: rgb(0 0 0 / 0.7); backdrop-filter: blur(3px); }
+dialog.enlarge figure { border: 0; padding: 0; background: none; }
+dialog.enlarge svg[data-zoom] { max-height: 80vh; touch-action: none; }
+.enlarge-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--color-outline);
+  border-radius: 4px;
+  background: var(--color-raised);
+  color: var(--color-fg);
+  cursor: pointer;
+}
+.enlarge-close:hover { color: var(--color-accent); border-color: var(--color-accent); }

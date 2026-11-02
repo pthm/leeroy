@@ -27,11 +27,22 @@ const stripTop = T + CH + GAP;
 const bottom = stripTop + ps.length * ROW;
 const inside = instanceTime(run);
 const wiped = wipes(run);
+// for the crosshair (scripts/interact.ts)
+const seriesData = JSON.stringify({
+  x0: L, x1: W - R, t1: end, top: T, bottom: bottom,
+  lines: ps.map(p => ({ name: p.char, cls: color[p.char], pts: p.series!.map(s => [s[0], s[1]]) })),
+});
 ---
 
-<figure class="rounded border border-hairline bg-raised p-4">
+<figure class="rounded border border-hairline bg-raised p-4" data-chart>
+  <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+    <p class="flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
+      {ps.map(p => <button type="button" class={color[p.char]} data-toggle={p.char} aria-pressed="true">● <span class="text-muted">{p.char}</span></button>)}
+    </p>
+    <button type="button" class="enlarge-btn" data-enlarge>Enlarge</button>
+  </div>
   <div class="overflow-x-auto">
-    <svg viewBox={`0 0 ${W} ${H}`} class="w-full min-w-[640px]" role="img" aria-label="Each player's level over the run, and when each died">
+    <svg viewBox={`0 0 ${W} ${H}`} class="w-full min-w-[640px]" role="img" aria-label="Each player's level over the run, and when each died" data-series={seriesData}>
       {inside.map(([a, b]) => (
         <rect x={x(a)} y={T} width={Math.max(1, x(b) - x(a))} height={bottom - T} fill="var(--color-accent)" opacity="0.08">
           <title>In an instance, {duration(a)} to {duration(b)}</title>
@@ -52,14 +63,12 @@ const wiped = wipes(run);
         <text x={x(t.s)} y={H - 6} text-anchor="middle" class="fill-faint font-mono text-[11px]">{t.label}</text>
       ))}
       {lines.map(({ p, d }) => (
-        <path d={d} fill="none" stroke="currentColor" stroke-width="2" class={color[p.char]}>
-          <title>{p.char}: level {p.series!.at(-1)![1].toFixed(1)} at the end</title>
-        </path>
+        <path d={d} fill="none" stroke="currentColor" stroke-width="2" class={color[p.char]} data-key={p.char} />
       ))}
       {ps.map((p, i) => {
         const cy = stripTop + i * ROW + ROW / 2;
         return (
-          <g class={color[p.char]}>
+          <g class={color[p.char]} data-key={p.char}>
             <line x1={L} x2={W - R} y1={cy} y2={cy} stroke="var(--color-hairline)" />
             <text x={L - 8} y={cy + 4} text-anchor="end" class="fill-current font-mono text-[11px]">{p.char}</text>
             {(p.deaths_at ?? []).map(s => (

@@ -4,6 +4,7 @@
 import { duration, type MapBox, type Player } from '../lib/results';
 
 export interface Route {
+  key: string; // for the legend: hide, show, highlight (a player, or a model on task pages)
   name: string; // shown on hover
   cls: string; // a colour class (classColor, pc-n)
   track: NonNullable<Player['track']>;
@@ -13,7 +14,7 @@ export interface Route {
 interface Props {
   box: MapBox;
   routes: Route[];
-  legend: { name: string; cls: string }[];
+  legend: { key: string; name: string; cls: string }[];
   thin?: boolean; // many routes: thinner, fainter lines, no end dots
 }
 
@@ -50,29 +51,33 @@ const drawn = routes.map(r => {
   const end = pts.at(-1);
   return { r, d, rides, end: end && px(end[2], end[3]), deaths: r.deaths.filter(x => x.map === box.map) };
 });
-const stroke = Math.max(1.5, W / (thin ? 450 : 600));
+const stroke = Math.max(1.5, W / (thin ? 450 : 600)); // in the map's units, for dots and crosses
+const line = thin ? 1.4 : 1.8; // screen pixels, whatever the zoom
 const floor = box.file?.endsWith('.png');
 const anyRide = drawn.some(x => x.rides);
 ---
 
-<figure class="rounded border border-hairline bg-raised p-4">
-  <p class="mb-2 font-mono text-xs text-muted">{box.name}</p>
+<figure class="rounded border border-hairline bg-raised p-4" data-chart>
+  <div class="mb-2 flex items-center justify-between">
+    <p class="font-mono text-xs text-muted">{box.name}</p>
+    <button type="button" class="enlarge-btn" data-enlarge>Enlarge · zoom</button>
+  </div>
   <div class="overflow-hidden rounded border border-hairline">
-    <svg viewBox={`0 0 ${W} ${H}`} class="block w-full" role="img" aria-label={`Routes in ${box.name}`}>
+    <svg viewBox={`0 0 ${W} ${H}`} class="block w-full" role="img" aria-label={`Routes in ${box.name}`} data-zoom>
       <rect width={W} height={H} fill="var(--color-base)" />
       {img && <image href={img.src} width={W} height={H} opacity={floor ? 0.8 : 0.6} style="filter:grayscale(1) contrast(1.1)" />}
       {drawn.map(x => (
-        <g class={x.r.cls}>
-          <path d={x.d} fill="none" stroke="currentColor" stroke-width={stroke} stroke-linejoin="round" stroke-linecap="round" opacity={thin ? 0.8 : 0.9}>
+        <g class={x.r.cls} data-key={x.r.key}>
+          <path d={x.d} fill="none" stroke="currentColor" stroke-width={line} vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round" opacity={thin ? 0.8 : 0.9}>
             <title>{x.r.name}</title>
           </path>
-          {x.rides && <path d={x.rides} fill="none" stroke="currentColor" stroke-width={stroke} stroke-dasharray={`${stroke * 3} ${stroke * 3}`} opacity="0.7" />}
+          {x.rides && <path d={x.rides} fill="none" stroke="currentColor" stroke-width={line} vector-effect="non-scaling-stroke" stroke-dasharray="4 4" opacity="0.7" />}
           {!thin && x.end && <circle cx={x.end[0]} cy={x.end[1]} r={stroke * 2.2} fill="currentColor" stroke="var(--color-base)" stroke-width={stroke / 2} />}
           {x.deaths.map(d => {
             const [cx, cy] = px(d.x, d.y);
             const s = stroke * 2.5;
             return (
-              <path d={`M${cx - s},${cy - s}L${cx + s},${cy + s}M${cx - s},${cy + s}L${cx + s},${cy - s}`} stroke="currentColor" stroke-width={stroke}>
+              <path d={`M${cx - s},${cy - s}L${cx + s},${cy + s}M${cx - s},${cy + s}L${cx + s},${cy - s}`} stroke="currentColor" stroke-width={line + 0.6} vector-effect="non-scaling-stroke">
                 <title>{x.r.name} killed by {d.killer || 'unknown'} in {d.place}, {duration(d.t)} in</title>
               </path>
             );
@@ -82,7 +87,9 @@ const anyRide = drawn.some(x => x.rides);
     </svg>
   </div>
   <figcaption class="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted">
-    {legend.map(l => <span class={l.cls}>● <span class="text-muted">{l.name}</span></span>)}
+    {legend.map(l => (
+      <button type="button" class={l.cls} data-toggle={l.key} aria-pressed="true">● <span class="text-muted">{l.name}</span></button>
+    ))}
     <span class="text-faint">× death{!thin && ' · ● where they ended'}{anyRide && ' · dashed: on a boat'} · {floor ? 'floor plan from the navmesh' : "terrain from the server's height maps"}</span>
   </figcaption>
 </figure>

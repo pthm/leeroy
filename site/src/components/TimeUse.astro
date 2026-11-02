@@ -30,7 +30,7 @@ const ps = run.players.filter(p => p.time_use || p.time_pct_by_state);
       { title: 'The character', parts: game, get: (p: (typeof ps)[number], k: string) => (p.time_use as any)?.[k] ?? 0 },
       { title: 'The agent', parts: agent, get: (p: (typeof ps)[number], k: string) => p.time_pct_by_state?.[k] ?? 0 },
     ].map(({ title, parts, get }) => (
-      <figure class="rounded border border-hairline bg-raised p-4">
+      <figure class="rounded border border-hairline bg-raised p-4" data-chart>
         <p class="mb-4 font-mono text-xs text-muted">{title}</p>
         <ul class="space-y-2">
           {ps.map(p => (

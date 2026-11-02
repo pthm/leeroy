@@ -1,6 +1,6 @@
 ---
 // Mean time to the goal against mean cost per run, one dot per model: lower left is better. Drawn at build time.
-import { leaderboard, modelName } from '../lib/results';
+import { dollars, duration, leaderboard, modelName } from '../lib/results';
 
 interface Props {
   task: string;
@@ -16,12 +16,12 @@ const ticks = (max: number) => {
   const step = [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100].find(s => max / s <= 6) ?? 100;
   return Array.from({ length: Math.floor(max / step) + 1 }, (_, i) => +(i * step).toFixed(2));
 };
-const points = rows.map(r => ({ name: modelName(r.model), cx: x(r.meanCost ?? 0), cy: y((r.meanTime ?? 0) / 60), model: r.model }));
+const points = rows.map(r => ({ name: modelName(r.model), cx: x(r.meanCost ?? 0), cy: y((r.meanTime ?? 0) / 60), model: r.model, time: duration(r.meanTime), cost: dollars(r.meanCost) }));
 const vendor = (model: string) => (model.startsWith('claude') ? 'var(--color-accent)' : 'var(--color-info)');
 ---
 
 {rows.length > 1 && (
-  <figure class="rounded border border-hairline bg-raised p-4">
+  <figure class="rounded border border-hairline bg-raised p-4" data-chart>
     <svg viewBox={`0 0 ${W} ${H}`} class="w-full" role="img" aria-label="Mean time to the goal against mean cost per run, by model">
       {ticks(maxY).map(v => (
         <g>
@@ -37,7 +37,8 @@ const vendor = (model: string) => (model.startsWith('claude') ? 'var(--color-acc
         mean minutes to the goal
       </text>
       {points.map(p => (
-        <g>
+        <g data-key={p.model}>
+          <title>{p.name}: {p.time}, {p.cost} a run</title>
           <circle cx={p.cx} cy={p.cy} r="6" fill={vendor(p.model)} />
           <text x={p.cx + 10} y={p.cy + 4} class="fill-fg font-mono text-[12px]">{p.name}</text>
         </g>

@@ -147,6 +147,10 @@ const themeButton =
     </style>
 
     <script>
+      import '../scripts/interact.ts';
+    </script>
+
+    <script>
       const root = document.documentElement;
       const buttons = [...document.querySelectorAll<HTMLButtonElement>('[data-theme-choice]')];
       const render = () => {

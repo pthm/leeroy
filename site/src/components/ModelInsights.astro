@@ -28,11 +28,11 @@ const ticks = Array.from({ length: Math.floor(maxT / tickStep) + 1 }, (_, i) => 
 ---
 
 <div class="space-y-4">
-  <figure class="rounded border border-hairline bg-raised p-4">
+  <figure class="rounded border border-hairline bg-raised p-4" data-chart>
     <p class="mb-4 font-mono text-xs text-muted">Every attempt's time to the goal · ● one attempt · ▏ the mean · ✕ didn't make it</p>
     <ul class="space-y-2">
       {rows.map(r => (
-        <li class="grid grid-cols-[8rem_1fr] items-center gap-3 font-mono text-xs">
+        <li class="grid grid-cols-[8rem_1fr] items-center gap-3 font-mono text-xs" data-key={r.model}>
           <span class="truncate text-fg">{modelName(r.model)}</span>
           <span class="relative h-5 rounded-sm bg-elevated">
             {ticks.map(t => <span class="absolute top-0 h-full w-px bg-hairline" style={`left:${(t / maxT) * 100}%`} />)}
@@ -61,7 +61,7 @@ const ticks = Array.from({ length: Math.floor(maxT / tickStep) + 1 }, (_, i) => 
   </figure>
 
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-    <figure class="rounded border border-hairline bg-raised p-4">
+    <figure class="rounded border border-hairline bg-raised p-4" data-chart>
       <p class="mb-4 font-mono text-xs text-muted">How the agent spent its time, on average</p>
       <ul class="space-y-2">
         {rows.map(r => {
@@ -83,7 +83,7 @@ const ticks = Array.from({ length: Math.floor(maxT / tickStep) + 1 }, (_, i) => 
         {states.map(s => <span><span style={`color:${s.c}`}>■</span> {s.label}</span>)}
       </p>
     </figure>
-    <figure class="rounded border border-hairline bg-raised p-4">
+    <figure class="rounded border border-hairline bg-raised p-4" data-chart>
       <p class="mb-4 font-mono text-xs text-muted">Most frequent errors, all attempts</p>
       <ul class="space-y-2.5">
         {rows.map(r => (

@@ -140,8 +140,8 @@ const tiles = [
         {run.maps!.map(box => (
           <RouteMap
             box={box}
-            routes={run.players.map(p => ({ name: p.char, cls: color[p.char], track: p.track ?? [], deaths: p.death_list ?? [] }))}
-            legend={run.players.map(p => ({ name: p.char, cls: color[p.char] }))}
+            routes={run.players.map(p => ({ key: p.char, name: p.char, cls: color[p.char], track: p.track ?? [], deaths: p.death_list ?? [] }))}
+            legend={run.players.map(p => ({ key: p.char, name: p.char, cls: color[p.char] }))}
           />
         ))}
       </div>

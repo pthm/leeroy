@@ -28,7 +28,7 @@ for (const r of runs)
     if (!have || (b.x_max - b.x_min) * (b.y_max - b.y_min) > (have.x_max - have.x_min) * (have.y_max - have.y_min)) boxes.set(b.map, b);
   }
 const attempts = runs.flatMap(r =>
-  r.players.map(p => ({ name: `${modelName(p.model)} · ${runDate(r)}`, cls: modelCls(p.model), track: p.track ?? [], deaths: p.death_list ?? [] })),
+  r.players.map(p => ({ key: p.model, name: `${modelName(p.model)} · ${p.char} · ${runDate(r)}`, cls: modelCls(p.model), track: p.track ?? [], deaths: p.death_list ?? [] })),
 );
 const tiles = [
   { v: String(runs.length), k: runs.length === 1 ? 'run' : 'runs' },
@@ -83,7 +83,7 @@ const outcome = (p: (typeof runs)[number]['players'][number]) =>
       <SectionHeader eyebrow="Where they went" title="Every route." description="Every attempt in every run, one colour per model, over the server's own terrain (an instance: its floor plan). Hover a line for the attempt, a cross for the killer." />
       <div class:list={['grid grid-cols-1 gap-4', boxes.size > 1 && 'lg:grid-cols-2']}>
         {[...boxes.values()].map(box => (
-          <RouteMap box={box} routes={attempts} legend={models.map(m => ({ name: modelName(m), cls: modelCls(m) }))} thin />
+          <RouteMap box={box} routes={attempts} legend={models.map(m => ({ key: m, name: modelName(m), cls: modelCls(m) }))} thin />
         ))}
       </div>
     </Section>
