@@ -90,19 +90,6 @@ func applyStart(s *config.Scenario, char string) error {
 
 func st(s string) string { return strings.Fields(s)[0] + " " + strings.Fields(s)[1] }
 
-// allowedPairs: the race/class pairs the game allows (playercreateinfo).
-func allowedPairs() (func(r, c int) bool, error) {
-	rows, err := world.Rows(world.DB(world.Admin, "acore_world"), "SELECT DISTINCT race, class FROM playercreateinfo")
-	if err != nil {
-		return nil, err
-	}
-	ok := map[[2]string]bool{}
-	for _, r := range rows {
-		ok[[2]string{r[0], r[1]}] = true
-	}
-	return func(r, c int) bool { return ok[[2]string{fmt.Sprint(r), fmt.Sprint(c)}] }, nil
-}
-
 // Reset soft-deletes characters (the way the game deletes them: the name and account are freed, the row kept) and
 // restarts the worldserver, which caches names, so a fresh run can reuse them. They must be offline.
 func Reset(names []string) error {

@@ -1,10 +1,10 @@
-// azbench: the LEEROY benchmark. One binary for running benchmarks from YAML configs (bench/scenarios,
-// bench/matrices), judging and reporting them, and the agents' standings (bench/agent/bin/standings is a link to
+// azbench: the LEEROY benchmark. One binary for running the benchmark's tasks (bench/tasks), judging and reporting them, and the agents' standings (bench/agent/bin/standings is a link to
 // it: it acts as the one it's called by). The agents' other tools are the game's (wow, in azeroth-sdk) and the
 // world's (azworld).
 //
-//	azbench run <scenario.yaml> [--minutes n] [--dry-run] [--reset]  a team (or solo) run; --reset starts it from scratch
-//	azbench matrix <matrix.yaml> [--dry-run]                 a grid of solo runs
+//	azbench run <task.yaml> [--model m,...] [--minutes n] [--dry-run] [--reset]  a task, on each of its models (or those
+//	                                                         named); --reset starts each from scratch
+//	azbench check <task.yaml> [--model m,...]                preflight: what the task's runs would meet in the world
 //	azbench resume <run dir> --message <file> [--minutes n]  continue a paused run
 //	azbench pause|status <run dir>                           control a running run
 //	azbench restart <run dir> <agent> --message <file>       bring one agent back mid-run
@@ -17,7 +17,7 @@
 //	azbench gm [x y z [map]] [--class mage]                  a GM dev character: Devgm on 8112, Dev<class> on 8113
 //	azbench apidoc                                           regenerate the API reference from a live session
 //	azbench prices                                           refresh the price table (judge/prices.json) from models.dev
-//	azbench publish <run dir>... [--task name] [--model m]   a run's results for the website (site/src/data/runs)
+//	azbench publish <run dir>...                             a run's results for the website (site/src/data/runs)
 //	azbench standings                                        the agents' standings
 package main
 
@@ -54,6 +54,6 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: azbench run|scenario|matrix|resume|pause|status|restart|maintenance|judge|report|compare|signals|reset|gm|apidoc|prices|standings ...")
+	fmt.Fprintln(os.Stderr, "usage: azbench run|check|resume|pause|status|restart|maintenance|judge|report|compare|signals|reset|gm|apidoc|prices|standings ...")
 	os.Exit(2)
 }

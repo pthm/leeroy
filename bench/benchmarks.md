@@ -1,8 +1,8 @@
 # Benchmark tasks
 
 The tasks the benchmark is meant to grow into: what each measures, how it's scored, and what it still needs. For
-people planning runs; agents never see this. Scenarios are in [scenarios/](scenarios), matrices in
-[matrices/](matrices); open tooling work is in [investigate.md](investigate.md).
+people planning runs; agents never see this. Tasks are in [tasks/](tasks), the models in
+[models.yaml](models.yaml); open tooling work is in [investigate.md](investigate.md).
 
 What makes a good task: a fixed start (fresh characters, `azbench run --reset`), a score no one has to judge (met or
 not, then time and cost), partial credit where it can be had so weaker models still spread out, and runs short and
@@ -13,7 +13,7 @@ describes the game's systems and rules, never how to win: agents find their own 
 
 ### Travel (smoke test)
 
-`scenarios/travel-models-2.yaml`: six new level-30 Human warriors in Northshire, one per model, goal: reach Darnassus
+`tasks/travel.yaml`: six new level-30 Human warriors in Northshire, one per model, goal: reach Darnassus
 (`zone:1657`), 90 minutes. Two boats (Stormwind Harbor to Auberdine, Auberdine to Rut'theran) and a portal.
 Scored on time to arrive (3600 / seconds). Three runs on 2026-11-01:
 
@@ -34,7 +34,7 @@ the table (Opus, Sonnet, Luna aren't separated yet).
 
 ### Hardcore levelling
 
-`scenarios/hardcore-warrior.yaml`: a new level-1 Human Arms warrior (Sonnet), 4 hours, `hardcore: true`: the first
+`tasks/hardcore.yaml`: a new level-1 Human Arms warrior, 4 hours, `hardcore: true`: the first
 death ends the run. Score: XP earned over the full 4 hours, so an early death doesn't keep a high rate. Tests caution
 apart from speed (the ghost-run shortcut agents found in the first travel run is ruled out). The judge's end on death
 is tested against the database, not yet in a real run. Next: a matrix over classes and models; a group version where
@@ -42,7 +42,7 @@ any death ends it for everyone.
 
 ### Kill Hogger
 
-`scenarios/hogger-trio.yaml` (three level-5 characters in Goldshire, Opus, goal: "Wanted: Hogger", quest 176) is the
+`tasks/hogger.yaml` (three level-5 characters in Goldshire, Opus, goal: "Wanted: Hogger", quest 176) is the
 start. The planned version: from level 1, so levelling, finding Hogger (an elite level 11) and a group fight are all
 in it; scored on time and tokens, with partial credit (level 8 or so, Hogger found, engaged, killed). A solo "by any
 means" version too. Worth a rerun on today's SDK first.

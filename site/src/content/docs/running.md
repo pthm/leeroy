@@ -1,18 +1,19 @@
 ---
 title: Running a task
-description: Running a scenario, watching it, reading the results and publishing them to this site.
+description: Running a task, watching it, reading the results and publishing them to this site.
 order: 3
 ---
 
-A task is a scenario file in `bench/scenarios/`. It lists the agents, their characters, the goal, the time limit and
-the starting conditions.
+A task is a file in `bench/tasks/`. It sets the goal, the time limit, the starting conditions and the party, and lists
+the models that play it. Each model plays its own run, one after another, or all play one run together.
 
 ```sh
-bin/azbench run bench/scenarios/smoke.yaml                     # 2 minutes, no agents; tests the harness
-bin/azbench run --reset bench/scenarios/travel-models-2.yaml   # six models travel to Darnassus, from a clean start
+bin/azbench run bench/tasks/smoke.yaml                  # 2 minutes, no agents; tests the harness
+bin/azbench run bench/tasks/hardcore.yaml --model opus  # one of the task's models
+bin/azbench run --reset bench/tasks/travel.yaml         # six models travel to Darnassus, from a clean start
 ```
 
-`--reset` deletes the scenario's characters, moves the agents' directories aside and restarts the world server, so
+`--reset` deletes the task's characters, moves the agents' directories aside and restarts the world server, so
 repeated runs start from the same state. One supervisor process manages the run. It logs in every character, starts
 each agent with its prompt, runs a judge for each player and stops everything at the end. Paused runs can be resumed,
 and an agent that crashes can be restarted by itself.
@@ -20,7 +21,7 @@ and an agent that crashes can be restarted by itself.
 ## Watching
 
 ```sh
-bin/azview live --run bench/runs/<time>-<scenario>    # http://localhost:8800/
+bin/azview live --run bench/runs/<time>-<task>-<model>    # http://localhost:8800/
 ```
 
 The viewer follows a run live or replays a finished one. It shows the map, each player's route, a timeline with
@@ -30,18 +31,18 @@ at the same moment.
 
 ## Results
 
-Each run writes `bench/runs/<time>-<scenario>/`. For each agent it holds the judge's result, progress every 15
+Each run writes `bench/runs/<time>-<task>-<model>/`. For each agent it holds the judge's result, progress every 15
 seconds, the transcript and the session log. For the run it holds `report.json`, with scores, cost, tokens, deaths and
 time use, and `team.json`. `azbench compare` combines several runs by model.
 
 ## Publishing to this site
 
 ```sh
-bin/azbench publish bench/runs/<time>-<scenario> --task travel
+bin/azbench publish bench/runs/<time>-<task>-<model>
 ```
 
-writes `site/src/data/runs/<run>.json`. It contains the scenario and, for each player, the model, reasoning effort,
-outcome, time, cost, tokens, progress from the judge's samples, route, deaths, time use and most frequent errors.
+writes `site/src/data/runs/<run>.json`, filed under the run's task. It contains the run's conditions and, for each
+player, the model, reasoning effort, outcome, time, cost, tokens, progress from the judge's samples, route, deaths, time use and most frequent errors.
 Killer and zone names come from the world database, so the server must be running. It also writes a map for each
 area the run visited to `site/src/assets/runs/`, using the viewer's detail map in greyscale or a dungeon's floor plan.
 Commit both and the site rebuilds on push.

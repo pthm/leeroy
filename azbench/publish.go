@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -32,10 +33,8 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 		return "", err
 	}
 	s, err := b.LoadScenario(filepath.Join(runDir, "scenario.yaml"))
-	if err != nil { // older runs didn't keep a copy: the scenario of that name, else what the run's own files say
-		if s, err = b.LoadScenario(filepath.Join(root, "bench/scenarios", name+".yaml")); err != nil {
-			s = &config.Scenario{Name: name}
-		}
+	if err != nil { // older runs didn't keep a copy: what the run's own files say
+		s = &config.Scenario{Conditions: config.Conditions{Name: name}}
 	}
 	var report struct {
 		Agents []map[string]any `json:"agents"`
@@ -191,7 +190,7 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 		return "", err
 	}
 	if task == "" {
-		task = name
+		task = cmp.Or(s.Task, name)
 	}
 	if s.Minutes == 0 { // no scenario: the longest anyone played
 		for _, p := range players {

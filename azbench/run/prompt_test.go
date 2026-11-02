@@ -13,7 +13,7 @@ func TestPrompt(t *testing.T) {
 		"protwarrior": {Title: "Warrior - Protection", Role: "Tank", Optimise: "holding enemies' attention", Stats: "Stamina"},
 		"holy":        {Title: "Priest - Holy", Role: "Healer", Optimise: "healing done", Stats: "Intellect"},
 	}}
-	s := &config.Scenario{Goal: "score:100000", Minutes: 90, Notice: "The server was updated.",
+	s := &config.Scenario{Conditions: config.Conditions{Goal: "score:100000", Minutes: 90, Notice: "The server was updated."},
 		Agents: []config.Agent{{Char: "Garrick", Race: "human", Spec: "protwarrior"}, {Char: "Paloma", Race: "human", Spec: "holy"}}}
 	text, err := prompt(s, b, s.Agents[0], "/repo")
 	if err != nil {

@@ -12,7 +12,7 @@ import (
 func TestScenarioPreflightQuestCaveAndHogger(t *testing.T) {
 	for _, quest := range []int{7, 62, 176} {
 		t.Run(fmt.Sprint(quest), func(t *testing.T) {
-			s := &config.Scenario{Name: "fixture", Goal: fmt.Sprintf("quest:%d", quest), Level: 5, Minutes: 60, Start: &config.Place{}, Agents: []config.Agent{{Name: "mage", Race: "human", Class: "mage"}}}
+			s := &config.Scenario{Conditions: config.Conditions{Name: "fixture", Goal: fmt.Sprintf("quest:%d", quest), Level: 5, Minutes: 60, Start: &config.Place{}}, Agents: []config.Agent{{Name: "mage", Race: "human", Class: "mage"}}}
 			floors := 0
 			source := preflightSource{path: func(_ context.Context, _ uint32, a, b navigation.Point3D) (*navigation.PathResult, error) {
 				floors++
@@ -54,7 +54,7 @@ func TestPreflightUnavailableDoesNotCertifyFloor(t *testing.T) {
 	src := preflightSource{query: func(context.Context, string, ...any) ([]map[string]string, error) { return nil, fmt.Errorf("offline") }, path: func(context.Context, uint32, navigation.Point3D, navigation.Point3D) (*navigation.PathResult, error) {
 		return nil, context.DeadlineExceeded
 	}}
-	r := checkScenario(context.Background(), &config.Scenario{Goal: "quest:62", Start: &config.Place{}, Agents: []config.Agent{{Name: "mage", Race: "human", Class: "mage"}}}, src)
+	r := checkScenario(context.Background(), &config.Scenario{Conditions: config.Conditions{Goal: "quest:62", Start: &config.Place{}}, Agents: []config.Agent{{Name: "mage", Race: "human", Class: "mage"}}}, src)
 	for _, f := range r.Findings {
 		if f.Status == "verified" {
 			t.Fatal("missing evidence certified", f)

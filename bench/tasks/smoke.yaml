@@ -1,0 +1,10 @@
+description: >
+  Two characters with no agent for 2 minutes: checks the harness end to end (accounts, sessions, judges, board,
+  report, replay) without spending model time. Not for fresh agents: run it again as it is.
+goal: score:100000
+minutes: 2
+start: goldshire
+party:
+  - {class: warrior}
+  - {class: mage}
+models: [none]

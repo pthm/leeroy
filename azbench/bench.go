@@ -60,6 +60,14 @@ func readFile(f string) string {
 	return string(b)
 }
 
+// models: the --model list.
+func models(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, ",")
+}
+
 // benchCommand runs the benchmark's own commands; false if cmd isn't one.
 func benchCommand(cmd string, args []string) bool {
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
@@ -67,11 +75,11 @@ func benchCommand(cmd string, args []string) bool {
 	dry := fs.Bool("dry-run", false, "print the plan (and the first prompt) without starting anything")
 	message := fs.String("message", "", "file: the message an agent's resumed conversation starts with ($LEFT = minutes left)")
 	noBuild := fs.Bool("no-build", false, "don't rebuild bin/ first")
-	reset := fs.Bool("reset", false, "run: start from scratch: delete the scenario's characters, move its agents' workspaces to bench/workspaces/.old, restart the worldserver")
+	reset := fs.Bool("reset", false, "run: start from scratch: delete the task's characters, move its agents' workspaces to bench/workspaces/.old, restart the worldserver")
 	port := fs.Int("port", 0, "run: the first session's port (default 8090), to run beside another run")
-	task := fs.String("task", "", "publish: the task the runs belong to on the site (default: the scenario's name)")
+	task := fs.String("task", "", "publish: the task the runs belong to on the site, for runs that didn't record it")
 	out := fs.String("out", "", "publish: where to write (default: site/src/data/runs)")
-	model := fs.String("model", "", "publish: the model, for runs that didn't record it")
+	model := fs.String("model", "", "run: only these of the task's models (comma-separated keys of bench/models.yaml); publish: the model, for runs that didn't record it")
 	runtime := fs.String("runtime", "", "publish: the harness (claude, codex, opencode), for runs that didn't record it")
 	class := fs.String("class", "warrior", "gm: the GM character's class (warrior: Devgm on 8112; another class: Dev<class> on 8113)")
 	parse := func(n int, usage string) []string {
@@ -89,55 +97,48 @@ func benchCommand(cmd string, args []string) bool {
 		return pos
 	}
 	switch cmd {
-	case "scenario":
-		pos := parse(2, "check <scenario.yaml>")
-		if pos[0] != "check" || len(pos) != 2 {
-			die("usage: azbench scenario check <scenario.yaml>")
-		}
+	case "check":
+		pos := parse(1, "<task.yaml> [--model m,...]")
 		repo := repoRoot()
 		b, err := config.LoadBench(filepath.Join(repo, "bench"))
 		check(err)
-		s, err := b.LoadScenario(pos[1])
+		ss, err := b.LoadTask(pos[0], models(*model))
 		check(err)
-		report := run.CheckScenario(repo, s)
-		encoded, err := json.MarshalIndent(report, "", "  ")
+		var reports []any
+		for _, s := range ss {
+			reports = append(reports, run.CheckScenario(repo, s))
+		}
+		encoded, err := json.MarshalIndent(reports, "", "  ")
 		check(err)
 		fmt.Println(string(encoded))
 		return true
 	case "run":
-		pos := parse(1, "<scenario.yaml> [--minutes n] [--port n] [--dry-run] [--no-build] [--reset]")
+		pos := parse(1, "<task.yaml> [--model m,...] [--minutes n] [--port n] [--dry-run] [--no-build] [--reset]")
 		repo := repoRoot()
 		b, err := config.LoadBench(filepath.Join(repo, "bench"))
 		check(err)
-		s, err := b.LoadScenario(pos[0])
-		check(err)
-		if *minutes > 0 {
-			s.Minutes = *minutes
-		}
-		if *reset && !*dry {
-			fmt.Fprintln(os.Stderr, "reset: deleting the characters, moving the workspaces aside, restarting the worldserver")
-			check(run.Fresh(repo, s))
-		}
-		r, err := run.New(b, s, run.Options{Repo: repo, BasePort: *port})
-		check(err)
-		if *dry {
-			fmt.Print(r.Plan())
-			return true
-		}
-		if !*noBuild {
-			check(run.Build(repo))
-		}
-		check(r.Run(false))
-		fmt.Println(r.Dir())
-	case "matrix":
-		pos := parse(1, "<matrix.yaml> [--dry-run]")
-		repo := repoRoot()
-		b, err := config.LoadBench(filepath.Join(repo, "bench"))
+		ss, err := b.LoadTask(pos[0], models(*model))
 		check(err)
 		if !*dry && !*noBuild {
 			check(run.Build(repo))
 		}
-		check(run.Matrix(b, pos[0], repo, *dry))
+		for _, s := range ss { // one after another: a task played apart doesn't share the world
+			if *minutes > 0 {
+				s.Minutes = *minutes
+			}
+			if *reset && !*dry {
+				fmt.Fprintln(os.Stderr, "reset: deleting the characters, moving the workspaces aside, restarting the worldserver")
+				check(run.Fresh(repo, s))
+			}
+			r, err := run.New(b, s, run.Options{Repo: repo, BasePort: *port})
+			check(err)
+			if *dry {
+				fmt.Print(r.Plan())
+				continue
+			}
+			check(r.Run(false))
+			fmt.Println(r.Dir())
+		}
 	case "resume":
 		pos := parse(1, "<run dir> --message <file> [--minutes n] [--no-build]")
 		repo := repoRoot()

@@ -1,0 +1,10 @@
+description: >
+  One new level-1 Human Arms warrior in Northshire, levelling for 4 hours, and the first death ends the run. Scored on
+  the total XP earned before the run ends. Each model plays alone, one after another.
+goal: score:100000000
+hardcore: true
+minutes: 240
+require_fresh: true
+party:
+  - {class: warrior, spec: arms}
+models: [haiku, sonnet, opus, luna, terra, sol]

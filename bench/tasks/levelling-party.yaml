@@ -1,0 +1,13 @@
+description: >
+  Five brand-new level-1 Humans in Northshire, one of each class (a tank, a healer, three DPS), progressing as much as
+  they can in an hour.
+goal: score:100000
+minutes: 60
+require_fresh: true
+party:
+  - {class: warrior, spec: protwarrior}
+  - {class: paladin, spec: ret}
+  - {class: rogue, spec: combat}
+  - {class: priest, spec: holy}
+  - {class: mage, spec: frost}
+models: [opus, sol]

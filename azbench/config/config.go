@@ -1,6 +1,7 @@
-// Package config reads the benchmark's YAML: scenarios (one run: a team, or a single agent), matrices (a grid of solo
-// runs) and the shared tables they refer to, bench/specs.yaml (class specs and roles) and bench/places.yaml (named
-// starting positions). See bench/scenarios/README.md for the fields.
+// Package config reads the benchmark's YAML: tasks (bench/tasks: a goal, a clock and a party, played by each of a
+// list of models), the runs made from them (Scenario) and the shared tables they refer to: bench/models.yaml (the
+// models), bench/specs.yaml (class specs and roles) and bench/places.yaml (named starting positions). See
+// bench/tasks/README.md for the fields.
 package config
 
 import (
@@ -16,8 +17,23 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// Scenario is one run: every agent starts on one clock.
+// Scenario is one run: every agent starts on one clock. azbench run makes it from a task (LoadTask); the run dir
+// keeps it as scenario.yaml, which resume and publish read back.
 type Scenario struct {
+	Conditions `yaml:",inline"`
+	Task       string            `yaml:"task,omitempty"` // the task it was made from (the website groups runs by it)
+	Models     map[string]string `yaml:"models"`         // runtime -> model (default: the runtime's own)
+	Runtime    string            `yaml:"runtime"`        // default runtime for agents without one: claude
+	Effort     string            `yaml:"effort"`         // default reasoning effort for agents without one (Agent.Effort)
+	Provider   string            `yaml:"provider"`       // default provider for agents without one: the runtime's own
+	Race       string            `yaml:"race"`           // default race: human
+	Agents     []Agent           `yaml:"agents"`
+
+	Dir string `yaml:"-"` // the YAML's directory (for notice files)
+}
+
+// Conditions: what a task and the runs made from it share, everything but who plays.
+type Conditions struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
 	Goal        string `yaml:"goal"`    // a judge goal: score:100000, level:10, quest:176, skill:164:75 ...
@@ -35,15 +51,7 @@ type Scenario struct {
 	// Hardcore: a character's first death ends its run (judge.Options.Hardcore), and the prompt says so
 	Hardcore bool `yaml:"hardcore"`
 	// RequireFresh refuses to start if any agent's workspace exists (a run for new agents)
-	RequireFresh bool              `yaml:"require_fresh"`
-	Models       map[string]string `yaml:"models"`   // runtime -> model (default: the runtime's own)
-	Runtime      string            `yaml:"runtime"`  // default runtime for agents without one: claude
-	Effort       string            `yaml:"effort"`   // default reasoning effort for agents without one (Agent.Effort)
-	Provider     string            `yaml:"provider"` // default provider for agents without one: the runtime's own
-	Race         string            `yaml:"race"`     // default race: human
-	Agents       []Agent           `yaml:"agents"`
-
-	Dir string `yaml:"-"` // the YAML's directory (for notice files)
+	RequireFresh bool `yaml:"require_fresh"`
 }
 
 // Agent is one player: an agent (its workspace, bench/workspaces/<name>) and the character it plays.
@@ -168,7 +176,8 @@ type Bench struct {
 	Dir      string // bench/
 	Specs    map[string]Spec
 	Places   map[string]Place
-	Versions []Version // versions.yaml, oldest first
+	Models   map[string]Model // models.yaml
+	Versions []Version        // versions.yaml, oldest first
 }
 
 // Version is a benchmark version: results from different versions aren't compared (versions.yaml).
@@ -197,10 +206,13 @@ func (b *Bench) VersionAt(t time.Time) Version {
 	return v
 }
 
-// LoadBench reads specs.yaml and places.yaml from the bench directory.
+// LoadBench reads models.yaml, specs.yaml, places.yaml and versions.yaml from the bench directory.
 func LoadBench(dir string) (*Bench, error) {
 	b := &Bench{Dir: dir, Specs: map[string]Spec{}, Places: map[string]Place{}}
 	if err := readYAML(filepath.Join(dir, "specs.yaml"), &b.Specs); err != nil {
+		return nil, err
+	}
+	if err := readYAML(filepath.Join(dir, "models.yaml"), &b.Models); err != nil {
 		return nil, err
 	}
 	var places map[string]string
@@ -240,7 +252,7 @@ func readYAMLBytes(data []byte, v any) error {
 	return nil
 }
 
-// LoadScenario reads and checks a scenario.
+// LoadScenario reads and checks a run's scenario (a run dir's scenario.yaml).
 func (b *Bench) LoadScenario(f string) (*Scenario, error) {
 	var s Scenario
 	if err := readYAML(f, &s); err != nil {

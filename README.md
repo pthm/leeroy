@@ -97,7 +97,7 @@ sandboxed: they can write only in their workspace, read the docs and source, and
 | Folder | What's in it |
 |---|---|
 | [`server/`](server/README.md) | The AzerothCore server: upstream checkout (`azerothcore/`, gitignored), config overrides (`override.yml`), account creation (`account/`) and `recorder/mod-recorder`, the server-side event log |
-| [`bench/`](bench/README.md) | The benchmark's configs and data: scenarios and matrices (YAML), specs and places, what agents get (`agent/`: task docs and their tools), agent `workspaces/` and `runs/` |
+| [`bench/`](bench/README.md) | The benchmark's configs and data: tasks and models (YAML), specs and places, what agents get (`agent/`: task docs and their tools), agent `workspaces/` and `runs/` |
 | [`azbench/`](azbench) | `azbench`: runs the benchmark from those configs (one supervisor per run: sessions, judges, agents; pause, resume, restart), the judge and report card, and the agents' `standings` |
 | [`azeroth-sdk/`](azeroth-sdk/README.md) | `azsdk`: the Go headless client and daemon the agents drive, plus the Lua API docs and example scripts. Only a game client: no database access |
 | [`azview/`](azview/README.md) | `azview`: the viewer (live or finished runs) and movement audit, from the recordings |
@@ -150,19 +150,19 @@ The compose project is pinned to `server` (`server/override.yml`), so the volume
 ## Run a benchmark
 
 ```sh
-bin/azbench run bench/scenarios/smoke.yaml               # 2 minutes, no agents: checks the harness end to end
-bin/azbench run bench/scenarios/fresh-split.yaml         # ten agents (Claude Code and Codex), one clock, 120 minutes
-bin/azbench run --reset bench/scenarios/travel-models-2.yaml  # six models to Darnassus, from the same start every time
-bin/azbench matrix bench/matrices/starter.yaml --dry-run # a grid of solo runs
+bin/azbench run bench/tasks/smoke.yaml                  # 2 minutes, no agents: checks the harness end to end
+bin/azbench run bench/tasks/hardcore.yaml --model opus  # one model on one task
+bin/azbench run --reset bench/tasks/travel.yaml         # six models to Darnassus, from the same start every time
 ```
 
-`--reset` deletes the scenario's characters, sets its agents' workspaces aside and restarts the worldserver first, so
+`--reset` deletes the task's characters, sets its agents' workspaces aside and restarts the worldserver first, so
 repeats start alike.
 
-A scenario ([bench/scenarios/README.md](bench/scenarios/README.md)) lists the agents, the characters they play, the
-goal and the starting conditions. Each agent gets a fresh non-GM account and runs as headless Claude Code (or Codex CLI) inside `bench/workspaces/<name>/` (its
+A task ([bench/tasks/README.md](bench/tasks/README.md)) sets the goal, the clock, the starting conditions and the
+party, and lists the models that play it ([bench/models.yaml](bench/models.yaml)): each plays its own run, or all play
+one together. Each agent gets a fresh non-GM account and runs as headless Claude Code (or Codex CLI) inside `bench/workspaces/<name>/` (its
 persistent script library). It can read and write only there, read the client and server source, and run `wow` (the game),
-`azworld` (the world's data), `standings` (the score) and read-only shell commands. Results go to `bench/runs/<time>-<scenario>/`, with each agent's files in `<agent>/`:
+`azworld` (the world's data), `standings` (the score) and read-only shell commands. Results go to `bench/runs/<time>-<task>-<model>/`, with each agent's files in `<agent>/`:
 - `judge.json`: the score;
 - `samples.jsonl`: progress every 15 s;
 - `agent.jsonl`: the transcript;
@@ -173,8 +173,8 @@ and for the whole run `team.json` and `report.json` (the report card)
 
 Goals: `level:<n>`, `item:<entry>`, `quality:<n>` (3 = rare), `money:<copper>`, `quests:<n>`, `quest:<id>`,
 `achievement:<id>`, `achpoints:<n>`, `skill:<id>:<n>`, `zone:<id>` (arrive there), and `score:<n>`: progress per hour (`azbench/judge/score.json` sets which signals count; v6 counts XP
-earned). For "as much as possible" goals pass a large n and read `value` at timeout. `hardcore: true` in a scenario
-ends a character's run at its first death and scores the total earned by then; `standings give-up "<why>"` ends an agent's run unmet. Team runs, scenarios, pausing and
+earned). For "as much as possible" goals pass a large n and read `value` at timeout. `hardcore: true` in a task
+ends a character's run at its first death and scores the total earned by then; `standings give-up "<why>"` ends an agent's run unmet. Team runs, tasks, pausing and
 resuming, and resetting characters are in [bench/README.md](bench/README.md); scoring in
 [azbench/judge/README.md](azbench/judge/README.md).
 

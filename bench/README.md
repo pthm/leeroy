@@ -7,9 +7,9 @@ commands below run from the repo root; server and client setup is in the [repo R
 
 | Path | |
 |---|---|
-| `scenarios/*.yaml` | runs: agents, characters, goal, clock, starting conditions ([scenarios/README.md](scenarios/README.md)) |
-| `matrices/*.yaml` | grids of solo runs: task × race × class × minutes × reps ([matrices/README.md](matrices/README.md)) |
-| `specs.yaml` | class specs a scenario's agents can take: class and spec, role, what to optimise, key stats |
+| `tasks/*.yaml` | the tasks: goal, clock, starting conditions, party, and the models that play it ([tasks/README.md](tasks/README.md)) |
+| `models.yaml` | who plays: runtime, model and reasoning effort, by key |
+| `specs.yaml` | class specs a party can take: class and spec, role, what to optimise, key stats |
 | `places.yaml` | named starting positions (`start: goldshire`) |
 | [`versions.yaml`](versions.yaml) | benchmark versions: bump when a change makes results not comparable; each run records the current one (website: results by version) |
 | [`benchmarks.md`](benchmarks.md) | the tasks the benchmark is growing into: what each measures, how it's scored, results so far, what each needs |
@@ -23,8 +23,8 @@ commands below run from the repo root; server and client setup is in the [repo R
 
 | Command | |
 |---|---|
-| `azbench run <scenario.yaml> [--minutes n] [--port n] [--reset] [--dry-run]` | a run: every session, judge and agent, on one clock. `--reset`: delete the scenario's characters, move its agents' workspaces to `bench/workspaces/.old/` and restart the worldserver first, so every run starts the same. `--port`: the first session's port (default 8090), to run beside another run |
-| `azbench matrix <matrix.yaml> [--dry-run]` | a grid of solo runs, `parallel` at a time; `summary.json` |
+| `azbench run <task.yaml> [--model m,...] [--minutes n] [--port n] [--reset] [--dry-run]` | a task on each of its models (or those named): a run per model one after another, or one run for a task played together; each run is every session, judge and agent on one clock. `--reset`: delete the run's characters, move its agents' workspaces to `bench/workspaces/.old/` and restart the worldserver first, so every run starts the same. `--port`: the first session's port (default 8090), to run beside another run |
+| `azbench check <task.yaml> [--model m,...]` | preflight: read-only checks of what the task's runs would meet ([tasks/README.md](tasks/README.md#preflight)) |
 | `azbench status <run dir>` | a running run: each player's state, score and level, and the minutes left |
 | `azbench pause <run dir>` | stop a running run cleanly so it can be resumed (Ctrl-C on `azbench run` does the same) |
 | `azbench resume <run dir> --message <file>` | continue a paused run |
@@ -32,7 +32,7 @@ commands below run from the repo root; server and client setup is in the [repo R
 | `azbench maintenance <run dir> <minutes> <message>` | a `maintenance` event to every agent: what happens to the run, in how many minutes |
 | `azbench report <run dir>` | the report card (`report.json`) and `team.json`; written at the end of every run |
 | `azbench compare <run dir>...` | the players of several runs pooled by runtime and model, as `by_model`: a table, then JSON |
-| `azbench publish <run dir>... [--task name]` | a run's results for the website: `site/src/data/runs/<run>.json`, committed ([site](../site/README.md)) |
+| `azbench publish <run dir>...` | a run's results for the website, under its task (`--task` for runs from before tasks): `site/src/data/runs/<run>.json`, committed ([site](../site/README.md)) |
 | `azbench prices` | refresh the price table for `cost_usd` from [models.dev](https://models.dev) |
 | `azbench judge <Char> <goal> [flags]` | score one character by hand ([judge](../azbench/judge/README.md)) |
 | `azbench signals <Char>` | a character's progress signals |
@@ -40,7 +40,7 @@ commands below run from the repo root; server and client setup is in the [repo R
 | `azbench gm [x y z [map]] [--class mage]` | a GM dev character, for SDK work |
 | `azbench apidoc` | regenerate the API reference from a live session |
 
-`run`, `matrix` and `resume` rebuild `bin/` first (`--no-build` skips it).
+`run` and `resume` rebuild `bin/` first (`--no-build` skips it).
 
 An agent that stops before the clock with no error and without giving up (`standings give-up`) is told to carry on:
 its conversation resumes with the minutes left and the choice of giving up, up to 5 times a run (each is in
@@ -59,9 +59,9 @@ reported.
 ## A run
 
 ```sh
-bin/azbench run bench/scenarios/fresh-split.yaml
-bin/azview live --run bench/runs/<time>-fresh-split    # watch it: http://localhost:8800/
-bin/azbench status bench/runs/<time>-fresh-split
+bin/azbench run bench/tasks/levelling-party.yaml --model opus
+bin/azview live --run bench/runs/<time>-levelling-party-opus    # watch it: http://localhost:8800/
+bin/azbench status bench/runs/<time>-levelling-party-opus
 ```
 
 One supervisor process owns the run. For each agent, logins staggered 10 s apart (concurrent logins time out on
@@ -71,7 +71,7 @@ the auth server), on ports 8090, 8091, ...:
 2. with starting conditions (`start`, `level`, `money`, `setup`): creates the character with a short login if it's
    new, waits for it to go offline, and applies them in the database;
 3. starts the session (`bin/azsdk`, up to 3 login attempts), sets the Lua global `LIB` to the workspace and joins the
-   scenario's `channel`.
+   task's `channel`.
 
 Once every session is up it writes the start time to `go`, and every judge and agent starts at that moment: the
 judge (in the supervisor), the prompt (`prompt.md`: who it plays, the goal, how it's scored, the run's length, the other
@@ -81,7 +81,7 @@ reports its model.
 When a judge is done the supervisor stops that agent, calms the character (stops its scripts and waits up to 90 s
 for it to leave combat: a character dropped mid-fight stays in the world and can die there) and logs it out. A judge
 that recorded the goal (its result line and score are written then, and final) first sends the session a `goal_met`
-event, which wakes the agent by default, and leaves agent and session playing for the scenario's `wrap_up_minutes`
+event, which wakes the agent by default, and leaves agent and session playing for the task's `wrap_up_minutes`
 (default 5): a loot roll can finish and the agent can write its notes. Every stop (the end, a pause, a restart, after
 the wrap-up) copies the agent's notes (`NOTES.md` and the other `.md` files it wrote in its workspace) into
 `<run>/<agent>/`, and stops an agent the same way: its tool processes first, so the runtime records
@@ -106,7 +106,7 @@ limit reached; at the start, that refuses to run.
 calms its character and logs it out, and marks the run `paused`. Then:
 
 ```sh
-bin/azbench resume bench/runs/<time>-fresh-split --message resume.md
+bin/azbench resume bench/runs/<time>-levelling-party-opus --message resume.md
 ```
 
 Each character logs back in, its judge continues from its samples (same baseline and curve; the pause doesn't
@@ -138,11 +138,11 @@ and whether the character is alive, dead or a ghost, and where.
 
 ## Run directories
 
-`runs/<time>-<scenario>/`:
+`runs/<time>-<task>-<model>/` (a task played together: `runs/<time>-<task>/`):
 
 | File | |
 |---|---|
-| `scenario.yaml` | the scenario as run (the notice inlined); `resume` reads it |
+| `scenario.yaml` | the run as made from its task (the notice inlined); `resume` reads it |
 | `go`, `go.<agent>.ready` | the start time (unix seconds) and each agent's files |
 | `<agent>/prompt.md` | the task prompt |
 | `<agent>/agent.jsonl` | the transcript: Claude's `stream-json`, or Codex's `--json` events, each stamped with a `timestamp` |
@@ -272,7 +272,7 @@ Codex runs as `codex exec --json` in the workspace with `-s workspace-write` (wr
 `sandbox_workspace_write.network_access=true` (the session API is on localhost), `approval_policy="never"`,
 `shell_environment_policy.inherit=all` (it gets `PATH` and the `WOWBENCH_*` vars) and `--skip-git-repo-check`.
 
-`runtime: none` starts no agent: the session and judge only, for testing the harness (`scenarios/smoke.yaml`).
+`runtime: none` starts no agent: the session and judge only, for testing the harness (`tasks/smoke.yaml`).
 
 The prompt's rules: legitimate gameplay only, no GM access, don't modify the server, database, judge or harness.
 Accounts are non-GM.

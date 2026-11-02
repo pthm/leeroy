@@ -1,0 +1,11 @@
+description: >
+  A warrior each for 5 minutes on cheap models through OpenRouter (OPENROUTER_API_KEY): Claude Code on its
+  Anthropic-compatible endpoint, and opencode. Checks both paths end to end (sandbox, transcript, resume, tokens, cost)
+  for a few cents.
+goal: score:100000
+minutes: 5
+start: goldshire
+party:
+  - {class: warrior}
+models: [or-haiku-4, or-deepseek-flash]
+together: true

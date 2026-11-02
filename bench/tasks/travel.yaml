@@ -1,0 +1,13 @@
+description: >
+  Getting around: one new level-30 Human warrior in Northshire per model, all in one world, with one goal: reach
+  Darnassus (zone 1657), on another continent. Level 30 so the way there is mostly travel, not fighting. Scored on
+  time to arrive.
+goal: zone:1657
+minutes: 90
+start: northshire
+level: 30
+require_fresh: true
+party:
+  - {class: warrior}
+models: [haiku, sonnet, opus, luna, terra, sol]
+together: true

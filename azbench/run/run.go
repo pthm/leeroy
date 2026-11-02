@@ -45,7 +45,6 @@ type Options struct {
 	Repo     string
 	BasePort int  // default 8090
 	DryRun   bool // print the plan and the first prompt, start nothing
-	Quiet    bool // no report at the end (a matrix cell: the matrix reports)
 	Dir      string
 }
 

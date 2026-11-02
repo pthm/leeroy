@@ -1,0 +1,10 @@
+description: >
+  A brand-new Frost Mage per model, all in one world for an hour: three sizes each of Claude, GPT and Gemini, and
+  DeepSeek, all on opencode through OpenRouter (OPENROUTER_API_KEY), so the model is the only thing that differs.
+goal: score:100000
+minutes: 60
+require_fresh: true
+party:
+  - {class: mage, spec: frost}
+models: [or-opus, or-sonnet, or-haiku, or-sol, or-terra, or-luna, or-argon, or-flash, or-flash-lite, or-deepseek]
+together: true

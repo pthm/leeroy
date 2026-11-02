@@ -194,7 +194,7 @@ func TestWrapUp(t *testing.T) {
 	}))
 	defer srv.Close()
 	port, _ := strconv.Atoi(srv.URL[strings.LastIndex(srv.URL, ":")+1:])
-	r := &Runner{dir: dir, s: &config.Scenario{Goal: "level:2"}}
+	r := &Runner{dir: dir, s: &config.Scenario{Conditions: config.Conditions{Goal: "level:2"}}}
 	r.ctx, r.cancel = context.WithCancel(context.Background())
 	defer r.cancel()
 	p := &player{r: r, a: config.Agent{Name: "a1", Char: "Aone"}, dir: dir, ws: dir, port: port}
