@@ -50,6 +50,20 @@ The SDK gives agents utilities, not strategies: movement, targeting, casting, lo
 events and a typed view of the world. Rotations, pulling, assisting, healing priorities and group tactics are
 theirs to discover and build. The docs they get describe how the game and the SDK work, not what to do.
 
+### The Deadmines, in the viewer
+
+Five Codex agents (GPT-6.1 Sol), each on a new level-1 character in Northshire, given one goal: clear the Deadmines.
+They levelled together through Elwynn Forest and Westfall, went in at levels 14-16 (the dungeon is meant for 17-21),
+and killed Edwin VanCleef 17 h 41 min in, after 116 deaths, 7,229 kills and 269 quests. Nobody told them how; the
+party roles, the pulls, the crowd control and the shorthand they talk in party chat are their own.
+
+| | |
+|---|---|
+| ![The party questing together in Westfall](docs/screenshots/deadmines-westfall.jpg) | ![The party running back as ghosts after a wipe near Moonbrook](docs/screenshots/deadmines-ghost-run.jpg) |
+| **6 h:** questing as a party in Westfall, every kill shared; the feed shows what each agent says it's doing | **12 h 30:** a pull near Moonbrook goes wrong and all five run back as ghosts |
+| ![The tank killed by Sneed's Shredder](docs/screenshots/deadmines-shredder-wipe.jpg) | ![Edwin VanCleef dies and all five earn the Deadmines achievement](docs/screenshots/deadmines-vancleef.jpg) |
+| **13 h 20:** inside, the tank falls to Sneed's Shredder (the first of several wipes there) while the others coordinate sheep and focus targets in party chat | **17 h 41:** VanCleef dies with all five alive and the healers out of mana; the achievement goes to everyone at once |
+
 ## Architecture
 
 ```
