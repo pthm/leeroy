@@ -176,6 +176,28 @@ let autoZoom = saved.autoZoom ?? true, zoomBias = saved.zoomBias ?? 1, autoCam =
 // the player the camera follows: the selected one, while auto follow is on (however they were selected)
 const followed = () => (autoCam ? store().sel : null);
 const saveZoom = () => { try { localStorage.setItem("azview", JSON.stringify({ ...JSON.parse(localStorage.getItem("azview") || "{}"), autoZoom, zoomBias, autoCam })); } catch {} };
+// Map, road and navmesh tiles and patrol queries go through one queue: a few at a time, the newest first (what's in
+// view now), and the oldest dropped past QUEUE_MAX (forgotten, so they're asked for again if they come back into
+// view): zoomed out over a continent, a square each was thousands of requests at once (ERR_INSUFFICIENT_RESOURCES).
+const LOADS = 8, QUEUE_MAX = 300, loadQueue = [];
+let loadsInFlight = 0;
+function pumpLoads() {
+  while (loadsInFlight < LOADS && loadQueue.length) {
+    const job = loadQueue.pop(); loadsInFlight++;
+    job.start(() => { loadsInFlight--; dirty = true; pumpLoads(); });
+  }
+}
+function queueLoad(start, dropped) {
+  loadQueue.push({ start, dropped });
+  if (loadQueue.length > QUEUE_MAX) loadQueue.shift().dropped();
+  pumpLoads();
+}
+// queuedImage: an Image in cache under key, loaded through the queue
+function queuedImage(cache, key, src) {
+  const im = new Image(); cache.set(key, im);
+  queueLoad((done) => { im.onload = im.onerror = done; im.src = src; }, () => { if (cache.get(key) === im) cache.delete(key); });
+  return im;
+}
 const tiles = new Map();
 function drawTiles(w, h) {
   const wx = (sx, sy) => [MAX - ((sy - view.oy) / view.s) * RES, MAX - ((sx - view.ox) / view.s) * RES];
@@ -183,8 +205,8 @@ function drawTiles(w, h) {
   for (let gx = g(xa); gx <= g(xb); gx++) for (let gy = g(ya); gy <= g(yb); gy++) {
     if (gx < 0 || gy < 0 || gx > 63 || gy > 63) continue;
     const key = `${M.id}/${gx}/${gy}`;
-    if (!tiles.has(key)) { const im = new Image(); im.onload = () => (dirty = true); im.src = `tile/${key}.png?v=${B.tileVersion}`; tiles.set(key, im); }
-    const im = tiles.get(key); if (!im.complete || !im.naturalWidth) continue;
+    const im = tiles.get(key) ?? queuedImage(tiles, key, `tile/${key}.png?v=${B.tileVersion}`);
+    if (!im.complete || !im.naturalWidth) continue;
     const [sx, sy] = scr(GRID * (32 - gx), GRID * (32 - gy)), size = (GRID / RES) * view.s;
     cx.drawImage(im, sx, sy, size + 0.5, size + 0.5);
   }
@@ -436,7 +458,7 @@ function drawNav(w, h) {
       const f = 1 << (L - l), rr = Math.floor(R / f), c = Math.floor(C / f), m = 1 << l;
       const key = `${M.id}/${l}/${Math.floor(rr / m)}/${Math.floor(c / m)}/${rr % m}/${c % m}`;
       let im = navTiles.get(key);
-      if (!im && l === L) { im = new Image(); im.onload = () => (dirty = true); im.src = `nav/${key}.png?v=${B.navVersion}`; navTiles.set(key, im);
+      if (!im && l === L) { im = queuedImage(navTiles, key, `nav/${key}.png?v=${B.navVersion}`);
         if (navTiles.size > 800) navTiles.delete(navTiles.keys().next().value); }
       if (!im?.complete || !im.naturalWidth) continue;
       const part = 256 / f;
@@ -448,17 +470,22 @@ function drawNav(w, h) {
 }
 // Roads: each grid square's painted roads (/roads, amber, from the client's ground textures) and the friendly NPCs'
 // patrol paths crossing it (/patrols, dashed): the network the SDK's routes prefer.
-const roadTiles = new Map(), patrolPaths = new Map();
+const roadTiles = new Map(), patrolPaths = new Map(), ROAD_SQUARES = new Set(B.roads ?? []); // squares with roads: "map/gx/gy"
 function drawRoads(w, h) {
   const wx = (sx, sy) => [MAX - ((sy - view.oy) / view.s) * RES, MAX - ((sx - view.ox) / view.s) * RES];
   const [xa, ya] = wx(0, 0), [xb, yb] = wx(w, h), g = (v) => Math.floor(32 - v / GRID), size = (GRID / RES) * view.s;
   cx.imageSmoothingEnabled = true;
   for (let gx = Math.max(0, g(xa)); gx <= Math.min(63, g(xb)); gx++) for (let gy = Math.max(0, g(ya)); gy <= Math.min(63, g(yb)); gy++) {
     const key = `${M.id}/${gx}/${gy}`;
-    if (!roadTiles.has(key)) { const im = new Image(); im.onload = () => (dirty = true); im.src = `roads/${key}?v=2`; roadTiles.set(key, im); } // v: the road rasters' version (2: more road textures, bridges)
-    const im = roadTiles.get(key);
-    if (im.complete && im.naturalWidth) { const [sx, sy] = scr(GRID * (32 - gx), GRID * (32 - gy)); cx.globalAlpha = 0.8; cx.drawImage(im, sx, sy, size + 0.5, size + 0.5); cx.globalAlpha = 1; }
-    if (!patrolPaths.has(key)) { patrolPaths.set(key, []); fetch(`patrols?m=${M.id}&gx=${gx}&gy=${gy}`).then((r) => r.json()).then((p) => { patrolPaths.set(key, p); dirty = true; }).catch(() => {}); }
+    if (ROAD_SQUARES.has(key)) { // v: the road rasters' version (2: more road textures, bridges)
+      const im = roadTiles.get(key) ?? queuedImage(roadTiles, key, `roads/${key}?v=2`);
+      if (im.complete && im.naturalWidth) { const [sx, sy] = scr(GRID * (32 - gx), GRID * (32 - gy)); cx.globalAlpha = 0.8; cx.drawImage(im, sx, sy, size + 0.5, size + 0.5); cx.globalAlpha = 1; }
+    }
+    if (size >= 40 && !patrolPaths.has(key)) { // patrol paths only near enough to tell them apart
+      patrolPaths.set(key, []);
+      queueLoad((done) => fetch(`patrols?m=${M.id}&gx=${gx}&gy=${gy}`).then((r) => r.json()).then((p) => patrolPaths.set(key, p)).catch(() => {}).finally(done),
+        () => patrolPaths.delete(key));
+    }
   }
   const drawn = new Set();
   cx.lineWidth = 2; cx.setLineDash([6, 5]); cx.strokeStyle = "#ffe6a8cc"; cx.lineJoin = "round";

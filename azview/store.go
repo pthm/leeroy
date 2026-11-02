@@ -109,7 +109,7 @@ type Store struct {
 	zones   map[int]string  // area names
 	agents  map[string]any  // name -> meta.json
 	subs    map[chan liveMsg]bool
-	last    float64 // the newest event
+	last    float64                // the newest event
 	trs     map[float64]*Transport // by guid counter
 }
 

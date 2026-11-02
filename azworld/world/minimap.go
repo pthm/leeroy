@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -130,6 +131,21 @@ func readRoadTile(file string) ([]byte, bool) {
 		return nil, false
 	}
 	return b, true
+}
+
+// RoadSquares lists the squares with road rasters, as "map/gx/gy", so the viewer asks only for those.
+func RoadSquares() []string {
+	out := []string{}
+	maps, _ := os.ReadDir(filepath.Join(DataDir(), "roads"))
+	for _, m := range maps {
+		files, _ := os.ReadDir(filepath.Join(DataDir(), "roads", m.Name()))
+		for _, f := range files {
+			if n, ok := strings.CutSuffix(f.Name(), ".bin"); ok {
+				out = append(out, m.Name()+"/"+strings.Replace(n, "_", "/", 1))
+			}
+		}
+	}
+	return out
 }
 
 // RoadTile is a grid square's road raster: 128x128 bytes, each the share of a ~4.2-yd cell that is road (0-255),
