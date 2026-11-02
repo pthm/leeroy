@@ -1,0 +1,28 @@
+---
+import { getCollection, render } from 'astro:content';
+import Section from '../../components/Section.astro';
+import Layout from '../../layouts/Layout.astro';
+import { postDate } from '../../lib/posts';
+import { url } from '../../lib/url';
+
+export async function getStaticPaths() {
+  return (await getCollection('blog')).map(post => ({ params: { slug: post.id }, props: { post } }));
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+---
+
+<Layout title={post.data.title} description={post.data.description} image={post.data.image?.src}>
+  <Section last>
+    <article class="mx-auto max-w-2xl">
+      <a href={url('/blog')} class="eyebrow hover:underline">← Blog</a>
+      <h1 class="mt-4 font-serif text-4xl leading-tight text-fg sm:text-5xl">{post.data.title}</h1>
+      <p class="mt-4 text-base text-muted">{post.data.description}</p>
+      <time datetime={post.data.date.toISOString()} class="mt-4 block font-mono text-xs text-faint">{postDate(post.data.date)}</time>
+      <div class="prose mt-10">
+        <Content />
+      </div>
+    </article>
+  </Section>
+</Layout>

@@ -1,0 +1,47 @@
+---
+import { Icon } from 'astro-icon/components';
+import Section from '../../components/Section.astro';
+import SectionHeader from '../../components/SectionHeader.astro';
+import Layout from '../../layouts/Layout.astro';
+import { TASKS, leaderboard, modelName, runsOf, taskTitle, tasks, duration } from '../../lib/results';
+import { url } from '../../lib/url';
+---
+
+<Layout title="Results" description="LEEROY benchmark results: every task, every model, every run.">
+  <Section last>
+    <SectionHeader
+      eyebrow="Results"
+      title="Every task, every run."
+      description="Each task starts from the same place with new characters. Models are compared on whether they reach the goal, how long it takes, and what it costs."
+      level={1}
+    />
+    <ul class="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {tasks().map(task => {
+        const rows = leaderboard(task);
+        const runs = runsOf(task);
+        return (
+          <li class="flex flex-col rounded border border-hairline bg-raised p-6">
+            <p class="eyebrow mb-2">{runs.length} run{runs.length === 1 ? '' : 's'} · {rows.length} model{rows.length === 1 ? '' : 's'}</p>
+            <h2 class="font-serif text-2xl text-fg">{taskTitle(task)}</h2>
+            {TASKS[task] && <p class="mt-2 text-sm text-muted">{TASKS[task].summary}</p>}
+            <ol class="mt-5 space-y-1.5 font-mono text-xs">
+              {rows.slice(0, 3).map((r, i) => (
+                <li class="flex justify-between gap-4">
+                  <span class="text-fg">
+                    <span class="text-faint">{i + 1}.</span> {modelName(r.model)}
+                  </span>
+                  <span class="text-muted">
+                    {r.met}/{r.attempts} · {duration(r.meanTime)}
+                  </span>
+                </li>
+              ))}
+            </ol>
+            <a href={url(`/results/${task}`)} class="mt-6 inline-flex items-center gap-1.5 self-start font-mono text-xs text-accent hover:underline">
+              Full results <Icon name="lucide:arrow-right" class="size-3" aria-hidden="true" />
+            </a>
+          </li>
+        );
+      })}
+    </ul>
+  </Section>
+</Layout>

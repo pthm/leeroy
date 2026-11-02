@@ -31,6 +31,7 @@ commands below run from the repo root; server and client setup is in the [repo R
 | `azbench maintenance <run dir> <minutes> <message>` | a `maintenance` event to every agent: what happens to the run, in how many minutes |
 | `azbench report <run dir>` | the report card (`report.json`) and `team.json`; written at the end of every run |
 | `azbench compare <run dir>...` | the players of several runs pooled by runtime and model, as `by_model`: a table, then JSON |
+| `azbench publish <run dir>... [--task name]` | a run's results for the website: `site/src/data/runs/<run>.json`, committed ([site](../site/README.md)) |
 | `azbench prices` | refresh the price table for `cost_usd` from [models.dev](https://models.dev) |
 | `azbench judge <Char> <goal> [flags]` | score one character by hand ([judge](../azbench/judge/README.md)) |
 | `azbench signals <Char>` | a character's progress signals |

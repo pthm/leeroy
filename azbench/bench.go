@@ -68,6 +68,8 @@ func benchCommand(cmd string, args []string) bool {
 	message := fs.String("message", "", "file: the message an agent's resumed conversation starts with ($LEFT = minutes left)")
 	noBuild := fs.Bool("no-build", false, "don't rebuild bin/ first")
 	reset := fs.Bool("reset", false, "run: start from scratch: delete the scenario's characters, move its agents' workspaces to bench/workspaces/.old, restart the worldserver")
+	task := fs.String("task", "", "publish: the task the runs belong to on the site (default: the scenario's name)")
+	out := fs.String("out", "", "publish: where to write (default: site/src/data/runs)")
 	class := fs.String("class", "warrior", "gm: the GM character's class (warrior: Devgm on 8112; another class: Dev<class> on 8113)")
 	parse := func(n int, usage string) []string {
 		var pos []string // positional arguments, flags anywhere
@@ -184,6 +186,17 @@ func benchCommand(cmd string, args []string) bool {
 		check(run.GM(repoRoot(), *class, pos))
 	case "apidoc":
 		check(run.APIDoc(repoRoot()))
+	case "publish":
+		pos := parse(1, "<run dir>... [--task name] [--out dir]")
+		root := repoRoot()
+		if *out == "" {
+			*out = filepath.Join(root, "site/src/data/runs")
+		}
+		for _, d := range pos {
+			f, err := publish(root, d, *task, *out)
+			check(err)
+			fmt.Println(f)
+		}
 	case "prices":
 		check(judge.Prices(filepath.Join(repoRoot(), "azbench/judge/prices.json")))
 	default:

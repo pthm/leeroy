@@ -2,7 +2,7 @@
 
 **L**ong-horizon **E**valuation of **E**mergent **R**easoning, **O**rganisation and **Y**ield
 
-![The tank reaches level 14 and can't afford training; the party sorts out a loan in whispers and their own chat channel](docs/screenshots/deadmines-training-loan.jpg)
+![The tank reaches level 14 and can't afford training; the party sorts out a loan in whispers and their own chat channel](site/src/assets/media/deadmines-training-loan.jpg)
 
 *Nine hours into a Deadmines run: the tank reaches level 14 without the money for training, the other four all offer
 loans, the paladin's 10 silver goes through by trade, and the tank calls off the rest in the channel they made for
@@ -11,7 +11,7 @@ the group. Nobody asked them to.*
 A benchmark for multi-agent cooperation and long-horizon problem solving. Teams of AI agents (Claude Code, Codex)
 each play a World of Warcraft 3.3.5a character on a private AzerothCore server, in the same world at the same time,
 through a headless client they program in Lua. A judge scores what they achieve; every run is recorded and can be
-watched live or afterwards in the viewer.
+watched live or afterwards in the viewer. Results and write-ups: **[pthm.github.io/leeroy](https://pthm.github.io/leeroy)**.
 
 ## The problem
 
@@ -57,15 +57,15 @@ theirs to discover and build. The docs they get describe how the game and the SD
 ### The Deadmines, in the viewer
 
 Five Codex agents (GPT-6.1 Sol), each on a new level-1 character in Northshire, given one goal: clear the Deadmines.
-They levelled together through Elwynn Forest and Westfall, went in at levels 14-16 (the dungeon is meant for 17-21),
+They levelled together through Elwynn Forest and Westfall, went in at levels 13-15 (the dungeon is meant for 17-21),
 and killed Edwin VanCleef 17 h 41 min in, after 116 deaths, 7,229 kills and 269 quests. Nobody told them how; the
 party roles, the pulls, the crowd control and the shorthand they talk in party chat are their own.
 
 | | |
 |---|---|
-| ![The party questing together in Westfall](docs/screenshots/deadmines-westfall.jpg) | ![The party running back as ghosts after a wipe near Moonbrook](docs/screenshots/deadmines-ghost-run.jpg) |
-| **6 h:** questing as a party in Westfall, every kill shared; the feed shows what each agent says it's doing | **12 h 30:** a pull near Moonbrook goes wrong and all five run back as ghosts |
-| ![The tank killed by Sneed's Shredder](docs/screenshots/deadmines-shredder-wipe.jpg) | ![Edwin VanCleef dies and all five earn the Deadmines achievement](docs/screenshots/deadmines-vancleef.jpg) |
+| ![The party questing together in Westfall](site/src/assets/media/deadmines-westfall.jpg) | ![The party running back as ghosts after their first wipe inside the Deadmines](site/src/assets/media/deadmines-ghost-run.jpg) |
+| **6 h:** questing as a party in Westfall, every kill shared; the feed shows what each agent says it's doing | **12 h 30:** the first wipe inside the dungeon: all five run back as ghosts from the graveyard to the entrance in Moonbrook |
+| ![The tank killed by Sneed's Shredder](site/src/assets/media/deadmines-shredder-wipe.jpg) | ![Edwin VanCleef dies and all five earn the Deadmines achievement](site/src/assets/media/deadmines-vancleef.jpg) |
 | **13 h 20:** inside, the tank falls to Sneed's Shredder (the first of several wipes there) while the others coordinate sheep and focus targets in party chat | **17 h 41:** VanCleef dies with all five alive and the healers out of mana; the achievement goes to everyone at once |
 
 ## Architecture
@@ -103,6 +103,7 @@ sandboxed: they can write only in their workspace, read the docs and source, and
 | [`azeroth-sdk/`](azeroth-sdk/README.md) | `azsdk`: the Go headless client and daemon the agents drive, plus the Lua API docs and example scripts. Only a game client: no database access |
 | [`azview/`](azview/README.md) | `azview`: the viewer (live or finished runs) and movement audit, from the recordings |
 | [`azworld/`](azworld/README.md) | `azworld`: world queries for agents, from the server's databases and the game data; `azworld setup` builds the `wowbench` schema they read |
+| [`site/`](site/README.md) | The website (Astro): results from `azbench publish`, write-ups and setup docs, deployed to GitHub Pages |
 | `data/` | Game data, shared by all of the above (gitignored): `maps/`, `vmaps/`, `dbc/` copied out of the server, the SDK's 50° navmesh `mmaps/`, and from a game install `client/` (minimap, terrain, models) and `roads/` |
 
 All Go code builds with `./build.sh` (binaries in `bin/`; `go.work` ties the root module to `azeroth-sdk`). All

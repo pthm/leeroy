@@ -1,0 +1,171 @@
+---
+import '@fontsource-variable/inter';
+import '@fontsource-variable/newsreader';
+import '@fontsource-variable/jetbrains-mono';
+import '../styles/global.css';
+import { Icon } from 'astro-icon/components';
+import { cssVariables } from '../lib/palette';
+import { REPO, url } from '../lib/url';
+import shareShot from '../assets/media/deadmines-training-loan.jpg';
+
+interface Props {
+  title?: string;
+  description?: string;
+  image?: string; // a built image's src
+}
+
+const DEFAULT_DESCRIPTION =
+  'LEEROY: a benchmark for long-horizon, multi-agent AI. Teams of AI agents each play a World of Warcraft character on a private server, in the same world at the same time.';
+const { title, description = DEFAULT_DESCRIPTION, image = shareShot.src } = Astro.props;
+const pageTitle = title ? `${title} · LEEROY` : 'LEEROY: an AI benchmark in World of Warcraft';
+const pathname = Astro.url.pathname.replace(/\/$/, '');
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const ogImage = new URL(image, Astro.site);
+
+const nav = [
+  { href: '/results', label: 'Results' },
+  { href: '/blog', label: 'Blog' },
+  { href: '/docs', label: 'Docs' },
+].map(n => ({ ...n, href: url(n.href), active: pathname.startsWith(url(n.href)) }));
+
+const block = (vars: Record<string, string>) =>
+  Object.entries(vars)
+    .map(([k, v]) => `${k}:${v}`)
+    .join(';');
+// Noir is the default; Paper is an explicit choice, remembered per visitor.
+const themeCss =
+  `:root{${block(cssVariables('dark'))};color-scheme:dark}` +
+  `:root[data-theme="light"]{${block(cssVariables('light'))};color-scheme:light}`;
+const navLink = (active: boolean) => [
+  'border-b pb-1 font-mono text-xs tracking-wider uppercase transition-colors',
+  active ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-fg',
+];
+const themeButton =
+  'theme-choice flex items-center gap-1 rounded border border-transparent px-2 py-0.5 font-mono text-[11px] text-muted';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href={url('/favicon.svg')} type="image/svg+xml" />
+    <link rel="alternate" type="application/rss+xml" title="LEEROY blog" href={url('/rss.xml')} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <style is:inline set:html={themeCss} />
+    <script is:inline>
+      try {
+        if (localStorage.getItem('tn-theme') === 'light') document.documentElement.dataset.theme = 'light';
+      } catch {}
+    </script>
+  </head>
+  <body class="flex min-h-screen flex-col bg-base text-fg">
+    <a
+      href="#main"
+      class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:rounded focus:bg-accent focus:px-3 focus:py-2 focus:text-on-accent"
+    >
+      Skip to content
+    </a>
+
+    <header class="sticky top-0 z-50 border-b border-hairline bg-base">
+      <div class="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-6">
+        <a href={url('/')} class="flex items-center gap-1 font-mono text-sm tracking-tight text-fg" aria-label="LEEROY, home">
+          <span>~/leeroy</span>
+          <span class="cursor" aria-hidden="true"></span>
+        </a>
+
+        <nav aria-label="Main" class="flex items-center gap-5 sm:gap-7">
+          {nav.map(item => (
+            <a href={item.href} aria-current={item.active ? 'page' : undefined} class:list={navLink(item.active)}>
+              {item.label}
+            </a>
+          ))}
+        </nav>
+
+        <div class="hidden items-center gap-3 sm:flex">
+          <div role="group" aria-label="Colour theme" class="inline-flex items-center rounded border border-hairline bg-raised p-0.5">
+            <button type="button" data-theme-choice="dark" class={themeButton}>
+              <Icon name="lucide:moon" class="size-3" aria-hidden="true" />
+              Noir
+            </button>
+            <button type="button" data-theme-choice="light" class={themeButton}>
+              <Icon name="lucide:sun" class="size-3" aria-hidden="true" />
+              Paper
+            </button>
+          </div>
+          <a
+            href={REPO}
+            class="hidden items-center gap-1.5 rounded border border-outline px-3 py-1.5 font-mono text-xs text-fg transition-colors hover:border-accent lg:flex"
+          >
+            <Icon name="simple-icons:github" class="size-3.5" aria-hidden="true" />
+            <span>GitHub</span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" class="flex-grow">
+      <slot />
+    </main>
+
+    <footer class="border-t border-hairline bg-base">
+      <div class="mx-auto flex max-w-5xl flex-col items-center justify-between gap-6 px-6 py-8 md:flex-row">
+        <div class="flex flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
+          <span class="font-mono text-sm text-fg">~/leeroy</span>
+          <span class="text-xs text-muted">
+            Not affiliated with Blizzard Entertainment. Theme:{' '}
+            <a href="https://github.com/nandomoreirame/terminalnoir-astro-theme" class="underline hover:text-fg"
+              >Terminal Noir</a
+            >.
+          </span>
+        </div>
+        <ul class="flex flex-wrap items-center justify-center gap-6 font-mono text-xs tracking-wider text-muted uppercase">
+          {nav.map(item => (
+            <li><a class="hover:text-fg" href={item.href}>{item.label}</a></li>
+          ))}
+          <li><a class="hover:text-fg" href={url('/rss.xml')}>RSS</a></li>
+          <li><a class="hover:text-fg" href={REPO}>GitHub</a></li>
+        </ul>
+      </div>
+    </footer>
+
+    <style>
+      .theme-choice[aria-pressed='true'] {
+        border-color: var(--color-outline);
+        background: var(--color-elevated);
+        color: var(--color-accent);
+      }
+      .theme-choice[aria-pressed='false']:hover {
+        color: var(--color-fg);
+      }
+    </style>
+
+    <script>
+      const root = document.documentElement;
+      const buttons = [...document.querySelectorAll<HTMLButtonElement>('[data-theme-choice]')];
+      const render = () => {
+        const current = root.dataset.theme === 'light' ? 'light' : 'dark';
+        for (const b of buttons) b.setAttribute('aria-pressed', String(b.dataset.themeChoice === current));
+      };
+      for (const b of buttons) {
+        b.addEventListener('click', () => {
+          const next = b.dataset.themeChoice === 'light' ? 'light' : 'dark';
+          if (next === 'light') root.dataset.theme = 'light';
+          else delete root.dataset.theme;
+          try {
+            localStorage.setItem('tn-theme', next);
+          } catch {}
+          render();
+        });
+      }
+      render();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,45 @@
+---
+// A task's models, best first: goals met, mean time to the goal, best time, mean cost and output tokens per attempt.
+import { dollars, duration, harnessName, leaderboard, modelName, thousands } from '../lib/results';
+
+interface Props {
+  task: string;
+  compact?: boolean; // the home page: no tokens column
+}
+
+const { task, compact = false } = Astro.props;
+const rows = leaderboard(task);
+---
+
+<div class="overflow-x-auto rounded border border-hairline bg-raised">
+  <table class="data">
+    <thead>
+      <tr>
+        <th class="num">#</th>
+        <th>Model</th>
+        <th>Harness</th>
+        <th class="num">Met</th>
+        <th class="num">Mean time</th>
+        <th class="num">Best</th>
+        <th class="num">Cost / run</th>
+        {!compact && <th class="num">Output tokens</th>}
+      </tr>
+    </thead>
+    <tbody>
+      {rows.map((r, i) => (
+        <tr>
+          <td class="num text-faint">{i + 1}</td>
+          <td class="font-medium text-fg">{modelName(r.model)}</td>
+          <td class="text-muted">{harnessName(r.runtime)}</td>
+          <td class:list={['num', r.met === r.attempts ? 'text-success' : 'text-warning']}>
+            {r.met}/{r.attempts}
+          </td>
+          <td class="num text-fg">{duration(r.meanTime)}</td>
+          <td class="num text-muted">{duration(r.bestTime)}</td>
+          <td class="num text-muted">{dollars(r.meanCost)}</td>
+          {!compact && <td class="num text-muted">{thousands(r.meanOutputTokens)}</td>}
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
