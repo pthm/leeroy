@@ -825,6 +825,41 @@ type ItemRef struct {
 // ---------- travel ----------
 
 // TaxiNode is a flight point (TaxiNodes.dbc).
+// Transport is a boat or zeppelin: where it is now, and where and when it docks.
+type Transport struct {
+	GUID    GUID            `json:"guid"`
+	Entry   uint32          `json:"entry"`
+	Name    string          `json:"name"`
+	Map     uint32          `json:"map"`
+	X       float64         `json:"x"`
+	Y       float64         `json:"y"`
+	Z       float64         `json:"z"`
+	O       float64         `json:"o"`
+	Moving  bool            `json:"moving"`
+	Docked  *TransportStop  `json:"docked,omitempty" doc:"the stop it's at, while it waits there"`
+	Stops   []TransportStop `json:"stops" doc:"where it docks, in the order it goes round"`
+	PeriodS float64         `json:"period_s" doc:"seconds for the whole round"`
+	Aboard  bool            `json:"aboard" doc:"you're on it"`
+}
+
+// TransportStop is a dock on a transport's route.
+type TransportStop struct {
+	Map        uint32  `json:"map"`
+	X          float64 `json:"x" doc:"where the transport stops: its centre, in the water beside the pier"`
+	Y          float64 `json:"y"`
+	Z          float64 `json:"z"`
+	ArrivesInS float64 `json:"arrives_in_s" doc:"seconds until it next arrives (0 while it's there)"`
+	DepartsInS float64 `json:"departs_in_s" doc:"seconds until it next leaves"`
+}
+
+// Boarding is where you stand on a transport: its guid and your spot on it, in its axes.
+type Boarding struct {
+	Transport GUID    `json:"transport"`
+	X         float64 `json:"x"`
+	Y         float64 `json:"y"`
+	Z         float64 `json:"z"`
+}
+
 type TaxiNode struct {
 	ID    uint32  `json:"id"`
 	Name  string  `json:"name" doc:"e.g. Stormwind, Elwynn"`

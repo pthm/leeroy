@@ -318,6 +318,14 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `trainer.learn(npc_guid, spell_id) → Request<Learned>` | learn a spell from a trainer within ~5 yd (costs money; trainer.list shows what it teaches you and what you can learn now). Completion: the requested spell is observed learned. | [Request](#request), [Learned](#learned) |
 | `trainer.list(npc_guid) → Request<Trainer>` | what a trainer within ~5 yd teaches you: every spell for your class with its cost, level and whether you can learn it now (available), later (unavailable) or already know it. Completion: the requested trainer window was observed. | [Request](#request), [Trainer](#trainer) |
 
+### transports
+
+| Function | | Returns |
+|---|---|---|
+| `transports.board(guid) → Request<Boarding>` | step onto a docked transport from beside it (within 35 yd of where its crew stand): you walk straight onto its deck and ride it from there (it carries you; me.position() follows). not_docked while it's moving; too_far; leaving it: transports.leave. Completion: the straight walk onto the deck finished and the character stands on the transport, sending ONTRANSPORT; transports.list() shows aboard and me.position() follows the transport. | [Request](#request), [Boarding](#boarding) |
+| `transports.leave([x, y, z]) → Request<Position>` | walk straight off the transport you're on, onto (x, y, z), at most 35 yd away; without one, the nearest walkable floor within 35 yd (the pier, at a dock). not_aboard. Completion: the straight walk off finished at the point; ONTRANSPORT is no longer sent, so the server drops the character as a passenger. | [Request](#request), [Position](#position) |
+| `transports.list() → Transport[]` | every boat and zeppelin seen (the server shows all of a map's when you arrive on it): where it is now, where it docks on its round and when it next arrives at and leaves each stop | [Transport](#transport) |
+
 ### units
 
 | Function | | Returns |
@@ -1061,8 +1069,6 @@ MovementOwner identifies an active or queued movement request or control lease.
 
 ### TaxiNode
 
-TaxiNode is a flight point (TaxiNodes.dbc).
-
 | Field | Type | |
 |---|---|---|
 | `id` | number |  |
@@ -1798,6 +1804,50 @@ DiagnosticSight: a spell the server refused for line of sight (sight_refused), w
 | `target?` | [number, number, number] |  |
 | `predicted?` | bool |  |
 
+### Transport
+
+TaxiNode is a flight point (TaxiNodes.dbc). Transport is a boat or zeppelin: where it is now, and where and when it docks.
+
+| Field | Type | |
+|---|---|---|
+| `guid` | GUID |  |
+| `entry` | number |  |
+| `name` | string |  |
+| `map` | number |  |
+| `x` | number |  |
+| `y` | number |  |
+| `z` | number |  |
+| `o` | number |  |
+| `moving` | bool |  |
+| `docked?` | TransportStop | the stop it's at, while it waits there |
+| `stops` | TransportStop[] | where it docks, in the order it goes round |
+| `period_s` | number | seconds for the whole round |
+| `aboard` | bool | you're on it |
+
+### TransportStop
+
+TransportStop is a dock on a transport's route.
+
+| Field | Type | |
+|---|---|---|
+| `map` | number |  |
+| `x` | number | where the transport stops: its centre, in the water beside the pier |
+| `y` | number |  |
+| `z` | number |  |
+| `arrives_in_s` | number | seconds until it next arrives (0 while it's there) |
+| `departs_in_s` | number | seconds until it next leaves |
+
+### Boarding
+
+Boarding is where you stand on a transport: its guid and your spot on it, in its axes.
+
+| Field | Type | |
+|---|---|---|
+| `transport` | GUID |  |
+| `x` | number |  |
+| `y` | number |  |
+| `z` | number |  |
+
 ### Attacking
 
 | Field | Type | |
@@ -2397,6 +2447,8 @@ The `data` of an ok result, per op.
 | `trade.start` | Trade |
 | `trainer.learn` | Learned |
 | `trainer.list` | Trainer |
+| `transports.board` | Boarding |
+| `transports.leave` | Position |
 | `vendor.buy` | ItemReceived |
 | `vendor.items` |  |
 | `vendor.repair` | Repaired |

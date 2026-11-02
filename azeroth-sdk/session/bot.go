@@ -64,6 +64,7 @@ type Bot struct {
 	areaTriggers     []areaTrigger // AreaTrigger.dbc, loaded at startup
 	portalMu         sync.Mutex
 	portals          map[uint32]navigation.Point3D // trigger id -> where to walk into it (portalApproach)
+	trs              *transportsState              // boats and zeppelins seen (transports.go)
 	status           BotStatus
 	err              error
 	mu               sync.Mutex

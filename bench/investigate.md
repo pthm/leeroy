@@ -31,9 +31,7 @@ graveyards it cuts off are Outland's Twisting Nether corpse catchers and three f
 
 ## SDK
 
-- **No boats or zeppelins.** The SDK drops ONTRANSPORT whenever the character moves (`client/selfmove.go`), so it
-  can't ride one; the docs say so. Haiku and Sonnet worked that out at the Stormwind dock (The Bravery to Auberdine
-  is the intended route to Darnassus) and quit. Needs: boarding, riding along the transport's path, getting off.
+(nothing open)
 
 ## azworld
 

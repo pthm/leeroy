@@ -167,4 +167,12 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   `move.to` is refused with the reason (`in_flight`, `feared`...), `me.movement()` says who moves you, and
   `movement_changed`, `flight_start` and `flight_end` events mark the changes.
 - Teleports are `teleported` events (`far = true`: a different map, and the world around you reloads). Portals are
-  objects (`type = "portal"`): `objects.use(portal)`. Boats and zeppelins aren't supported.
+  objects (`type = "portal"`): `objects.use(portal)`.
+- Boats and zeppelins (`transports.list()`) go round fixed routes on a timetable, waiting a minute or so at each dock;
+  some cross to another continent on the way (a far teleport for everyone aboard). The server shows you every
+  transport on your map when you arrive on it, and the SDK computes where each is from then on, on any map: its
+  position, whether it's docked, and when it next arrives at and leaves each stop. A stop's position is the
+  transport's centre, in the water beside the pier. `transports.board(guid)` steps onto a docked transport from beside
+  it (within 35 yards of where its crew stand); aboard, it carries you and `me.position()` follows it. Walking or
+  jumping on deck isn't modelled: move only to leave. `transports.leave()` steps straight off onto the nearest walkable
+  floor within 35 yards (the pier, at a dock); leaving between docks drops you in the sea.

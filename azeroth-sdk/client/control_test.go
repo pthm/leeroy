@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"encoding/binary"
+	"math"
 	"testing"
 	"time"
 )
@@ -50,5 +51,16 @@ func TestMovementLockDead(t *testing.T) {
 	w.rooted = true
 	if got := w.MovementLock(); got != "rooted" {
 		t.Fatalf("alive and rooted: %q", got)
+	}
+}
+
+// Aboard a transport, our position is the transport's pose with our spot on it turned by its orientation.
+func TestPositionFollowsTransport(t *testing.T) {
+	w := NewWorldClient("u", nil, func(string, ...interface{}) {})
+	w.transport = selfTransport{guid: 9, pos: [4]float32{10, 0, 6, 0}}
+	w.TransportPose = func(g uint64) (x, y, z, o float32, ok bool) { return 100, 200, 0, math.Pi / 2, g == 9 }
+	x, y, z, _, _ := w.Position()
+	if math.Abs(float64(x-100)) > 0.01 || math.Abs(float64(y-210)) > 0.01 || z != 6 {
+		t.Fatalf("aboard: %v %v %v, want 100 210 6", x, y, z)
 	}
 }

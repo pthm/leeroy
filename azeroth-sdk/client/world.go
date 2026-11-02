@@ -501,6 +501,13 @@ type WorldObject struct {
 	MoveDuration           time.Duration
 	StartX, StartY, StartZ float32
 
+	// A boat or zeppelin (UPDATEFLAG_TRANSPORT): its path progress (ms, the server's clock along its path) when seen
+	PathProgress   uint32
+	PathProgressAt time.Time
+	// A passenger (a ship's crew): the transport it's on and where it stands on it, in the transport's axes
+	OnTransport  uint64
+	TransportPos [4]float32
+
 	// Derived convenience fields
 	Name     string
 	IsPlayer bool
@@ -560,6 +567,11 @@ func (o *WorldObject) Clone() *WorldObject {
 		StartZ:        o.StartZ,
 		Name:          o.Name,
 		IsPlayer:      o.IsPlayer,
+
+		PathProgress:   o.PathProgress,
+		PathProgressAt: o.PathProgressAt,
+		OnTransport:    o.OnTransport,
+		TransportPos:   o.TransportPos,
 	}
 
 	// Copy aura snapshot (under read lock).
@@ -1037,15 +1049,17 @@ type WorldClient struct {
 	selfCombatLogOnce   bool // one Info combat-start per combat episode
 	OnCharList          func(chars []CharEnumEntry)
 	OnCharCreateResult  func(data []byte)
-	OnChatMessage       func(senderName, message string, msgType uint8)
-	OnLevelUp           func(newLevel uint32)
-	OnDeath             func()
-	OnKill              func(victimGUID uint64)
-	OnObjectUpdate      func(guid uint64, obj *WorldObject)
-	OnObjectRemove      func(guid uint64)
-	OnLootOpened        func(lootGUID uint64, items []LootItem)
-	OnCombatStart       func(attackerGUID, victimGUID uint64)
-	OnCombatStop        func()
+	// TransportPose: where a transport is now (the session computes it from its path), for our position while aboard
+	TransportPose  func(guid uint64) (x, y, z, o float32, ok bool)
+	OnChatMessage  func(senderName, message string, msgType uint8)
+	OnLevelUp      func(newLevel uint32)
+	OnDeath        func()
+	OnKill         func(victimGUID uint64)
+	OnObjectUpdate func(guid uint64, obj *WorldObject)
+	OnObjectRemove func(guid uint64)
+	OnLootOpened   func(lootGUID uint64, items []LootItem)
+	OnCombatStart  func(attackerGUID, victimGUID uint64)
+	OnCombatStop   func()
 	// OnInvalidTarget is fired only for terminal rejects (dead / cant-attack).
 	// Prefer OnAttackReject for full taxonomy (transient vs terminal).
 	OnInvalidTarget func(victimGUID uint64)
@@ -3218,6 +3232,13 @@ func (w *WorldClient) Position() (x, y, z, o float32, mapID uint32) {
 			w.spline.clear()
 		}
 	}
+	if w.transport.guid != 0 && w.TransportPose != nil { // aboard: where the transport has taken us
+		if x, y, z, o, ok := w.TransportPose(w.transport.guid); ok {
+			p := w.transport.pos
+			s, c := math.Sincos(float64(o))
+			w.setPositionLocked(x+p[0]*float32(c)-p[1]*float32(s), y+p[1]*float32(c)+p[0]*float32(s), z+p[2], o+p[3])
+		}
+	}
 	return w.posX, w.posY, w.posZ, w.orientation, w.mapID
 }
 
@@ -4549,6 +4570,9 @@ func (w *WorldClient) readMovementUpdate(r *bytes.Reader, obj *WorldObject) {
 	if updateFlags&0x20 != 0 {
 		mi, _ := readMovementInfo(r)
 		obj.PosX, obj.PosY, obj.PosZ, obj.Orientation = mi.pos[0], mi.pos[1], mi.pos[2], mi.pos[3]
+		if mi.flags&moveFlagOnTransport != 0 {
+			obj.OnTransport, obj.TransportPos = mi.transGUID, mi.transPos
+		}
 		obj.LastPosUpdate = time.Now()
 		obj.LastSeen = time.Now()
 
@@ -4621,6 +4645,9 @@ func (w *WorldClient) readMovementUpdate(r *bytes.Reader, obj *WorldObject) {
 	if updateFlags&0x0002 != 0 {
 		var transportTime uint32
 		binary.Read(r, binary.LittleEndian, &transportTime)
+		if obj != nil {
+			obj.PathProgress, obj.PathProgressAt = transportTime, time.Now()
+		}
 	}
 
 	// UPDATEFLAG_VEHICLE (0x0080)

@@ -499,3 +499,43 @@ func (w *WorldClient) dispatchMoves(data []byte) {
 		data = data[1+n:]
 	}
 }
+
+// Transport is the transport the server has us on (0 if none) and where we stand on it, in its axes.
+func (w *WorldClient) Transport() (guid uint64, local [4]float32) {
+	w.moveMu.Lock()
+	defer w.moveMu.Unlock()
+	return w.transport.guid, w.transport.pos
+}
+
+// WalkStraight walks from where we are to p in a straight line at run speed with nothing under us checked (a
+// gangway, a deck: no navmesh), as the client does with the key held: it turns to p, starts forward, and stops there
+// after the time the walk takes. Starting off steps off a transport we're on; onto != 0 stops us standing on that
+// transport at local (its axes), with ONTRANSPORT from then on, so the server makes us its passenger.
+func (w *WorldClient) WalkStraight(p [3]float32, onto uint64, local [4]float32) error {
+	w.moveMu.Lock()
+	if w.serverDriven() || w.rooted || w.fall != nil {
+		w.moveMu.Unlock()
+		return errors.New("can't walk now: the server is moving us, we're rooted or in the air")
+	}
+	x, y := w.posX, w.posY
+	o := float32(math.Atan2(float64(p[1]-y), float64(p[0]-x)))
+	d := math.Hypot(float64(p[0]-x), float64(p[1]-y))
+	speed := float64(w.speeds[moveRun])
+	if speed <= 0 {
+		speed = 7
+	}
+	w.orientation = o
+	err := w.sendMovementLockedAt(MsgMoveStartForward, MoveFlagForward, getMSTime())
+	w.moveMu.Unlock()
+	if err != nil {
+		return err
+	}
+	time.Sleep(time.Duration(d / speed * float64(time.Second)))
+	w.moveMu.Lock()
+	defer w.moveMu.Unlock()
+	w.setPositionLocked(p[0], p[1], p[2], o)
+	if onto != 0 {
+		w.transport = selfTransport{guid: onto, pos: local, seat: -1}
+	}
+	return w.sendMovementLockedAt(MsgMoveStop, 0, getMSTime())
+}

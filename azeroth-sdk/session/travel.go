@@ -383,7 +383,7 @@ func (b *Bot) setupTravel() {
 			return nil
 		}, nil)
 	})
-	e.Func("me.movement", "() → Movement", "who's moving you: free, or the server (in_flight, teleporting, feared, confused, charmed: move.to is refused), or stunned / rooted; with where the server is taking you",
+	e.Func("me.movement", "() → Movement", "who's moving you: free, or the server (in_flight, teleporting, feared, confused, charmed: move.to is refused), or dead (a corpse) / stunned / rooted; with where the server is taking you",
 		func() types.Movement {
 			mv := types.Movement{State: w.MovementLock()}
 			if b.moves != nil {
