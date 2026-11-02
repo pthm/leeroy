@@ -37,6 +37,7 @@ type player struct {
 	session   *exec.Cmd
 	agent     *exec.Cmd
 	agentEnd  time.Time     // when its agent must stop: the run's clock
+	continues int           // times its agent was told to carry on after stopping early (exited)
 	result    []byte        // the judge's final line
 	agentDone chan struct{} // closed after transcript drain, usage snapshot and exit diagnostics
 	agentStop *time.Timer   // stops the agent at agentEnd
@@ -440,7 +441,10 @@ func stampLinesObserved(r io.Reader, w io.WriteCloser, observe func(map[string]a
 }
 
 // exited: an agent that stops with 2+ minutes left is reported (alerts.log), with the runtime's last error (a
-// Codex usage limit, say). Nothing else would notice: the judge keeps scoring an idle character.
+// Codex usage limit, say). Without an error, its conversation is resumed with a short message (the minutes left;
+// carry on, or give up), up to maxContinues times: Codex ends its job when it ends a reply ("the automation is
+// running"), and a script left alone can't adapt, so the agent stays the one playing. Giving up (standings give-up)
+// ends the player, so it isn't resumed.
 func (p *player) exited(cmd *exec.Cmd) {
 	p.mu.Lock()
 	left, current, done := time.Until(p.agentEnd), p.agent == cmd, p.state == types.JudgeDone
@@ -482,8 +486,40 @@ func (p *player) exited(cmd *exec.Cmd) {
 	if why != "" {
 		msg += ": " + why
 	}
-	p.r.alert(p, msg)
+	p.mu.Lock()
+	n := p.continues
+	resume := why == "" && n < maxContinues
+	if resume {
+		p.continues++
+	}
+	end := p.agentEnd
+	p.mu.Unlock()
+	conv := p.conversation()
+	if !resume || conv == "" {
+		p.r.alert(p, msg)
+		return
+	}
+	p.r.alert(p, fmt.Sprintf("%s: told to carry on (%d of %d)", msg, n+1, maxContinues))
+	go func() { // not in the old agent's goroutine: whatever waits for it to finish needn't wait for this
+		time.Sleep(5 * time.Second)
+		p.mu.Lock()
+		done := p.state == types.JudgeDone
+		p.mu.Unlock()
+		if done || p.r.ctx.Err() != nil {
+			return
+		}
+		if err := p.startAgent(replaceLeft(continueText, time.Until(end)), conv, end); err != nil {
+			p.r.alert(p, "carry on: "+err.Error())
+		}
+	}()
 }
+
+// maxContinues: how many times an agent that stops early is told to carry on (exited)
+const maxContinues = 5
+
+// continueText resumes an agent that stopped early ($LEFT: minutes left).
+const continueText = `The run isn't over: $LEFT minutes are left. Your character and session are where you left them. Carry on;
+if you've concluded you can't get further, standings give-up "<why>" ends your run.`
 
 // meta writes meta.json: who plays this character, for the report, the board and the viewer. The model is what
 // the runtime reports once it starts (Claude: its init event; Codex: its session file; opencode: as configured).

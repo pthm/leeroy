@@ -40,6 +40,11 @@ commands below run from the repo root; server and client setup is in the [repo R
 
 `run`, `matrix` and `resume` rebuild `bin/` first (`--no-build` skips it).
 
+An agent that stops before the clock with no error and without giving up (`standings give-up`) is told to carry on:
+its conversation resumes with the minutes left and the choice of giving up, up to 5 times a run (each is in
+`alerts.log`). Codex ends its job when it ends a reply, and a script left running alone can't adapt; this keeps every
+runtime's agent the one playing. An agent that stopped on an error (a usage limit) is only reported.
+
 ## A run
 
 ```sh
