@@ -1,7 +1,7 @@
 ---
 // Time to the goal, one bar per player, fastest first; players who didn't make it are listed after. Claude Code in
 // amber, Codex in blue.
-import { duration, modelName, type Run } from '../lib/results';
+import { duration, harnessColor, modelName, type Run } from '../lib/results';
 
 interface Props {
   run: Run;
@@ -11,7 +11,7 @@ const ps = Astro.props.run.players.toSorted(
   (a, b) => Number(b.met) - Number(a.met) || (a.time_to_goal_s ?? Infinity) - (b.time_to_goal_s ?? Infinity),
 );
 const max = Math.max(...ps.map(p => (p.met ? p.time_to_goal_s ?? 0 : 0)), 1);
-const color = (runtime: string) => (runtime === 'claude' ? 'bg-accent' : 'bg-info');
+const color = (runtime: string) => harnessColor(runtime).bg;
 ---
 
 <figure class="rounded border border-hairline bg-raised p-4" data-chart>

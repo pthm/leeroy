@@ -1,6 +1,6 @@
 ---
 // A task's models, best first: goals met, mean time to the goal, best time, mean cost and output tokens per attempt.
-import { dollars, duration, harnessName, leaderboard, modelName, thousands } from '../lib/results';
+import { dollars, duration, harnessName, isProgress, leaderboard, modelName, rate, thousands } from '../lib/results';
 
 interface Props {
   task: string;
@@ -9,6 +9,7 @@ interface Props {
 
 const { task, compact = false } = Astro.props;
 const rows = leaderboard(task);
+const progress = isProgress(task);
 ---
 
 <div class="overflow-x-auto rounded border border-hairline bg-raised">
@@ -18,9 +19,10 @@ const rows = leaderboard(task);
         <th class="num">#</th>
         <th>Model</th>
         <th>Harness</th>
-        <th class="num">Met</th>
-        <th class="num">Mean time</th>
+        {progress ? <th class="num">Attempts</th> : <th class="num">Met</th>}
+        <th class="num">{progress ? 'Mean' : 'Mean time'}</th>
         <th class="num">Best</th>
+        {progress && <th class="num">Levels</th>}
         <th class="num">Cost / run</th>
         {!compact && <th class="num">Output tokens</th>}
       </tr>
@@ -31,11 +33,14 @@ const rows = leaderboard(task);
           <td class="num text-faint">{i + 1}</td>
           <td class="font-medium text-fg">{modelName(r.model)}</td>
           <td class="text-muted">{harnessName(r.runtime)}</td>
-          <td class:list={['num', r.met === r.attempts ? 'text-success' : 'text-warning']}>
-            {r.met}/{r.attempts}
-          </td>
-          <td class="num text-fg">{duration(r.meanTime)}</td>
-          <td class="num text-muted">{duration(r.bestTime)}</td>
+          {progress ? (
+            <td class="num text-muted">{r.attempts}</td>
+          ) : (
+            <td class:list={['num', r.met === r.attempts ? 'text-success' : 'text-warning']}>{r.met}/{r.attempts}</td>
+          )}
+          <td class="num text-fg">{progress ? rate(r.meanRate) : duration(r.meanTime)}</td>
+          <td class="num text-muted">{progress ? rate(r.bestRate) : duration(r.bestTime)}</td>
+          {progress && <td class="num text-muted">{r.meanLevels?.toFixed(1) ?? '–'}</td>}
           <td class="num text-muted">{dollars(r.meanCost)}</td>
           {!compact && <td class="num text-muted">{thousands(r.meanOutputTokens)}</td>}
         </tr>

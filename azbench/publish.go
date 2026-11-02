@@ -28,9 +28,9 @@ func publish(root, runDir, task, out string) (string, error) {
 		return "", err
 	}
 	s, err := b.LoadScenario(filepath.Join(runDir, "scenario.yaml"))
-	if err != nil { // older runs didn't keep a copy
+	if err != nil { // older runs didn't keep a copy: the scenario of that name, else what the run's own files say
 		if s, err = b.LoadScenario(filepath.Join(root, "bench/scenarios", name+".yaml")); err != nil {
-			return "", err
+			s = &config.Scenario{Name: name}
 		}
 	}
 	var report struct {
@@ -52,6 +52,18 @@ func publish(root, runDir, task, out string) (string, error) {
 	agents := map[string]config.Agent{}
 	for _, a := range s.Agents {
 		agents[a.Char] = a
+	}
+	for _, r := range report.Agents { // agents the scenario doesn't list (no scenario kept): from the report
+		if c := fmt.Sprint(r["char"]); agents[c].Name == "" {
+			agents[c] = config.Agent{Name: fmt.Sprint(r["agent"]), Char: c}
+		}
+	}
+	if s.Goal == "" {
+		for _, a := range team.Agents {
+			if g, ok := a["goal"].(string); ok && g != "" {
+				s.Goal = g
+			}
+		}
 	}
 	pick := func(m map[string]any, keys ...string) map[string]any {
 		o := map[string]any{}
@@ -82,12 +94,24 @@ func publish(root, runDir, task, out string) (string, error) {
 		if _, ok := p["time_to_goal_s"]; !ok && p["met"] == true { // older judges: the clock stopped at the goal
 			p["time_to_goal_s"] = judged[char]["elapsed_s"]
 		}
-		if a.Name != "" {
-			var meta struct{ Spec, Role string }
-			if readJSON(filepath.Join(runDir, a.Name, "meta.json"), &meta) == nil {
-				p["spec_name"], p["role"] = meta.Spec, meta.Role
+		if judged[char] == nil { // the judge's final word never written (a paused or stopped run): its last score
+			if sc, ok := r["score"].(map[string]any); ok {
+				p["value"], p["score"] = sc["value"], sc["score"]
+				if t, ok := sc["time_to_goal_s"].(float64); ok {
+					p["met"], p["time_to_goal_s"] = true, t
+				}
 			}
-			p["series"], p["deaths_at"] = series(filepath.Join(runDir, a.Name, "samples.jsonl"))
+		}
+		if a.Name != "" {
+			adir := agentDir(runDir, id, a.Name)
+			var meta struct{ Spec, Role string }
+			if readJSON(filepath.Join(adir, "meta.json"), &meta) == nil {
+				p["spec_name"], p["role"] = meta.Spec, meta.Role
+				if a.Class == "" { // "Warrior - Protection"
+					p["class"] = strings.ToLower(strings.TrimSpace(strings.Split(meta.Spec, " - ")[0]))
+				}
+			}
+			p["series"], p["deaths_at"] = series(filepath.Join(adir, "samples.jsonl"))
 			if rec, err := readRecording(filepath.Join(runDir, a.Name+".record.jsonl"), char, started.UnixMilli(), chat); err == nil {
 				recs, recOf[char] = append(recs, rec), rec
 			}
@@ -117,6 +141,13 @@ func publish(root, runDir, task, out string) (string, error) {
 	}
 	if task == "" {
 		task = name
+	}
+	if s.Minutes == 0 { // no scenario: the longest anyone played
+		for _, p := range players {
+			if h, ok := p["hours"].(float64); ok {
+				s.Minutes = max(s.Minutes, int(math.Round(h*60)))
+			}
+		}
 	}
 	doc := map[string]any{
 		"id": id, "task": task, "scenario": name, "description": strings.TrimSpace(s.Description), "goal": s.Goal,
@@ -191,6 +222,23 @@ func series(f string) ([][6]float64, []float64) {
 		out = append(out, all[len(all)-1])
 	}
 	return out, deaths
+}
+
+// agentDir: an agent's files, inside the run (<run>/<agent>), or for the first team runs beside it
+// (<time>-<agent>, started seconds after the run's own <time>-team): the first such after the run's time.
+func agentDir(runDir, id, name string) string {
+	in := filepath.Join(runDir, name)
+	if _, err := os.Stat(in); err == nil {
+		return in
+	}
+	ms, _ := filepath.Glob(filepath.Join(filepath.Dir(filepath.Clean(runDir)), id[:9]+"*-"+name))
+	sort.Strings(ms)
+	for _, m := range ms {
+		if filepath.Base(m) >= id[:15] {
+			return m
+		}
+	}
+	return in
 }
 
 func readJSON(f string, v any) error {

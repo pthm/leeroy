@@ -3,7 +3,7 @@ import { Icon } from 'astro-icon/components';
 import Section from '../../components/Section.astro';
 import SectionHeader from '../../components/SectionHeader.astro';
 import Layout from '../../layouts/Layout.astro';
-import { TASKS, leaderboard, modelName, runsOf, taskTitle, tasks, duration } from '../../lib/results';
+import { TASKS, duration, isProgress, leaderboard, modelName, rate, runsOf, taskTitle, tasks } from '../../lib/results';
 import { url } from '../../lib/url';
 ---
 
@@ -31,7 +31,7 @@ import { url } from '../../lib/url';
                     <span class="text-faint">{i + 1}.</span> {modelName(r.model)}
                   </span>
                   <span class="text-muted">
-                    {r.met}/{r.attempts} · {duration(r.meanTime)}
+                    {isProgress(task) ? rate(r.meanRate) : `${r.met}/${r.attempts} · ${duration(r.meanTime)}`}
                   </span>
                 </li>
               ))}

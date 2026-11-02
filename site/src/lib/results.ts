@@ -67,6 +67,33 @@ export const TASKS: Record<string, { title: string; summary: string; scoring: st
     scoring: 'Arrived or not, then time to arrive. Cost is what the run spent at list prices.',
     order: 1,
   },
+  hogger: {
+    title: 'Hogger, as a trio',
+    summary:
+      'Three new level-5 characters in Goldshire, a Protection Paladin, a Holy Priest and a Frost Mage, with one goal: the quest "Wanted: Hogger", an elite gnoll several levels above them.',
+    scoring: 'Met or not (the quest completed), then time to it.',
+    order: 3,
+  },
+  'levelling-party': {
+    title: 'Levelling from level 1',
+    summary:
+      'New level-1 characters in Northshire, one of each class (a tank, a healer, three damage dealers), free to group or not, progressing as far as they can on a fixed clock.',
+    scoring: 'XP earned per hour of the clock. Class matters as much as the model, so compare like with like.',
+    order: 4,
+  },
+  'frost-mages': {
+    title: 'Frost Mages, ten models',
+    summary:
+      'Ten new level-1 Frost Mages in Northshire, one per model, all on the same open-source harness (opencode, through OpenRouter), levelling for an hour.',
+    scoring: 'XP earned per hour. Same class, harness, start and clock: the model is the only difference.',
+    order: 5,
+  },
+  hardcore: {
+    title: 'Hardcore levelling',
+    summary: 'A new level-1 Human Arms warrior in Northshire, four hours on the clock, and the first death ends the run.',
+    scoring: 'XP earned over the whole clock, so an early death costs everything after it.',
+    order: 6,
+  },
   deadmines: {
     title: 'The Deadmines from level 1',
     summary:
@@ -87,16 +114,36 @@ export const tasks = () =>
   [...new Set(runs.map(r => r.task))].sort((a, b) => (TASKS[a]?.order ?? 99) - (TASKS[b]?.order ?? 99));
 export const taskTitle = (task: string) => TASKS[task]?.title ?? task;
 
+// A progress task (goal score:...) ranks by XP per hour; the others by goals met, then time to them.
+export const isProgress = (task: string) => runsOf(task)[0]?.goal.startsWith('score:') ?? false;
+
+// XP earned per hour of play, from the judge's samples
+export function xpRate(p: Player): number | undefined {
+  const s = p.series;
+  if (!s || s.length < 2 || s.at(-1)![0] <= 0) return undefined;
+  return (s.at(-1)![2] - s[0][2]) / (s.at(-1)![0] / 3600);
+}
+export const levelsGained = (p: Player) => (p.series?.length ? p.series.at(-1)![1] - p.series[0][1] : undefined);
+export const rate = (v?: number) => (v == null ? '–' : `${Math.round(v).toLocaleString('en')} XP/h`);
+
 // claude-sonnet-5-5 -> Sonnet 5.5, gpt-6.1-terra -> GPT-6.1 Terra
 export function modelName(model: string): string {
+  model = model.replace(/^openrouter\//, '').replace(/^(anthropic|openai|google|deepseek|moonshotai|x-ai)\//, '');
+  const dotted = model.match(/^claude-([a-z]+)-(\d+)\.(\d+)/); // claude-sonnet-5.5 (OpenRouter's spelling)
+  if (dotted) return `${dotted[1][0].toUpperCase()}${dotted[1].slice(1)} ${dotted[2]}.${dotted[3]}`;
   const claude = model.match(/^claude-([a-z]+)-(\d+)-(\d+)/);
   if (claude) return `${claude[1][0].toUpperCase()}${claude[1].slice(1)} ${claude[2]}.${claude[3]}`;
   const gpt = model.match(/^gpt-([\d.]+)-?(.*)$/);
   if (gpt) return `GPT-${gpt[1]}${gpt[2] ? ' ' + gpt[2][0].toUpperCase() + gpt[2].slice(1) : ''}`;
-  return model;
+  // gemini-4-argon -> Gemini 4 Argon, deepseek-v4-pro -> DeepSeek V4 Pro
+  return model
+    .split('-')
+    .map(w => (w === 'deepseek' ? 'DeepSeek' : /^v\d/.test(w) ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1)))
+    .join(' ');
 }
 
 export const harnessName = (runtime: string) =>
+  // ponytail: opencode runs name their provider in the model id
   ({ claude: 'Claude Code', codex: 'Codex CLI', opencode: 'opencode' })[runtime] ?? runtime;
 
 export interface ModelRow {
@@ -108,6 +155,9 @@ export interface ModelRow {
   bestTime?: number;
   meanCost?: number;
   meanOutputTokens?: number;
+  meanRate?: number; // XP per hour (progress tasks)
+  bestRate?: number;
+  meanLevels?: number;
 }
 
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : undefined);
@@ -128,9 +178,16 @@ export function leaderboard(task: string): ModelRow[] {
         bestTime: times.length ? Math.min(...times) : undefined,
         meanCost: mean(ps.flatMap(p => (p.cost_usd != null ? [p.cost_usd] : []))),
         meanOutputTokens: mean(ps.flatMap(p => (p.tokens ? [p.tokens.output] : []))),
+        meanRate: mean(ps.flatMap(p => (xpRate(p) != null ? [xpRate(p)!] : []))),
+        bestRate: Math.max(...ps.map(p => xpRate(p) ?? 0)),
+        meanLevels: mean(ps.flatMap(p => (levelsGained(p) != null ? [levelsGained(p)!] : []))),
       };
     })
-    .sort((a, b) => b.met / b.attempts - a.met / a.attempts || (a.meanTime ?? Infinity) - (b.meanTime ?? Infinity));
+    .sort(
+      isProgress(task)
+        ? (a, b) => (b.meanRate ?? 0) - (a.meanRate ?? 0)
+        : (a, b) => b.met / b.attempts - a.met / a.attempts || (a.meanTime ?? Infinity) - (b.meanTime ?? Infinity),
+    );
 }
 
 export function duration(s?: number): string {
@@ -229,3 +286,17 @@ export function instanceTime(run: Run): [number, number][] {
   }
   return out;
 }
+
+// A player's outcome in a word: met / not met; a progress task has no goal to meet, so played, died or gave up.
+export function outcome(p: Player, progress: boolean): { text: string; good: boolean } {
+  if (p.died) return { text: 'died', good: false };
+  if (p.gave_up) return { text: 'gave up', good: false };
+  if (progress) return { text: 'played', good: true };
+  return p.met ? { text: 'met', good: true } : { text: 'not met', good: false };
+}
+
+// A harness's colour, as a background and a text class: Claude Code amber, Codex blue, opencode green.
+export const harnessColor = (runtime: string) =>
+  ({ claude: { bg: 'bg-accent', text: 'text-accent', fill: 'var(--color-accent)' }, codex: { bg: 'bg-info', text: 'text-info', fill: 'var(--color-info)' } })[
+    runtime
+  ] ?? { bg: 'bg-success', text: 'text-success', fill: 'var(--color-success)' };

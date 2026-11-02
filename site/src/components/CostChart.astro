@@ -1,32 +1,35 @@
 ---
 // Mean time to the goal against mean cost per run, one dot per model: lower left is better. Drawn at build time.
-import { dollars, duration, leaderboard, modelName } from '../lib/results';
+import { dollars, duration, harnessColor, harnessName, isProgress, leaderboard, modelName, rate } from '../lib/results';
 
 interface Props {
   task: string;
 }
 
-const rows = leaderboard(Astro.props.task).filter(r => r.meanTime != null && r.meanCost != null);
+const progress = isProgress(Astro.props.task);
+// time tasks: mean minutes to the goal (lower is better); progress tasks: mean XP per hour (higher is better)
+const yOf = (r: ReturnType<typeof leaderboard>[number]) => (progress ? r.meanRate : r.meanTime != null ? r.meanTime / 60 : undefined);
+const rows = leaderboard(Astro.props.task).filter(r => yOf(r) != null && r.meanCost != null);
 const W = 720, H = 360, L = 64, R = 24, T = 20, B = 48;
 const maxX = Math.max(...rows.map(r => r.meanCost!)) * 1.15;
-const maxY = Math.max(...rows.map(r => r.meanTime! / 60)) * 1.15;
+const maxY = Math.max(...rows.map(r => yOf(r)!)) * 1.15;
 const x = (v: number) => L + (v / maxX) * (W - L - R);
 const y = (v: number) => H - B - (v / maxY) * (H - T - B);
 const ticks = (max: number) => {
-  const step = [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100].find(s => max / s <= 6) ?? 100;
+  const step = [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000].find(s => max / s <= 6) ?? 20000;
   return Array.from({ length: Math.floor(max / step) + 1 }, (_, i) => +(i * step).toFixed(2));
 };
-const points = rows.map(r => ({ name: modelName(r.model), cx: x(r.meanCost ?? 0), cy: y((r.meanTime ?? 0) / 60), model: r.model, time: duration(r.meanTime), cost: dollars(r.meanCost) }));
-const vendor = (model: string) => (model.startsWith('claude') ? 'var(--color-accent)' : 'var(--color-info)');
+const points = rows.map(r => ({ name: modelName(r.model), cx: x(r.meanCost ?? 0), cy: y(yOf(r)!), model: r.model, runtime: r.runtime, time: progress ? rate(r.meanRate) : duration(r.meanTime), cost: dollars(r.meanCost) }));
+const harnesses = [...new Set(rows.map(r => r.runtime))];
 ---
 
 {rows.length > 1 && (
   <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-    <svg viewBox={`0 0 ${W} ${H}`} class="w-full" role="img" aria-label="Mean time to the goal against mean cost per run, by model">
+    <svg viewBox={`0 0 ${W} ${H}`} class="w-full" role="img" aria-label="Each model's result against its mean cost per run">
       {ticks(maxY).map(v => (
         <g>
           <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="var(--color-hairline)" />
-          <text x={L - 8} y={y(v) + 4} text-anchor="end" class="fill-faint font-mono text-[11px]">{v}</text>
+          <text x={L - 8} y={y(v) + 4} text-anchor="end" class="fill-faint font-mono text-[11px]">{v >= 1000 ? `${v / 1000}k` : v}</text>
         </g>
       ))}
       {ticks(maxX).map(v => (
@@ -34,18 +37,18 @@ const vendor = (model: string) => (model.startsWith('claude') ? 'var(--color-acc
       ))}
       <text x={(L + W - R) / 2} y={H - 8} text-anchor="middle" class="fill-muted font-mono text-[11px]">mean cost per run (USD)</text>
       <text x={14} y={(T + H - B) / 2} text-anchor="middle" transform={`rotate(-90 14 ${(T + H - B) / 2})`} class="fill-muted font-mono text-[11px]">
-        mean minutes to the goal
+        {progress ? 'mean XP per hour' : 'mean minutes to the goal'}
       </text>
       {points.map(p => (
         <g data-key={p.model}>
           <title>{p.name}: {p.time}, {p.cost} a run</title>
-          <circle cx={p.cx} cy={p.cy} r="6" fill={vendor(p.model)} />
+          <circle cx={p.cx} cy={p.cy} r="6" fill={harnessColor(p.runtime).fill} />
           <text x={p.cx + 10} y={p.cy + 4} class="fill-fg font-mono text-[12px]">{p.name}</text>
         </g>
       ))}
     </svg>
     <figcaption class="mt-2 font-mono text-[11px] text-faint">
-      Lower left is better. <span class="text-accent">●</span> Claude Code · <span class="text-info">●</span> Codex CLI
+      {progress ? 'Upper left is better.' : 'Lower left is better.'} {harnesses.map(h => <span><span class={harnessColor(h).text}>●</span> {harnessName(h)} </span>)}
     </figcaption>
   </figure>
 )}

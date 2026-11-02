@@ -21,6 +21,11 @@ import {
   runDate,
   specLabel,
   TASKS,
+  isProgress,
+  levelsGained,
+  outcome,
+  rate,
+  xpRate,
   taskTitle,
   thousands,
   totals,
@@ -37,20 +42,29 @@ const notes = await getEntry('runs', run.id);
 const Story = notes ? (await render(notes)).Content : null;
 const t = totals(run);
 const levelled = run.players.some(p => p.series && p.series.at(-1)![1] - p.series[0][1] > 0.5);
-const outcome = (p: Run['players'][number]) => (p.met ? 'met' : p.gave_up ? 'gave up' : p.died ? 'died' : 'not met');
+const progress = isProgress(run.task);
 const title = notes?.data.title ?? `Run of ${runDate(run)}`;
 const lede = notes?.data.lede ?? TASKS[run.task]?.summary ?? run.description;
-const roster = run.players.toSorted(
-  (a, b) => Number(b.met) - Number(a.met) || (a.time_to_goal_s ?? Infinity) - (b.time_to_goal_s ?? Infinity),
+const roster = run.players.toSorted((a, b) =>
+  progress ? (xpRate(b) ?? 0) - (xpRate(a) ?? 0) : Number(b.met) - Number(a.met) || (a.time_to_goal_s ?? Infinity) - (b.time_to_goal_s ?? Infinity),
 );
 const color = colors(run);
 const hasChat = (run.chat_per_hour ?? []).some(h => Object.values(h).some(Boolean));
 const hasDeaths = run.players.some(p => p.death_list?.length);
 const clock = run.minutes >= 1440 ? `${run.minutes / 1440} days` : `${run.minutes} min`;
 
+const best = Math.max(...run.players.map(p => xpRate(p) ?? 0));
+const meanLevels = run.players.reduce((n, p) => n + (levelsGained(p) ?? 0), 0) / run.players.length;
 const tiles = [
-  { v: `${t.met}/${run.players.length}`, k: 'reached the goal' },
-  { v: t.last ? duration(t.last) : duration(t.first), k: t.last ? 'until the last arrived' : 'first to the goal' },
+  ...(progress
+    ? [
+        { v: rate(best), k: 'best' },
+        { v: meanLevels.toFixed(1), k: 'levels gained, mean' },
+      ]
+    : [
+        { v: `${t.met}/${run.players.length}`, k: 'reached the goal' },
+        { v: t.last ? duration(t.last) : duration(t.first), k: t.last ? 'until the last arrived' : t.first ? 'first to the goal' : 'nobody in time' },
+      ]),
   { v: String(t.deaths), k: 'deaths' },
   ...(levelled ? [{ v: String(t.quests), k: 'quests completed' }] : []),
   { v: dollars(t.cost), k: 'cost at list prices' },
@@ -100,7 +114,7 @@ const tiles = [
             <th>Class</th>
             <th>Model</th>
             <th>Outcome</th>
-            <th class="num">Time</th>
+            <th class="num">{progress ? 'XP/h' : 'Time'}</th>
             {levelled && <th class="num">Level</th>}
             <th class="num">Deaths</th>
             {levelled && <th class="num">Quests</th>}
@@ -114,8 +128,8 @@ const tiles = [
               <td class:list={['font-medium', color[p.char]]}>{p.char}</td>
               <td class="text-muted">{specLabel(p)}{p.role && <span class="text-faint"> · {p.role}</span>}</td>
               <td class="text-fg">{modelName(p.model)} <span class="text-faint">{harnessName(p.runtime)}</span></td>
-              <td class:list={[p.met ? 'text-success' : 'text-warning']} title={p.gave_up}>{outcome(p)}</td>
-              <td class="num">{p.met ? duration(p.time_to_goal_s) : '–'}</td>
+              <td class:list={[outcome(p, progress).good ? 'text-success' : 'text-warning']} title={p.gave_up}>{outcome(p, progress).text}</td>
+              <td class="num">{progress ? rate(xpRate(p)) : p.met ? duration(p.time_to_goal_s) : '–'}</td>
               {levelled && <td class="num text-muted">{p.series?.at(-1)?.[1].toFixed(1) ?? p.level ?? '–'}</td>}
               <td class="num text-muted">{p.deaths ?? '–'}</td>
               {levelled && <td class="num text-muted">{p.series?.at(-1)?.[4] ?? '–'}</td>}

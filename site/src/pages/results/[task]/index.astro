@@ -7,7 +7,7 @@ import Section from '../../../components/Section.astro';
 import SectionHeader from '../../../components/SectionHeader.astro';
 import Layout from '../../../layouts/Layout.astro';
 import { Icon } from 'astro-icon/components';
-import { TASKS, dollars, duration, harnessName, leaderboard, modelName, runDate, runsOf, taskTitle, tasks, totals, type MapBox } from '../../../lib/results';
+import { TASKS, dollars, duration, harnessName, isProgress, leaderboard, modelName, outcome, rate, runDate, runsOf, specLabel, taskTitle, tasks, totals, xpRate, type MapBox } from '../../../lib/results';
 import { url } from '../../../lib/url';
 
 export function getStaticPaths() {
@@ -34,11 +34,11 @@ const tiles = [
   { v: String(runs.length), k: runs.length === 1 ? 'run' : 'runs' },
   { v: String(new Set(all.map(p => p.model)).size), k: 'models' },
   { v: String(all.length), k: 'attempts' },
-  { v: `${Math.round((all.filter(p => p.met).length / all.length) * 100)}%`, k: 'reached the goal' },
+  isProgress(task)
+    ? { v: rate(all.reduce((n, p) => n + (xpRate(p) ?? 0), 0) / all.length), k: 'mean, all attempts' }
+    : { v: `${Math.round((all.filter(p => p.met).length / all.length) * 100)}%`, k: 'reached the goal' },
   { v: dollars(all.reduce((n, p) => n + (p.cost_usd ?? 0), 0)), k: 'spent, all runs' },
 ];
-const outcome = (p: (typeof runs)[number]['players'][number]) =>
-  p.met ? 'met' : p.gave_up ? 'gave up' : p.died ? 'died' : 'not met';
 ---
 
 <Layout title={taskTitle(task)} description={info?.summary}>
@@ -62,7 +62,11 @@ const outcome = (p: (typeof runs)[number]['players'][number]) =>
             <a href={url(`/results/${task}/${r.id}`)} class="group flex h-full flex-col justify-between gap-3 rounded border border-outline bg-raised p-4 transition-colors hover:border-accent">
               <span>
                 <span class="block font-mono text-sm text-fg">{runDate(r)}</span>
-                <span class="mt-1 block text-xs text-muted">{t.met}/{r.players.length} reached the goal · first in {duration(t.first)} · {dollars(t.cost)}</span>
+                <span class="mt-1 block text-xs text-muted">
+                  {isProgress(task)
+                    ? `${r.players.length} players · best ${rate(Math.max(...r.players.map(p => xpRate(p) ?? 0)))} · ${dollars(t.cost)}`
+                    : `${t.met}/${r.players.length} reached the goal · ${t.first ? `first in ${duration(t.first)}` : 'none in time'} · ${dollars(t.cost)}`}
+                </span>
               </span>
               <span class="inline-flex items-center gap-1.5 font-mono text-xs text-accent">
                 Open the run report <Icon name="lucide:arrow-right" class="size-3 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
@@ -117,7 +121,7 @@ const outcome = (p: (typeof runs)[number]['players'][number]) =>
                   <th>Harness</th>
                   <th>Class</th>
                   <th>Outcome</th>
-                  <th class="num">Time</th>
+                  <th class="num">{isProgress(task) ? 'XP/h' : 'Time'}</th>
                   <th class="num">Level</th>
                   <th class="num">Deaths</th>
                   <th class="num">Cost</th>
@@ -125,15 +129,15 @@ const outcome = (p: (typeof runs)[number]['players'][number]) =>
               </thead>
               <tbody>
                 {r.players
-                  .toSorted((a, b) => Number(b.met) - Number(a.met) || (a.time_to_goal_s ?? Infinity) - (b.time_to_goal_s ?? Infinity))
+                  .toSorted((a, b) => isProgress(task) ? (xpRate(b) ?? 0) - (xpRate(a) ?? 0) : Number(b.met) - Number(a.met) || (a.time_to_goal_s ?? Infinity) - (b.time_to_goal_s ?? Infinity))
                   .map(p => (
                     <tr>
                       <td class="text-fg">{p.char}</td>
                       <td class="text-fg">{modelName(p.model)}</td>
                       <td class="text-muted">{harnessName(p.runtime)}</td>
-                      <td class="text-muted capitalize">{p.spec ? `${p.spec} ` : ''}{p.class}</td>
-                      <td class:list={[p.met ? 'text-success' : 'text-warning']} title={p.gave_up}>{outcome(p)}</td>
-                      <td class="num">{p.met ? duration(p.time_to_goal_s) : '–'}</td>
+                      <td class="text-muted">{specLabel(p)}</td>
+                      <td class:list={[outcome(p, isProgress(task)).good ? 'text-success' : 'text-warning']} title={p.gave_up}>{outcome(p, isProgress(task)).text}</td>
+                      <td class="num">{isProgress(task) ? rate(xpRate(p)) : p.met ? duration(p.time_to_goal_s) : '–'}</td>
                       <td class="num text-muted">{p.level ?? '–'}</td>
                       <td class="num text-muted">{p.deaths ?? '–'}</td>
                       <td class="num text-muted">{dollars(p.cost_usd)}</td>
