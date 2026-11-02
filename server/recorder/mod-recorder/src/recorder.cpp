@@ -2,6 +2,8 @@
 //   pos     every RECORDER_INTERVAL_MS (default 1000) per online player: position, health, power, level, state
 //   chat, dmg, heal, cast, kill, death, pvp, release, resurrect, level, xp, money, quest, achievement, loot,
 //   zone, spell (learned), login, logout, group (party changes: grp, leader, members; grp 0 = left)
+//   transport  every second per motion transport (boats, zeppelins): id (guid counter), e (entry), n, m, x, y, z, o,
+//              pp (path progress, ms: the client computes its position from it), period (ms)
 // File: $RECORDER_FILE (default /azerothcore/env/dist/logs/recorder.jsonl, the host's server/azerothcore/env/dist/logs).
 // Units are {"id": entry (creature) or guid counter (player), "n": name, "pl": 1 if a player}.
 
@@ -10,12 +12,14 @@
 #include "DBCStructure.h"
 #include "Group.h"
 #include "Item.h"
+#include "MapMgr.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
 #include "QuestDef.h"
 #include "ScriptMgr.h"
 #include "Spell.h"
 #include "SpellInfo.h"
+#include "Transport.h"
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
@@ -267,8 +271,42 @@ private:
     }
 };
 
+// Transports aren't players' events: a sample of every moving one a second, from the world thread after the maps
+// have updated (OnWorldUpdate runs after sMapMgr->Update).
+class RecorderWorldScript : public WorldScript
+{
+public:
+    RecorderWorldScript() : WorldScript("RecorderWorldScript", { WORLDHOOK_ON_UPDATE }) { }
+
+    void OnUpdate(uint32 diff) override
+    {
+        if ((since += diff) < 1000)
+            return;
+        since = 0;
+        sMapMgr->DoForAllMaps([](Map* map)
+        {
+            for (Transport* t : map->GetAllTransports())
+            {
+                MotionTransport* mt = t->ToMotionTransport();
+                if (!mt)
+                    continue; // elevators: they stay where they are
+                std::ostringstream o;
+                o << "\"id\":" << mt->GetGUID().GetCounter() << ",\"e\":" << mt->GetEntry() << ",\"n\":\"" << esc(mt->GetName())
+                  << "\",\"m\":" << map->GetId() << ",\"x\":" << mt->GetPositionX() << ",\"y\":" << mt->GetPositionY()
+                  << ",\"z\":" << mt->GetPositionZ() << ",\"o\":" << mt->GetOrientation() << ",\"pp\":" << mt->GetPathProgress()
+                  << ",\"period\":" << mt->GetPeriod();
+                write("transport", nullptr, o.str());
+            }
+        });
+    }
+
+private:
+    uint32 since = 0;
+};
+
 void Addmod_recorderScripts()
 {
+    new RecorderWorldScript();
     new RecorderPlayerScript();
     new RecorderUnitScript();
     new RecorderGroupScript();
