@@ -13,8 +13,6 @@ func TestPausedReportPreservesProvisionalScores(t *testing.T) {
 	m, _ := f.ReadManifest()
 	m.Status = "paused"
 	f.WriteManifest(m)
-	os.MkdirAll(f.Live(""), 0755)
-	os.WriteFile(f.Live("paused"), []byte("paused"), 0600)
 	os.WriteFile(f.Meta("a1"), []byte(`{"agent":"a1","char":"Tester"}`), 0600)
 	os.WriteFile(f.Samples("Tester"), []byte(`{"t":1000,"elapsed_s":0,"value":10,"score":10}`+"\n"), 0600)
 	os.WriteFile(f.Diagnostics("a1"), []byte(`{"schema":1,"seq":1,"t":1000,"agent":"a1","session":"s1","kind":"action_finished","op":"act.accept","outcome":"failed","code":"timeout","details":{}}`+"\n"), 0600)

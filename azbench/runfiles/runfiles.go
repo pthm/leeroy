@@ -1,7 +1,8 @@
 // Package runfiles is a run directory's layout: where the harness writes each file, and where the judge, the report,
 // publish and the viewer read it. One run, bench/runs/<time>-<task>[-<model>]/:
 //
-//	run.json              the manifest: task, players, benchmark version, SDK revision, start, end, pauses, status
+//	run.json              the manifest: task, players, benchmark version, SDK revision, start, end, status (when
+//	                      each player played, its pauses and outages: the harness's runtime_state diagnostics)
 //	scenario.yaml         the run as made from its task (resume reads it)
 //	preflight.json        what the world looked like for the task before it started
 //	supervisor.log        everything the supervisor said, alerts marked ALERT
@@ -14,7 +15,7 @@
 //	judge/<char>/         samples.jsonl (every 15 s), result.json (the final score)
 //	diagnostics/<agent>.jsonl   harness and session diagnostics, one stream
 //	server/               the server's logs over the run's time
-//	.live/                the running supervisor's files: control.json, pids, paused (gone when the run ends)
+//	.live/                the running supervisor's files: control.json, pids (gone when the run ends)
 //
 // Every JSONL line has t, unix milliseconds. The trajectory is a JSON document (ATIF), its timestamps ISO 8601.
 package runfiles
@@ -75,7 +76,6 @@ type Manifest struct {
 	Players  []Player `json:"players"`
 	Started  int64    `json:"started,omitempty"` // unix ms: the clock started (all sessions up)
 	Ended    int64    `json:"ended,omitempty"`   // unix ms: the run finished
-	Pauses   []Pause  `json:"pauses,omitempty"`
 	// ServerLogs: how long each server log was when the clock started, so server/ gets what came after
 	ServerLogs map[string]int64 `json:"server_logs,omitempty"`
 	Status     string           `json:"status"` // starting, running, paused, finished
@@ -94,12 +94,6 @@ type Player struct {
 	Model   string `json:"model,omitempty"`
 	Effort  string `json:"effort,omitempty"`
 	Kit     string `json:"kit,omitempty"` // a starting kit's level, as "level 60", when it had one
-}
-
-// Pause is a stretch the run was paused: unix ms; Resumed 0 while it still is.
-type Pause struct {
-	At      int64 `json:"at"`
-	Resumed int64 `json:"resumed,omitempty"`
 }
 
 // ReadManifest reads run.json.

@@ -162,7 +162,7 @@ party, and lists the models that play it ([bench/models.yaml](bench/models.yaml)
 one together. Each agent gets a fresh non-GM account and runs as headless Claude Code (or Codex CLI) inside `bench/workspaces/<name>/` (its
 persistent script library). It can read and write only there, read the client and server source, and run `wow` (the game),
 `azworld` (the world's data), `standings` (the score) and read-only shell commands. Results go to `bench/runs/<time>-<task>-<model>/`:
-- `run.json`: what the run was (task, players, versions) and how it went (start, pauses, end);
+- `run.json`: what the run was (task, players, versions) and how it went (start, end, status);
 - `supervisor.log`;
 - `agents/<agent>/`: the transcript, an [ATIF](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md) trajectory (`trajectory.json`, the same for every runtime), notes and usage;
 - `game/<char>/`: the game log (the events its agent saw, its state each second, nearby creatures, API calls) and its client log;

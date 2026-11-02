@@ -68,7 +68,7 @@ func savedJudgeState(ar agentRun) string {
 	if state != "unknown" {
 		return state
 	}
-	if _, err := os.Stat(filepath.Join(ar.live, "paused")); err == nil {
+	if ar.paused {
 		return "paused"
 	}
 	return state

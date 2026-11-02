@@ -211,7 +211,6 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 		if r.elapsed >= time.Duration(r.s.Minutes)*time.Minute {
 			return fmt.Errorf("nothing left to play")
 		}
-		os.Remove(r.f().Live("paused"))
 	}
 	for _, p := range r.players {
 		state := types.StateStart
@@ -285,9 +284,6 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 			m.Started = r.start.UnixMilli()
 		}
 		r.noteServerLogs(m)
-		if n := len(m.Pauses); n > 0 && m.Pauses[n-1].Resumed == 0 {
-			m.Pauses[n-1].Resumed = r.start.UnixMilli()
-		}
 	})
 	r.noteOpenrouter(false)
 	left := time.Duration(r.minutesLeft() * float64(time.Minute))
@@ -312,10 +308,8 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 	paused := r.paused
 	r.mu.Unlock()
 	if paused {
-		os.WriteFile(r.f().Live("paused"), []byte(time.Now().Format(time.RFC3339)+"\n"), 0o644)
 		r.manifest(func(m *runfiles.Manifest) {
 			m.Status = "paused"
-			m.Pauses = append(m.Pauses, runfiles.Pause{At: time.Now().UnixMilli()})
 		})
 		r.saveServerLogs()
 		r.logf("paused: azbench resume %s --message <file>", r.dir)

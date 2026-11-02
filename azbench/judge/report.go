@@ -123,7 +123,7 @@ type agentRun struct {
 	samples     string // judge/<char>/samples.jsonl
 	result      string // judge/<char>/result.json
 	diag        string // diagnostics/<agent>.jsonl
-	live        string // .live/, while the run runs
+	paused      bool   // run.json's status: the run is paused
 }
 
 // the players of a run, from its run.json
@@ -137,7 +137,7 @@ func reportAgents(dir string) []agentRun {
 	for _, p := range m.Players {
 		out = append(out, agentRun{agent: p.Agent, char: p.Char, run: f.Agent(p.Agent),
 			events: f.Events(p.Char), samples: f.Samples(p.Char), result: f.Result(p.Char), diag: f.Diagnostics(p.Agent),
-			live: f.Live("")})
+			paused: m.Status == "paused"})
 	}
 	return out
 }

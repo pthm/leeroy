@@ -146,7 +146,7 @@ by agent name, game and judge files by character. Every JSONL line has `t`, unix
 
 | Path | |
 |---|---|
-| `run.json` | the manifest: task, run name, benchmark version, SDK revision, goal, minutes, the players (agent, character, race, class, spec, runtime and its version, model, effort, kit), when the clock started and the run ended, its pauses, and its status (`starting`, `running`, `paused`, `finished`) |
+| `run.json` | the manifest: task, run name, benchmark version, SDK revision, goal, minutes, the players (agent, character, race, class, spec, runtime and its version, model, effort, kit), when the clock started and the run ended, and its status (pauses and outages are the harness's `runtime_state` lines in `diagnostics/`) (`starting`, `running`, `paused`, `finished`) |
 | `scenario.yaml` | the run as made from its task (the notice inlined); `resume` reads it |
 | `preflight.json` | what the world looked like for the task before the start ([tasks](tasks/README.md#preflight)) |
 | `supervisor.log` | everything the supervisor printed, dated; `ALERT` lines are agents and sessions that stopped early, outages, give-ups and the Codex quota's alerts |
@@ -169,7 +169,7 @@ by agent name, game and judge files by character. Every JSONL line has `t`, unix
 | `server/` | the server's `Server.log` and `Errors.log`, cut to the run's time, at each pause and at the end |
 | `board/<char>.json` | each judge's latest result (with `minutes_left`), read by `standings` |
 | `codex-quota.json` | the Codex quota at the start and the latest read (runs with a Codex agent) |
-| `.live/` | while the supervisor runs: `control.json` (its control API), `pids` (the process groups of its sessions and agents), `paused`; removed when the run finishes |
+| `.live/` | while the supervisor runs: `control.json` (its control API), `pids` (the process groups of its sessions and agents); removed when the run finishes |
 | `team.json`, `report.json` | the results and the report card ([judge](../azbench/judge/README.md#azbench-report)) |
 
 `team.json`:
