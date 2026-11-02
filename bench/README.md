@@ -26,7 +26,7 @@ commands below run from the repo root; server and client setup is in the [repo R
 |---|---|
 | `azbench run <task.yaml> [--model m,...] [--minutes n] [--port n] [--reset] [--dry-run]` | a task on each of its models (or those named): a run per model one after another, or one run for a task played together; each run is every session, judge and agent on one clock. `--reset`: delete the run's characters, move its agents' workspaces to `bench/workspaces/.old/` and restart the worldserver first, so every run starts the same. `--port`: the first session's port (default 8090), to run beside another run |
 | `azbench check <task.yaml> [--model m,...]` | preflight: read-only checks of what the task's runs would meet ([tasks/README.md](tasks/README.md#preflight)) |
-| `azbench kit gen <class> <level> [--spec s] [--race r]` / `kit save <Char>` | a starting kit, from items a character could get by playing, or as a character is ([tasks/README.md](tasks/README.md#kits)) |
+| `azbench kit gen <class> <level> [--spec s] [--race r] [--quality q] [--max-ilvl n] [--not-from map]` / `kit save <Char>` / `kit apply <Char> <kit>` | a starting kit, from items a character could get by playing, or as a character is ([tasks/README.md](tasks/README.md#kits)) |
 | `azbench status <run dir>` | a running run: each player's state, score and level, and the minutes left |
 | `azbench pause <run dir>` | stop a running run cleanly so it can be resumed (Ctrl-C on `azbench run` does the same) |
 | `azbench resume <run dir> --message <file>` | continue a paused run |

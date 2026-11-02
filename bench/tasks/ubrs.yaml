@@ -1,0 +1,16 @@
+description: >
+  Five level-60 Humans with pre-raid dungeon gear (blues up to item level 63, none from Blackrock Spire) and their
+  class spells trained, starting at Morgan's Vigil in the Burning Steppes, with one goal: clear Upper Blackrock Spire
+  (achievement 1307, earned when General Drakkisath dies). A day on the clock; each agent stops when it has the
+  achievement.
+goal: achievement:1307
+minutes: 1440
+start: morgans-vigil
+require_fresh: true
+party:
+  - {class: warrior, spec: protwarrior, kit: protwarrior-60}
+  - {class: priest, spec: holy, kit: holy-60}
+  - {class: rogue, spec: combat, kit: combat-60}
+  - {class: mage, spec: frost, kit: frost-60}
+  - {class: paladin, spec: ret, kit: ret-60}
+models: [sol, sonnet]

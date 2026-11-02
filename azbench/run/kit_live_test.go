@@ -13,7 +13,7 @@ func TestKitLive(t *testing.T) {
 	if char == "" {
 		t.Skip("set WOWBENCH_LIVE_KIT to a throwaway warrior character (offline)")
 	}
-	k, _, err := GenKit(1, 1, "protwarrior", 20)
+	k, _, err := GenKit(1, 1, "protwarrior", 20, 2, 30, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

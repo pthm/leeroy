@@ -1,7 +1,7 @@
 package run
 
 // azbench kit gen: a starting kit made from items a character of that class, race and level could get by playing:
-// green (uncommon) gear that drops from a creature or chest in the world, is a quest reward the character can take,
+// gear up to a quality (green, uncommon, by default; rare: blues too) and an item level (default level + 10) that drops from a creature or chest in the world, is a quest reward the character can take,
 // or is made by a profession its trainers teach; bags and ammunition from vendors. Test, deprecated, seasonal,
 // random-enchantment and profession- or reputation-locked items are left out. Each slot gets the item that scores
 // best for the spec's stats (weights below), armour of the best type the class wears at that level, weapons the class
@@ -18,20 +18,20 @@ import (
 )
 
 // obtainable: every item a character of a level, race and class can come by in play, with how (drop, quest, crafted,
-// vendor). Quests it can take at its level, of at most 2 levels above it; items it can use, within 10 item levels of it (some quest rewards
+// vendor). Quests it can take at its level, of at most 2 levels above it; items it can use, from 10 item levels below it to a cap (some quest rewards
 // have no required level of their own: the quest's level is the gate). Drops: loot of creatures and chests that are spawned, through reference loot. Vendors: of spawned
-// creatures. Quest givers and vendors are only those not hostile to the character's side.
-const obtainable = `WITH RECURSIVE
+// creatures. Quest givers and vendors are only those not hostile to the character's side. Not raids (notMaps).
+var obtainable = fmt.Sprintf(`WITH RECURSIVE
 loot AS (SELECT l.Item, l.Reference FROM creature_loot_template l JOIN creature_template ct ON ct.lootid = l.Entry
-    WHERE EXISTS (SELECT 1 FROM creature c WHERE c.id = ct.entry AND c.map NOT IN (13, 25, 29, 35, 37, 42, 44, 169, 451))
+    WHERE EXISTS (SELECT 1 FROM creature c WHERE c.id = ct.entry AND c.map NOT IN (%[1]s) AND c.map <> ?)
   UNION SELECT l.Item, l.Reference FROM gameobject_loot_template l JOIN gameobject_template gt ON gt.type = 3 AND gt.Data1 = l.Entry
-    WHERE EXISTS (SELECT 1 FROM gameobject g WHERE g.id = gt.entry AND g.map NOT IN (13, 25, 29, 35, 37, 42, 44, 169, 451))),
+    WHERE EXISTS (SELECT 1 FROM gameobject g WHERE g.id = gt.entry AND g.map NOT IN (%[1]s) AND g.map <> ?)),
 ref (Item, Reference, depth) AS (SELECT Item, Reference, 0 FROM loot
   UNION ALL SELECT r.Item, r.Reference, ref.depth + 1 FROM reference_loot_template r JOIN ref ON ref.Reference = r.Entry WHERE ref.depth < 4),
 friendly AS (SELECT ct.entry FROM creature_template ct JOIN wowbench.reaction r ON r.faction_template = ct.faction
   WHERE IF(?, r.to_alliance, r.to_horde) <> 'hostile' AND EXISTS (SELECT 1 FROM creature c WHERE c.id = ct.entry)),
 quests AS (SELECT q.* FROM quest_template q LEFT JOIN quest_template_addon a ON a.ID = q.ID
-  WHERE q.MinLevel <= ? AND q.QuestLevel <= ? + 2 AND (q.AllowableRaces = 0 OR q.AllowableRaces & ?) AND (COALESCE(a.AllowableClasses, 0) = 0 OR a.AllowableClasses & ?)
+  WHERE q.QuestSortID NOT IN (%[2]s) AND q.QuestSortID NOT IN (SELECT id FROM wowbench.area WHERE map = ? AND zone = 0) AND q.MinLevel <= ? AND q.QuestLevel <= ? + 2 AND (q.AllowableRaces = 0 OR q.AllowableRaces & ?) AND (COALESCE(a.AllowableClasses, 0) = 0 OR a.AllowableClasses & ?)
     AND (EXISTS (SELECT 1 FROM creature_queststarter s JOIN friendly f ON f.entry = s.id WHERE s.quest = q.ID)
       OR EXISTS (SELECT 1 FROM gameobject_queststarter s WHERE s.quest = q.ID))),
 src (e, how) AS (SELECT Item, 'drop' FROM ref WHERE Reference = 0
@@ -50,11 +50,20 @@ SELECT it.entry, it.name, it.class, it.subclass, it.InventoryType, it.ItemLevel,
     it.stat_value7, it.stat_type8, it.stat_value8, it.stat_type9, it.stat_value9, it.stat_type10, it.stat_value10),
   GROUP_CONCAT(DISTINCT src.how ORDER BY src.how)
 FROM item_template it JOIN src ON src.e = it.entry
-WHERE it.RequiredLevel <= ? AND it.ItemLevel BETWEEN ? - 10 AND ? + 10 AND (it.AllowableClass <= 0 OR it.AllowableClass & ?) AND (it.AllowableRace <= 0 OR it.AllowableRace & ?)
+WHERE it.RequiredLevel <= ? AND it.ItemLevel BETWEEN ? - 10 AND ? AND (it.AllowableClass <= 0 OR it.AllowableClass & ?) AND (it.AllowableRace <= 0 OR it.AllowableRace & ?)
   AND it.RandomProperty = 0 AND it.RandomSuffix = 0 AND it.RequiredSkill = 0 AND it.requiredspell = 0
   AND it.RequiredReputationFaction = 0 AND it.requiredhonorrank = 0 AND it.HolidayId = 0 AND it.Flags & 16 = 0
   AND it.name NOT REGEXP '(^|[^a-z])(test|qa|deprecated|monster|unused|old|ph)([^a-z]|$)'
-GROUP BY it.entry`
+GROUP BY it.entry`, notMaps, raidZones)
+
+// maps whose loot doesn't count: test and unused maps (13 ... 451), the death knights' starting zone (609), and raids, which aren't levelling (classic,
+// The Burning Crusade, Wrath); raidZones: the raids' zones, as quests are filed under them (Zul'Gurub: 1977, and 19)
+const (
+	notMaps = "13, 25, 29, 35, 37, 42, 44, 169, 451, 609, 249, 309, 409, 469, 509, 531, 533, 532, 534, 544, 548, 550, 564, " +
+		"565, 568, 580, 603, 615, 616, 624, 631, 649, 724"
+	raidZones = "2159, 1977, 19, 2717, 2677, 3429, 3428, 3456, 3457, 3606, 3836, 3607, 3842, 3959, 3923, 3805, 4075, 4273, " +
+		"4500, 4493, 4603, 4722, 4812, 4987"
+)
 
 type kitItem struct {
 	entry, class, sub, inv, ilvl, req, quality, slots, ammo, maxcount int
@@ -121,9 +130,11 @@ func b2f(b bool) float64 {
 	return 0
 }
 
-// GenKit makes a kit for a class, race, spec (optional) and level; notes: what each item is, for the file's comments.
-func GenKit(class, race int, spec string, level int) (*config.Kit, map[int]string, error) {
-	rows, err := world.Rows(world.DB(world.Admin, "acore_world"), obtainable, slices.Contains([]int{1, 3, 4, 7, 11}, race), level, level, 1<<(race-1), 1<<(class-1), level, level, level, 1<<(class-1), 1<<(race-1))
+// GenKit makes a kit for a class, race, spec (optional) and level, of items up to a quality (2 uncommon, 3 rare, 4
+// epic) and item level, none from the map notFrom (a dungeon the kit is for: its loot and its quests; 0: none); notes:
+// what each item is, for the file's comments.
+func GenKit(class, race int, spec string, level, quality, maxIlvl, notFrom int) (*config.Kit, map[int]string, error) {
+	rows, err := world.Rows(world.DB(world.Admin, "acore_world"), obtainable, notFrom, notFrom, slices.Contains([]int{1, 3, 4, 7, 11}, race), notFrom, level, level, 1<<(race-1), 1<<(class-1), level, level, maxIlvl, 1<<(class-1), 1<<(race-1))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -162,10 +173,12 @@ func GenKit(class, race int, spec string, level int) (*config.Kit, map[int]strin
 	best := func(dpsWeight float64, ok func(*kitItem) bool, not ...int) *kitItem {
 		var b *kitItem
 		for _, it := range items {
-			if it.quality != 2 || !ok(it) || slices.Contains(not, it.entry) {
+			if it.quality < 2 || it.quality > quality || !ok(it) || slices.Contains(not, it.entry) {
 				continue
 			}
-			it.score = score(it, dpsWeight)
+			if it.score = score(it, dpsWeight); it.score <= 0 { // nothing for the spec: better an empty slot
+				continue
+			}
 			if b == nil || it.score > b.score || it.score == b.score && it.ilvl > b.ilvl {
 				b = it
 			}

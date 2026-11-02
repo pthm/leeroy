@@ -1,0 +1,24 @@
+# azbench kit gen rogue 60 --spec combat --race human --quality rare --max-ilvl 63 --not-from 229: gear the
+# character could get by playing (drops, quest rewards, crafted), bags from vendors; edit freely.
+level: 60
+money: 90000 # copper
+trained: true # every spell the class trainers teach and class quests reward up to the level
+spells: [196, 264, 1180]
+gear:
+  head: 16707 # Shadowcraft Cap (item level 62, drop)
+  neck: 20649 # Sunprism Pendant (item level 60, quest)
+  shoulders: 16708 # Shadowcraft Spaulders (item level 60, drop)
+  chest: 17742 # Fungus Shroud Armor (item level 51, drop)
+  waist: 16713 # Shadowcraft Belt (item level 58, drop)
+  legs: 16709 # Shadowcraft Pants (item level 61, drop)
+  feet: 20715 # Dunestalker's Boots (item level 63, quest)
+  wrists: 16710 # Shadowcraft Bracers (item level 57, drop)
+  hands: 18744 # Plaguebat Fur Gloves (item level 58, drop)
+  finger1: 18701 # Innervating Band (item level 59, drop)
+  finger2: 22255 # Magma Forged Band (item level 57, drop)
+  trinket1: 45631 # High-powered Flashlight (item level 54, crafted)
+  trinket2: 17759 # Mark of Resolution (item level 60, quest)
+  back: 19982 # Duskbat Drape (item level 52, quest)
+  main_hand: 5267 # Scarlet Kris (item level 63, drop)
+  off_hand: 18737 # Bone Slicing Hatchet (item level 62, drop)
+  ranged: 13023 # Eaglehorn Long Bow (item level 63, drop)

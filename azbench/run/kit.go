@@ -188,6 +188,13 @@ func applyKit(k *config.Kit, char string, class int) error {
 			spells = append(spells, learnedBy()[atoi(r[0])]...)
 		}
 	}
+	for i := 0; i < len(spells); i++ { // and what each spell teaches, as learning it would (Judgement: Judgement of Light)
+		for _, t := range learnedBy()[spells[i]] {
+			if !slices.Contains(spells, t) {
+				spells = append(spells, t)
+			}
+		}
+	}
 	cap := 5 * k.Level
 	for _, s := range spells {
 		exec("INSERT IGNORE INTO character_spell (guid, spell, specMask) VALUES (?, ?, 255)", g, s)
@@ -246,9 +253,16 @@ func applyKit(k *config.Kit, char string, class int) error {
 		exec("INSERT INTO character_inventory (guid, bag, slot, item) VALUES (?, ?, ?, ?)", g, bag, slot, next)
 		return next, slots, err
 	}
-	for _, p := range equip { // what's in the slot now goes
+	clear := map[int]bool{}
+	for _, p := range equip { // what's in the slot now goes; both hands go together (a two-hander and an off-hand don't fit)
+		clear[p.slot] = true
+		if p.slot == 15 || p.slot == 16 {
+			clear[15], clear[16] = true, true
+		}
+	}
+	for slot := range clear {
 		exec(`DELETE ii, ci FROM character_inventory ci JOIN item_instance ii ON ii.guid = ci.item
-  WHERE ci.guid = ? AND ci.bag = 0 AND ci.slot = ?`, g, p.slot)
+  WHERE ci.guid = ? AND ci.bag = 0 AND ci.slot = ?`, g, slot)
 	}
 	type space struct{ bag, slot int }
 	var free []space
@@ -286,6 +300,18 @@ func applyKit(k *config.Kit, char string, class int) error {
 		return fmt.Errorf("kit: %v", err)
 	}
 	return nil
+}
+
+// ApplyKit puts a kit on an offline character (azbench kit apply, for testing a kit).
+func ApplyKit(k *config.Kit, char string) error {
+	if charOnline(char) {
+		return fmt.Errorf("%s is online", char)
+	}
+	r, err := world.Rows(chars(), "SELECT class FROM characters WHERE name = ?", char)
+	if err != nil || len(r) == 0 {
+		return fmt.Errorf("no character %s", char)
+	}
+	return applyKit(k, char, atoi(r[0][0]))
 }
 
 // SaveKit reads a character as a kit: level, money, every spell, gear, bags and the items it carries; notes: item names.

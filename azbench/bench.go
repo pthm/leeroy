@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -82,6 +83,9 @@ func benchCommand(cmd string, args []string) bool {
 	model := fs.String("model", "", "run: only these of the task's models (comma-separated keys of bench/models.yaml); publish: the model, for runs that didn't record it")
 	runtime := fs.String("runtime", "", "publish: the harness (claude, codex, opencode), for runs that didn't record it")
 	spec := fs.String("spec", "", "kit gen: the spec the gear is for (a key of bench/specs.yaml; default the class's usual)")
+	quality := fs.String("quality", "uncommon", "kit gen: the best quality of gear: uncommon (green), rare (blue) or epic")
+	notFrom := fs.Int("not-from", 0, "kit gen: a map (dungeon) whose loot and quests the kit leaves out: the one it's for")
+	maxIlvl := fs.Int("max-ilvl", 0, "kit gen: the highest item level (default the level + 10)")
 	race := fs.String("race", "human", "kit gen: the race (some quests and items are for some races)")
 	class := fs.String("class", "warrior", "gm: the GM character's class (warrior: Devgm on 8112; another class: Dev<class> on 8113)")
 	parse := func(n int, usage string) []string {
@@ -204,7 +208,7 @@ func benchCommand(cmd string, args []string) bool {
 			fmt.Println(f)
 		}
 	case "kit":
-		pos := parse(2, "gen <class> <level> [--spec s] [--race r] | save <Char>")
+		pos := parse(2, "gen <class> <level> [--spec s] [--race r] | save <Char> | apply <Char> <kit>")
 		switch {
 		case pos[0] == "gen" && len(pos) == 3:
 			class, err := config.ID(config.Classes, pos[1])
@@ -213,15 +217,29 @@ func benchCommand(cmd string, args []string) bool {
 			check(err)
 			level, err := strconv.Atoi(pos[2])
 			check(err)
-			k, notes, err := run.GenKit(class, raceID, *spec, level)
+			q := slices.Index([]string{"uncommon", "rare", "epic"}, *quality) + 2
+			if q < 2 {
+				die("--quality: uncommon, rare or epic")
+			}
+			if *maxIlvl == 0 {
+				*maxIlvl = level + 10
+			}
+			k, notes, err := run.GenKit(class, raceID, *spec, level, q, *maxIlvl, *notFrom)
 			check(err)
-			fmt.Print(run.KitYAML(k, notes, fmt.Sprintf("azbench kit gen %s %d --spec %s --race %s: green gear the character could get by playing (drops,\nquest rewards, crafted), bags from vendors; edit freely.", pos[1], level, *spec, *race)))
+			fmt.Print(run.KitYAML(k, notes, fmt.Sprintf("azbench kit gen %s %d --spec %s --race %s --quality %s --max-ilvl %d --not-from %d: gear the\ncharacter could get by playing (drops, quest rewards, crafted), bags from vendors; edit freely.", pos[1], level, *spec, *race, *quality, *maxIlvl, *notFrom)))
+		case pos[0] == "apply" && len(pos) == 3: // for testing a kit: on an offline character
+			repo := repoRoot()
+			b, err := config.LoadBench(filepath.Join(repo, "bench"))
+			check(err)
+			k, err := b.LoadKit(strings.TrimSuffix(filepath.Base(pos[2]), ".yaml"))
+			check(err)
+			check(run.ApplyKit(k, pos[1]))
 		case pos[0] == "save" && len(pos) == 2:
 			k, notes, err := run.SaveKit(pos[1])
 			check(err)
 			fmt.Print(run.KitYAML(k, notes, "azbench kit save "+pos[1]+": the character as it is."))
 		default:
-			die("usage: azbench kit gen <class> <level> [--spec s] [--race r] | save <Char>")
+			die("usage: azbench kit gen <class> <level> [--spec s] [--race r] | save <Char> | apply <Char> <kit>")
 		}
 	case "prices":
 		check(judge.Prices(filepath.Join(repoRoot(), "azbench/judge/prices.json")))

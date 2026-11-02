@@ -32,6 +32,7 @@ character names). It refuses if any of the characters is online.
 | `deadmines.yaml` | 10080 | apart | five new level-1 Humans in Northshire, a dungeon party, goal: clear the Deadmines (`achievement:628`). A week on the clock; each stops when it has the achievement |
 | `travel.yaml` | 90 | together | a new level-30 Human warrior in Northshire per model, goal: reach Darnassus (`zone:1657`) on the other continent |
 | `deadmines-geared.yaml` | 2880 | apart | the Deadmines party at level 20 with [kits](#kits): green gear, bags and the class spells trained |
+| `ubrs.yaml` | 1440 | apart | five level-60s with pre-raid dungeon gear (kits: blues up to item level 63, none from Blackrock Spire), from Morgan's Vigil, goal: clear Upper Blackrock Spire (`achievement:1307`) |
 | `hardcore.yaml` | 240 | apart | a new level-1 Human Arms warrior in Northshire, levelling with `hardcore`: the first death ends the run |
 
 All but the smoke tests set `require_fresh`.
@@ -71,17 +72,22 @@ equipped and its class spells trained (the facts, not how to use them).
 
 ```sh
 bin/azbench kit gen warrior 20 --spec protwarrior > bench/kits/protwarrior-20.yaml   # race: --race (default human)
+bin/azbench kit gen priest 60 --spec holy --quality rare --max-ilvl 63 --not-from 229 > bench/kits/holy-60.yaml
 bin/azbench kit save <Char> > bench/kits/<name>.yaml                                  # a character as it is now
+bin/azbench kit apply <Char> bench/kits/<name>.yaml                                   # try one on an offline character
 ```
 
-`kit gen` gives each slot the green (uncommon) item that scores best for the spec's stats, among items a character
-of that class, race and level could get by playing:
+`kit gen` gives each slot the item that scores best for the spec's stats (a slot with nothing for them stays as it
+is), among items a character of that class, race and level could get by playing:
+- **how good:** up to `--quality` (`uncommon`, the default: greens; `rare`: blues too; `epic`) and `--max-ilvl`
+  (default the level + 10), from 10 item levels below the character;
 - **where from:** dropped by a creature or chest that is spawned in the world, a reward of a quest it can take (given
   by someone not hostile to its side, at most 2 levels above it), or made by a profession the trainers teach;
 - **what:** armour of the best type the class wears at that level, weapons the class can learn (the kit includes the
-  proficiency, as a weapon master would teach it), within 10 item levels of the character;
-- **left out:** test, deprecated and seasonal items, random-enchantment items ("of the Bear"), and items that need
-  a profession, reputation or rank.
+  proficiency, as a weapon master would teach it);
+- **left out:** raids (their loot and the quests filed under them), the death knights' starting zone, test,
+  deprecated and seasonal items, random-enchantment items ("of the Bear"), items that need a profession, reputation
+  or rank, and with `--not-from <map>` a dungeon's own loot and quests (the dungeon the kit is for).
 
 Bags (and a hunter's ammunition) come from vendors. Each item is named in a comment, with where it comes from; edit
 the file freely.
@@ -90,7 +96,7 @@ the file freely.
 |---|---|
 | `level` | 1 to 80 |
 | `money` | copper |
-| `trained` | every spell the class trainers teach and the class quests reward (a warrior's stances) up to the level |
+| `trained` | every spell the class trainers teach and the class quests reward (a warrior's stances) up to the level, with what those spells teach in turn (a paladin's Judgement: Judgement of Light) |
 | `spells` | more spells by id: weapon proficiencies, or every spell, from `kit save` |
 | `gear` | slot to item entry: `head` `neck` `shoulders` `shirt` `chest` `waist` `legs` `feet` `wrists` `hands` `finger1` `finger2` `trinket1` `trinket2` `back` `main_hand` `off_hand` `ranged` `tabard`. A slot not listed keeps what the character wears |
 | `bags` | up to 4 bag entries |

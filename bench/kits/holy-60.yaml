@@ -1,0 +1,22 @@
+# azbench kit gen priest 60 --spec holy --race human --quality rare --max-ilvl 63 --not-from 229: gear the
+# character could get by playing (drops, quest rewards, crafted), bags from vendors; edit freely.
+level: 60
+money: 90000 # copper
+trained: true # every spell the class trainers teach and class quests reward up to the level
+spells: [227, 5009]
+gear:
+  head: 16686 # Magister's Crown (item level 62, drop)
+  neck: 15856 # Archlight Talisman (item level 60, quest)
+  shoulders: 16689 # Magister's Mantle (item level 60, drop)
+  chest: 14453 # Highborne Robes (item level 59, drop)
+  waist: 16685 # Magister's Belt (item level 58, drop)
+  legs: 16687 # Magister's Leggings (item level 61, drop)
+  feet: 16682 # Magister's Boots (item level 59, drop)
+  wrists: 13107 # Magiskull Cuffs (item level 62, drop)
+  hands: 16684 # Magister's Gloves (item level 59, drop)
+  finger1: 13345 # Seal of Rivendare (item level 63, drop)
+  finger2: 18395 # Emerald Flame Ring (item level 62, drop)
+  trinket1: 19024 # Arena Grand Master (item level 55, quest)
+  back: 13376 # Royal Tribunal Cloak (item level 59, drop)
+  main_hand: 13249 # Argent Crusader (item level 62, quest)
+  ranged: 16997 # Stormrager (item level 62, quest)

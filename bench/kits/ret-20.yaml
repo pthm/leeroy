@@ -1,5 +1,5 @@
-# azbench kit gen paladin 20 --spec ret --race human: green gear the character could get by playing (drops,
-# quest rewards, crafted), bags from vendors; edit freely.
+# azbench kit gen paladin 20 --spec ret --race human --quality uncommon --max-ilvl 30 --not-from 36: gear the
+# character could get by playing (drops, quest rewards, crafted), bags from vendors; edit freely.
 level: 20
 money: 10000 # copper
 trained: true # every spell the class trainers teach and class quests reward up to the level
