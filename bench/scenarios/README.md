@@ -7,7 +7,12 @@ the same moment once all sessions are up, so times are comparable. A solo run is
 bin/azbench run bench/scenarios/fresh-split.yaml               # run it
 bin/azbench run bench/scenarios/fresh-split.yaml --dry-run     # the players and the first prompt, nothing started
 bin/azbench run bench/scenarios/hogger-trio.yaml --minutes 60
+bin/azbench run bench/scenarios/travel-models-2.yaml --reset  # again from scratch (below)
 ```
+
+`--reset` runs a scenario again from scratch: its characters are deleted (soft, as the game does), its agents'
+workspaces moved to `bench/workspaces/.old/<agent>-<time>` (`require_fresh` wants none), and the worldserver
+restarted and waited for (it caches character names). It refuses if any of the characters is online.
 
 | Scenario | Minutes | What it sets up |
 |---|---|---|

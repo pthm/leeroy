@@ -3,7 +3,7 @@
 // it: it acts as the one it's called by). The agents' other tools are the game's (wow, in azeroth-sdk) and the
 // world's (azworld).
 //
-//	azbench run <scenario.yaml> [--minutes n] [--dry-run]    a team (or solo) run: sessions, judges, agents
+//	azbench run <scenario.yaml> [--minutes n] [--dry-run] [--reset]  a team (or solo) run; --reset starts it from scratch
 //	azbench matrix <matrix.yaml> [--dry-run]                 a grid of solo runs
 //	azbench resume <run dir> --message <file> [--minutes n]  continue a paused run
 //	azbench pause|status <run dir>                           control a running run

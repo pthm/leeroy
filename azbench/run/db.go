@@ -3,7 +3,9 @@ package run
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -104,15 +106,62 @@ func allowedPairs() (func(r, c int) bool, error) {
 // Reset soft-deletes characters (the way the game deletes them: the name and account are freed, the row kept) and
 // restarts the worldserver, which caches names, so a fresh run can reuse them. They must be offline.
 func Reset(names []string) error {
-	db := chars()
 	for _, n := range names {
 		if charOnline(n) {
 			return fmt.Errorf("%s is online", n)
 		}
-		if _, err := db.Exec(`UPDATE characters SET deleteInfos_Account = account, deleteInfos_Name = name,
+	}
+	for _, n := range names {
+		if _, err := chars().Exec(`UPDATE characters SET deleteInfos_Account = account, deleteInfos_Name = name,
 			deleteDate = UNIX_TIMESTAMP(), name = '', account = 0 WHERE name = ?`, n); err != nil {
 			return err
 		}
 	}
-	return exec.Command("docker", "restart", "ac-worldserver").Run()
+	return restartWorld()
+}
+
+// Fresh readies a scenario to run again from scratch (azbench run --reset): its characters deleted and the
+// worldserver restarted (Reset), and its agents' workspaces moved aside to bench/workspaces/.old/<agent>-<time>, as
+// require_fresh wants (kept, not deleted: they hold the last run's notes and scripts).
+func Fresh(repo string, s *config.Scenario) error {
+	var names []string
+	for _, a := range s.Agents {
+		names = append(names, a.Char)
+	}
+	for _, n := range names {
+		if charOnline(n) {
+			return fmt.Errorf("%s is online: stop its run first", n)
+		}
+	}
+	old := filepath.Join(repo, "bench", "workspaces", ".old")
+	stamp := time.Now().Format("20060102-150405")
+	for _, a := range s.Agents {
+		ws := filepath.Join(repo, "bench", "workspaces", a.Name)
+		if _, err := os.Stat(ws); err != nil {
+			continue
+		}
+		if err := os.MkdirAll(old, 0o755); err != nil {
+			return err
+		}
+		if err := os.Rename(ws, filepath.Join(old, a.Name+"-"+stamp)); err != nil {
+			return err
+		}
+	}
+	return Reset(names)
+}
+
+// restartWorld restarts the worldserver and waits for it to say it's ready (a few minutes at most): a run started
+// before that can't log in.
+func restartWorld() error {
+	since := time.Now().Add(-time.Second).Format(time.RFC3339)
+	if out, err := exec.Command("docker", "restart", "ac-worldserver").CombinedOutput(); err != nil {
+		return fmt.Errorf("docker restart ac-worldserver: %v: %s", err, out)
+	}
+	for end := time.Now().Add(5 * time.Minute); time.Now().Before(end); time.Sleep(2 * time.Second) {
+		out, _ := exec.Command("docker", "logs", "--since", since, "ac-worldserver").CombinedOutput()
+		if strings.Contains(string(out), ") ready...") {
+			return nil
+		}
+	}
+	return fmt.Errorf("the worldserver didn't say it was ready within 5 minutes (docker logs ac-worldserver)")
 }
