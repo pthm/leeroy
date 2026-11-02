@@ -2,8 +2,8 @@ package session
 
 // Area triggers: the real client sends CMSG_AREATRIGGER when the player walks into one (AreaTrigger.dbc), and
 // the server credits "explore X" quest objectives, inn rest and instance portals only from that. Without it,
-// quests like Fargodeep Mine never complete. Sent once per entry, checked ten times a second: walking through a
-// thin one (the Dark Portal's is 3.8 yards deep) takes half a second.
+// quests like Fargodeep Mine never complete. Checked ten times a second (walking through a thin one, the Dark
+// Portal's 3.8 yards, takes half a second), sent on entering and again for a few seconds inside.
 
 import (
 	"context"
@@ -17,6 +17,9 @@ import (
 )
 
 const cmsgAreaTrigger = 0x0B4
+
+// triggerResends: how long a trigger is sent again, once a second, while we stay inside it (watchAreaTriggers)
+const triggerResends = 5
 
 type areaTrigger struct {
 	id, mapID      uint32
@@ -148,16 +151,28 @@ func (b *Bot) watchAreaTriggers() {
 	}
 	w := b.world
 	go func() {
-		in := map[uint32]bool{}
-		for range time.Tick(100 * time.Millisecond) {
+		// The server checks a trigger against its own copy of our position, which our movement packets move: walking,
+		// ours is up to a second ahead, so a trigger entered at its edge can be refused as too far, and the real
+		// client's single send would never come again while we stand inside (Haiku at Rut'theran's portal). So it's
+		// sent on entering and again each second for triggerResends seconds while we stay in it: the server acts once
+		// it agrees (an inn's rest and an exploration's credit don't change on a repeat; a teleport takes us away).
+		entered := map[uint32]time.Time{}
+		last := map[uint32]time.Time{}
+		for now := range time.Tick(100 * time.Millisecond) {
 			x, y, z, _, m := w.Position()
 			for i := range triggers {
 				t := &triggers[i]
-				now := t.inside(m, x, y, z)
-				if now && !in[t.id] {
-					w.SendPacketRaw(cmsgAreaTrigger, binary.LittleEndian.AppendUint32(nil, t.id))
+				if !t.inside(m, x, y, z) {
+					delete(entered, t.id)
+					continue
 				}
-				in[t.id] = now
+				if _, ok := entered[t.id]; !ok {
+					entered[t.id] = now
+				} else if now.Sub(entered[t.id]) > triggerResends*time.Second || now.Sub(last[t.id]) < time.Second {
+					continue
+				}
+				last[t.id] = now
+				w.SendPacketRaw(cmsgAreaTrigger, binary.LittleEndian.AppendUint32(nil, t.id))
 			}
 		}
 	}()
