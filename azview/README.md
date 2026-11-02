@@ -200,6 +200,9 @@ everywhere: the map follows it, the feed and the stats narrow to it.
   it. Dragging the map turns it off; clicking a card or a group header turns it back on, and so does Fit (F), which also
   resets the zoom to fit what it follows. A picker chooses the map (Auto: the followed player's, else the one shown while anyone is on it, else where most
   players are).
+- **The address** keeps the view: `#t=<seconds from the start, or live>&m=<map>&x=&y=<the centre>&z=<zoom>&f=<auto follow>`,
+  `&hold=1` when a map is picked and `&sel=<player>`, rewritten as they change, so a refresh or a link opens the same
+  moment and place.
 - **Layers** (the map bar's Layers menu, L; remembered). Overlays: **Heatmap** (H) of where the players (or the
   selected player or group) spent their time up to the playhead, or where they died, killed, gained XP, or took or
   dealt damage (each step between position samples adds its seconds along its line; an event adds its count or amount

@@ -902,12 +902,43 @@ function frame(now) {
   }
   if (dirty) { dirty = false; updateMaps(); drawMap(); drawTimeline(); $("clock").textContent = `${fmt(t)} / ${fmt(duration())}`; }
   panels(now);
+  if (now - lastHash > 500) { lastHash = now; writeHash(); }
   requestAnimationFrame(frame);
+}
+// ---------- the address ----------
+// The URL keeps the view, so a link or a refresh opens the same moment and place: #t=<seconds from the start, or
+// live>&m=<map>&x=&y=<the view's centre>&z=<zoom>&f=<auto follow, 1 or 0>, &hold=1 when a map is picked, &sel=<player>.
+// Rewritten (replaceState: no history entries) twice a second when it changes.
+let lastHash = 0;
+function writeHash() {
+  const r = cv.getBoundingClientRect(), s = store();
+  const x = MAX - ((r.height / 2 - view.oy) / view.s) * RES, y = MAX - ((r.width / 2 - view.ox) / view.s) * RES;
+  const q = new URLSearchParams({ t: liveFollow ? "live" : (t / 1000).toFixed(1), m: M.id, x: Math.round(x), y: Math.round(y), z: +view.s.toFixed(4), f: autoCam ? 1 : 0 });
+  if (mapMode !== "auto") q.set("hold", 1);
+  if (s.sel) q.set("sel", s.sel);
+  const h = "#" + q;
+  if (h !== location.hash) history.replaceState(null, "", h);
+}
+function readHash() { // true if the address had a view
+  const q = new URLSearchParams(location.hash.slice(1));
+  if (!q.has("m") || !q.has("z")) return false;
+  const m = +q.get("m"), x = +q.get("x"), y = +q.get("y"), z = +q.get("z");
+  if (q.get("hold")) mapMode = String(m);
+  M.id = m; autoCam = q.get("f") === "1";
+  const r = sizeCanvas(), [px, py] = toPx(x, y);
+  view.s = z > 0 ? z : 1; view.ox = r.width / 2 - px * view.s; view.oy = r.height / 2 - py * view.s;
+  const tt = q.get("t");
+  if (tt && tt !== "live" && isFinite(+tt)) { liveFollow = false; t = Math.max(0, +tt * 1000); }
+  const sel = q.get("sel");
+  if (sel) { store().sel = sel; loadRoute(sel); }
+  return true;
 }
 addEventListener("DOMContentLoaded", () => {
   liveFollow = running();
   t = liveFollow ? Date.now() - B.start - LIVE_LAG : dataEnd;
   wire(); controls(); sizeCanvas();
-  need(t).then(() => { fit(); dirty = true; });
+  const linked = readHash();
+  controls();
+  need(t).then(() => { if (!linked) fit(); dirty = true; });
   requestAnimationFrame(frame);
 });
