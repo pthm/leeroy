@@ -5,7 +5,7 @@ import CrossTask from '../CrossTask.astro';
 import Section from '../Section.astro';
 import SectionHeader from '../SectionHeader.astro';
 import Layout from '../../layouts/Layout.astro';
-import { TASKS, VERSIONS, latestFor, versionLabel, allRuns, dollars, duration, entryKey, entryName, isProgress, leaderboard, rate, runDate, runsOf, taskTitle, tasks } from '../../lib/results';
+import { TASKS, metricName, VERSIONS, latestFor, versionLabel, allRuns, dollars, duration, entryKey, entryName, isProgress, leaderboard, rate, runDate, runsOf, taskTitle, tasks } from '../../lib/results';
 import { resultsUrl, url } from '../../lib/url';
 import VersionPicker from '../VersionPicker.astro';
 
@@ -34,7 +34,7 @@ const summary = [
     <SectionHeader
       eyebrow="Results"
       title="Results"
-      description="Each task starts new characters in the same place with the same goal. Goal tasks are ranked by goals met and time, levelling tasks by XP per hour."
+      description="Each task starts new characters in the same place with the same goal. Goal tasks are ranked by goals met and time, levelling tasks by XP per hour, and hardcore by total XP."
       level={1}
     >
       <VersionPicker version={version} />
@@ -64,7 +64,7 @@ const summary = [
         const runs = runsOf(task, version);
         return (
           <li class="flex flex-col rounded border border-hairline bg-raised p-6">
-            <p class="eyebrow mb-2">{isProgress(task) ? 'XP per hour' : 'Goal'} · {runs.length} run{runs.length === 1 ? '' : 's'} · {rows.length} entr{rows.length === 1 ? 'y' : 'ies'}</p>
+            <p class="eyebrow mb-2">{isProgress(task) ? metricName(task)[0].toUpperCase() + metricName(task).slice(1) : 'Goal'} · {runs.length} run{runs.length === 1 ? '' : 's'} · {rows.length} entr{rows.length === 1 ? 'y' : 'ies'}</p>
             <h2 class="font-serif text-2xl text-fg">{taskTitle(task)}</h2>
             {TASKS[task] && <p class="mt-2 text-sm text-muted">{TASKS[task].summary}</p>}
             <ol class="mt-5 space-y-1.5 border-t border-hairline pt-4 font-mono text-xs">
@@ -74,7 +74,7 @@ const summary = [
                     <span class="text-faint">{i + 1}.</span> {entryName(r)}
                   </span>
                   <span class="text-muted">
-                    {isProgress(task) ? rate(r.meanRate) : `${r.met}/${r.attempts} · ${duration(r.meanTime)}`}
+                    {isProgress(task) ? rate(r.meanRate, task) : `${r.met}/${r.attempts} · ${duration(r.meanTime)}`}
                   </span>
                 </li>
               ))}

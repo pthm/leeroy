@@ -1,7 +1,7 @@
 ---
 // A task's entries (a model at an effort), best first: goals met, then mean time; or on a progress task, mean XP per
 // hour. With the formulas under it.
-import { LABS, dollars, duration, entryName, harnessName, isProgress, leaderboard, rate, thousands } from '../lib/results';
+import { LABS, dollars, duration, entryName, harnessName, isProgress, isTotal, leaderboard, rate, thousands } from '../lib/results';
 
 interface Props {
   task: string;
@@ -41,8 +41,8 @@ const progress = isProgress(task);
           ) : (
             <td class:list={['num', r.met === r.attempts ? 'text-success' : 'text-warning']}>{r.met}/{r.attempts}</td>
           )}
-          <td class="num text-fg">{progress ? rate(r.meanRate) : duration(r.meanTime)}</td>
-          <td class="num text-muted">{progress ? rate(r.bestRate) : duration(r.bestTime)}</td>
+          <td class="num text-fg">{progress ? rate(r.meanRate, task) : duration(r.meanTime)}</td>
+          <td class="num text-muted">{progress ? rate(r.bestRate, task) : duration(r.bestTime)}</td>
           {progress && <td class="num text-muted">{r.meanLevels?.toFixed(1) ?? '–'}</td>}
           <td class="num text-muted">{dollars(r.meanCost)}</td>
           {!progress && !compact && <td class="num text-muted">{dollars(r.costPerSuccess)}</td>}
@@ -55,7 +55,7 @@ const progress = isProgress(task);
 {!compact && (
   <p class="mt-3 font-mono text-[11px] leading-relaxed text-faint">
     {progress
-      ? 'XP/h is XP earned divided by hours played, from the judge’s samples every 15 seconds. Mean and best are over all attempts. Levels is the mean number of levels gained. '
+      ? (isTotal(task) ? 'XP is the total XP earned before the first death or the end of the clock, from the judge’s samples every 15 seconds. ' : 'XP/h is XP earned divided by hours played, from the judge’s samples every 15 seconds. ') + 'Mean and best are over all attempts. Levels is the mean number of levels gained. '
       : 'Met counts attempts that reached the goal before time ran out. Time runs from the start until the judge first records the goal, checked every 15 seconds. Mean and best time cover only attempts that met the goal. Cost per success is the total cost of all attempts divided by goals met, and is left blank if any cost is missing. '}
     Cost per attempt is the mean token cost at list prices from models.dev. A suffix such as “· high” is the reasoning effort. No suffix means the runtime’s default. Most entries have one to three attempts, so small differences in rank don’t mean much.
   </p>

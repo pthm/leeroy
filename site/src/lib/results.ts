@@ -33,7 +33,7 @@ export interface Player {
   combat?: { damage_dealt: number; damage_taken: number; healing_done: number; kills: number };
   think_median_s?: number;
   // provider outages waited out with the clock held (azbench run outage.go)
-  clock_h?: number; // hardcore: the run's whole clock, hours (set on load), which XP per hour divides by
+  hardcore?: boolean; // set on load: scored on total XP earned before death or the clock, not XP per hour
   outages?: { why: string; start: string; held_s: number; safe_wait_s: number; probes: number; outcome: string }[];
 }
 
@@ -112,7 +112,7 @@ export const TASKS: Record<string, { title: string; short: string; summary: stri
     short: 'Hardcore',
     summary:
       'A new level-1 Human Arms warrior starts in Northshire with four hours. The first death ends the run.',
-    scoring: 'XP earned divided by the full four hours, so an early death keeps a low rate.',
+    scoring: 'Total XP earned before the first death or the end of the four hours. Level reached is shown alongside.',
     order: 6,
   },
   deadmines: {
@@ -128,8 +128,8 @@ export const TASKS: Record<string, { title: string; short: string; summary: stri
 const runs: Run[] = Object.values(
   import.meta.glob<Run>('../data/runs/*.json', { eager: true, import: 'default' }),
 ).sort((a, b) => a.started.localeCompare(b.started));
-// hardcore scores XP over the whole clock, so an early death keeps a low rate: XP per hour divides by it there
-for (const r of runs) if (r.hardcore) for (const p of r.players) p.clock_h = r.minutes / 60;
+// hardcore is scored on total XP earned before death or the clock (how far it got without dying), not on a rate
+for (const r of runs) if (r.hardcore) for (const p of r.players) p.hardcore = true;
 
 // Benchmark versions (bench/versions.yaml, copied by azbench publish). Results from different versions aren't
 // compared: every list below takes a version, or 'all'.
@@ -159,14 +159,20 @@ export const taskShort = (task: string) => TASKS[task]?.short ?? task;
 // A progress task (goal score:...) ranks by XP per hour; the others by goals met, then time to them.
 export const isProgress = (task: string) => runsOf(task)[0]?.goal.startsWith('score:') ?? false;
 
-// XP earned per hour of play, from the judge's samples
+// A levelling player's result, from the judge's samples: XP earned per hour of play, or on a hardcore run the total
+// XP earned (hardcore: how far it got before dying or the clock ran out).
 export function xpRate(p: Player): number | undefined {
   const s = p.series;
   if (!s || s.length < 2 || s.at(-1)![0] <= 0 || s[0][2] < 0) return undefined; // -1: not recorded (the first runs)
-  return (s.at(-1)![2] - s[0][2]) / (p.clock_h ?? s.at(-1)![0] / 3600);
+  const xp = s.at(-1)![2] - s[0][2];
+  return p.hardcore ? xp : xp / (s.at(-1)![0] / 3600);
 }
 export const levelsGained = (p: Player) => (p.series?.length ? p.series.at(-1)![1] - p.series[0][1] : undefined);
-export const rate = (v?: number) => (v == null ? '–' : `${Math.round(v).toLocaleString('en')} XP/h`);
+// a levelling result with its unit: XP/h, or XP for a hardcore task (total XP)
+export const isTotal = (task?: string) => !!task && !!runsOf(task)[0]?.hardcore;
+export const rate = (v?: number, task?: string) => (v == null ? '–' : `${Math.round(v).toLocaleString('en')} ${isTotal(task) ? 'XP' : 'XP/h'}`);
+export const unit = (task: string) => (isTotal(task) ? 'XP' : 'XP/h');
+export const metricName = (task: string) => (isTotal(task) ? 'total XP' : 'XP per hour');
 
 // claude-sonnet-5-5 -> Sonnet 5.5, gpt-6.1-terra -> GPT-6.1 Terra
 export function modelName(model: string): string {

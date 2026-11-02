@@ -7,7 +7,7 @@ import Section from '../Section.astro';
 import SectionHeader from '../SectionHeader.astro';
 import Layout from '../../layouts/Layout.astro';
 import { Icon } from 'astro-icon/components';
-import { TASKS, latestFor, outageNote, versionLabel, dollars, duration, harnessName, isProgress, leaderboard, modelName, outcome, bestRate, effortOf, entryKey, entryName, meanRate, rate, runDate, runsOf, specLabel, taskTitle, tasks, totals, xpRate, type MapBox } from '../../lib/results';
+import { TASKS, metricName, unit, latestFor, outageNote, versionLabel, dollars, duration, harnessName, isProgress, leaderboard, modelName, outcome, bestRate, effortOf, entryKey, entryName, meanRate, rate, runDate, runsOf, specLabel, taskTitle, tasks, totals, xpRate, type MapBox } from '../../lib/results';
 import { url } from '../../lib/url';
 
 import VersionPicker from '../VersionPicker.astro';
@@ -39,7 +39,7 @@ const tiles = [
   { v: String(new Set(all.map(p => p.model)).size), k: 'models' },
   { v: String(all.length), k: 'attempts' },
   isProgress(task)
-    ? { v: rate(meanRate(all)), k: 'mean XP/h' }
+    ? { v: rate(meanRate(all), task), k: `mean ${metricName(task)}` }
     : { v: `${Math.round((all.filter(p => p.met).length / all.length) * 100)}%`, k: 'reached the goal' },
   { v: dollars(all.reduce((n, p) => n + (p.cost_usd ?? 0), 0)), k: 'total cost' },
 ];
@@ -70,7 +70,7 @@ const tiles = [
                 <span class="block font-mono text-sm text-fg">{runDate(r)}</span>
                 <span class="mt-1 block text-xs text-muted">
                   {isProgress(task)
-                    ? `${r.players.length} players · best ${rate(bestRate(r.players))} · ${dollars(t.cost)}`
+                    ? `${r.players.length} players · best ${rate(bestRate(r.players), task)} · ${dollars(t.cost)}`
                     : `${t.met}/${r.players.length} reached the goal · ${t.first ? `fastest ${duration(t.first)}` : 'none in time'} · ${dollars(t.cost)}`}
                 </span>
               </span>
@@ -127,7 +127,7 @@ const tiles = [
                   <th>Harness</th>
                   <th>Class</th>
                   <th>Outcome</th>
-                  <th class="num">{isProgress(task) ? 'XP/h' : 'Time'}</th>
+                  <th class="num">{isProgress(task) ? unit(task) : 'Time'}</th>
                   <th class="num">Level</th>
                   <th class="num">Deaths</th>
                   <th class="num">Cost</th>
@@ -143,7 +143,7 @@ const tiles = [
                       <td class="text-muted">{harnessName(p.runtime)}</td>
                       <td class="text-muted">{specLabel(p)}</td>
                       <td class:list={[outcome(p, isProgress(task)).good ? 'text-success' : 'text-warning']} title={outageNote(p) ?? p.gave_up}>{outcome(p, isProgress(task)).text}{outageNote(p) && <span class="ml-1 text-warning" aria-label={outageNote(p)}>⚠</span>}</td>
-                      <td class="num">{isProgress(task) ? rate(xpRate(p)) : p.met ? duration(p.time_to_goal_s) : '–'}</td>
+                      <td class="num">{isProgress(task) ? rate(xpRate(p), task) : p.met ? duration(p.time_to_goal_s) : '–'}</td>
                       <td class="num text-muted">{p.level ?? '–'}</td>
                       <td class="num text-muted">{p.deaths ?? '–'}</td>
                       <td class="num text-muted">{dollars(p.cost_usd)}</td>

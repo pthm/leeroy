@@ -3,7 +3,7 @@
 // the frontier: the entries nothing beats on both. Goal tasks plot mean minutes to the goal (lower is better);
 // progress tasks mean XP per hour (higher is better). Hover a point for the detail.
 import FigureHead from './FigureHead.astro';
-import { LABS, dollars, duration, entryName, frontier, harnessName, isProgress, leaderboard, placeLabels, rate, thousands } from '../lib/results';
+import { LABS, metricName, dollars, duration, entryName, frontier, harnessName, isProgress, leaderboard, placeLabels, rate, thousands } from '../lib/results';
 
 interface Props {
   task: string;
@@ -40,7 +40,7 @@ const tip = (p: (typeof pts)[number]) =>
   [
     `${entryName(p.r)} (${p.r.lab}, ${harnessName(p.r.runtime)})`,
     progress
-      ? `${rate(p.r.meanRate)} mean, ${rate(p.r.bestRate)} best, ${p.r.attempts} attempt${p.r.attempts === 1 ? '' : 's'}`
+      ? `${rate(p.r.meanRate, task)} mean, ${rate(p.r.bestRate, task)} best, ${p.r.attempts} attempt${p.r.attempts === 1 ? '' : 's'}`
       : `${p.r.met}/${p.r.attempts} reached the goal; ${duration(p.r.meanTime)} mean, ${duration(p.r.bestTime)} best`,
     `${dollars(p.r.meanCost)} per attempt${p.r.costPerSuccess != null ? `, ${dollars(p.r.costPerSuccess)} per success` : ''}`,
     `${thousands(p.r.meanOutputTokens)} output tokens per attempt`,
@@ -71,7 +71,7 @@ const tip = (p: (typeof pts)[number]) =>
       ))}
       <text x={(L + W - R) / 2} y={H - 8} text-anchor="middle" class="fill-muted font-mono text-[11px]">mean cost per attempt (USD, log scale)</text>
       <text x={14} y={(T + H - B) / 2} text-anchor="middle" transform={`rotate(-90 14 ${(T + H - B) / 2})`} class="fill-muted font-mono text-[11px]">
-        {progress ? 'mean XP per hour' : 'mean minutes to the goal'}
+        {progress ? `mean ${metricName(task)}` : 'mean minutes to the goal'}
       </text>
       {front.length > 1 && (
         <path d={front.map((p, i) => `${i ? 'L' : 'M'}${x(p.cost).toFixed(1)},${y(p.y).toFixed(1)}`).join('')} fill="none" stroke="var(--color-muted)" stroke-width="1.2" stroke-dasharray="5 4" />
