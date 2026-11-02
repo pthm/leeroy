@@ -10,6 +10,7 @@ level: 5
 require_fresh: true
 runtime: claude
 models: {claude: claude-opus-5-5}
+effort: xhigh # reasoning effort, recorded with the run (required for claude and codex)
 agents:
   - {name: a41, char: Wulfric, class: paladin, spec: protpaladin}
   - {name: a42, char: Rowena, class: priest, spec: holy}

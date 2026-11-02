@@ -10,5 +10,6 @@ level: 30
 require_fresh: true
 runtime: claude
 models: {claude: claude-sonnet-5-5}
+effort: xhigh # reasoning effort, recorded with the run (required for claude and codex)
 agents:
   - {name: a54, char: Odric, class: warrior}

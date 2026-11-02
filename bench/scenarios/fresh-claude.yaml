@@ -7,6 +7,7 @@ minutes: 60
 require_fresh: true
 runtime: claude
 models: {claude: claude-opus-5-5}
+effort: xhigh # reasoning effort, recorded with the run (required for claude and codex)
 agents:
   - {name: a21, char: Bramwell, class: warrior, spec: protwarrior}
   - {name: a22, char: Ysolde, class: paladin, spec: ret}

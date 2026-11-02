@@ -230,3 +230,20 @@ document.addEventListener('keydown', e => {
 
 adoptTitles(document);
 for (const svg of document.querySelectorAll<SVGSVGElement>('svg[data-series]')) crosshair(svg);
+
+// leaderboard filters ([data-filtered]: selects [data-filter=k] against body rows' data-k; "" is all)
+document.addEventListener('change', e => {
+  const sel = (e.target as Element).closest?.('select[data-filter]');
+  const box = sel?.closest<HTMLElement>('[data-filtered]');
+  if (!box) return;
+  const want = [...box.querySelectorAll<HTMLSelectElement>('select[data-filter]')].filter(s => s.value).map(s => [s.dataset.filter!, s.value]);
+  const rows = [...box.querySelectorAll<HTMLTableRowElement>('tbody tr')];
+  let shown = 0;
+  for (const tr of rows) {
+    const ok = want.every(([k, v]) => tr.dataset[k] === v);
+    tr.hidden = !ok;
+    if (ok) shown++;
+  }
+  const count = box.querySelector<HTMLElement>('[data-filter-count]');
+  if (count) count.textContent = want.length ? `${shown} of ${rows.length} entries` : '';
+});

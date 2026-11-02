@@ -37,6 +37,7 @@ type Matrix struct {
 	Runtime  string            `yaml:"runtime"`
 	Models   map[string]string `yaml:"models"`
 	Provider string            `yaml:"provider"`
+	Effort   string            `yaml:"effort"` // reasoning effort (required for claude and codex: Scenario.Effort)
 	Tasks    []Task            `yaml:"tasks"`
 }
 
@@ -135,7 +136,7 @@ func pickS(a, b []string) []string {
 func (b *Bench) CellScenario(m *Matrix, c Cell, agent, char string) (*Scenario, error) {
 	s := &Scenario{Name: fmt.Sprintf("%s-%s", m.Name, c.Key), Goal: c.Goal, Minutes: c.Minutes, Start: c.Task.Start,
 		Level: c.Task.Level, Money: c.Task.Money, Channel: c.Task.Channel, Hint: c.Task.Hint, Hardcore: c.Task.Hardcore, RequireFresh: true,
-		Models: m.Models, Runtime: m.Runtime, Provider: m.Provider,
+		Models: m.Models, Runtime: m.Runtime, Provider: m.Provider, Effort: m.Effort,
 		Agents: []Agent{{Name: agent, Char: char, Race: fmt.Sprint(c.Race), Class: fmt.Sprint(c.Class)}}}
 	return s, b.Check(s)
 }

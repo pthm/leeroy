@@ -7,5 +7,6 @@ goal: score:100000000
 hardcore: true
 minutes: 240
 require_fresh: true
+effort: xhigh # reasoning effort, recorded with the run (required for claude and codex)
 agents:
   - {name: a73, char: Haldane, class: warrior, spec: arms, runtime: codex, model: gpt-6.1-sol}

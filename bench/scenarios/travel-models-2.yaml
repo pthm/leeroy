@@ -9,6 +9,7 @@ minutes: 90
 start: northshire
 level: 30
 require_fresh: true
+effort: xhigh # reasoning effort, recorded with the run (required for claude and codex)
 agents:
   - {name: a62, char: Gaspard, class: warrior, runtime: claude, model: claude-haiku-5-5}
   - {name: a63, char: Quillon, class: warrior, runtime: claude, model: claude-sonnet-5-5}

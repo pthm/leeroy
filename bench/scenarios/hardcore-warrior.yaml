@@ -8,5 +8,6 @@ minutes: 240
 require_fresh: true
 runtime: claude
 models: {claude: claude-sonnet-5-5}
+effort: xhigh # reasoning effort, recorded with the run (required for claude and codex)
 agents:
   - {name: a55, char: Brannoc, class: warrior, spec: arms}

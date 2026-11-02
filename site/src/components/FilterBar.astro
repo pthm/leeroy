@@ -1,0 +1,38 @@
+---
+// Filters for a leaderboard: lab, harness and reasoning effort, each All or one value, from the rows shown. Put it
+// and the table inside one [data-filtered] element, with data-lab, data-harness and data-effort on each body row;
+// scripts/interact.ts hides the rows that don't match.
+import { harnessName } from '../lib/results';
+
+interface Props {
+  rows: { lab: string; runtime: string; effort?: string }[];
+}
+
+const { rows } = Astro.props;
+const EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'default'];
+const distinct = (xs: string[]) => [...new Set(xs)];
+const filters = [
+  { key: 'lab', label: 'Lab', options: distinct(rows.map(r => r.lab)).sort().map(v => ({ v, label: v })) },
+  { key: 'harness', label: 'Harness', options: distinct(rows.map(r => r.runtime)).sort().map(v => ({ v, label: harnessName(v) })) },
+  {
+    key: 'effort',
+    label: 'Reasoning effort',
+    options: distinct(rows.map(r => r.effort || 'default'))
+      .sort((a, b) => EFFORTS.indexOf(a) - EFFORTS.indexOf(b))
+      .map(v => ({ v, label: v === 'default' ? 'default (not set)' : v })),
+  },
+];
+---
+
+<div class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs">
+  {filters.map(f => (
+    <label class="flex items-center gap-2 text-faint">
+      {f.label}
+      <select data-filter={f.key} class="rounded border border-outline bg-raised px-2 py-1 text-fg hover:border-accent">
+        <option value="">All</option>
+        {f.options.map(o => <option value={o.v}>{o.label}</option>)}
+      </select>
+    </label>
+  ))}
+  <span class="text-faint" data-filter-count></span>
+</div>

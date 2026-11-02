@@ -57,7 +57,9 @@ type Agent struct {
 	Model   string `yaml:"model"`   // opencode: provider/model, e.g. openrouter/moonshotai/kimi-k3
 	// Effort is the model's reasoning effort: Claude Code's --effort (low, medium, high, xhigh, max), Codex's
 	// model_reasoning_effort (minimal, low, medium, high, xhigh), opencode's --variant (the provider's own names).
-	// Empty: the runtime's default (recorded in meta.json as what it actually used, where the runtime says).
+	// Required for claude and codex (here or the scenario's effort), so a run records what the model used rather than
+	// a runtime default that its own config can change unseen (Claude Code doesn't log its effort). Optional for
+	// opencode, whose variants are the provider's.
 	Effort string `yaml:"effort"`
 	// Provider is who serves the model: "" (the runtime's own: Anthropic for claude, OpenAI for codex, the model's
 	// prefix for opencode) or openrouter (OPENROUTER_API_KEY), for claude and opencode
@@ -318,6 +320,8 @@ func (b *Bench) Check(s *Scenario) error {
 			return fmt.Errorf("%s: %s: runtime %q (claude, codex, opencode or none)", s.Name, a.Name, a.Runtime)
 		case a.Runtime == "opencode" && !strings.Contains(a.Model, "/"):
 			return fmt.Errorf("%s: %s: opencode needs a provider/model, got %q", s.Name, a.Name, a.Model)
+		case a.Effort == "" && (a.Runtime == "claude" || a.Runtime == "codex"):
+			return fmt.Errorf("%s: %s: no effort: set effort (the agent's or the scenario's) for %s", s.Name, a.Name, a.Runtime)
 		case a.Effort != "" && a.Runtime == "claude" && !slices.Contains([]string{"low", "medium", "high", "xhigh", "max"}, a.Effort):
 			return fmt.Errorf("%s: %s: effort %q: low, medium, high, xhigh or max for claude", s.Name, a.Name, a.Effort)
 		case a.Effort != "" && a.Runtime == "codex" && !slices.Contains([]string{"minimal", "low", "medium", "high", "xhigh"}, a.Effort):

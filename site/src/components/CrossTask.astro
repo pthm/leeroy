@@ -3,6 +3,7 @@
 // per hour) and n, shaded by where it ranks in that task. Blank: not run. Sortable by any column (scripts/interact.ts).
 import { LABS, unit, latestFor, displayNames, duration, entryName, harnessName, isProgress, leaderboard, percentiles, rate, taskShort, taskTitle, tasks, type ModelRow } from '../lib/results';
 import { resultsUrl } from '../lib/url';
+import FilterBar from './FilterBar.astro';
 
 interface Props {
   version?: string;
@@ -30,6 +31,8 @@ const cellSub = (t: string, r: ModelRow) => (isProgress(t) ? `n=${r.attempts}` :
 const cellValue = (t: string, r: ModelRow) => (isProgress(t) ? r.meanRate ?? 0 : r.met / r.attempts - (r.meanTime ?? 1e6) / 1e9);
 ---
 
+<div data-filtered>
+<FilterBar rows={entries.map(e => e.row)} />
 <div class="overflow-x-auto rounded border border-hairline bg-raised" data-chart data-cross>
   <table class="data cross" data-sortable>
     <thead>
@@ -48,7 +51,7 @@ const cellValue = (t: string, r: ModelRow) => (isProgress(t) ? r.meanRate ?? 0 :
     </thead>
     <tbody>
       {entries.map(e => (
-        <tr data-key={e.row.key}>
+        <tr data-key={e.row.key} data-lab={e.row.lab} data-harness={e.row.runtime} data-effort={e.row.effort || 'default'}>
           <td class="whitespace-nowrap text-fg" data-v={names.get(e.row.key)}>
             <span style={`color:${LABS[e.row.lab]}`} title={e.row.lab}>●</span> {entryName(e.row)}
           </td>
@@ -76,6 +79,7 @@ const cellValue = (t: string, r: ModelRow) => (isProgress(t) ? r.meanRate ?? 0 :
       ))}
     </tbody>
   </table>
+</div>
 </div>
 <p class="mt-3 font-mono text-[11px] leading-relaxed text-faint">
   Goal tasks show goals met out of attempts, with mean time to the goal. Levelling tasks show mean XP per hour (hardcore: total XP), with

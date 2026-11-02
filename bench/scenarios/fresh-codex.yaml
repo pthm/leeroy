@@ -6,6 +6,7 @@ goal: score:100000
 minutes: 60
 require_fresh: true
 runtime: codex
+effort: xhigh # reasoning effort, recorded with the run (required for claude and codex)
 agents:
   - {name: a26, char: Hollis, class: warrior, spec: protwarrior}
   - {name: a27, char: Wrenna, class: paladin, spec: ret}

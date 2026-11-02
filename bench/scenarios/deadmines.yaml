@@ -9,6 +9,7 @@ minutes: 10080
 require_fresh: true
 runtime: codex
 models: {codex: gpt-6.1-sol}
+effort: xhigh # reasoning effort, recorded with the run (required for claude and codex)
 agents:
   - {name: a44, char: Aldous, class: warrior, spec: protwarrior}
   - {name: a45, char: Isolde, class: priest, spec: holy}

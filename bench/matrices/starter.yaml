@@ -4,6 +4,7 @@ reps: 2
 minutes: 60
 races: [human, dwarf, gnome]
 classes: [warrior, paladin, rogue, priest, mage]
+effort: xhigh # reasoning effort, recorded with each run (required for claude and codex)
 tasks:
   - {key: level10, goal: "level:10", minutes: [30, 60]}
   - key: blacksmith75
