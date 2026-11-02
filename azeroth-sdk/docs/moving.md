@@ -48,7 +48,9 @@ Where things are from where you stand, walking and its traps. The rest of the SD
 - Same-map teleports (the Wizard's Sanctum in Stormwind, Darnassus and Rut'theran, Ebon Hold): move.to
   doesn't cross them, but its route_unreachable names the portal to walk into and where it puts you, and
   act.go_to takes it: walks into the trigger, is teleported, and walks the rest. Walking into a trigger by
-  accident teleports you too (move.to then ends `teleported`). Support is sampled at most every 0.25 yards;
+  accident teleports you too (move.to then ends `teleported`). A destination in a teleport to another map (the
+  Dark Portal, an instance's portal) is walked into by act.go_to, and the teleport is its arrival (`data.teleported`,
+  `data.to_map`). Support is sampled at most every 0.25 yards;
   physical heights come from nearby terrain and movement-mask WMO/M2 rays. Overhead terrain does
   not replace a cave floor. Final body segments use continuous capsule sweeps against indexed triangles.
   The default standing profile is radius 0.3, height 2.03128, step 1.4 yards and maximum slope 60 degrees:

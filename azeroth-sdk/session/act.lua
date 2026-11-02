@@ -278,6 +278,19 @@ function A.go_to(o)
   local function fail(code, message) return result("act.go_to", false, evidence(), code, message) end
   if (initial.map or 0) ~= map then return fail("wrong_map", "destination is on another map") end
   if z == nil then return fail("wrong_floor", "destination floor is unknown; supply z") end
+  -- a destination in a teleport to another map (the Dark Portal, an instance's portal): walk in, and the teleport
+  -- is the arrival (stopping within the tolerance can be short of a thin trigger)
+  local tp = world._teleport_at(o.x, o.y, z)
+  if tp then
+    move._expect_transfer(120) -- the teleport must not end the caller's movement lease
+    local w = walk(o, tp.enter.x, tp.enter.y, tp.enter.z)
+    if not w.ok and w.error.code ~= "teleported" then return fail(w.error.code, w.error.message) end
+    local function gone() return (me.position().map or 0) ~= map or A.dist(tp.enter.x, tp.enter.y, tp.enter.z) > 30 end
+    local deadline = now() + 15000 -- the trigger fires within a tenth of a second; a far transfer takes a few more
+    while not gone() and now() < deadline do wait(0.5) end
+    if not gone() then return fail("unreachable", "walked into teleport trigger "..tp.trigger.." but it didn't teleport you") end
+    return result("act.go_to", true, {position=me.position(), teleported=true, trigger=tp.trigger, to_map=tp.map})
+  end
   local function arrived(d) return d.distance <= tol and d.vertical_gap <= ztol end
   local r
   for n = 1, o.tries or 3 do

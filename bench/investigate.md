@@ -54,11 +54,6 @@ mountains to the Wetlands (up to z 445 at -4367 -2212, climbs of 55-58 degrees b
 - **No boats or zeppelins.** The SDK drops ONTRANSPORT whenever the character moves (`client/selfmove.go`), so it
   can't ride one; the docs say so. Haiku and Sonnet worked that out at the Stormwind dock (The Bravery to Auberdine
   is the intended route to Darnassus) and quit. Needs: boarding, riding along the transport's path, getting off.
-- **Teleports to another map (the Dark Portal) are hard to walk into.** Trigger 4354 is a box 3.8 yd deep (15.5 wide);
-  `act.go_to` arrives within 3.5 yd (moving.md) and ignores a smaller tolerance, so the walk stops short; and once,
-  the teleport happened but the result still said "unreachable: walk completed outside the destination tolerance".
-  Same-map portals are walked into (moving.md); `areatrigger_teleport` boxes should be too, and a cross-map
-  transfer should end the walk as arrived.
 ## azworld
 
 (nothing open)

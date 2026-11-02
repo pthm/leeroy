@@ -253,6 +253,16 @@ func (b *Bot) setupRoutes() {
 		}
 		return map[string]any{"name": v.Name, "enter": pt(v.Enter), "exit": pt(v.Exit)}
 	})
+	e.InternalFunc("world._teleport_at", "(x, y, z) → table?", func(x, y, z float64) map[string]any {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		px, py, pz, _, m := b.world.Position()
+		t, enter, ok := b.teleportAt(ctx, m, navigation.Point3D{X: px, Y: py, Z: pz}, navigation.Point3D{X: float32(x), Y: float32(y), Z: float32(z)})
+		if !ok {
+			return nil
+		}
+		return map[string]any{"trigger": t.id, "map": portalMaps[t.id], "enter": map[string]any{"x": round1(enter.X), "y": round1(enter.Y), "z": round1(enter.Z)}}
+	})
 	e.InternalFunc("world._cancel", "(request_id) → bool", func(id int) bool {
 		task, _, _ := e.CurrentTaskIdentity()
 		return r.cancelOwned(task, id)

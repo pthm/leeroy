@@ -2,7 +2,8 @@ package session
 
 // Area triggers: the real client sends CMSG_AREATRIGGER when the player walks into one (AreaTrigger.dbc), and
 // the server credits "explore X" quest objectives, inn rest and instance portals only from that. Without it,
-// quests like Fargodeep Mine never complete. Sent once per entry, checked twice a second.
+// quests like Fargodeep Mine never complete. Sent once per entry, checked ten times a second: walking through a
+// thin one (the Dark Portal's is 3.8 yards deep) takes half a second.
 
 import (
 	"context"
@@ -112,6 +113,31 @@ func (b *Bot) portalApproach(t *areaTrigger, entrance navigation.Point3D) (navig
 	return p, true
 }
 
+// teleportAt: the cross-map teleport trigger (portalMaps: the Dark Portal, an instance's portal) on map m that p is
+// in, or whose centre is within 5 yards of it, and the point to walk to so as to be inside it: the navmesh's nearest
+// reachable point to its centre from `from`, when that's inside, else the centre.
+func (b *Bot) teleportAt(ctx context.Context, m uint32, from, p navigation.Point3D) (*areaTrigger, navigation.Point3D, bool) {
+	for i := range b.areaTriggers {
+		t := &b.areaTriggers[i]
+		if _, cross := portalMaps[t.id]; !cross || t.mapID != m {
+			continue
+		}
+		if !t.inside(m, p.X, p.Y, p.Z) && math.Hypot(float64(t.x-p.X), float64(t.y-p.Y)) > 5 {
+			continue
+		}
+		enter := navigation.Point3D{X: t.x, Y: t.y, Z: t.z}
+		if b.nav != nil {
+			if r, err := b.findPath(ctx, m, from, enter); err == nil && r != nil && len(r.Points) > 0 {
+				if e := r.Points[len(r.Points)-1]; t.inside(m, e.X, e.Y, e.Z) {
+					enter = e
+				}
+			}
+		}
+		return t, enter, true
+	}
+	return nil, navigation.Point3D{}, false
+}
+
 func abs32(v float32) float32 { return float32(math.Abs(float64(v))) }
 
 func (b *Bot) watchAreaTriggers() {
@@ -123,7 +149,7 @@ func (b *Bot) watchAreaTriggers() {
 	w := b.world
 	go func() {
 		in := map[uint32]bool{}
-		for range time.Tick(500 * time.Millisecond) {
+		for range time.Tick(100 * time.Millisecond) {
 			x, y, z, _, m := w.Position()
 			for i := range triggers {
 				t := &triggers[i]
