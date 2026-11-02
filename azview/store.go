@@ -245,12 +245,17 @@ func (s *Store) add(e Ev) bool {
 			e["heard"] = []string{n}
 		}
 		s.npcSaid[k] = e
-	case "group": // only changes (the SDK logs only changes; a resumed session logs its group again)
-		b, _ := json.Marshal([]any{e["group"], e["leader"], e["members"]})
-		if s.lastGrp[n] == string(b) {
+	case "group": // only changes (a resumed session logs its group again); no group is only a change after one (the
+		// session logs the character's group at login, none for most)
+		key := ""
+		if N(e, "group") != 0 {
+			b, _ := json.Marshal([]any{e["group"], e["leader"], e["members"]})
+			key = string(b)
+		}
+		if s.lastGrp[n] == key {
 			return false
 		}
-		s.lastGrp[n] = string(b)
+		s.lastGrp[n] = key
 		s.groups = insert(s.groups, e, evT)
 	case "login":
 		if c := classIDs[S(e, "class")]; c > 0 {

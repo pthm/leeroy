@@ -75,6 +75,12 @@ func TestStoreMergesRepeats(t *testing.T) {
 	if len(s.groups) != 1 {
 		t.Fatalf("a repeated group list should be dropped, got %d", len(s.groups))
 	}
+	s = storeOf(t, `{"char":"A","t":1,"type":"group","data":{"members":[]}}
+{"char":"A","t":2,"type":"group","data":{"group":5,"leader":"A","members":["A","B"]}}
+{"char":"A","t":3,"type":"group","data":{"members":[]}}`)
+	if len(s.groups) != 2 || N(s.groups[0], "group") != 5 || N(s.groups[1], "group") != 0 {
+		t.Fatalf("no group at login isn't leaving one; leaving after one is: %v", s.groups)
+	}
 }
 
 func TestStoreTargetsAndGroups(t *testing.T) {
