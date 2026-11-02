@@ -8,6 +8,7 @@ package session
 import (
 	"bytes"
 	"encoding/binary"
+	"math"
 	"slices"
 	"strings"
 	"sync"
@@ -22,8 +23,9 @@ const (
 	smsgPetSpells        = 0x179
 	smsgPetCastFailed    = 0x138
 	cmsgPetSpellAutocast = 0x2F3
+	cmsgPetCastSpell     = 0x1F0
 
-	actPassive  = 0x01 // a pet action's type, in its top byte: a passive ability
+	actPassive  = 0x01 // a pet action's type, in its top byte: an ability it can't use by itself (passive, or cast only)
 	actDisabled = 0x81 // an ability, autocast off
 	actEnabled  = 0xC1 // an ability, autocast on
 	actCommand  = 0x07 // stay, follow, attack
@@ -37,6 +39,12 @@ var (
 	petReacts   = []string{"passive", "defensive", "aggressive"}
 	petCommands = []string{"stay", "follow", "attack"}
 )
+
+// passive: Spell.dbc's SPELL_ATTR0_PASSIVE (the pet bar's actPassive also marks abilities that are only cast)
+func passive(id uint32) bool {
+	s := spellInfo(id)
+	return s != nil && s.attrs&0x40 != 0
+}
 
 func at(names []string, i uint8) string {
 	if int(i) < len(names) {
@@ -59,7 +67,8 @@ type petSpell struct {
 }
 
 // read: Player::PetSpellInitialize: guid (0: the pet is gone), family, duration, react, command, flags, the action
-// bar (10), then the abilities (count, each packed: id and state) and cooldowns.
+// bar (10, with the autocast state of the abilities on it), then the abilities (count, each packed: id and state)
+// and cooldowns.
 func (p *petBar) read(data []byte) {
 	r := bytes.NewReader(data)
 	var head struct {
@@ -85,6 +94,15 @@ func (p *petBar) read(data []byte) {
 			break
 		}
 		p.spells = append(p.spells, petSpell{id: v & 0xFFFFFF, state: uint8(v >> 24)})
+	}
+	for _, v := range head.Bar { // the bar holds the autocast state of what's on it (CharmInfo::SetSpellAutocast)
+		if t := uint8(v >> 24); t == actEnabled || t == actDisabled {
+			for i := range p.spells {
+				if p.spells[i].id == v&0xFFFFFF {
+					p.spells[i].state = t
+				}
+			}
+		}
 	}
 }
 
@@ -161,10 +179,10 @@ func (b *Bot) setupPet() {
 			out.React, out.Command = at(petReacts, p.react), at(petCommands, p.command)
 			for _, s := range p.spells {
 				n := spellName(s.id)
-				if s.state == actPassive && (strings.Contains(n, "(DND)") || strings.Contains(n, "Scaling")) {
+				if strings.Contains(n, "(DND)") || strings.Contains(n, "Scaling") {
 					continue // the server's own bookkeeping (Tamed Pet Passive 07 (DND), Hunter Pet Scaling 02), not abilities
 				}
-				out.Spells = append(out.Spells, types.PetSpell{ID: s.id, Name: spellName(s.id), Passive: s.state == actPassive, Autocast: s.state == actEnabled})
+				out.Spells = append(out.Spells, types.PetSpell{ID: s.id, Name: n, Passive: passive(s.id), Autocast: s.state == actEnabled})
 			}
 		}
 		return out
@@ -235,7 +253,7 @@ func (b *Bot) setupPet() {
 		switch {
 		case !known:
 			return b.refuse("pet.cast", args, "not_known", "your pet doesn't have that ability (pet.info lists them)")
-		case s.state == actPassive:
+		case passive(id):
 			return b.refuse("pet.cast", args, "passive", "a passive ability: always on")
 		}
 		if err := w.PetAction(g, uint32(s.state)<<24|id, t); err != nil {
@@ -246,10 +264,48 @@ func (b *Bot) setupPet() {
 			switch {
 			case !isCast || c.Spell != id:
 				return nil
+			case c.Code == "dont_report": // the server's answer to a target out of range or sight (PetHandler.cpp)
+				return script.Fail("out_of_range", "out of range or sight of your pet: the server may send it in to cast it later (a pet_cast_done event), but often it stops short", nil)
 			case ev.Type == "pet_cast_done":
 				return script.Ok(c)
 			case ev.Type == "pet_cast_failed":
 				return script.Fail(c.Code, "your pet couldn't: "+c.Code, nil)
+			}
+			return nil
+		})
+	})
+	e.Func("pet.cast_at", "(id, x, y, z) → Request<Cast>", "your pet uses an ability cast at a place (a water elemental's Freeze)", func(id uint32, x, y, z float32) map[string]any {
+		args := map[string]any{"spell": id, "x": x, "y": y, "z": z}
+		g, refused := pet("pet.cast_at", args)
+		if refused != nil {
+			return refused
+		}
+		if _, known := p.spell(id); !known || passive(id) {
+			return b.refuse("pet.cast_at", args, "not_known", "not one of your pet's abilities (pet.info lists them)")
+		}
+		// CMSG_PET_CAST_SPELL: the pet, cast count, spell, flags, then the target: a place (TARGET_FLAG_DEST_LOCATION,
+		// no transport)
+		buf := binary.LittleEndian.AppendUint64(nil, g)
+		buf = append(buf, 0)
+		buf = binary.LittleEndian.AppendUint32(buf, id)
+		buf = append(buf, 0)
+		buf = binary.LittleEndian.AppendUint32(buf, 0x40)
+		buf = append(buf, 0)
+		for _, v := range []float32{x, y, z} {
+			buf = binary.LittleEndian.AppendUint32(buf, math.Float32bits(v))
+		}
+		if err := w.SendPacketRaw(cmsgPetCastSpell, buf); err != nil {
+			return b.refuse("pet.cast_at", args, "failed", err.Error())
+		}
+		return b.request("pet.cast_at", args, 5*time.Second, nil, func(ev script.Event) *script.Outcome {
+			c, isCast := ev.Data.(types.Cast)
+			switch {
+			case !isCast || c.Spell != id:
+				return nil
+			case ev.Type == "pet_cast_done":
+				return script.Ok(c)
+			case ev.Type == "pet_cast_failed":
+				return script.Fail(map[bool]string{true: "out_of_range", false: c.Code}[c.Code == "dont_report"], "your pet couldn't: "+c.Code, nil)
 			}
 			return nil
 		})
@@ -261,7 +317,7 @@ func (b *Bot) setupPet() {
 			return refused
 		}
 		if s, known := p.spell(id); !known || s.state == actPassive {
-			return b.refuse("pet.autocast", args, "not_known", "not one of your pet's abilities that it can use (pet.info lists them)")
+			return b.refuse("pet.autocast", args, "not_autocast", "not one of your pet's abilities it can use by itself (pet.info lists them; a passive one, or one only cast)")
 		}
 		body := binary.LittleEndian.AppendUint32(binary.LittleEndian.AppendUint64(nil, g), id)
 		if err := w.SendPacketRaw(cmsgPetSpellAutocast, append(body, map[bool]byte{true: 1, false: 0}[on])); err != nil {

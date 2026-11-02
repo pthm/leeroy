@@ -58,13 +58,25 @@ Spells, attacks and fights, and looking back at a fight. The rest of the SDK is 
   `pet.react(stance)`: `passive` (it never attacks on its own), `defensive` (it attacks what attacks you or it),
   `aggressive` (it attacks hostiles in range).
 - `pet.cast(id, guid)` uses an ability on a unit (its own target without one): a `pet_cast_done` event when it goes
-  off, `pet_cast_failed` with the server's reason (`not_ready`, `out_of_range`, ...), which the request returns too.
-  `pet.autocast(id, on)` sets whether it uses an ability by itself.
+  off, `pet_cast_failed` with the server's reason (`not_ready`, `bad_targets`, ...), which the request returns too.
+  A target out of range or sight of the pet fails `out_of_range`: the server may still send the pet in and cast it
+  later (a `pet_cast_done` event), but often the pet stops short. A pet sent at a unit (`pet.attack`) closes in to
+  its own range.
+  `pet.cast_at(id, x, y, z)` uses one cast at a place (a water elemental's Freeze). `pet.autocast(id, on)` sets
+  whether it uses an ability by itself.
 - A hunter's pet's happiness falls over time. Below content it does less damage, and at 0 it leaves for good.
   `pet.feed(item)` casts Feed Pet on food you carry: each family eats some kinds of food, and food far below the
   pet's level is refused (`food_lowlevel`).
 - Summoning, dismissing and reviving are the class's spells (Call Pet, Dismiss Pet, Revive Pet; a warlock's
   Summon Imp...): `spells.cast`.
+
+## Totems
+
+- A shaman's totems are spells (`spells.cast`), one per element at a time: a new totem of an element replaces the
+  one up. Each needs its element's totem item in your bags (Earth, Fire, Water, Air Totem). A totem is a unit (a
+  `totem` in `units.nearby`) that enemies can attack and kill.
+- `totems.list()`: your totems that are up, each with its `element`, unit and `seconds_left`. `totems.destroy(element)`
+  takes one down before its time.
 
 ## Looking back at a fight
 

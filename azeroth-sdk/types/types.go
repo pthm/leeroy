@@ -521,7 +521,7 @@ type PetSpell struct {
 	ID       uint32 `json:"id"`
 	Name     string `json:"name"`
 	Passive  bool   `json:"passive,omitempty" doc:"always on: not cast"`
-	Autocast bool   `json:"autocast,omitempty" doc:"it uses this by itself (pet.autocast)"`
+	Autocast bool   `json:"autocast,omitempty" doc:"it uses this by itself (pet.autocast; some abilities are only cast, as Sacrifice)"`
 }
 
 // Happiness: a hunter's pet's. Below content it does less damage; at 0 it leaves you. Feeding raises it (pet.feed).
@@ -529,6 +529,15 @@ type Happiness struct {
 	Current uint32 `json:"current"`
 	Max     uint32 `json:"max"`
 	State   string `json:"state" doc:"unhappy, content or happy"`
+}
+
+// Totem: one of a shaman's totems that is up.
+type Totem struct {
+	Element     string `json:"element" doc:"fire, earth, water or air: one totem of each at a time"`
+	GUID        GUID   `json:"guid" doc:"its unit"`
+	Spell       uint32 `json:"spell"`
+	Name        string `json:"name"`
+	SecondsLeft int    `json:"seconds_left"`
 }
 
 // ---------- others ----------

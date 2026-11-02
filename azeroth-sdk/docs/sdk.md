@@ -242,7 +242,7 @@ the initial roster and server group updates using GUIDs, without names, chat, re
 | `world` | terrain: ground heights, walking paths, line of sight to a point |
 | `move` | walking (`to`, `stop`, `unstuck`) and facing (`face`, `turn`) |
 | `combat` | targeting, auto-attack, threat tables, the combat log and meters |
-| `pet` | your pet: its state and abilities, commands (`follow`, `stay`, `attack`), stance (`react`), `cast`, `autocast`, `feed` |
+| `pet` | your pet: its state and abilities, commands (`follow`, `stay`, `attack`), stance (`react`), `cast`, `cast_at`, `autocast`, `feed` |
 | `spells` | casting (`cast`, `cast_at`), cooldowns, usability, what a spell does |
 | `items` | your bags and gear: list, info, compare, use, equip, destroy, loot |
 | `gossip` | talking to NPCs: what they say, their dialogue options and quests |
@@ -252,6 +252,7 @@ the initial roster and server group updates using GUIDs, without names, chat, re
 | `death` | your corpse, releasing, reclaiming, spirit healers |
 | `chat`, `group`, `trade`, `summon` | other players |
 | `talents` | your talent trees and spending points |
+| `totems` | a shaman's totems that are up (`list`) and taking one down (`destroy`) |
 | `skills` | learned skill IDs, names, base values, maxima and categories (`list`, `get`) |
 | `task`, `events`, `wait`, `await`, `ask` | the runtime (above) |
 | `act` | utilities that wait: walking with retries, NPC errands, resting, recovering from death |

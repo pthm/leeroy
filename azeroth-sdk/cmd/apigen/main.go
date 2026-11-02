@@ -37,7 +37,7 @@ type fnDoc struct {
 var roots = []any{
 	types.Position{}, types.Location{}, types.Unit{}, types.Creature{}, types.Engaged{}, types.Control{}, types.Player{}, types.UnitRef{}, types.Object{},
 	types.SpellCheck{}, types.DangerCheck{}, types.PathCheck{}, types.RouteCheck{}, types.RouteLeg{}, types.Resource{}, types.XP{}, types.Casting{}, types.Stats{}, types.Corpse{}, types.Achievements{}, types.Skill{},
-	types.Item{}, types.Comparison{}, types.VendorItem{}, types.Spell{}, types.Quest{}, types.Objective{}, types.Talents{}, types.Pet{},
+	types.Item{}, types.Comparison{}, types.VendorItem{}, types.Spell{}, types.Quest{}, types.Objective{}, types.Talents{}, types.Pet{}, types.Totem{},
 	types.TalentTree{}, types.Talent{}, types.Group{}, types.GroupMember{}, types.GroupReport{}, types.GroupMemberReport{}, types.Trade{}, types.TradeSide{}, types.Inspect{},
 	types.CombatEntry{}, types.Meter{}, types.SpellMeter{}, types.Status{}, types.TaskInfo{}, types.MobSummary{}, types.Fight{}, types.FightHeader{},
 	types.Threat{}, types.Gossip{}, types.Gear{}, types.Spellbook{}, types.QuestInfo{}, types.Trainer{}, types.Reputation{},

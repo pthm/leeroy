@@ -248,6 +248,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `pet.attack(guid) → Request` | send your pet at a unit (as combat.pet_attack). Completion: the observed pet targets the requested unit. | [Request](#request) |
 | `pet.autocast(id, on) → Request` | turn your pet's use of an ability on its own on or off. Completion: the autocast change was sent. | [Request](#request) |
 | `pet.cast(id [, guid]) → Request<Cast>` | your pet uses one of its abilities (ids from pet.info), on a unit or its own target. Completion: the pet's matching spell went off (SMSG_SPELL_GO from the pet); SMSG_PET_CAST_FAILED fails it. | [Request](#request), [Cast](#cast) |
+| `pet.cast_at(id, x, y, z) → Request<Cast>` | your pet uses an ability cast at a place (a water elemental's Freeze). Completion: the pet's matching spell went off (SMSG_SPELL_GO from the pet); SMSG_PET_CAST_FAILED fails it. | [Request](#request), [Cast](#cast) |
 | `pet.feed(item) → Request<Cast>` | feed your hunter's pet food you carry (entry or guid), with Feed Pet: it gains happiness. It only eats the kinds of food its family likes. Completion: Feed Pet went off; its cast failure fails the request. | [Request](#request), [Cast](#cast) |
 | `pet.follow() → Request` | your pet follows you (and stops fighting). Completion: the command was sent (the server doesn't confirm pet commands). | [Request](#request) |
 | `pet.info() → Pet?` | your pet: health, focus or mana, happiness (a hunter's), stance, command and abilities; nil for none | [Pet](#pet) |
@@ -312,6 +313,13 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `task.spawn([name,] fn, ...) → id` | run fn as a task: it can wait without blocking the game |  |
 | `task.status(text) → nil` | what the current task claims it is doing; limited to 512 bytes, shown in task.list and recorded when changed as a task_status diagnostic |  |
 | `task.stop([id or name]) → count` | stop tasks: by id, by name, or every task with no argument. By name or with none it skips the task calling it; a task waiting on a walk stops walking |  |
+
+### totems
+
+| Function | | Returns |
+|---|---|---|
+| `totems.destroy(element) → Request` | take down your totem of an element: fire, earth, water or air. Completion: the totem's unit is gone or dead. | [Request](#request) |
+| `totems.list() → Totem[]` | your totems that are up, one per element at most: which, its unit, the seconds it has left | [Totem](#totem) |
 
 ### trade
 
@@ -870,7 +878,19 @@ Happiness: a hunter's pet's. Below content it does less damage; at 0 it leaves y
 | `id` | number |  |
 | `name` | string |  |
 | `passive?` | bool | always on: not cast |
-| `autocast?` | bool | it uses this by itself (pet.autocast) |
+| `autocast?` | bool | it uses this by itself (pet.autocast; some abilities are only cast, as Sacrifice) |
+
+### Totem
+
+Totem: one of a shaman's totems that is up.
+
+| Field | Type | |
+|---|---|---|
+| `element` | string | fire, earth, water or air: one totem of each at a time |
+| `guid` | GUID | its unit |
+| `spell` | number |  |
+| `name` | string |  |
+| `seconds_left` | number |  |
 
 ### Group
 
@@ -2483,6 +2503,7 @@ The `data` of an ok result, per op.
 | `move.unstuck` | Teleport |
 | `objects.use` | ObjectActivation |
 | `pet.cast` | Cast |
+| `pet.cast_at` | Cast |
 | `pet.feed` | Cast |
 | `quests.accept` | QuestDone |
 | `quests.info` | QuestInfo |

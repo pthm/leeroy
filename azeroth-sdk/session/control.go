@@ -211,6 +211,7 @@ func (b *Bot) setupControl() {
 	b.setupNPC()
 	b.setupTalents()
 	b.setupPet()
+	b.setupTotems()
 	b.setupTrade()
 	b.setupTravel()
 	b.setupFights()

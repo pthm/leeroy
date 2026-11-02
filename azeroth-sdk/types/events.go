@@ -547,6 +547,6 @@ var OpResults = map[string]any{
 	"items.use": CastDone{}, "objects.use": ObjectActivation{}, "transports.board": Boarding{}, "transports.leave": Position{}, "items.loot": Looted{}, "items.open": Looted{}, "items.split": Item{}, "items.equip": Equipped{}, "items.roll": LootRollResult{},
 	"vendor.buy": ItemReceived{}, "vendor.sell": Sold{}, "vendor.sell_junk": Sold{}, "vendor.repair": Repaired{},
 	"trainer.learn": Learned{}, "quests.turn_in": QuestDone{}, "quests.accept": QuestDone{}, "talents.learn": TalentLearned{},
-	"pet.cast": Cast{}, "pet.feed": Cast{},
+	"pet.cast": Cast{}, "pet.cast_at": Cast{}, "pet.feed": Cast{},
 	"combat.attack": Attacking{}, "move.unstuck": Teleport{}, "summon.accept": Teleport{}, "flights.map": FlightMap{}, "flights.take": Flight{}, "innkeeper.bind": Home{},
 }

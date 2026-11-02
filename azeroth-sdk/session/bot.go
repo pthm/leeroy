@@ -58,6 +58,7 @@ type BotEvent struct {
 type Bot struct {
 	castSequences    castSequences
 	pet              petBar                       // the pet's bar (pet.go)
+	totems           totemSlots                   // a shaman's totems (totems.go)
 	rec              *Recorder                    // optional event log (-record)
 	lastAttackReject atomic.Pointer[attackReject] // for bot.last_attack_error() // last move_to found no navmesh path (move_to returns false)
 	id               string
@@ -390,6 +391,7 @@ func (b *Bot) Run() BotResult {
 	})
 
 	b.watchPet()
+	b.watchTotems()
 
 	// Summon / .go / portal: interrupt movement+combat and flag Lua to restart AI.
 	b.wireTeleportHandling()
