@@ -19,14 +19,15 @@ func (p *player) harness(details types.DiagnosticDetails) {
 func (p *player) harnessEvent(ev types.Diagnostic) {
 	p.diagMu.Lock()
 	defer p.diagMu.Unlock()
-	path := filepath.Join(p.dir, "harness.jsonl")
+	path := p.r.f().Diagnostics(p.a.Name)
 	if !p.diagInit {
+		os.MkdirAll(filepath.Dir(path), 0o755)
 		if f, err := os.Open(path); err == nil {
 			sc := bufio.NewScanner(f)
 			sc.Buffer(make([]byte, 4096), 1024*1024)
 			for sc.Scan() {
 				var ev types.Diagnostic
-				if json.Unmarshal(sc.Bytes(), &ev) == nil {
+				if json.Unmarshal(sc.Bytes(), &ev) == nil && ev.Session == "" { // the session's own share the file
 					p.diagSeq = max(p.diagSeq, ev.Seq)
 				}
 			}

@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/pthm/leeroy/azbench/runfiles"
 	"math"
 	"os"
 	"path/filepath"
@@ -112,55 +113,32 @@ func r1(v float64) any {
 	return math.Round(v*10) / 10
 }
 
-type agentRun struct{ agent, run, record, evdir string }
+// agentRun: one player of a run, and where its files are
+type agentRun struct {
+	agent, char string
+	run         string // the agent's directory (agents/<agent>/)
+	record      string // game/<char>/record.jsonl
+	events      string // game/<char>/events.jsonl
+	samples     string // judge/<char>/samples.jsonl
+	result      string // judge/<char>/result.json
+	diag        string // diagnostics/<agent>.jsonl
+	live        string // .live/, while the run runs
+}
 
-// the agents in a dir: a team (it has go) or one run
+// the players of a run, from its run.json
 func reportAgents(dir string) []agentRun {
-	if _, err := os.Stat(filepath.Join(dir, "go")); err == nil {
-		runs, t0 := filepath.Join(dir, ".."), stampMs(filepath.Base(dir))
-		var out []agentRun
-		recs, _ := filepath.Glob(filepath.Join(dir, "*.record.jsonl"))
-		names := map[string]bool{}
-		for _, f := range recs {
-			names[strings.TrimSuffix(filepath.Base(f), ".record.jsonl")] = true
-		}
-		metas, _ := filepath.Glob(filepath.Join(dir, "*", "meta.json"))
-		for _, f := range metas {
-			names[filepath.Base(filepath.Dir(f))] = true
-		}
-		agents := make([]string, 0, len(names))
-		for name := range names {
-			agents = append(agents, name)
-		}
-		sort.Strings(agents)
-		for _, a := range agents {
-			b, _ := os.ReadFile(filepath.Join(dir, "go."+a+".ready")) // azbench writes the agent's dir there
-			run := strings.TrimSpace(string(b))
-			if st, err := os.Stat(filepath.Join(dir, a)); err == nil && st.IsDir() {
-				run = filepath.Join(dir, a) // prefer saved artifacts over an old absolute ready-file path
-			}
-			if run == "" { // older runs: by time
-				ds, _ := os.ReadDir(runs)
-				for _, d := range ds {
-					if strings.HasSuffix(d.Name(), "-"+a) && math.Abs(float64(stampMs(d.Name())-t0)) < 600e3 {
-						run = filepath.Join(runs, d.Name())
-						break
-					}
-				}
-			}
-			if run == "" {
-				run = filepath.Join(dir, a)
-			}
-			out = append(out, agentRun{a, run, filepath.Join(dir, a+".record.jsonl"), dir})
-		}
-		return out
+	f := runfiles.Run(dir)
+	m, err := f.ReadManifest()
+	if err != nil {
+		return nil
 	}
-	meta := readJSON(filepath.Join(dir, "meta.json"))
-	a := str(meta["agent"])
-	if a == "" {
-		a = filepath.Base(dir)
+	var out []agentRun
+	for _, p := range m.Players {
+		out = append(out, agentRun{agent: p.Agent, char: p.Char, run: f.Agent(p.Agent), record: f.Record(p.Char),
+			events: f.Events(p.Char), samples: f.Samples(p.Char), result: f.Result(p.Char), diag: f.Diagnostics(p.Agent),
+			live: f.Live("")})
 	}
-	return []agentRun{{a, dir, filepath.Join(dir, "record.jsonl"), dir}}
+	return out
 }
 
 type call struct {
@@ -176,11 +154,8 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 			score = append(score, e)
 		}
 	}
-	char := str(meta["char"])
-	if char == "" && len(score) > 0 {
-		char = str(score[0]["n"])
-	}
-	events := jsonl(filepath.Join(ar.evdir, char+".events.jsonl"))
+	char := ar.char
+	events := jsonl(ar.events)
 
 	// the agent's tool calls (Claude: tool_use -> tool_result; Codex: item.started -> completed)
 	var calls []call
@@ -198,7 +173,7 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 	var threads []string           // Codex threads: their usage is only in the session log (~/.codex/sessions)
 	var oc tokens                  // opencode: each step's final usage, in its step_finish
 	ocSeen := false
-	for _, e := range jsonl(filepath.Join(ar.run, "agent.jsonl")) {
+	for _, e := range jsonl(filepath.Join(ar.run, "transcript.jsonl")) {
 		t := isoMs(str(e["timestamp"]))
 		typ := str(e["type"])
 		msg, _ := e["message"].(map[string]any)
@@ -328,7 +303,7 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 	}
 	var gaps []float64
 	gapStart := int64(-1)
-	played := intervalPlayed(ar.run)
+	played := intervalPlayed(ar.diag)
 	for i := 1; i < len(score); i++ {
 		a, b := score[i-1], score[i]
 		at0, bt := int64(fnum(a["t"])), int64(fnum(b["t"]))
@@ -541,7 +516,7 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 	}
 	// the judge's count from the character database is the right one: the run's window only (no death after the
 	// clock), each death once (a relogin replays the death event of a character logged in dead)
-	if s := jsonl(filepath.Join(ar.run, "samples.jsonl")); len(s) > 1 {
+	if s := jsonl(ar.samples); len(s) > 1 {
 		dead := func(m map[string]any) float64 { return fnum(get(m["signals"], "deaths")) }
 		deaths = int(dead(s[len(s)-1]) - dead(s[0]))
 	}
@@ -570,7 +545,7 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 		l := score[len(score)-1]
 		f := obj{{"value", l["value"]}, {"rate", l["rate"]}, {"recent_rate", l["recent_rate"]},
 			{"best_window", l["best_window"]}, {"pace", l["pace"]}, {"score", l["score"]}}
-		res := readJSON(filepath.Join(ar.run, "judge.json"))
+		res := readJSON(ar.result)
 		goal := str(meta["goal"])
 		if goal == "" {
 			goal = str(res["goal"])
@@ -587,11 +562,11 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 		combat.Add(e)
 	}
 	co, use := coop[char], metrics.Use(char, pos)
-	diag := diagnostics.Read(ar.agent, ar.record, filepath.Join(ar.run, "harness.jsonl"))
+	diag := diagnostics.Read(ar.agent, ar.diag)
 	if costOut != nil {
 		diag.Coverage.CostStatus = "estimated"
 	}
-	judgeState := savedJudgeState(ar.run)
+	judgeState := savedJudgeState(ar)
 
 	return obj{
 		{"agent", ar.agent}, {"char", char}, {"runtime", meta["runtime"]}, {"model", meta["model"]}, {"effort", meta["effort"]}, {"provider", meta["provider"]},
@@ -646,10 +621,10 @@ func sum(a []float64) (s float64) {
 	return s
 }
 
-// positions of every character in a dir's record files (client side: each agent's own samples)
+// positions of every character in a run's game records (client side: each agent's own samples)
 func readPositions(dir string) map[string][]metrics.Pos {
 	out := map[string][]metrics.Pos{}
-	files, _ := filepath.Glob(filepath.Join(dir, "*record.jsonl"))
+	files, _ := filepath.Glob(runfiles.Run(dir).RecordsGlob())
 	for _, f := range files {
 		fh, err := os.Open(f)
 		if err != nil {
@@ -691,11 +666,11 @@ func truthy(v any) bool {
 	return v != nil
 }
 
-// teamResults: team.json from each agent's judge result (the last JSON line of <agent>.out), and the report cards
-// grouped by runtime and model.
+// teamResults: team.json from each player's judge result (judge/<char>/result.json), and the report cards grouped
+// by runtime and model.
 func teamResults(dir string, n int, cards []map[string]any) obj {
 	var res []map[string]any
-	outs, _ := filepath.Glob(filepath.Join(dir, "*.out"))
+	outs, _ := filepath.Glob(filepath.Join(dir, "judge", "*", "result.json"))
 	sort.Strings(outs)
 	for _, f := range outs {
 		b, _ := os.ReadFile(f)
@@ -782,27 +757,28 @@ func Report(dir string) {
 	pos := readPositions(dir)
 	var cards []any
 	var rows []obj
-	for _, ar := range reportAgents(dir) {
-		if ar.run == "" {
-			continue
-		}
+	ars := reportAgents(dir)
+	if len(ars) == 0 {
+		fail("judge report: %s has no run.json (not a run, or one from before the layout in azbench/runfiles)", dir)
+	}
+	for _, ar := range ars {
 		c := card(ar, teamEvents, coop, pos)
 		cards = append(cards, c)
 		rows = append(rows, c)
 	}
 	report := obj{{"agents", cards}}
-	if _, err := os.Stat(filepath.Join(dir, "go")); err == nil {
+	{
 		var cardMaps []map[string]any // the cards as JSON reads them, as compare does
 		cj, _ := json.Marshal(cards)
 		json.Unmarshal(cj, &cardMaps)
 		team := teamResults(dir, len(cards), cardMaps)
 		report = append(report, kv{"team", team})
 		j, _ := json.MarshalIndent(team, "", "  ")
-		os.WriteFile(filepath.Join(dir, "team.json"), append(j, '\n'), 0o644)
+		os.WriteFile(runfiles.Run(dir).Team(), append(j, '\n'), 0o644)
 		fmt.Println(string(j))
 	}
 	j, _ := json.MarshalIndent(report, "", "  ")
-	os.WriteFile(filepath.Join(dir, "report.json"), append(j, '\n'), 0o644)
+	os.WriteFile(runfiles.Run(dir).Report(), append(j, '\n'), 0o644)
 
 	pad := func(v any, n int) string {
 		s := "-"

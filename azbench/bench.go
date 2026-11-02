@@ -78,10 +78,9 @@ func benchCommand(cmd string, args []string) bool {
 	noBuild := fs.Bool("no-build", false, "don't rebuild bin/ first")
 	reset := fs.Bool("reset", false, "run: start from scratch: delete the task's characters, move its agents' workspaces to bench/workspaces/.old, restart the worldserver")
 	port := fs.Int("port", 0, "run: the first session's port (default 8090), to run beside another run")
-	task := fs.String("task", "", "publish: the task the runs belong to on the site, for runs that didn't record it")
+	task := fs.String("task", "", "publish: the task the runs belong to on the site (default: the run's, from run.json)")
 	out := fs.String("out", "", "publish: where to write (default: site/src/data/runs)")
-	model := fs.String("model", "", "run: only these of the task's models (comma-separated keys of bench/models.yaml); publish: the model, for runs that didn't record it")
-	runtime := fs.String("runtime", "", "publish: the harness (claude, codex, opencode), for runs that didn't record it")
+	model := fs.String("model", "", "run, check: only these of the task's models (comma-separated keys of bench/models.yaml)")
 	spec := fs.String("spec", "", "kit gen: the spec the gear is for (a key of bench/specs.yaml; default the class's usual)")
 	quality := fs.String("quality", "uncommon", "kit gen: the best quality of gear: uncommon (green), rare (blue) or epic")
 	notFrom := fs.Int("not-from", 0, "kit gen: a map (dungeon) whose loot and quests the kit leaves out: the one it's for")
@@ -197,13 +196,13 @@ func benchCommand(cmd string, args []string) bool {
 	case "apidoc":
 		check(run.APIDoc(repoRoot()))
 	case "publish":
-		pos := parse(1, "<run dir>... [--task name] [--out dir] [--model m --runtime r]")
+		pos := parse(1, "<run dir>... [--task name] [--out dir]")
 		root := repoRoot()
 		if *out == "" {
 			*out = filepath.Join(root, "site/src/data/runs")
 		}
 		for _, d := range pos {
-			f, err := publish(root, d, *task, *out, *model, *runtime)
+			f, err := publish(root, d, *task, *out)
 			check(err)
 			fmt.Println(f)
 		}

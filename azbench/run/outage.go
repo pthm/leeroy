@@ -6,7 +6,7 @@ package run
 // logOut fights off anything that attacks during the logout countdown), its judge's clock holds, and the provider is
 // probed with a one-line prompt at growing intervals. When the probe answers, the character logs back in and the
 // agent's conversation resumes, told how long it was away. The other players carry on throughout. Each outage is a
-// line in <run>/<agent>/outages.jsonl and in alerts.log; one that lasts longer than outageLimit ends the player's run
+// line in <run>/agents/<agent>/outages.jsonl and in supervisor.log; one that lasts longer than outageLimit ends the player's run
 // (a give-up, "provider outage"), since its clock can't hold forever.
 
 import (
@@ -117,7 +117,7 @@ func (p *player) outage(why string) {
 			rec.Outcome = "gave_up"
 			// the judge ends the player's run unmet at its next poll
 			b, _ := json.Marshal(map[string]any{"reason": "provider outage: " + why, "at": time.Now().UTC().Format(time.RFC3339)})
-			os.WriteFile(tools.GiveUpFile(filepath.Join(r.dir, "board"), p.a.Char), b, 0o644)
+			os.WriteFile(tools.GiveUpFile(r.f().Board(), p.a.Char), b, 0o644)
 			r.alert(p, fmt.Sprintf("provider outage lasted over %s: the run ends for this player", outageLimit))
 			return
 		}
@@ -188,7 +188,7 @@ func (p *player) minutesLeft() time.Duration {
 	var b struct {
 		MinutesLeft *float64 `json:"minutes_left"`
 	}
-	if raw, err := os.ReadFile(filepath.Join(p.r.dir, "board", p.a.Char+".json")); err == nil && json.Unmarshal(raw, &b) == nil && b.MinutesLeft != nil {
+	if raw, err := os.ReadFile(filepath.Join(p.r.f().Board(), p.a.Char+".json")); err == nil && json.Unmarshal(raw, &b) == nil && b.MinutesLeft != nil {
 		return time.Duration(*b.MinutesLeft * float64(time.Minute))
 	}
 	return time.Duration(p.r.minutesLeft() * float64(time.Minute))

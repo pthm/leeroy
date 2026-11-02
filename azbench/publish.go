@@ -16,25 +16,28 @@ import (
 	"github.com/pthm/leeroy/azbench/config"
 	"github.com/pthm/leeroy/azbench/judge"
 	"github.com/pthm/leeroy/azbench/run"
+	"github.com/pthm/leeroy/azbench/runfiles"
 )
 
 // publish writes a run's results for the website (site/src/data/runs/<run>.json): the scenario, then each player's
 // model, outcome, time, cost and tokens, from the run's scenario.yaml, report.json and team.json. Small and committed:
 // the site builds from these, never from bench/runs.
-func publish(root, runDir, task, out, model, runtime string) (string, error) {
+func publish(root, runDir, task, out string) (string, error) {
 	id := filepath.Base(filepath.Clean(runDir))
-	started, err := time.ParseInLocation("20060102-150405", id[:min(len(id), 15)], time.Local)
-	if err != nil {
-		return "", fmt.Errorf("%s: not a run directory (<time>-<scenario>)", runDir)
+	f := runfiles.Run(runDir)
+	man, err := f.ReadManifest()
+	if err != nil || man.Started == 0 {
+		return "", fmt.Errorf("%s: not a run that started (no run.json, or its clock never started)", runDir)
 	}
-	name := strings.TrimPrefix(id[15:], "-")
+	started := time.UnixMilli(man.Started)
+	name := man.Scenario
 	b, err := config.LoadBench(filepath.Join(root, "bench"))
 	if err != nil {
 		return "", err
 	}
-	s, err := b.LoadScenario(filepath.Join(runDir, "scenario.yaml"))
-	if err != nil { // older runs didn't keep a copy: what the run's own files say
-		s = &config.Scenario{Conditions: config.Conditions{Name: name}}
+	s, err := b.LoadScenario(f.Scenario())
+	if err != nil {
+		return "", err
 	}
 	var report struct {
 		Agents []map[string]any `json:"agents"`
@@ -42,10 +45,10 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 	var team struct {
 		Agents []map[string]any `json:"agents"`
 	}
-	if err := readJSON(filepath.Join(runDir, "report.json"), &report); err != nil {
+	if err := readJSON(f.Report(), &report); err != nil {
 		return "", err
 	}
-	if err := readJSON(filepath.Join(runDir, "team.json"), &team); err != nil {
+	if err := readJSON(f.Team(), &team); err != nil {
 		return "", err
 	}
 	judged := map[string]map[string]any{}
@@ -55,11 +58,6 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 	agents := map[string]config.Agent{}
 	for _, a := range s.Agents {
 		agents[a.Char] = a
-	}
-	for _, r := range report.Agents { // agents the scenario doesn't list (no scenario kept): from the report
-		if c := fmt.Sprint(r["char"]); agents[c].Name == "" {
-			agents[c] = config.Agent{Name: fmt.Sprint(r["agent"]), Char: c}
-		}
 	}
 	if s.Goal == "" {
 		for _, a := range team.Agents {
@@ -83,11 +81,6 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 	recOf := map[string]*recording{}
 	for _, r := range report.Agents {
 		char := fmt.Sprint(r["char"])
-		for k, v := range map[string]string{"model": model, "runtime": runtime} { // the first runs didn't record them
-			if v != "" && (r[k] == nil || r[k] == "") {
-				r[k] = v
-			}
-		}
 		p := pick(r, "char", "runtime", "model", "effort", "hours", "deaths", "cost_usd", "tokens", "calls", "time_pct_by_state", "time_use", "combat")
 		if th, ok := r["think_s"].(map[string]any); ok {
 			p["think_median_s"] = th["median"]
@@ -120,7 +113,7 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 			}
 		}
 		if a.Name != "" {
-			adir := agentDir(runDir, id, a.Name)
+			adir := f.Agent(a.Name)
 			var meta struct{ Spec, Role string }
 			if readJSON(filepath.Join(adir, "meta.json"), &meta) == nil {
 				p["spec_name"], p["role"] = meta.Spec, meta.Role
@@ -128,7 +121,7 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 					p["class"] = strings.ToLower(strings.TrimSpace(strings.Split(meta.Spec, " - ")[0]))
 				}
 			}
-			p["series"], p["deaths_at"] = series(filepath.Join(adir, "samples.jsonl"))
+			p["series"], p["deaths_at"] = series(f.Samples(char))
 			cs := costSeries(fmt.Sprint(p["runtime"]), fmt.Sprint(r["provider"]), fmt.Sprint(p["model"]), adir, started)
 			// the transcript misses some requests (Claude Code's background calls): keep its shape, end at the run's cost
 			if total, ok := p["cost_usd"].(float64); ok && len(cs) > 0 && cs[len(cs)-1][1] > 0 {
@@ -138,7 +131,7 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 				}
 			}
 			p["cost_series"] = cs
-			if k := kitOf(root, runDir, adir, char, started); k != nil {
+			if k := kitOf(adir); k != nil {
 				kitIcons(k, filepath.Join(out, "../../../public/icons"))
 				p["kit"] = k
 			}
@@ -153,12 +146,12 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 				p["outages"] = outs
 			}
 			if p["effort"] == nil || p["effort"] == "" || p["effort"] == "default" { // unrecorded, or read before Codex wrote it: its session says
-				p["effort"] = run.DetectEffort(fmt.Sprint(p["runtime"]), filepath.Join(adir, "agent.jsonl"))
+				p["effort"] = run.DetectEffort(fmt.Sprint(p["runtime"]), f.Transcript(a.Name))
 			}
-			if t := trajectory(filepath.Join(runDir, char+".events.jsonl"), started.UnixMilli()); len(t) > 0 {
+			if t := trajectory(f.Events(char), started.UnixMilli()); len(t) > 0 {
 				p["trajectory"] = t
 			}
-			if rec, err := readRecording(filepath.Join(runDir, a.Name+".record.jsonl"), char, started.UnixMilli(), chat); err == nil {
+			if rec, err := readRecording(f.Record(char), char, started.UnixMilli(), chat); err == nil {
 				recs, recOf[char] = append(recs, rec), rec
 			}
 		}
@@ -200,11 +193,8 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 		}
 	}
 	// the benchmark version: what the run recorded, else the version in force when it started
-	var ver struct {
-		Version string `json:"version"`
-		SDKRev  string `json:"sdk_rev"`
-	}
-	if readJSON(filepath.Join(runDir, "version.json"), &ver) != nil || ver.Version == "" {
+	ver := struct{ Version, SDKRev string }{man.Version, man.SDKRev}
+	if ver.Version == "" {
 		ver.Version = b.VersionAt(started).Version
 	}
 	vs, _ := json.MarshalIndent(b.Versions, "", "  ") // the list, for the site's version selector
@@ -219,9 +209,9 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return "", err
 	}
-	f := filepath.Join(out, id+".json")
+	dst := filepath.Join(out, id+".json")
 	data, _ := json.Marshal(doc) // compact: routes and series are thousands of numbers
-	return f, os.WriteFile(f, append(data, '\n'), 0o644)
+	return dst, os.WriteFile(dst, append(data, '\n'), 0o644)
 }
 
 // benign: failures that are the SDK working as meant (a script replacing its own move, a swing that missed, a spell
@@ -346,23 +336,6 @@ func series(f string) ([][6]float64, []float64) {
 	return out, deaths
 }
 
-// agentDir: an agent's files, inside the run (<run>/<agent>), or for the first team runs beside it
-// (<time>-<agent>, started seconds after the run's own <time>-team): the first such after the run's time.
-func agentDir(runDir, id, name string) string {
-	in := filepath.Join(runDir, name)
-	if _, err := os.Stat(in); err == nil {
-		return in
-	}
-	ms, _ := filepath.Glob(filepath.Join(filepath.Dir(filepath.Clean(runDir)), id[:9]+"*-"+name))
-	sort.Strings(ms)
-	for _, m := range ms {
-		if filepath.Base(m) >= id[:15] {
-			return m
-		}
-	}
-	return in
-}
-
 func readJSON(f string, v any) error {
 	data, err := os.ReadFile(f)
 	if err != nil {
@@ -371,33 +344,13 @@ func readJSON(f string, v any) error {
 	return json.Unmarshal(data, v)
 }
 
-// kitOf: the character's gear, talents and abilities as its run left them: kit.json, which the harness saves at the
-// end of each run; for older runs, the characters database, but only if no later run played a character of that name
-// (else its kit would be that run's).
-func kitOf(root, runDir, adir, char string, started time.Time) *run.Kit {
+// kitOf: the character's gear, talents and abilities as its run left them (kit.json, saved at the end of the run).
+func kitOf(adir string) *run.Kit {
 	var k run.Kit
-	if readJSON(filepath.Join(adir, "kit.json"), &k) == nil {
-		return &k
-	}
-	later, _ := filepath.Glob(filepath.Join(root, "bench/runs/*"))
-	for _, d := range later {
-		t, err := time.ParseInLocation("20060102-150405", filepath.Base(d)[:min(15, len(filepath.Base(d)))], time.Local)
-		if err != nil || !t.After(started) {
-			continue
-		}
-		if b, err := os.ReadFile(filepath.Join(d, "report.json")); err == nil &&
-			(strings.Contains(string(b), `"char":"`+char+`"`) || strings.Contains(string(b), `"char": "`+char+`"`)) {
-			return nil
-		}
-		if b, err := os.ReadFile(filepath.Join(d, "scenario.yaml")); err == nil && strings.Contains(string(b), "char: "+char+"\n") {
-			return nil
-		}
-	}
-	kk, err := run.CharKit(char)
-	if err != nil || len(kk.Gear) == 0 {
+	if readJSON(filepath.Join(adir, "kit.json"), &k) != nil {
 		return nil
 	}
-	return kk
+	return &k
 }
 
 // ownCasts: the character's casts without the game's own effects (LOGINEFFECT, Ghost, eating and drinking). Starting

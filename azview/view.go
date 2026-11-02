@@ -5,10 +5,10 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/pthm/leeroy/azbench/runfiles"
 	"math"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -156,70 +156,22 @@ func AgentMeta(ts []Transcript) map[string]any {
 	return out
 }
 
-var (
-	recordFile = regexp.MustCompile(`(^|\.)record\.jsonl$`)
-	charLine   = regexp.MustCompile(`Your\s+character (\w+)|You are (\w+), an? `)
-)
-
-func charOf(runDir string) string {
-	b, err := os.ReadFile(filepath.Join(runDir, "prompt.md"))
-	if err != nil {
-		return ""
-	}
-	m := charLine.FindStringSubmatch(string(b)) // "Your character X is..." or, with a spec, "You are X, a Human Warrior..."
-	if m == nil {
-		return ""
-	}
-	if m[1] != "" {
-		return m[1]
-	}
-	return m[2]
-}
-
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 
-// RecordFiles are a directory's record.jsonl and <agent>.record.jsonl files.
-func RecordFiles(dir string) []string {
-	var out []string
-	ents, _ := os.ReadDir(dir)
-	for _, e := range ents {
-		if recordFile.MatchString(e.Name()) {
-			out = append(out, filepath.Join(dir, e.Name()))
-		}
-	}
-	return out
-}
-
-// RunSources is everything a bench run directory has: record files, and each agent's transcript with its character.
-// A team dir holds <agent>.record.jsonl; the agents' own run dirs (<time>-<agent>/) sit beside it.
+// RunSources is what a bench run has for the viewer (azbench/runfiles): each player's game record and its agent's
+// transcript, with the character it plays (run.json).
 func RunSources(dir string) (records []string, transcripts []Transcript) {
-	records = RecordFiles(dir)
-	if exists(filepath.Join(dir, "agent.jsonl")) { // a single run
-		if name := charOf(dir); name != "" {
-			transcripts = append(transcripts, Transcript{name, filepath.Join(dir, "agent.jsonl")})
-		}
+	f := runfiles.Run(dir)
+	m, err := f.ReadManifest()
+	if err != nil {
+		return nil, nil
 	}
-	parent := filepath.Dir(dir)
-	sibs, _ := os.ReadDir(parent)
-	for _, r := range records { // team: find each agent's run dir by its suffix
-		agent := regexp.MustCompile(`\.?record\.jsonl$`).ReplaceAllString(filepath.Base(r), "")
-		if agent == "" {
-			continue
+	for _, p := range m.Players {
+		if exists(f.Record(p.Char)) {
+			records = append(records, f.Record(p.Char))
 		}
-		runDir := filepath.Join(dir, agent) // azbench: the agent's files in the run dir
-		if !exists(filepath.Join(runDir, "agent.jsonl")) {
-			runDir = ""
-			for _, d := range sibs { // older team runs: a sibling <time>-<agent> dir (sorted: the last is the latest)
-				if strings.HasSuffix(d.Name(), "-"+agent) {
-					runDir = filepath.Join(parent, d.Name())
-				}
-			}
-		}
-		if runDir == "" {
-			continue
-		}
-		if name := charOf(runDir); name != "" {
-			transcripts = append(transcripts, Transcript{name, filepath.Join(runDir, "agent.jsonl")})
+		if exists(f.Transcript(p.Agent)) {
+			transcripts = append(transcripts, Transcript{p.Char, f.Transcript(p.Agent)})
 		}
 	}
 	return records, transcripts

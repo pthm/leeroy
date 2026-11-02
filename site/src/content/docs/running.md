@@ -54,7 +54,6 @@ The results pages group runs by `--task` and by benchmark version, and each run 
 `bench/versions.yaml` lists the benchmark's versions. Add an entry when a change makes new results not comparable
 with older ones, such as a new SDK capability, a navmesh or scoring change, or a large change to the agents' docs.
 Each entry has a version label, the date it took effect and a short note. `azbench run` records the current version,
-the last entry, in each run's `version.json` along with the SDK revision. `publish` reads it, or for older runs uses
-the version in force on the run's start date. The results pages show the latest version by default, with a selector
+the last entry, in each run's `run.json` along with the SDK revision, and `publish` reads it. The results pages show the latest version by default, with a selector
 for older versions and for all versions together. A task only appears for the versions it has runs in. A run page can also include written notes
 in `site/src/content/runs/<run id>.md`, with a title, a summary, key findings and an account of the run.

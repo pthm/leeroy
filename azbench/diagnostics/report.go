@@ -4,8 +4,8 @@ package diagnostics
 import (
 	"bufio"
 	"encoding/json"
+	"github.com/pthm/leeroy/azbench/runfiles"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -450,7 +450,7 @@ func (s Summary) TopActive(nowMS int64, limit int) []Episode {
 	return out[:min(max(limit, 0), len(out))]
 }
 
-// Paths names the two authoritative diagnostic artifacts for an agent in a benchmark run.
+// Paths names an agent's diagnostics in a benchmark run: the harness's and its session's, one file.
 func Paths(dir, agent string) []string {
-	return []string{filepath.Join(dir, agent+".record.jsonl"), filepath.Join(dir, agent, "harness.jsonl")}
+	return []string{runfiles.Run(dir).Diagnostics(agent)}
 }

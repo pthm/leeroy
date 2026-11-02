@@ -162,14 +162,16 @@ A task ([bench/tasks/README.md](bench/tasks/README.md)) sets the goal, the clock
 party, and lists the models that play it ([bench/models.yaml](bench/models.yaml)): each plays its own run, or all play
 one together. Each agent gets a fresh non-GM account and runs as headless Claude Code (or Codex CLI) inside `bench/workspaces/<name>/` (its
 persistent script library). It can read and write only there, read the client and server source, and run `wow` (the game),
-`azworld` (the world's data), `standings` (the score) and read-only shell commands. Results go to `bench/runs/<time>-<task>-<model>/`, with each agent's files in `<agent>/`:
-- `judge.json`: the score;
-- `samples.jsonl`: progress every 15 s;
-- `agent.jsonl`: the transcript;
-- `session.log`;
+`azworld` (the world's data), `standings` (the score) and read-only shell commands. Results go to `bench/runs/<time>-<task>-<model>/`:
+- `run.json`: what the run was (task, players, versions) and how it went (start, pauses, end);
+- `supervisor.log`;
+- `agents/<agent>/`: the transcript, a trajectory in one schema for every runtime, notes and usage;
+- `game/<char>/`: the game recording, the events its agent saw, its client log;
+- `judge/<char>/`: samples every 15 s and the final score;
+- `diagnostics/`, and `server/` (the server's logs over the run);
+- `team.json` and `report.json` (the report card).
 
-and for the whole run `team.json` and `report.json` (the report card)
-([bench/README.md](bench/README.md#run-directories)).
+The layout is in [bench/README.md](bench/README.md#run-directories).
 
 Goals: `level:<n>`, `item:<entry>`, `quality:<n>` (3 = rare), `money:<copper>`, `quests:<n>`, `quest:<id>`,
 `achievement:<id>`, `achpoints:<n>`, `skill:<id>:<n>`, `zone:<id>` (arrive there), and `score:<n>`: progress per hour (`azbench/judge/score.json` sets which signals count; v6 counts XP
@@ -184,7 +186,7 @@ Two sources write the same event format (positions once a second, chat, damage, 
 quests, achievements, loot; [azview](azview/README.md#recording-format)):
 - **Client side, by default:** `azsdk -record <file>` logs its own characters plus agent-side events the server can't
   see (each API call and the Lua it ran, script errors). `azbench run` records every run this way
-  (`<agent>.record.jsonl` in the run dir). Works on any AzerothCore server.
+  (`game/<char>/record.jsonl` in the run dir). Works on any AzerothCore server.
 - **Server side, optional and authoritative:** the `mod-recorder` module (`server/recorder/mod-recorder`) logs every
   player to `server/azerothcore/env/dist/logs/recorder.jsonl`, and every boat and zeppelin once a second. After
   changing it: rebuild the worldserver image and restart it.

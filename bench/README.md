@@ -46,7 +46,7 @@ commands below run from the repo root; server and client setup is in the [repo R
 
 An agent that stops before the clock with no error and without giving up (`standings give-up`) is told to carry on:
 its conversation resumes with the minutes left and the choice of giving up, up to 5 times a run (each is in
-`alerts.log`). Codex ends its job when it ends a reply, and a script left running alone can't adapt; this keeps every
+`supervisor.log`, as `ALERT`). Codex ends its job when it ends a reply, and a script left running alone can't adapt; this keeps every
 runtime's agent the one playing.
 
 An agent that stops on a temporary provider error (a model at capacity, overloaded, rate limited, a server or network
@@ -54,7 +54,7 @@ error) waits it out without losing clock time. Its character logs out at a safe 
 health and clear of every hostile's aggro range. During the logout the session fights back and cancels the countdown
 if attacked. Its judge's clock holds while it's away, and the provider is checked with a one-line prompt at growing
 intervals. When the provider answers, the character logs back in and the agent resumes, told how long it was away.
-Other players carry on. Each outage is recorded in `<run>/<agent>/outages.jsonl` and `alerts.log`, and an outage longer
+Other players carry on. Each outage is recorded in `<run>/agents/<agent>/outages.jsonl` and in `supervisor.log`, and an outage longer
 than two hours ends that player's run. Other errors, such as a used-up quota or failed authentication, are only
 reported.
 
@@ -92,7 +92,7 @@ missing" on every later request), then SIGINT to the runtime, which takes it as 
 SIGKILL to its process group after 5 s each. At the end: `team.json` and `report.json`; `bin/azview live --run <run dir>` replays it.
 
 An agent that exits with 2 or more minutes left (a Codex usage limit, a conversation that ended) is reported on
-stderr and in `alerts.log`, with the runtime's last error; bring it back with `azbench restart`. A session that
+stderr and in `supervisor.log` (`ALERT`), with the runtime's last error; bring it back with `azbench restart`. A session that
 exits by itself (its world connection lost, the daemon crashed) is reported the same way and pauses the run: the
 judges stop at their last sample, so the clock doesn't run on a character nobody controls.
 
@@ -133,38 +133,44 @@ keeps running.
 wake type): `at`, when it takes effect (unix ms, now plus `minutes`), and `message`, what happens then ("the run
 pauses for a deploy"). Agents read the message as it is, so it states what will happen, not what to do.
 
-A session restart loses the character's Lua tasks, so each stop records the running ones in `<agent>/tasks.json`.
+A session restart loses the character's Lua tasks, so each stop records the running ones in `agents/<agent>/tasks.json`.
 After each login, when its agent starts, the session runs `autorun.lua` from the workspace if there is one, and a
 resume or restart message ends with the tasks that were running, `autorun.lua`'s outcome, the tasks running now,
 and whether the character is alive, dead or a ghost, and where.
 
 ## Run directories
 
-`runs/<time>-<task>-<model>/` (a task played together: `runs/<time>-<task>/`):
+`runs/<time>-<task>-<model>/` (a task played together: `runs/<time>-<task>/`), laid out in
+[`azbench/runfiles`](../azbench/runfiles/runfiles.go), which everything that reads a run goes through. Agent files are
+by agent name, game and judge files by character. Every JSONL line has `t`, unix milliseconds.
 
-| File | |
+| Path | |
 |---|---|
+| `run.json` | the manifest: task, run name, benchmark version, SDK revision, goal, minutes, the players (agent, character, race, class, spec, runtime, model, effort, kit), when the clock started and the run ended, its pauses, and its status (`starting`, `running`, `paused`, `finished`) |
 | `scenario.yaml` | the run as made from its task (the notice inlined); `resume` reads it |
-| `go`, `go.<agent>.ready` | the start time (unix seconds) and each agent's files |
-| `<agent>/prompt.md` | the task prompt |
-| `<agent>/agent.jsonl` | the transcript: Claude's `stream-json`, or Codex's `--json` events, each stamped with a `timestamp` |
-| `<agent>/samples.jsonl` | the judge's sample every 15 s |
-| `<agent>/judge.json`, `<agent>.out` | the judge's final result |
-| `<agent>/meta.json` | `agent`, `char`, `runtime`, `model`, `spec`, `role`, `goal`, `port` |
-| `<agent>/session.log` | the session log, copied from the workspace when the session stops |
-| `<agent>/NOTES.md`, `<agent>/*.md` | the agent's notes, copied from its workspace at every stop |
-| `<agent>/tasks.json` | the Lua tasks running when its session last stopped |
-| `<agent>/usage.json` | each runtime session's token totals, copied from the runtime's own logs at every stop |
-| `<agent>/codex-usage.jsonl` | Codex only: every request's `last_token_usage` and the account's `rate_limits`, with `timestamp` and `thread`, from the rollout logs at every stop |
-| `<agent>/sdk.rev` | the SDK revision its last start, resume or restart ran on (for `WHAT CHANGED`) |
-| `<agent>.record.jsonl` | the client-side event log for the viewer (positions, combat, chat, API calls) |
-| `<Char>.events.jsonl` | the character's event stream; the judge reads combat and cooperation from it |
-| `board/<Char>.json` | each judge's latest result (with `minutes_left`), read by `standings` |
-| `alerts.log` | agents and sessions that stopped early, and the Codex quota's alerts |
+| `preflight.json` | what the world looked like for the task before the start ([tasks](tasks/README.md#preflight)) |
+| `supervisor.log` | everything the supervisor printed, dated; `ALERT` lines are agents and sessions that stopped early, outages, give-ups and the Codex quota's alerts |
+| `agents/<agent>/transcript.jsonl` | the transcript in the runtime's own format: Claude's `stream-json`, Codex's `--json` events or opencode's, each stamped with a `timestamp` |
+| `agents/<agent>/trajectory.jsonl` | the transcript in one schema for every runtime: messages, reasoning, tool calls with their input, output, outcome and time, edits, and each model call's tokens ([trajectory](../azbench/trajectory/trajectory.go)); rewritten at every stop |
+| `agents/<agent>/prompt.md` | the task prompt |
+| `agents/<agent>/meta.json` | `agent`, `char`, `runtime`, `model`, `effort`, `spec`, `role`, `goal`, `port`, as the runtime reported them |
+| `agents/<agent>/NOTES.md`, `*.md` | the agent's notes, copied from its workspace at every stop |
+| `agents/<agent>/usage.json` | each runtime session's token totals, from the runtime's own logs at every stop |
+| `agents/<agent>/codex-usage.jsonl` | Codex only: every request's `last_token_usage` and the account's `rate_limits`, with `timestamp` and `thread` |
+| `agents/<agent>/outages.jsonl` | provider outages waited out |
+| `agents/<agent>/tasks.json` | the Lua tasks running when its session last stopped |
+| `agents/<agent>/sdk.rev` | the SDK revision its last start, resume or restart ran on (for `WHAT CHANGED`) |
+| `agents/<agent>/kit.json` | the character's gear, talents and abilities when its run ended |
+| `game/<char>/record.jsonl` | the game recording, for the viewer and the website: positions, pets, combat, chat (who said it, who heard it), loot, the agent's API calls, the judge's scores ([format](../azview/README.md#recording-format)) |
+| `game/<char>/events.jsonl` | the event stream the agent saw; the judge reads combat and cooperation from the run's streams |
+| `game/<char>/session.log` | the character's client log, written as it runs (also in the workspace, where the agent reads its `log()` lines) |
+| `judge/<char>/samples.jsonl` | the judge's sample every 15 s |
+| `judge/<char>/result.json` | the judge's final result |
+| `diagnostics/<agent>.jsonl` | the harness's and the session's diagnostics (`schema`, `seq`, `kind`, `details`), one stream; a session's lines carry its `session` id |
+| `server/` | the server's `Server.log`, `Errors.log` and `recorder.jsonl` (when it records), cut to the run's time, at each pause and at the end |
+| `board/<char>.json` | each judge's latest result (with `minutes_left`), read by `standings` |
 | `codex-quota.json` | the Codex quota at the start and the latest read (runs with a Codex agent) |
-| `control.json` | while the supervisor runs: its control API (address and pid) |
-| `pids` | the process groups of the supervisor's running sessions and agents (empty once they stop) |
-| `paused` | the run was paused |
+| `.live/` | while the supervisor runs: `control.json` (its control API), `pids` (the process groups of its sessions and agents), `paused`; removed when the run finishes |
 | `team.json`, `report.json` | the results and the report card ([judge](../azbench/judge/README.md#azbench-report)) |
 
 `team.json`:

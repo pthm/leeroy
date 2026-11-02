@@ -55,7 +55,7 @@ n and read the value at timeout.
 | `--samples <file>` | append each sample as a JSON line |
 | `--record <file>` | append each sample as an `{"ev":"score"}` event to a recorder log, for the replay and live viewers |
 | `--board <dir>` | write `<dir>/<Char>.json` with the latest result each poll (read by `standings`) |
-| `--events <file>` | the character's event stream (`azsdk -events`); its combat totals, and cooperation from every `<Char>.events.jsonl` beside it, go on the board |
+| `--events <file>` | the character's event stream (`azsdk -events`); its combat totals, and cooperation from every `game/<char>/events.jsonl` of the run beside it, go on the board |
 | `--role <DPS\|Tank\|Healer>` | added to the board |
 | `--runtime <name>` | added to the board and the result |
 | (giving up) | with `--board`, an agent's `standings give-up "<why>"` (a `<Char>.gaveup` file beside its board file) ends the run unmet at the next poll, with `gave_up` (the reason) in the result |
@@ -151,10 +151,10 @@ run it at the end. Per agent:
 | `combat` | `metrics.Combat`: damage dealt and taken, healing, kills, party kills, deaths, XP |
 | `coop` | `metrics.Team`: `assist_share`, `assists`, `useful`, `hits`, `contested_hits` |
 | `time_use` | `metrics.Use` from the position samples: fighting, travelling, idle, dead, with the group (%) |
-| `judge_state`, `score_provisional` | observed judge state; board scores stay provisional until `judge.json` exists. Missing lifecycle evidence produces `unknown`, not a guessed result |
+| `judge_state`, `score_provisional` | observed judge state; board scores stay provisional until `judge/<char>/result.json` exists. Missing lifecycle evidence produces `unknown`, not a guessed result |
 | `diagnostics` | schema 1: action aggregates, repeated-failure episodes, tool outcomes, bounded evidence and explicit coverage |
 
-Diagnostics read only `<agent>.record.jsonl` and `<agent>/harness.jsonl`. Each finding links to a file and line,
+Diagnostics read only `diagnostics/<agent>.jsonl` (the harness's and the session's). Each finding links to a file and line,
 plus session/sequence when available. Three matching failures within 30 seconds start an episode; success,
 session replacement or judge pause/completion closes it. Targets, tasks and sessions stay separate. Durations
 are inclusive per operation: adding nested helper and raw-action durations would double-count time.

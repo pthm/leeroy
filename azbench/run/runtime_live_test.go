@@ -66,7 +66,7 @@ func TestRuntimePermissionsLive(t *testing.T) {
 				prompt += "\nFor sleep 12, set exec_command yield_time_ms=1000, then use write_stdin to wait for completion."
 			}
 			cmd := p.agentCmd(prompt, "")
-			out, err := os.Create(filepath.Join(dir, "agent.jsonl"))
+			out, err := os.Create(filepath.Join(dir, "transcript.jsonl"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -105,7 +105,7 @@ func TestRuntimePermissionsLive(t *testing.T) {
 					seen[d.Details.CommandFamily] = true
 				}
 			})
-			f, err := os.Open(filepath.Join(dir, "agent.jsonl"))
+			f, err := os.Open(filepath.Join(dir, "transcript.jsonl"))
 			if err != nil {
 				t.Fatal(err)
 			}

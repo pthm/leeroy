@@ -12,12 +12,12 @@ import (
 )
 
 func TestHelperDiagnosticsRecordedAcrossSessions(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "a1.record.jsonl")
-	r, err := OpenRecorder(path)
+	path := filepath.Join(t.TempDir(), "a1.jsonl")
+	r, err := OpenRecorder("", path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.f.Close()
+	defer r.diag.Close()
 	for range 2 {
 		e := script.NewEngine(func(string, ...any) {}, nil)
 		e.SetDiagnosticSink("a1", r.writeDiagnostic)

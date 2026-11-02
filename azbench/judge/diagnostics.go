@@ -2,6 +2,7 @@ package judge
 
 import (
 	"encoding/json"
+	"github.com/pthm/leeroy/azbench/runfiles"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,14 +14,14 @@ import (
 // intervalPlayed excludes whole sample intervals crossing a pause/stop: attributing their progress to
 // either side would require inventing when it occurred. With no lifecycle evidence the existing sample-gap
 // check remains the fallback, and diagnostic coverage states that the harness artifact is missing.
-func intervalPlayed(dir string) func(int64, int64) bool {
+func intervalPlayed(diag string) func(int64, int64) bool {
 	type change struct {
 		t       int64
 		playing bool
 	}
 	var changes []change
-	for _, ev := range jsonl(filepath.Join(dir, "harness.jsonl")) {
-		if ev["kind"] != "runtime_state" {
+	for _, ev := range jsonl(diag) {
+		if ev["kind"] != "runtime_state" || ev["session"] != nil && ev["session"] != "" { // the harness's, not the session's
 			continue
 		}
 		if playing, ok := types.Playing(types.DiagnosticDetails{Component: str(get(ev["details"], "component")), State: str(get(ev["details"], "state"))}); ok {
@@ -47,12 +48,12 @@ func intervalPlayed(dir string) func(int64, int64) bool {
 }
 
 // savedJudgeState never turns a provisional board value into a final goal result.
-func savedJudgeState(dir string) string {
-	if len(readJSON(filepath.Join(dir, "judge.json"))) > 0 {
+func savedJudgeState(ar agentRun) string {
+	if len(readJSON(ar.result)) > 0 {
 		return "completed"
 	}
 	state := "unknown"
-	for _, e := range jsonl(filepath.Join(dir, "harness.jsonl")) {
+	for _, e := range jsonl(ar.diag) {
 		if e["kind"] == "runtime_state" && get(e["details"], "component") == "judge" {
 			switch get(e["details"], "state") {
 			case types.JudgePlaying:
@@ -67,17 +68,14 @@ func savedJudgeState(dir string) string {
 	if state != "unknown" {
 		return state
 	}
-	if _, err := os.Stat(filepath.Join(filepath.Dir(dir), "paused")); err == nil {
-		return "paused"
-	}
-	if _, err := os.Stat(filepath.Join(dir, "paused")); err == nil {
+	if _, err := os.Stat(filepath.Join(ar.live, "paused")); err == nil {
 		return "paused"
 	}
 	return state
 }
 
 func savedRunState(dir string, cards []map[string]any) string {
-	if _, err := os.Stat(filepath.Join(dir, "paused")); err == nil {
+	if m, err := runfiles.Run(dir).ReadManifest(); err == nil && m.Status == "paused" {
 		return "paused"
 	}
 	all := len(cards) > 0
@@ -154,7 +152,7 @@ func SaveUsage(dir string) error {
 	}
 	seen := map[string]bool{}
 	var codex []map[string]any
-	for _, e := range jsonl(filepath.Join(dir, "agent.jsonl")) {
+	for _, e := range jsonl(filepath.Join(dir, "transcript.jsonl")) {
 		runtime, id := "claude", str(e["session_id"])
 		if e["type"] == "thread.started" {
 			runtime, id = "codex", str(e["thread_id"])

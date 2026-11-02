@@ -140,9 +140,9 @@ With `--run`, and when the server log exists, these come from it for the run's c
 chat, once, with sender names, instead of each agent's received copy; damage and heals (in place of the client
 records' damage, which has no heals); and each change of target (a `tgt` event: the `pos` samples' `tgt`, or none). NPC
 chat from the client records is kept once, with who heard it. Quest titles and achievement names and points, which
-client records lack, are filled in from the world database and `data/dbc/Achievement.dbc`. Each agent's transcript is
-`<run dir>/<agent>/agent.jsonl` (older team runs: a `<time>-<agent>/` dir beside it), and its character name is read
-from the `prompt.md` next to it.
+client records lack, are filled in from the world database and `data/dbc/Achievement.dbc`. The run's players, their records
+(`game/<char>/record.jsonl`) and transcripts (`agents/<agent>/transcript.jsonl`) and the clock's start come from its
+`run.json`.
 
 Map tiles (one per 533-yard grid square) are rendered on demand and kept in memory:
 - With client data extracted (`data/minimap`, from `go run ./azeroth-sdk/cmd/clientdata ... extract data`): the

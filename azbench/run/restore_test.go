@@ -29,7 +29,7 @@ func TestRestored(t *testing.T) {
 	}))
 	defer srv.Close()
 	port, _ := strconv.Atoi(srv.URL[strings.LastIndex(srv.URL, ":")+1:])
-	p := &player{r: &Runner{}, dir: dir, ws: dir, port: port}
+	p := &player{r: &Runner{dir: dir}, dir: dir, ws: dir, port: port}
 	os.WriteFile(filepath.Join(dir, "tasks.json"), []byte(`["main","healer"]`), 0o644)
 	os.WriteFile(filepath.Join(dir, "autorun.lua"), []byte(`task.keep("main", main)`), 0o644)
 

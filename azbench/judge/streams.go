@@ -1,6 +1,7 @@
 package judge
 
 import (
+	"github.com/pthm/leeroy/azbench/runfiles"
 	"io"
 	"os"
 	"path/filepath"
@@ -9,7 +10,7 @@ import (
 	"github.com/pthm/leeroy/azeroth-sdk/metrics"
 )
 
-// streams tails every <Char>.events.jsonl in a directory (a team's, or one run's), keeping the decoded events
+// streams tails every game/<char>/events.jsonl of a run, keeping the decoded events
 // cooperation and the report need. Each read picks up where the last one stopped.
 type streams struct {
 	dir  string
@@ -27,9 +28,9 @@ var keep = []string{`"type":"damage"`, `"type":"heal"`, `"type":"xp"`, `"type":"
 	`"type":"death"`, `"type":"task_started"`, `"type":"task_finished"`, `"type":"stall"`, `"type":"party_changed"`}
 
 func (s *streams) read() {
-	files, _ := filepath.Glob(filepath.Join(s.dir, "*.events.jsonl"))
+	files, _ := filepath.Glob(runfiles.Run(s.dir).EventsGlob())
 	for _, f := range files {
-		char := strings.TrimSuffix(filepath.Base(f), ".events.jsonl")
+		char := filepath.Base(filepath.Dir(f))
 		fh, err := os.Open(f)
 		if err != nil {
 			continue

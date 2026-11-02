@@ -31,7 +31,7 @@ func costSeries(runtime, provider, model, adir string, start time.Time) [][2]flo
 	var us []usageAt
 	switch runtime {
 	case "claude":
-		us = claudeUsage(filepath.Join(adir, "agent.jsonl"), start)
+		us = claudeUsage(filepath.Join(adir, "transcript.jsonl"), start)
 	case "codex":
 		us = codexUsage(filepath.Join(adir, "usage.json"), start)
 	}

@@ -63,7 +63,8 @@ config or flags). Agents talk to `http://<listen>/rpc`.
 | `-data DIR` | `./data` with `-char` | data dir (overrides the config) |
 | `-auth HOST:PORT` | `127.0.0.1:3724` with `-char` | authserver (overrides the config) |
 | `-duration D` | `0` | stop after this long, e.g. `8s` for a first login that only creates the character; `0` runs until interrupted |
-| `-events DIR` | | keep each character's event stream in `DIR/<char>.events.jsonl`, so the history survives restarts |
+| `-events DIR` | | keep each character's event stream in `DIR/<char>.events.jsonl` (with `-char`, a path ending `.jsonl` is the file itself), so the history survives restarts |
+| `-diagnostics FILE` | | append the session's diagnostics (action results, movement, state samples) to `FILE`, apart from the `-record` log |
 | `-record FILE` | | append the recorder event log to this file (overrides the config) |
 
 The config file form (`azsdk.example.json`):

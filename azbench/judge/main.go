@@ -185,10 +185,10 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 	}
 	samples, record, board := o.Samples, o.Record, o.Board
 	eventsFile, role, runtime := o.Events, o.Role, o.Runtime
-	// cooperation needs everyone's streams: the other <Char>.events.jsonl beside this one (a team dir)
+	// cooperation needs everyone's streams: the run's other game/<char>/events.jsonl
 	var team *streams
 	if eventsFile != "" {
-		team = newStreams(filepath.Dir(eventsFile))
+		team = newStreams(filepath.Dir(filepath.Dir(filepath.Dir(eventsFile))))
 	}
 	if board != "" {
 		os.MkdirAll(board, 0o755)

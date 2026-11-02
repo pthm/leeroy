@@ -20,14 +20,14 @@ import (
 
 // Recorder is shared by all sessions in a daemon (one file).
 type Recorder struct {
-	mu sync.Mutex
-	f  *os.File
+	mu   sync.Mutex
+	f    *os.File // the game recording; nil: none
+	diag *os.File // diagnostics (types.Diagnostic, their own schema); nil: none
 }
 
-// writeDiagnostic preserves the diagnostic schema and its session sequence. Regular viewer records keep
-// their existing ev field; diagnostics have kind and are ignored by gameplay scoring.
+// writeDiagnostic writes a diagnostic to the diagnostics file, apart from the game recording.
 func (r *Recorder) writeDiagnostic(ev types.Diagnostic) {
-	if r == nil {
+	if r == nil || r.diag == nil {
 		return
 	}
 	line, err := json.Marshal(ev)
@@ -36,19 +36,31 @@ func (r *Recorder) writeDiagnostic(ev types.Diagnostic) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.f.Write(append(line, '\n'))
+	r.diag.Write(append(line, '\n'))
 }
 
-func OpenRecorder(path string) (*Recorder, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return nil, err
+// OpenRecorder appends the game recording to record and diagnostics to diag (either "": not kept). Appending: a
+// diagnostics file may have another writer (azbench's harness), each line one write.
+func OpenRecorder(record, diag string) (*Recorder, error) {
+	r := &Recorder{}
+	for _, x := range []struct {
+		path string
+		f    **os.File
+	}{{record, &r.f}, {diag, &r.diag}} {
+		if x.path == "" {
+			continue
+		}
+		f, err := os.OpenFile(x.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			return nil, err
+		}
+		*x.f = f
 	}
-	return &Recorder{f: f}, nil
+	return r, nil
 }
 
 func (r *Recorder) write(ev string, guid uint64, name string, body map[string]any) {
-	if r == nil {
+	if r == nil || r.f == nil {
 		return
 	}
 	if body == nil {

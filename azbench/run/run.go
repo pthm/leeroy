@@ -21,6 +21,7 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/pthm/leeroy/azbench/config"
 	"github.com/pthm/leeroy/azbench/judge"
+	"github.com/pthm/leeroy/azbench/runfiles"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
@@ -38,6 +39,7 @@ type Runner struct {
 	paused  bool
 	mu      sync.Mutex
 	pidsMu  sync.Mutex // the pids file
+	manMu   sync.Mutex // run.json
 }
 
 // Options for a run.
@@ -61,30 +63,55 @@ func New(b *config.Bench, s *config.Scenario, o Options) (*Runner, error) {
 		race, _ := config.ID(config.Races, a.Race)
 		class, _ := config.ID(config.Classes, a.Class)
 		r.players = append(r.players, &player{r: r, a: a, race: race, class: class, port: o.BasePort + i,
-			ws: filepath.Join(o.Repo, "bench/workspaces", a.Name), dir: filepath.Join(r.dir, a.Name), state: "starting"})
+			ws: filepath.Join(o.Repo, "bench/workspaces", a.Name), dir: runfiles.Run(r.dir).Agent(a.Name), state: "starting"})
 	}
 	return r, nil
 }
 
+// f is the run's layout.
+func (r *Runner) f() runfiles.Run { return runfiles.Run(r.dir) }
+
 // Dir is the run's directory.
 func (r *Runner) Dir() string { return r.dir }
 
+// logf: a line in supervisor.log, and on stderr.
 func (r *Runner) logf(f string, a ...any) {
-	fmt.Fprintf(os.Stderr, "%s %s\n", time.Now().Format("15:04:05"), fmt.Sprintf(f, a...))
+	line := fmt.Sprintf("%s %s\n", time.Now().Format("2006-01-02 15:04:05"), fmt.Sprintf(f, a...))
+	os.Stderr.WriteString(line[11:]) // the terminal: the time of day
+	if fh, err := os.OpenFile(r.f().SupervisorLog(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		fh.WriteString(line)
+		fh.Close()
+	}
 }
 
-// alert: p nil for the run as a whole.
+// alert: something wrong or worth a look, ALERT in supervisor.log; p nil for the run as a whole.
 func (r *Runner) alert(p *player, msg string) {
-	line := fmt.Sprintf("%s run: %s", time.Now().Format("15:04:05"), msg)
 	if p != nil {
-		line = fmt.Sprintf("%s %s (%s): %s", time.Now().Format("15:04:05"), p.a.Name, p.a.Char, msg)
+		r.logf("ALERT %s (%s): %s", p.a.Name, p.a.Char, msg)
+		return
 	}
-	fmt.Fprintln(os.Stderr, line)
-	f, err := os.OpenFile(filepath.Join(r.dir, "alerts.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err == nil {
-		fmt.Fprintln(f, line)
-		f.Close()
+	r.logf("ALERT run: %s", msg)
+}
+
+// manifest updates run.json under the lock: fn changes it.
+func (r *Runner) manifest(fn func(*runfiles.Manifest)) {
+	r.manMu.Lock()
+	defer r.manMu.Unlock()
+	m, err := r.f().ReadManifest()
+	if err != nil {
+		m = runfiles.Manifest{Task: r.s.Task, Scenario: r.s.Name, Goal: r.s.Goal, Hardcore: r.s.Hardcore, Status: "starting"}
+		for _, p := range r.players {
+			pl := runfiles.Player{Agent: p.a.Name, Char: p.a.Char, Race: p.a.Race, Class: p.a.Class, Spec: p.a.Spec,
+				Runtime: p.a.Runtime, Model: p.a.Model, Effort: p.a.Effort}
+			if p.a.Kit != nil {
+				pl.Kit = fmt.Sprintf("level %d", p.a.Kit.Level)
+			}
+			m.Players = append(m.Players, pl)
+		}
 	}
+	m.Minutes = r.s.Minutes
+	fn(&m)
+	r.f().WriteManifest(m)
 }
 
 // Build builds the tools into bin/ (the judge, viewer, agent tools and the azsdk daemon).
@@ -139,27 +166,32 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 	if err := grantReader(); err != nil {
 		return fmt.Errorf("database (is the server up?): %v", err)
 	}
-	if err := os.MkdirAll(filepath.Join(r.dir, "board"), 0o755); err != nil {
-		return err
+	for _, d := range []string{r.f().Board(), r.f().Live(""), filepath.Dir(r.f().Diagnostics("x"))} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return err
+		}
 	}
 	for _, p := range r.players {
 		os.MkdirAll(p.dir, 0o755)
+		os.MkdirAll(r.f().Game(p.a.Char), 0o755)
+		os.MkdirAll(r.f().Judge(p.a.Char), 0o755)
 	}
 	// the scenario as run (the notice inlined), for resume and the record; again on a resume, which may have
 	// changed its length (resume --minutes)
 	saved := *r.s
 	if saved.Notice, _ = r.s.NoticeText(); true {
 		y, _ := yaml.Marshal(saved)
-		os.WriteFile(filepath.Join(r.dir, "scenario.yaml"), y, 0o644)
+		os.WriteFile(r.f().Scenario(), y, 0o644)
 	}
 	if !resume {
 		// the benchmark version (bench/versions.yaml) and the SDK revision the run starts on, for the results
-		if b, err := config.LoadBench(filepath.Join(r.repo, "bench")); err == nil {
-			rev, _ := sdkRev(r.repo)
-			v, _ := json.Marshal(map[string]string{"version": b.Current().Version, "sdk_rev": rev})
-			os.WriteFile(filepath.Join(r.dir, "version.json"), v, 0o644)
-		}
-		if err := SavePreflight(filepath.Join(r.dir, "preflight.json"), CheckScenario(r.repo, r.s)); err != nil {
+		r.manifest(func(m *runfiles.Manifest) {
+			if b, err := config.LoadBench(filepath.Join(r.repo, "bench")); err == nil {
+				m.Version = b.Current().Version
+			}
+			m.SDKRev, _ = sdkRev(r.repo)
+		})
+		if err := SavePreflight(r.f().Preflight(), CheckScenario(r.repo, r.s)); err != nil {
 			return fmt.Errorf("save scenario preflight: %w", err)
 		}
 	}
@@ -179,7 +211,7 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 		if r.elapsed >= time.Duration(r.s.Minutes)*time.Minute {
 			return fmt.Errorf("nothing left to play")
 		}
-		os.Remove(filepath.Join(r.dir, "paused"))
+		os.Remove(r.f().Live("paused"))
 	}
 	for _, p := range r.players {
 		state := types.StateStart
@@ -247,9 +279,16 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 	r.mu.Lock()
 	r.start = time.Now()
 	r.mu.Unlock()
-	if !resume {
-		os.WriteFile(filepath.Join(r.dir, "go"), []byte(fmt.Sprintf("%d\n", r.start.Unix())), 0o644)
-	}
+	r.manifest(func(m *runfiles.Manifest) {
+		m.Status = "running"
+		if m.Started == 0 {
+			m.Started = r.start.UnixMilli()
+		}
+		r.noteServerLogs(m)
+		if n := len(m.Pauses); n > 0 && m.Pauses[n-1].Resumed == 0 {
+			m.Pauses[n-1].Resumed = r.start.UnixMilli()
+		}
+	})
 	r.noteOpenrouter(false)
 	left := time.Duration(r.minutesLeft() * float64(time.Minute))
 	r.logf("go: %d/%d sessions up, %.0f minutes", r.count(types.JudgeReady), len(r.players), left.Minutes())
@@ -273,11 +312,18 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 	paused := r.paused
 	r.mu.Unlock()
 	if paused {
-		os.WriteFile(filepath.Join(r.dir, "paused"), []byte(time.Now().Format(time.RFC3339)+"\n"), 0o644)
+		os.WriteFile(r.f().Live("paused"), []byte(time.Now().Format(time.RFC3339)+"\n"), 0o644)
+		r.manifest(func(m *runfiles.Manifest) {
+			m.Status = "paused"
+			m.Pauses = append(m.Pauses, runfiles.Pause{At: time.Now().UnixMilli()})
+		})
+		r.saveServerLogs()
 		r.logf("paused: azbench resume %s --message <file>", r.dir)
 		return nil
 	}
-	os.Remove(filepath.Join(r.dir, "paused"))
+	r.manifest(func(m *runfiles.Manifest) { m.Status, m.Ended = "finished", time.Now().UnixMilli() })
+	r.saveServerLogs()
+	os.RemoveAll(r.f().Live(""))
 	if !quiet {
 		r.finish()
 	}
@@ -287,11 +333,10 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 // play runs one player from the start of the clock: its judge, its agent, and the clean stop when the judge is done.
 func (r *Runner) play(p *player, resume bool, message string, left time.Duration) {
 	spec := r.b.Specs[p.a.Spec]
-	os.WriteFile(filepath.Join(r.dir, "go."+p.a.Name+".ready"), []byte(p.dir+"\n"), 0o644)
 	o := judge.Options{Char: p.a.Char, Goal: r.s.Goal, Timeout: time.Duration(r.s.Minutes) * time.Minute,
-		Every: 15 * time.Second, Samples: filepath.Join(p.dir, "samples.jsonl"),
-		Record: filepath.Join(r.dir, p.a.Name+".record.jsonl"), Board: filepath.Join(r.dir, "board"),
-		Events: filepath.Join(r.dir, p.a.Char+".events.jsonl"), Role: spec.Role, Runtime: p.a.Runtime,
+		Every: 15 * time.Second, Samples: r.f().Samples(p.a.Char),
+		Record: r.f().Record(p.a.Char), Board: r.f().Board(),
+		Events: r.f().Events(p.a.Char), Role: spec.Role, Runtime: p.a.Runtime,
 		Hardcore: r.s.Hardcore, Hold: p.held}
 	if resume {
 		o.Resume = o.Samples
@@ -314,7 +359,7 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 		if conv := p.conversation(); conv != "" || p.a.Runtime == "none" {
 			err = p.startAgent(msg, conv, end)
 		} else {
-			err = fmt.Errorf("no conversation to resume in %s/agent.jsonl", p.dir)
+			err = fmt.Errorf("no conversation to resume in %s/transcript.jsonl", p.dir)
 		}
 	} else {
 		p.changes() // the revision it starts on
@@ -342,13 +387,7 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 	p.mu.Lock()
 	p.result = j.line
 	p.mu.Unlock()
-	os.WriteFile(filepath.Join(p.dir, "judge.json"), append(j.line, '\n'), 0o644)
-	// <agent>.out: the judge's result line, where the report's team.json reads it
-	f, _ := os.OpenFile(filepath.Join(r.dir, p.a.Name+".out"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if f != nil {
-		f.Write(append(j.line, '\n'))
-		f.Close()
-	}
+	os.WriteFile(r.f().Result(p.a.Char), append(j.line, '\n'), 0o644)
 	p.setState(types.JudgeDone)
 	p.logf("done: %s", j.line)
 	var out struct {
@@ -385,7 +424,7 @@ func (r *Runner) wrapUp(p *player, wrap time.Duration) {
 func (r *Runner) played() time.Duration {
 	var most float64
 	for _, p := range r.players {
-		b, _ := os.ReadFile(filepath.Join(p.dir, "samples.jsonl"))
+		b, _ := os.ReadFile(r.f().Samples(p.a.Char))
 		lines := strings.Split(strings.TrimSpace(string(b)), "\n")
 		var s struct {
 			ElapsedS float64 `json:"elapsed_s"`

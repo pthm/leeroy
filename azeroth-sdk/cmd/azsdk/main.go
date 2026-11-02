@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -59,8 +60,9 @@ func main() {
 	dataDir := flag.String("data", "", "data dir (overrides the config)")
 	auth := flag.String("auth", "", "authserver host:port (overrides the config)")
 	duration := flag.Duration("duration", 0, "stop after this long (0 = until interrupted)")
-	events := flag.String("events", "", "keep each character's event stream in <dir>/<char>.events.jsonl (survives restarts)")
+	events := flag.String("events", "", "keep each character's event stream in <dir>/<char>.events.jsonl, or with -char in this .jsonl file (survives restarts)")
 	record := flag.String("record", "", "append an event log (recorder JSONL: positions, combat, chat, API calls) to this file")
+	diag := flag.String("diagnostics", "", "append diagnostics (action results, movement, state samples) to this file")
 	flag.Parse()
 
 	var cfg config
@@ -89,9 +91,9 @@ func main() {
 	}
 
 	var rec *session.Recorder
-	if cfg.Record != "" {
+	if cfg.Record != "" || *diag != "" {
 		var err error
-		if rec, err = session.OpenRecorder(cfg.Record); err != nil {
+		if rec, err = session.OpenRecorder(cfg.Record, *diag); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -115,8 +117,12 @@ func main() {
 			AgentID:      *agent,
 		})
 		if *events != "" {
-			os.MkdirAll(*events, 0o755)
-			b.SetEventsFile(filepath.Join(*events, c.Name+".events.jsonl"))
+			path := filepath.Join(*events, c.Name+".events.jsonl")
+			if one.Name != "" && strings.HasSuffix(*events, ".jsonl") {
+				path = *events
+			}
+			os.MkdirAll(filepath.Dir(path), 0o755)
+			b.SetEventsFile(path)
 		}
 		b.SetRecorder(rec)
 		sessions[c.Name] = b

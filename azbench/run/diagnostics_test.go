@@ -12,6 +12,7 @@ import (
 
 	"github.com/pthm/leeroy/azbench/config"
 	"github.com/pthm/leeroy/azbench/diagnostics"
+	"github.com/pthm/leeroy/azbench/runfiles"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
@@ -38,15 +39,16 @@ func harnessEvents(t *testing.T, path string) []types.Diagnostic {
 
 func TestHarnessResumeAndTornRecord(t *testing.T) {
 	dir := t.TempDir()
-	p := &player{a: config.Agent{Name: "a1", Runtime: "codex"}, dir: dir}
+	r := &Runner{dir: dir}
+	p := &player{a: config.Agent{Name: "a1", Runtime: "codex"}, dir: dir, r: r}
 	p.setState("playing")
 	p.setState("playing")
 	p.setState("paused")
-	path := filepath.Join(dir, "harness.jsonl")
+	path := r.f().Diagnostics("a1")
 	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
 	f.WriteString(`{"schema":1,"seq":3`)
 	f.Close()
-	resumed := &player{a: p.a, dir: dir}
+	resumed := &player{a: p.a, dir: dir, r: r}
 	resumed.runtimeState("supervisor", "resume")
 	resumed.setState("playing")
 	events := harnessEvents(t, path)
@@ -91,7 +93,7 @@ func TestAgentExitDrainsTranscriptBeforeSnapshot(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("agent completion not signaled")
 	}
-	b, err := os.ReadFile(filepath.Join(dir, "agent.jsonl"))
+	b, err := os.ReadFile(filepath.Join(dir, "transcript.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +112,7 @@ func TestAgentExitDrainsTranscriptBeforeSnapshot(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "usage.json")); err != nil {
 		t.Fatal("usage snapshot missing:", err)
 	}
-	events := harnessEvents(t, filepath.Join(dir, "harness.jsonl"))
+	events := harnessEvents(t, runfiles.Run(dir).Diagnostics("a1"))
 	if len(events) != 2 || events[1].Details.State != "stop" || events[1].Details.ExitCode == nil || *events[1].Details.ExitCode != 0 {
 		t.Fatalf("lifecycle: %+v", events)
 	}

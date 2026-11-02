@@ -9,30 +9,47 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/pthm/leeroy/azbench/runfiles"
 )
+
+// testRun: a run directory with run.json naming its players (agent, character)
+func testRun(t *testing.T, players ...[2]string) runfiles.Run {
+	f := runfiles.Run(t.TempDir())
+	var m runfiles.Manifest
+	for _, p := range players {
+		m.Players = append(m.Players, runfiles.Player{Agent: p[0], Char: p[1]})
+		for _, d := range []string{f.Agent(p[0]), f.Game(p[1]), f.Judge(p[1])} {
+			os.MkdirAll(d, 0o755)
+		}
+	}
+	os.MkdirAll(filepath.Dir(f.Diagnostics("x")), 0o755)
+	f.WriteManifest(m)
+	return f
+}
 
 // judge report on a made-up 10-minute solo run with a known shape (was report.test.ts)
 func TestReportCard(t *testing.T) {
-	dir := t.TempDir()
+	f := testRun(t, [2]string{"a1", "Tester"})
 	t0 := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC).UnixMilli()
 	const min = int64(60_000)
-	lines := func(f string, xs []any) {
+	lines := func(path string, xs []any) {
 		var b []byte
 		for _, x := range xs {
 			j, _ := json.Marshal(x)
 			b = append(append(b, j...), '\n')
 		}
-		os.WriteFile(filepath.Join(dir, f), b, 0o644)
+		os.WriteFile(path, b, 0o644)
 	}
 	iso := func(t int64) string { return time.UnixMilli(t).UTC().Format(time.RFC3339Nano) }
-	os.WriteFile(filepath.Join(dir, "meta.json"), []byte(`{"agent":"a1","char":"Tester","runtime":"claude"}`), 0o644)
+	os.WriteFile(f.Meta("a1"), []byte(`{"agent":"a1","char":"Tester","runtime":"claude"}`), 0o644)
 	// 10 min of samples, 100 XP per 15 s while the script runs (0-8 min), nothing after it stops
 	var rec []any
 	for i := int64(0); i <= 40; i++ {
 		rec = append(rec, map[string]any{"t": t0 + i*15_000, "ev": "score", "n": "Tester", "value": float64(min64(i, 32) * 100)})
 	}
-	lines("record.jsonl", rec)
-	lines("Tester.events.jsonl", []any{
+	lines(f.Record("Tester"), rec)
+	lines(f.Events("Tester"), []any{
 		map[string]any{"t": t0, "type": "task_started", "data": map[string]any{"task": 1}},
 		map[string]any{"t": t0 + 3*min, "type": "chat", "data": map[string]any{"kind": "npc_say", "text": "You no take candle!"}},
 		map[string]any{"t": t0 + 4*min, "type": "death", "data": map[string]any{}},
@@ -50,11 +67,11 @@ func TestReportCard(t *testing.T) {
 	tr = append(tr, call("1", "wow wait 300 >/dev/null", t0+1*min, t0+3*min)...)        // woken early by the NPC line
 	tr = append(tr, call("2", "wow -f grind.lua", t0+3*min+12_000, t0+3*min+18_000)...) // and restarts
 	tr = append(tr, call("3", "wow wait 120", t0+4*min, t0+6*min)...)                   // times out
-	lines("agent.jsonl", tr)
+	lines(f.Transcript("a1"), tr)
 
-	Report(dir)
+	Report(string(f))
 	var rep struct{ Agents []map[string]any }
-	b, _ := os.ReadFile(filepath.Join(dir, "report.json"))
+	b, _ := os.ReadFile(f.Report())
 	json.Unmarshal(b, &rep)
 	c := rep.Agents[0]
 	check := func(what string, got, want any) {
@@ -84,12 +101,12 @@ func min64(a, b int64) int64 {
 
 // an opencode transcript: tool calls from tool_use events, tokens from step_finish, cost at the models.dev price
 func TestReportOpencode(t *testing.T) {
-	dir := t.TempDir()
+	f := testRun(t, [2]string{"a1", "Tester"})
 	t0 := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC).UnixMilli()
 	iso := func(t int64) string { return time.UnixMilli(t).UTC().Format(time.RFC3339Nano) }
 	model := "openrouter/moonshotai/kimi-k2"
-	os.WriteFile(filepath.Join(dir, "meta.json"), []byte(`{"agent":"a1","char":"Tester","runtime":"opencode","model":"`+model+`","provider":"openrouter"}`), 0o644)
-	os.WriteFile(filepath.Join(dir, "record.jsonl"), []byte(`{"t":`+fmt.Sprint(t0)+`,"ev":"score","n":"Tester","value":0}`+"\n"), 0o644)
+	os.WriteFile(f.Meta("a1"), []byte(`{"agent":"a1","char":"Tester","runtime":"opencode","model":"`+model+`","provider":"openrouter"}`), 0o644)
+	os.WriteFile(f.Record("Tester"), []byte(`{"t":`+fmt.Sprint(t0)+`,"ev":"score","n":"Tester","value":0}`+"\n"), 0o644)
 	var b []byte
 	for _, x := range []any{
 		map[string]any{"type": "tool_use", "timestamp": iso(t0 + 1000), "part": map[string]any{"tool": "bash",
@@ -102,19 +119,19 @@ func TestReportOpencode(t *testing.T) {
 		j, _ := json.Marshal(x)
 		b = append(append(b, j...), '\n')
 	}
-	os.WriteFile(filepath.Join(dir, "agent.jsonl"), b, 0o644)
+	os.WriteFile(f.Transcript("a1"), b, 0o644)
 	// deaths come from the judge's samples (the character database), not the death events: 2 -> 5 is 3, although
 	// the event stream has one more (a death after the clock)
-	os.WriteFile(filepath.Join(dir, "samples.jsonl"), []byte(`{"elapsed_s":0,"signals":{"deaths":2}}`+"\n"+`{"elapsed_s":60,"signals":{"deaths":5}}`+"\n"), 0o644)
+	os.WriteFile(f.Samples("Tester"), []byte(`{"elapsed_s":0,"signals":{"deaths":2}}`+"\n"+`{"elapsed_s":60,"signals":{"deaths":5}}`+"\n"), 0o644)
 	ev := ""
 	for i := 0; i < 4; i++ {
 		ev += `{"t":` + fmt.Sprint(t0+int64(i)*1000) + `,"type":"death","data":{}}` + "\n"
 	}
-	os.WriteFile(filepath.Join(dir, "Tester.events.jsonl"), []byte(ev), 0o644)
+	os.WriteFile(f.Events("Tester"), []byte(ev), 0o644)
 
-	Report(dir)
+	Report(string(f))
 	var rep struct{ Agents []map[string]any }
-	j, _ := os.ReadFile(filepath.Join(dir, "report.json"))
+	j, _ := os.ReadFile(f.Report())
 	json.Unmarshal(j, &rep)
 	c := rep.Agents[0]
 	if c["deaths"] != 3.0 {
@@ -169,28 +186,24 @@ func TestTeamOpenrouterBilled(t *testing.T) {
 // Spec J1: a binary goal scores 3600 / time_to_goal_s on the card and in team.json, recomputed from a result saved
 // with the old rate score; an unmet one scores 0.
 func TestBinaryGoalScoredByTime(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "go"), nil, 0o600)
+	f := testRun(t, [2]string{"a1", "Met"}, [2]string{"a2", "Unmet"})
 	for _, a := range []struct{ agent, char, res string }{
 		{"a1", "Met", `{"char":"Met","goal":"achievement:628","met":true,"elapsed_s":7200,"score":2.1}`},
 		{"a2", "Unmet", `{"char":"Unmet","goal":"achievement:628","met":false,"elapsed_s":7200,"score":2.1}`},
 	} {
-		run := filepath.Join(dir, a.agent)
-		os.MkdirAll(run, 0o755)
-		os.WriteFile(filepath.Join(run, "meta.json"), []byte(`{"agent":"`+a.agent+`","char":"`+a.char+`","goal":"achievement:628"}`), 0o600)
-		os.WriteFile(filepath.Join(run, "judge.json"), []byte(a.res), 0o600)
-		os.WriteFile(filepath.Join(dir, a.agent+".out"), []byte(a.res+"\n"), 0o600)
-		os.WriteFile(filepath.Join(dir, a.agent+".record.jsonl"), []byte(`{"t":1000,"ev":"score","n":"`+a.char+`","value":1,"score":2.1}`+"\n"), 0o600)
+		os.WriteFile(f.Meta(a.agent), []byte(`{"agent":"`+a.agent+`","char":"`+a.char+`","goal":"achievement:628"}`), 0o600)
+		os.WriteFile(f.Result(a.char), []byte(a.res+"\n"), 0o600)
+		os.WriteFile(f.Record(a.char), []byte(`{"t":1000,"ev":"score","n":"`+a.char+`","value":1,"score":2.1}`+"\n"), 0o600)
 	}
-	Report(dir)
-	agents := readJSON(filepath.Join(dir, "report.json"))["agents"].([]any)
+	Report(string(f))
+	agents := readJSON(f.Report())["agents"].([]any)
 	for i, want := range []struct{ score, ttg any }{{0.5, 7200.0}, {0.0, nil}} {
 		s := get(agents[i], "score")
 		if get(s, "score") != want.score || get(s, "time_to_goal_s") != want.ttg {
 			t.Fatalf("card %d score: %+v", i, s)
 		}
 	}
-	team := readJSON(filepath.Join(dir, "team.json"))
+	team := readJSON(f.Team())
 	res := team["agents"].([]any)
 	if get(res[0], "char") != "Met" || get(res[0], "score") != 0.5 || get(res[0], "time_to_goal_s") != 7200.0 ||
 		get(res[1], "score") != 0.0 || team["faction_score"] != 0.5 {
@@ -204,14 +217,14 @@ func TestBinaryGoalScoredByTime(t *testing.T) {
 // Spec J4: stalls by reason; no_xp isn't a stall for a goal that isn't XP.
 func TestStallsByReason(t *testing.T) {
 	for goal, want := range map[string]any{"level:10": 2.0, "achievement:628": nil} {
-		dir := t.TempDir()
-		os.WriteFile(filepath.Join(dir, "meta.json"), []byte(`{"agent":"a1","char":"Tester","goal":"`+goal+`"}`), 0o600)
-		os.WriteFile(filepath.Join(dir, "Tester.events.jsonl"), []byte(`{"t":1,"type":"stall","data":{"reason":"no_xp"}}
+		f := testRun(t, [2]string{"a1", "Tester"})
+		os.WriteFile(f.Meta("a1"), []byte(`{"agent":"a1","char":"Tester","goal":"`+goal+`"}`), 0o600)
+		os.WriteFile(f.Events("Tester"), []byte(`{"t":1,"type":"stall","data":{"reason":"no_xp"}}
 {"t":2,"type":"stall","data":{"reason":"no_xp"}}
 {"t":3,"type":"stall","data":{"reason":"slow"}}
 `), 0o600)
-		Report(dir)
-		st := get(readJSON(filepath.Join(dir, "report.json"))["agents"].([]any)[0], "stalls")
+		Report(string(f))
+		st := get(readJSON(f.Report())["agents"].([]any)[0], "stalls")
 		if get(st, "no_xp") != want || get(st, "slow") != 1.0 {
 			t.Fatalf("%s: stalls %v", goal, st)
 		}

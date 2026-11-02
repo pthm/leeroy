@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/pthm/leeroy/azbench/diagnostics"
+	"github.com/pthm/leeroy/azbench/runfiles"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 	"net"
 	"net/http"
@@ -58,10 +59,11 @@ func (r *Runner) serveControl() func() {
 		return func() {}
 	}
 	b, _ := json.Marshal(map[string]any{"addr": ln.Addr().String(), "pid": os.Getpid()})
-	os.WriteFile(filepath.Join(r.dir, "control.json"), b, 0o644)
+	os.MkdirAll(r.f().Live(""), 0o755)
+	os.WriteFile(r.f().Live("control.json"), b, 0o644)
 	srv := &http.Server{Handler: mux}
 	go srv.Serve(ln)
-	return func() { srv.Close(); os.Remove(filepath.Join(r.dir, "control.json")) }
+	return func() { srv.Close(); os.Remove(r.f().Live("control.json")) }
 }
 
 func (r *Runner) status() map[string]any {
@@ -73,7 +75,7 @@ func (r *Runner) status() map[string]any {
 		p.mu.Unlock()
 		diag := diagnostics.Read(p.a.Name, diagnostics.Paths(r.dir, p.a.Name)...)
 		st["active_failures"] = diag.TopActive(time.Now().UnixMilli(), 3)
-		if b, err := os.ReadFile(filepath.Join(r.dir, "board", p.a.Char+".json")); err == nil {
+		if b, err := os.ReadFile(filepath.Join(r.f().Board(), p.a.Char+".json")); err == nil {
 			var board map[string]any
 			if json.Unmarshal(b, &board) == nil {
 				st["score"], st["level"] = board["score"], board["level"]
@@ -160,7 +162,7 @@ func replaceLeft(msg string, left time.Duration) string {
 
 // Control sends a command to a running run's supervisor (control.json in its dir) and returns the reply.
 func Control(dir, method, path string, body any) ([]byte, error) {
-	b, err := os.ReadFile(filepath.Join(dir, "control.json"))
+	b, err := os.ReadFile(runfiles.Run(dir).Live("control.json"))
 	if err != nil {
 		return nil, fmt.Errorf("%s isn't running (no control.json)", dir)
 	}
@@ -190,7 +192,7 @@ func Control(dir, method, path string, body any) ([]byte, error) {
 // Status is a run's status from its supervisor, or state "crashed" when control.json's pid is gone: the supervisor
 // died without its cleanup, and its agents and sessions (left_running) may still be playing, unjudged.
 func Status(dir string) ([]byte, error) {
-	b, err := os.ReadFile(filepath.Join(dir, "control.json"))
+	b, err := os.ReadFile(runfiles.Run(dir).Live("control.json"))
 	var c struct{ Pid int }
 	if err == nil && json.Unmarshal(b, &c) == nil && !pidAlive(c.Pid) {
 		out, _ := json.Marshal(map[string]any{"run": dir, "state": "crashed", "pid": c.Pid, "left_running": len(leftovers(dir))})
@@ -202,7 +204,7 @@ func Status(dir string) ([]byte, error) {
 // Running is an error while a live supervisor holds the run (control.json's pid exists).
 // ponytail: a reused pid reads as alive; the message names it for the operator to check.
 func Running(dir string) error {
-	b, err := os.ReadFile(filepath.Join(dir, "control.json"))
+	b, err := os.ReadFile(runfiles.Run(dir).Live("control.json"))
 	var c struct{ Pid int }
 	if err == nil && json.Unmarshal(b, &c) == nil && pidAlive(c.Pid) {
 		return fmt.Errorf("%s: its supervisor (pid %d) is still running; azbench pause it first", dir, c.Pid)
@@ -233,13 +235,14 @@ func (r *Runner) savePids() {
 		}
 		p.mu.Unlock()
 	}
-	os.WriteFile(filepath.Join(r.dir, "pids"), []byte(b.String()), 0o644)
+	os.MkdirAll(r.f().Live(""), 0o755)
+	os.WriteFile(r.f().Live("pids"), []byte(b.String()), 0o644)
 }
 
 // leftovers: the process groups in <run>/pids that still run, each only if its leader's command line still names
 // the program recorded for it (pids are reused).
 func leftovers(dir string) []int {
-	b, _ := os.ReadFile(filepath.Join(dir, "pids"))
+	b, _ := os.ReadFile(runfiles.Run(dir).Live("pids"))
 	var pids []int
 	for _, line := range strings.Split(string(b), "\n") {
 		var pid int

@@ -91,7 +91,7 @@ func (r *Runner) noteCodexQuota() *codexQuota {
 		r.logf("%v", err)
 		return nil
 	}
-	f := filepath.Join(r.dir, "codex-quota.json")
+	f := r.f().CodexQuota()
 	rec := map[string]*codexQuota{}
 	if b, err := os.ReadFile(f); err == nil {
 		json.Unmarshal(b, &rec)

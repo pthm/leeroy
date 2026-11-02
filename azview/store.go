@@ -6,6 +6,7 @@ package main
 import (
 	"cmp"
 	"encoding/json"
+	"github.com/pthm/leeroy/azbench/runfiles"
 	"math"
 	"os"
 	"path/filepath"
@@ -789,7 +790,7 @@ func (s *Store) mapMark(e Ev) map[string]any {
 
 // scan adds what a run dir has that src doesn't yet: the record files and transcripts of agents whose sessions came up
 // since the last scan (a viewer started early in a run), their meta, the server log once there are characters, and
-// the go file. A record file's events from before Since are still dropped, so a late file reads from the start.
+// run.json's start. A record file's events from before Since are still dropped, so a late file reads from the start.
 func (s *Store) scan(src *Source) {
 	src.scanned = time.Now()
 	records, transcripts := RunSources(src.Dir)
@@ -817,23 +818,24 @@ func (s *Store) scan(src *Source) {
 		src.Files = append(src.Files, src.ServerLog)
 	}
 	s.agents = AgentMeta(transcripts)
-	if !src.goRead {
-		if b, err := os.ReadFile(filepath.Join(src.Dir, "go")); err == nil {
-			if f, err := strconv.ParseFloat(strings.TrimSpace(string(b)), 64); err == nil {
-				s.Start, src.goRead = f*1000, true
-				if src.offsets == nil { // nothing read yet: start reading at the run
-					src.Since = s.Start - 60_000
-				}
+	if !src.goRead { // the run's clock started (run.json)
+		if m, err := runfiles.Run(src.Dir).ReadManifest(); err == nil && m.Started > 0 {
+			s.Start, src.goRead = float64(m.Started), true
+			if src.offsets == nil { // nothing read yet: start reading at the run
+				src.Since = s.Start - 60_000
 			}
 		}
 	}
 }
 
 // OpenRun is a store for a bench run dir (its record files, transcripts and, for chat, damage, heals and targets, the
-// server log), or for log files when dir is "" (default: the server log). It reads from the run's start (its go
-// file), else from sinceMin minutes ago. Call Poll to read.
+// server log: the run's own copy, server/recorder.jsonl, once it has one), or for log files when dir is "" (default:
+// the server log). It reads from the run's start (run.json), else from sinceMin minutes ago. Call Poll to read.
 func OpenRun(dir string, files []string, sinceMin float64) (*Store, *Source) {
 	s, src := NewStore(), &Source{Transcripts: map[string]string{}, RunChars: map[string]bool{}, ServerLog: ServerLog()}
+	if own := filepath.Join(runfiles.Run(dir).Server(), "recorder.jsonl"); dir != "" && exists(own) {
+		src.ServerLog = own
+	}
 	src.Since = float64(time.Now().UnixMilli()) - sinceMin*60_000
 	src.Files, src.Dir = files, dir
 	if dir != "" {

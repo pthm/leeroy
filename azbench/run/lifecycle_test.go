@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/pthm/leeroy/azbench/config"
+	"github.com/pthm/leeroy/azbench/runfiles"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
@@ -42,11 +43,11 @@ func TestSessionExitPausesRun(t *testing.T) {
 	if !r.paused || r.ctx.Err() == nil {
 		t.Fatal("an exited session didn't pause the run")
 	}
-	alerts, _ := os.ReadFile(filepath.Join(dir, "alerts.log"))
-	if !strings.Contains(string(alerts), "session exited (code 3") {
-		t.Fatalf("alerts.log: %s", alerts)
+	alerts, _ := os.ReadFile(runfiles.Run(dir).SupervisorLog())
+	if !strings.Contains(string(alerts), "ALERT") || !strings.Contains(string(alerts), "session exited (code 3") {
+		t.Fatalf("supervisor.log: %s", alerts)
 	}
-	ev := harnessEvents(t, filepath.Join(dir, "harness.jsonl"))
+	ev := harnessEvents(t, runfiles.Run(dir).Diagnostics("a1"))
 	if len(ev) != 2 || ev[0].Details.Component != "session" || *ev[0].Details.ExitCode != 3 ||
 		ev[1].Details.Component != "supervisor" || ev[1].Details.State != "pause" {
 		t.Fatalf("harness events: %+v", ev)
@@ -69,9 +70,10 @@ func TestCrashedSupervisor(t *testing.T) {
 	defer left.Process.Kill()
 	// a reused pid (this test, not "azsdk") is not a leftover
 	pids := fmt.Sprintf("%d sleep\n%d azsdk\n", left.Process.Pid, os.Getpid())
-	os.WriteFile(filepath.Join(dir, "pids"), []byte(pids), 0o644)
+	os.MkdirAll(runfiles.Run(dir).Live(""), 0o755)
+	os.WriteFile(runfiles.Run(dir).Live("pids"), []byte(pids), 0o644)
 	control := func(pid int) {
-		os.WriteFile(filepath.Join(dir, "control.json"), fmt.Appendf(nil, `{"addr":"127.0.0.1:1","pid":%d}`, pid), 0o644)
+		os.WriteFile(runfiles.Run(dir).Live("control.json"), fmt.Appendf(nil, `{"addr":"127.0.0.1:1","pid":%d}`, pid), 0o644)
 	}
 
 	control(os.Getpid())
@@ -110,13 +112,13 @@ func TestSavePids(t *testing.T) {
 	p.session.Start()
 	defer p.session.Process.Kill()
 	r.savePids()
-	b, _ := os.ReadFile(filepath.Join(dir, "pids"))
+	b, _ := os.ReadFile(runfiles.Run(dir).Live("pids"))
 	if string(b) != fmt.Sprintf("%d sleep\n", p.session.Process.Pid) {
 		t.Fatalf("pids: %q", b)
 	}
 	p.session = nil
 	r.savePids()
-	if b, _ := os.ReadFile(filepath.Join(dir, "pids")); len(b) != 0 {
+	if b, _ := os.ReadFile(runfiles.Run(dir).Live("pids")); len(b) != 0 {
 		t.Fatalf("pids after stop: %q", b)
 	}
 }
@@ -153,7 +155,7 @@ func TestStopAgentKeepsToolOutput(t *testing.T) {
 	if took := time.Since(start); took > 3*time.Second {
 		t.Fatalf("stop took %v", took)
 	}
-	b, _ := os.ReadFile(filepath.Join(dir, "agent.jsonl"))
+	b, _ := os.ReadFile(filepath.Join(dir, "transcript.jsonl"))
 	completed, interrupted := strings.Index(string(b), `"item.completed"`), strings.Index(string(b), `"turn.interrupted"`)
 	if completed < 0 || interrupted < completed {
 		t.Fatalf("transcript:\n%s", b)
@@ -219,7 +221,7 @@ func TestWrapUp(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("the agent's stop never fired")
 	}
-	if ev := harnessEvents(t, filepath.Join(dir, "harness.jsonl")); len(ev) != 1 || ev[0].Details.State != types.StateWrapUp {
+	if ev := harnessEvents(t, runfiles.Run(dir).Diagnostics("a1")); len(ev) != 1 || ev[0].Details.State != types.StateWrapUp {
 		t.Fatalf("harness events: %+v", ev)
 	}
 	r.cancel() // a pause ends it at once

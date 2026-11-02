@@ -21,6 +21,7 @@ import (
 
 	"github.com/pthm/leeroy/azbench/config"
 	"github.com/pthm/leeroy/azbench/judge"
+	"github.com/pthm/leeroy/azbench/trajectory"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
@@ -113,24 +114,33 @@ func (p *player) workspace() error {
 
 // daemon starts the character's azsdk session; extra flags: -duration for a short login.
 func (p *player) daemon(extra ...string) (*exec.Cmd, error) {
+	// the session's log: the run's (game/<char>/session.log), and the workspace's, where the agent reads its log() lines
 	log, err := os.OpenFile(filepath.Join(p.ws, "session.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
+		return nil, err
+	}
+	runLog, err := os.OpenFile(p.r.f().SessionLog(p.a.Char), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		log.Close()
 		return nil, err
 	}
 	args := []string{"-char", p.a.Char, "-account", p.account(), "-listen", fmt.Sprintf("127.0.0.1:%d", p.port),
 		"-agent", p.a.Name,
 		"-data", filepath.Join(p.r.repo, "data"), "-workspace", p.ws, "-race", fmt.Sprint(p.race), "-class", fmt.Sprint(p.class)}
 	if len(extra) == 0 {
-		args = append(args, "-record", filepath.Join(p.r.dir, p.a.Name+".record.jsonl"), "-events", p.r.dir)
+		args = append(args, "-record", p.r.f().Record(p.a.Char), "-events", p.r.f().Events(p.a.Char),
+			"-diagnostics", p.r.f().Diagnostics(p.a.Name))
 	}
 	cmd := exec.Command(filepath.Join(p.r.repo, "bin", "azsdk"), append(args, extra...)...)
-	cmd.Stdout, cmd.Stderr = log, log
+	both := io.MultiWriter(log, runLog)
+	cmd.Stdout, cmd.Stderr = both, both
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		log.Close()
+		runLog.Close()
 		return nil, err
 	}
-	go func() { cmd.Wait(); log.Close(); p.sessionExited(cmd) }()
+	go func() { cmd.Wait(); log.Close(); runLog.Close(); p.sessionExited(cmd) }()
 	return cmd, nil
 }
 
@@ -146,7 +156,7 @@ func (p *player) sessionExited(cmd *exec.Cmd) {
 	}
 	code := cmd.ProcessState.ExitCode()
 	p.harness(types.DiagnosticDetails{Component: "session", State: types.StateStop, Runtime: p.a.Runtime, ExitCode: &code})
-	p.r.alert(p, fmt.Sprintf("session exited (code %d, see %s/session.log): pausing the run", code, p.ws))
+	p.r.alert(p, fmt.Sprintf("session exited (code %d, see %s): pausing the run", code, p.r.f().SessionLog(p.a.Char)))
 	p.r.pause()
 }
 
@@ -177,7 +187,7 @@ func (p *player) login(ctx context.Context) error {
 			case <-time.After(time.Second):
 			}
 		}
-		p.logf("session login failed (try %d), see %s/session.log", try, p.ws)
+		p.logf("session login failed (try %d), see %s", try, p.r.f().SessionLog(p.a.Char))
 		if try == 3 {
 			return fmt.Errorf("session login failed")
 		}
@@ -208,7 +218,7 @@ func (p *player) prepare(ctx context.Context) error {
 			}
 		}
 		if !charExists(p.a.Char) {
-			return fmt.Errorf("character not created, see %s/session.log", p.ws)
+			return fmt.Errorf("character not created, see %s", p.r.f().SessionLog(p.a.Char))
 		}
 		if !waitOffline(p.a.Char, 2*time.Minute) {
 			return fmt.Errorf("still online")
@@ -300,7 +310,7 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 		env = append(env, "XDG_CONFIG_HOME="+cfg, "OPENCODE_CONFIG_CONTENT="+opencodeConfig(repo, p.ws))
 	}
 	cmd.Env = append(env, "PATH="+filepath.Join(repo, "bench/agent/bin")+":"+os.Getenv("PATH"),
-		"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "WOWBENCH_BOARD="+filepath.Join(p.r.dir, "board"),
+		"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "WOWBENCH_BOARD="+p.r.f().Board(),
 		"WOWBENCH_CHAR="+a.Char, fmt.Sprintf("WOW_MAX_WAIT=%d", agentMaxWaitSeconds), fmt.Sprintf("WOW_PORT=%d", p.port))
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // so stopping it stops its tools too
 	return cmd
@@ -341,7 +351,7 @@ func validateAgentCredentials(a config.Agent) error {
 	return nil
 }
 
-// startAgent runs the agent until end, appending its output to agent.jsonl. Codex's JSONL events have no
+// startAgent runs the agent until end, appending its output to transcript.jsonl. Codex's JSONL events have no
 // timestamps, so each line is stamped as it arrives (the viewer and the report place them on the timeline);
 // opencode's have their own, in unix ms, which become the same ISO time.
 func (p *player) startAgent(text, resume string, end time.Time) error {
@@ -349,13 +359,13 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 	p.agentEnd = end
 	p.mu.Unlock()
 	if p.a.Runtime == "none" { // no agent: an empty transcript, so the report card still lists the player
-		f, err := os.OpenFile(filepath.Join(p.dir, "agent.jsonl"), os.O_CREATE|os.O_WRONLY, 0o644)
+		f, err := os.OpenFile(filepath.Join(p.dir, "transcript.jsonl"), os.O_CREATE|os.O_WRONLY, 0o644)
 		if err == nil {
 			f.Close()
 		}
 		return err
 	}
-	out, err := os.OpenFile(filepath.Join(p.dir, "agent.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	out, err := os.OpenFile(filepath.Join(p.dir, "transcript.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
@@ -412,6 +422,9 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 		if err := judge.SaveUsage(p.dir); err != nil {
 			p.logf("saving usage: %v", err)
 		}
+		if err := trajectory.Write(p.a.Runtime, p.a.Name, filepath.Join(p.dir, "transcript.jsonl"), filepath.Join(p.dir, "trajectory.jsonl")); err != nil {
+			p.logf("trajectory: %v", err)
+		}
 		code := cmd.ProcessState.ExitCode()
 		p.harness(types.DiagnosticDetails{Component: "agent", State: types.StateStop, Runtime: p.a.Runtime, ExitCode: &code})
 		p.exited(cmd)
@@ -455,7 +468,7 @@ func stampLinesObserved(r io.Reader, w io.WriteCloser, observe func(map[string]a
 	return sc.Err()
 }
 
-// exited: an agent that stops with 2+ minutes left is reported (alerts.log), with the runtime's last error (a
+// exited: an agent that stops with 2+ minutes left is reported (an ALERT in supervisor.log), with the runtime's last error (a
 // Codex usage limit, say). Without an error, its conversation is resumed with a short message (the minutes left;
 // carry on, or give up), up to maxContinues times: Codex ends its job when it ends a reply ("the automation is
 // running"), and a script left alone can't adapt, so the agent stays the one playing. Giving up (standings give-up)
@@ -468,7 +481,7 @@ func (p *player) exited(cmd *exec.Cmd) {
 		return
 	}
 	why := ""
-	f, _ := os.Open(filepath.Join(p.dir, "agent.jsonl"))
+	f, _ := os.Open(filepath.Join(p.dir, "transcript.jsonl"))
 	if f != nil {
 		sc := bufio.NewScanner(f)
 		sc.Buffer(make([]byte, 1<<20), 1<<26)
@@ -545,7 +558,7 @@ if you've concluded you can't get further, standings give-up "<why>" ends your r
 func (p *player) meta(spec config.Spec) {
 	model := ""
 	for i := 0; i < 60 && model == "" && p.a.Runtime != "none" && p.a.Runtime != "opencode"; i++ {
-		model = detectModel(p.a.Runtime, filepath.Join(p.dir, "agent.jsonl"))
+		model = detectModel(p.a.Runtime, filepath.Join(p.dir, "transcript.jsonl"))
 		if model == "" {
 			time.Sleep(2 * time.Second)
 		}
@@ -561,7 +574,7 @@ func (p *player) meta(spec config.Spec) {
 		if i > 0 {
 			time.Sleep(2 * time.Second)
 		}
-		effort = DetectEffort(p.a.Runtime, filepath.Join(p.dir, "agent.jsonl"))
+		effort = DetectEffort(p.a.Runtime, filepath.Join(p.dir, "transcript.jsonl"))
 	}
 	b, _ := json.Marshal(map[string]any{"agent": p.a.Name, "char": p.a.Char, "runtime": p.a.Runtime, "model": model,
 		"effort": effort, "provider": p.a.Provider, "spec": spec.Title, "role": spec.Role, "goal": p.r.s.Goal, "port": p.port})
@@ -634,7 +647,7 @@ func detectModel(runtime, transcript string) string {
 
 // conversation is the agent's earlier conversation to resume: Claude's or opencode's session id or Codex's thread id.
 func (p *player) conversation() string {
-	f, err := os.Open(filepath.Join(p.dir, "agent.jsonl"))
+	f, err := os.Open(filepath.Join(p.dir, "transcript.jsonl"))
 	if err != nil {
 		return ""
 	}
@@ -800,8 +813,5 @@ func (p *player) stopSession() {
 		if alive(cmd) {
 			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		}
-	}
-	if b, err := os.ReadFile(filepath.Join(p.ws, "session.log")); err == nil {
-		os.WriteFile(filepath.Join(p.dir, "session.log"), b, 0o644)
 	}
 }
