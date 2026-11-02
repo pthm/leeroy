@@ -23,9 +23,9 @@ func newStreams(dir string) *streams {
 	return &streams{dir: dir, at: map[string]int64{}, tail: map[string]string{}, evs: map[string][]metrics.Event{}}
 }
 
-// keep: the event types the metrics read (the files are mostly casts, results and logs).
-var keep = []string{`"type":"damage"`, `"type":"heal"`, `"type":"xp"`, `"type":"kill"`, `"type":"party_kill"`,
-	`"type":"death"`, `"type":"task_started"`, `"type":"task_finished"`, `"type":"stall"`, `"type":"party_changed"`}
+// keep: the event types the metrics read (the files are mostly state, casts, results and logs).
+var keep = map[string]bool{"damage": true, "heal": true, "xp": true, "kill": true, "party_kill": true, "death": true,
+	"task_started": true, "task_finished": true, "stall": true, "party_changed": true}
 
 func (s *streams) read() {
 	files, _ := filepath.Glob(runfiles.Run(s.dir).EventsGlob())
@@ -46,13 +46,8 @@ func (s *streams) read() {
 		lines := strings.Split(s.tail[f]+string(buf), "\n")
 		s.tail[f] = lines[len(lines)-1]
 		for _, l := range lines[:len(lines)-1] {
-			for _, k := range keep {
-				if strings.Contains(l, k) {
-					if e, ok := metrics.Decode([]byte(l)); ok {
-						s.evs[char] = append(s.evs[char], e)
-					}
-					break
-				}
+			if e, ok := metrics.Decode([]byte(l)); ok && keep[e.Type] {
+				s.evs[char] = append(s.evs[char], e)
 			}
 		}
 	}

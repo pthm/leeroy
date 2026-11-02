@@ -7,7 +7,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -17,6 +16,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/pthm/leeroy/azeroth-sdk/metrics"
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 	"github.com/pthm/leeroy/azworld/world"
 )
@@ -74,21 +74,13 @@ type place struct {
 func readEvent(rec *recording, line []byte, char string, start int64, chat map[string]chatMsg, last *float64, prevp *place, speedp *float64) {
 	prev, speed := *prevp, *speedp
 	defer func() { *prevp, *speedp = prev, speed }()
-	var l struct {
-		T    int64           `json:"t"`
-		Type string          `json:"type"`
-		Data json.RawMessage `json:"data"`
-	}
-	if json.Unmarshal(line, &l) != nil {
+	l, ok := metrics.Decode(line)
+	if !ok {
 		return
 	}
 	t := float64(l.T-start) / 1000
-	switch l.Type {
-	case "state":
-		var e types.State
-		if json.Unmarshal(l.Data, &e) != nil {
-			return
-		}
+	switch e := l.Data.(type) {
+	case types.State:
 		m, grp := int(e.Map), float64(e.Group)
 		// a jump: over 100 yd within 3 s. A teleport (a portal, a hearthstone, a spirit healer) comes at walking
 		// pace; a boat or zeppelin's path skips stretches too, but the player was moving at its speed (about 30
@@ -112,19 +104,14 @@ func readEvent(rec *recording, line []byte, char string, start int64, chat map[s
 			rec.track = append(rec.track, [5]float64{math.Round(t), float64(m), math.Round(e.X), math.Round(e.Y), grp})
 			*last = t
 		}
-	case "cast_done":
-		var e types.Cast
-		if json.Unmarshal(l.Data, &e) == nil && e.Name != "" {
+	case types.Cast:
+		if l.Type == "cast_done" && e.Name != "" {
 			rec.casts[e.Name]++
 			rec.spells[e.Name] = int(e.Spell)
 		}
-	case "login":
-		var e types.Login
-		json.Unmarshal(l.Data, &e)
+	case types.Login:
 		rec.class = strings.ReplaceAll(e.Class, "_", " ")
-	case "death":
-		var e types.Death
-		json.Unmarshal(l.Data, &e)
+	case types.Death:
 		d := recDeath{T: math.Round(t)}
 		if e.Killer != nil {
 			d.entry = int(e.Killer.Entry)
@@ -134,9 +121,8 @@ func readEvent(rec *recording, line []byte, char string, start int64, chat map[s
 			d.Map, d.X, d.Y = int(p[1]), p[2], p[3]
 		}
 		rec.deaths = append(rec.deaths, d)
-	case "chat":
-		var e types.Chat
-		if json.Unmarshal(l.Data, &e) == nil && e.Self {
+	case types.Chat:
+		if e.Self {
 			if kind, ok := chatKinds[e.Kind]; ok {
 				chat[fmt.Sprintf("%s|%d|%s", char, l.T, e.Text)] = chatMsg{t, kind}
 			}

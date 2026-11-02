@@ -10,6 +10,7 @@ package judge
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/pthm/leeroy/azbench/runfiles"
@@ -635,17 +636,14 @@ func readPositions(dir string) map[string][]metrics.Pos {
 		sc.Buffer(make([]byte, 1<<20), 1<<26)
 		for sc.Scan() {
 			l := sc.Bytes()
-			if !strings.Contains(string(l), `"type":"state"`) {
+			if !bytes.Contains(l, []byte(`"type":"state"`)) { // ponytail: most lines aren't; skip decoding them
 				continue
 			}
-			var e struct {
-				T    int64
-				Data types.State
-			}
-			if json.Unmarshal(l, &e) == nil {
-				p := e.Data
-				out[char] = append(out[char], metrics.Pos{T: e.T, X: p.X, Y: p.Y, Map: float64(p.Map), Alive: p.Alive,
-					Combat: p.InCombat, Group: float64(p.Group)})
+			if e, ok := metrics.Decode(l); ok {
+				if p, ok := e.Data.(types.State); ok {
+					out[char] = append(out[char], metrics.Pos{T: e.T, X: p.X, Y: p.Y, Map: float64(p.Map), Alive: p.Alive,
+						Combat: p.InCombat, Group: float64(p.Group)})
+				}
 			}
 		}
 		fh.Close()

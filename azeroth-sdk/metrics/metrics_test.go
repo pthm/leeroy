@@ -70,3 +70,14 @@ func TestUse(t *testing.T) {
 		t.Fatalf("use %+v", u)
 	}
 }
+
+func TestDecodeRecords(t *testing.T) {
+	e, ok := Decode([]byte(`{"t":5,"type":"state","data":{"map":1,"x":2,"health":{"current":3,"max":4},"alive":true}}`))
+	st, typed := e.Data.(types.State)
+	if !ok || !typed || st.Map != 1 || st.X != 2 || st.Health.Max != 4 || !st.Alive {
+		t.Fatalf("state: %+v", e)
+	}
+	if e, ok := Decode([]byte(`{"t":6,"type":"transports","data":[{"guid":"7","entry":20808}]}`)); !ok || len(e.Data.([]types.TransportState)) != 1 {
+		t.Fatalf("transports: %+v", e)
+	}
+}

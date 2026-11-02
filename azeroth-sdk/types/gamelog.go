@@ -70,4 +70,14 @@ type APICall struct {
 	Params string `json:"params" doc:"raw JSON, cut at 500 characters"`
 }
 
-// "logout" has no data.
+// RecordTypes: every game log record, as EventTypes lists the events (records aren't events: the agent never sees
+// them, and the API references leave them out).
+var RecordTypes = map[string]EventType{
+	"state":      {State{}, "the character, every second"},
+	"units":      {Nearby{}, "the creatures around it, every 2 s"},
+	"transports": {[]TransportState{}, "the boats and zeppelins on its map, every 4 s"},
+	"login":      {Login{}, "it entered the world"},
+	"logout":     {None{}, "it left"},
+	"group":      {GroupState{}, "its party changed"},
+	"api":        {APICall{}, "a daemon API call"},
+}

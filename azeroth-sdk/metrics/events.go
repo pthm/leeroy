@@ -7,15 +7,16 @@ import (
 	"github.com/pthm/leeroy/azeroth-sdk/types"
 )
 
-// Event is one event from a character's stream: the session's in-process events, or a line of azsdk -events
-// (<Char>.events.jsonl). Data is the typed payload from types.EventTypes (types.Damage, types.XPGain, ...).
+// Event is one line of a character's game log (azsdk -events, game/<char>/events.jsonl), or one of the session's
+// in-process events. Data is the typed payload from types.EventTypes (types.Damage, types.XPGain, ...) or, for a
+// record, types.RecordTypes (types.State, types.Nearby, ...).
 type Event struct {
 	T    int64 // unix ms
 	Type string
 	Data any
 }
 
-// Decode parses one line of an events file. Unknown types keep their data as a map; ok is false for bad lines.
+// Decode parses one line of a game log. Unknown types keep their data as a map; ok is false for bad lines.
 func Decode(line []byte) (e Event, ok bool) {
 	var raw struct {
 		T    int64           `json:"t"`
@@ -26,7 +27,11 @@ func Decode(line []byte) (e Event, ok bool) {
 		return e, false
 	}
 	e = Event{T: raw.T, Type: raw.Type}
-	if et, known := types.EventTypes[raw.Type]; known && et.Data != nil && len(raw.Data) > 0 {
+	et, known := types.EventTypes[raw.Type]
+	if !known {
+		et, known = types.RecordTypes[raw.Type]
+	}
+	if known && et.Data != nil && len(raw.Data) > 0 {
 		p := reflect.New(reflect.TypeOf(et.Data))
 		if json.Unmarshal(raw.Data, p.Interface()) == nil {
 			e.Data = p.Elem().Interface()
