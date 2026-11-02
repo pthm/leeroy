@@ -1,6 +1,7 @@
 ---
 import { Icon } from 'astro-icon/components';
 import { getCollection } from 'astro:content';
+import HowAgentsPlay from '../components/HowAgentsPlay.astro';
 import Leaderboard from '../components/Leaderboard.astro';
 import Lightbox from '../components/Lightbox.astro';
 import Section from '../components/Section.astro';
@@ -101,6 +102,8 @@ const pillars = [
       How it's built <Icon name="lucide:arrow-right" class="size-3" aria-hidden="true" />
     </a>
   </Section>
+
+  <HowAgentsPlay />
 
   {posts.length > 0 && (
     <Section last>

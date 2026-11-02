@@ -30,7 +30,7 @@ function showTip(html: string, x: number, y: number) {
   tip.style.top = `${y + 16 + r.height > innerHeight ? y - r.height - 10 : y + 16}px`;
 }
 
-const esc = (s: string) => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
+const esc = (s: string) => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!).replace(/\n/g, '<br>');
 
 document.addEventListener('pointermove', e => {
   const el = (e.target as Element).closest?.('[data-tip]');
@@ -196,6 +196,26 @@ function crosshair(svg: SVGSVGElement) {
     tip.hidden = true;
   });
 }
+
+// sortable tables: a click on a [data-sort] header sorts the rows by that column's data-v (numbers high first, text
+// A-Z first; a second click reverses)
+document.addEventListener('click', e => {
+  const th = (e.target as Element).closest?.('table[data-sortable] th[data-sort]') as HTMLTableCellElement | null;
+  if (!th || (e.target as Element).closest('a')) return;
+  const table = th.closest('table')!;
+  const col = th.cellIndex;
+  const num = th.dataset.sort === 'num';
+  const dir = th.dataset.dir === 'desc' ? 'asc' : 'desc';
+  for (const h of table.querySelectorAll('th')) delete (h as HTMLElement).dataset.dir;
+  th.dataset.dir = dir;
+  const body = table.tBodies[0];
+  const key = (tr: HTMLTableRowElement) => (tr.cells[col] as HTMLElement).dataset.v ?? tr.cells[col].textContent ?? '';
+  const rows = [...body.rows].sort((a, b) => {
+    const c = num ? Number(key(b)) - Number(key(a)) : key(a).localeCompare(key(b));
+    return dir === 'desc' ? c : -c;
+  });
+  body.append(...rows);
+});
 
 adoptTitles(document);
 for (const svg of document.querySelectorAll<SVGSVGElement>('svg[data-series]')) crosshair(svg);

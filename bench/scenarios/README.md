@@ -52,7 +52,7 @@ Unknown fields are errors, so a typo doesn't silently change a run.
 | `hardcore` | a character's first death ends its run; the score is then the value per hour of the whole clock (binary goals: unmet, 0), and the prompt states the rule |
 | `notice` | added to the prompt: text, or a `.md` file next to the scenario (e.g. what changed since the agents' last run) |
 | `require_fresh` | refuse to start if any agent's workspace exists |
-| `runtime`, `race`, `provider` | defaults for agents without their own: `claude`, `human`, the runtime's own |
+| `runtime`, `race`, `provider`, `effort` | defaults for agents without their own: `claude`, `human`, the runtime's own, the runtime's default |
 | `models` | runtime to model, e.g. `{claude: claude-opus-5-5}`; default the runtime's own |
 | `agents` | the players (below) |
 
@@ -70,6 +70,7 @@ Each agent:
 | `spec` | a key from [`specs.yaml`](../specs.yaml): the prompt states class, spec, role, what to optimise and key stats, lists the other players' specs, and the judge puts the role on the board |
 | `runtime` | `claude` (Claude Code), `codex` (Codex CLI), `opencode` ([opencode](https://opencode.ai), any provider), or `none` (no agent: the session and judge only, for testing the harness) |
 | `model` | overrides `models`. For opencode, `provider/model` as `opencode models` lists them (`anthropic/claude-opus-5-5`, `openrouter/moonshotai/kimi-k3`) |
+| `effort` | reasoning effort: Claude Code `low` `medium` `high` `xhigh` `max` (`--effort`); Codex `minimal` `low` `medium` `high` `xhigh` (`model_reasoning_effort`); opencode the provider's variant names (`--variant`). Empty: the runtime's default. `meta.json` and the report record the effort used (Codex: from its session file; Claude Code and opencode don't say, so `default`), and the website ranks each model and effort apart |
 | `provider` | `openrouter`: the model through [OpenRouter](https://openrouter.ai), with `OPENROUTER_API_KEY`, and the model is its slug (`anthropic/claude-opus-5.5`, `deepseek/deepseek-v4-flash`). For `claude` (its Anthropic-compatible endpoint) and `opencode` (`openrouter/` is added to the model) |
 
 opencode runs with its own empty config (`<run>/<agent>/opencode/`, not `~/.config/opencode`) and the same sandbox as

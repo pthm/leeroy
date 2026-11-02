@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -36,6 +37,7 @@ type Scenario struct {
 	RequireFresh bool              `yaml:"require_fresh"`
 	Models       map[string]string `yaml:"models"`   // runtime -> model (default: the runtime's own)
 	Runtime      string            `yaml:"runtime"`  // default runtime for agents without one: claude
+	Effort       string            `yaml:"effort"`   // default reasoning effort for agents without one (Agent.Effort)
 	Provider     string            `yaml:"provider"` // default provider for agents without one: the runtime's own
 	Race         string            `yaml:"race"`     // default race: human
 	Agents       []Agent           `yaml:"agents"`
@@ -52,6 +54,10 @@ type Agent struct {
 	Spec    string `yaml:"spec"`    // a key from specs.yaml: the prompt states class, spec, role and key stats
 	Runtime string `yaml:"runtime"` // claude, codex, opencode, or none (no agent: the session and judge only, for testing)
 	Model   string `yaml:"model"`   // opencode: provider/model, e.g. openrouter/moonshotai/kimi-k3
+	// Effort is the model's reasoning effort: Claude Code's --effort (low, medium, high, xhigh, max), Codex's
+	// model_reasoning_effort (minimal, low, medium, high, xhigh), opencode's --variant (the provider's own names).
+	// Empty: the runtime's default (recorded in meta.json as what it actually used, where the runtime says).
+	Effort string `yaml:"effort"`
 	// Provider is who serves the model: "" (the runtime's own: Anthropic for claude, OpenAI for codex, the model's
 	// prefix for opencode) or openrouter (OPENROUTER_API_KEY), for claude and opencode
 	Provider string `yaml:"provider"`
@@ -264,6 +270,9 @@ func (b *Bench) Check(s *Scenario) error {
 		if a.Provider == "" {
 			a.Provider = s.Provider
 		}
+		if a.Effort == "" {
+			a.Effort = s.Effort
+		}
 		if a.Runtime == "opencode" && a.Provider == "openrouter" && !strings.HasPrefix(a.Model, "openrouter/") {
 			a.Model = "openrouter/" + a.Model
 		}
@@ -278,6 +287,10 @@ func (b *Bench) Check(s *Scenario) error {
 			return fmt.Errorf("%s: %s: runtime %q (claude, codex, opencode or none)", s.Name, a.Name, a.Runtime)
 		case a.Runtime == "opencode" && !strings.Contains(a.Model, "/"):
 			return fmt.Errorf("%s: %s: opencode needs a provider/model, got %q", s.Name, a.Name, a.Model)
+		case a.Effort != "" && a.Runtime == "claude" && !slices.Contains([]string{"low", "medium", "high", "xhigh", "max"}, a.Effort):
+			return fmt.Errorf("%s: %s: effort %q: low, medium, high, xhigh or max for claude", s.Name, a.Name, a.Effort)
+		case a.Effort != "" && a.Runtime == "codex" && !slices.Contains([]string{"minimal", "low", "medium", "high", "xhigh"}, a.Effort):
+			return fmt.Errorf("%s: %s: effort %q: minimal, low, medium, high or xhigh for codex", s.Name, a.Name, a.Effort)
 		case a.Provider != "" && (a.Provider != "openrouter" || a.Runtime == "codex" || a.Runtime == "none"):
 			return fmt.Errorf("%s: %s: provider %q: openrouter, for claude or opencode", s.Name, a.Name, a.Provider)
 		}

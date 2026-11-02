@@ -68,3 +68,20 @@ func TestProviderCredentialCheckIncludesOpenCodeModelPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Each runtime gets the agent's reasoning effort in its own flag.
+func TestEffortFlags(t *testing.T) {
+	want := map[string]string{"claude": "--effort high", "codex": `model_reasoning_effort="high"`, "opencode": "--variant high"}
+	for runtime, flag := range want {
+		dir := t.TempDir()
+		p := &player{r: &Runner{repo: dir, dir: dir}, ws: filepath.Join(dir, "workspace"), dir: dir,
+			a: config.Agent{Runtime: runtime, Char: "Test", Name: "test", Model: "x/y", Effort: "high"}}
+		if args := strings.Join(p.agentCmd("smoke", "").Args, " "); !strings.Contains(args, flag) {
+			t.Errorf("%s: no %q in %s", runtime, flag, args)
+		}
+		p.a.Effort = ""
+		if args := strings.Join(p.agentCmd("smoke", "").Args, " "); strings.Contains(args, "effort") || strings.Contains(args, "--variant") {
+			t.Errorf("%s: an effort flag without an effort: %s", runtime, args)
+		}
+	}
+}

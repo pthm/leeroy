@@ -19,6 +19,7 @@ export interface Player {
   gave_up?: string;
   died?: boolean;
   tokens?: { input: number; output: number; cache_read: number; cache_write: number };
+  effort?: string; // reasoning effort: low ... max, or "default" (the runtime's own, unrecorded)
   spec_name?: string; // "Warrior - Protection"
   role?: string; // Tank, Healer, DPS
   series?: [number, number, number, number, number, number][]; // [elapsed s, level, XP earned (-1: not recorded), deaths, quests, kills]
@@ -59,9 +60,10 @@ export interface Run {
 }
 
 // What each task is, for the pages. A task without an entry here still shows, under its id.
-export const TASKS: Record<string, { title: string; summary: string; scoring: string; order: number }> = {
+export const TASKS: Record<string, { title: string; short: string; summary: string; scoring: string; order: number }> = {
   travel: {
     title: 'Travel: Northshire to Darnassus',
+    short: 'Travel',
     summary:
       'A new level-30 Human warrior in Northshire must reach Darnassus on the other continent: two boats and a portal, no map handed over. One character per model, all at once, 90 minutes.',
     scoring: 'Arrived or not, then time to arrive. Cost is what the run spent at list prices.',
@@ -69,6 +71,7 @@ export const TASKS: Record<string, { title: string; summary: string; scoring: st
   },
   hogger: {
     title: 'Hogger, as a trio',
+    short: 'Hogger',
     summary:
       'Three new level-5 characters in Goldshire, a Protection Paladin, a Holy Priest and a Frost Mage, with one goal: the quest "Wanted: Hogger", an elite gnoll several levels above them.',
     scoring: 'Met or not (the quest completed), then time to it.',
@@ -76,6 +79,7 @@ export const TASKS: Record<string, { title: string; summary: string; scoring: st
   },
   'levelling-party': {
     title: 'Levelling from level 1',
+    short: 'Levelling',
     summary:
       'New level-1 characters in Northshire, one of each class (a tank, a healer, three damage dealers), free to group or not, progressing as far as they can on a fixed clock.',
     scoring: 'XP earned per hour of the clock. Class matters as much as the model, so compare like with like.',
@@ -83,6 +87,7 @@ export const TASKS: Record<string, { title: string; summary: string; scoring: st
   },
   'frost-mages': {
     title: 'Frost Mages, ten models',
+    short: 'Frost Mages',
     summary:
       'Ten new level-1 Frost Mages in Northshire, one per model, all on the same open-source harness (opencode, through OpenRouter), levelling for an hour.',
     scoring: 'XP earned per hour. Same class, harness, start and clock: the model is the only difference.',
@@ -90,6 +95,7 @@ export const TASKS: Record<string, { title: string; summary: string; scoring: st
   },
   'early-team': {
     title: 'The first team: ten Opus agents',
+    short: 'First team',
     summary:
       'The first runs of the benchmark: ten Claude Code agents on Opus 5.5, one of each class twice, in Northshire, scored on a weighted mix of progress with "Wanted: Hogger" as a suggested target. The same ten characters played three sessions in a row, from level 1 to about 11.',
     scoring: 'An early weighted progress score; shown here as levels and XP per hour (the first session did not record XP). Each session starts where the last ended, so later ones are at higher levels.',
@@ -97,12 +103,14 @@ export const TASKS: Record<string, { title: string; summary: string; scoring: st
   },
   hardcore: {
     title: 'Hardcore levelling',
+    short: 'Hardcore',
     summary: 'A new level-1 Human Arms warrior in Northshire, four hours on the clock, and the first death ends the run.',
     scoring: 'XP earned over the whole clock, so an early death costs everything after it.',
     order: 6,
   },
   deadmines: {
     title: 'The Deadmines from level 1',
+    short: 'Deadmines',
     summary:
       'Five new level-1 characters in Northshire, a tank, a healer and three damage dealers, with one goal: clear the Deadmines and kill Edwin VanCleef. A week on the clock.',
     scoring: 'Met or not (the Deadmines achievement), then time to it.',
@@ -120,6 +128,7 @@ export const runsOf = (task: string) => runs.filter(r => r.task === task);
 export const tasks = () =>
   [...new Set(runs.map(r => r.task))].sort((a, b) => (TASKS[a]?.order ?? 99) - (TASKS[b]?.order ?? 99));
 export const taskTitle = (task: string) => TASKS[task]?.title ?? task;
+export const taskShort = (task: string) => TASKS[task]?.short ?? task;
 
 // A progress task (goal score:...) ranks by XP per hour; the others by goals met, then time to them.
 export const isProgress = (task: string) => runsOf(task)[0]?.goal.startsWith('score:') ?? false;
@@ -154,13 +163,17 @@ export const harnessName = (runtime: string) =>
   ({ claude: 'Claude Code', codex: 'Codex CLI', opencode: 'opencode' })[runtime] ?? runtime;
 
 export interface ModelRow {
+  key: string; // model and effort (entryKey)
   model: string;
+  effort?: string;
+  lab: string;
   runtime: string;
   attempts: number;
   met: number;
   meanTime?: number; // seconds, over the attempts that met the goal
   bestTime?: number;
   meanCost?: number;
+  costPerSuccess?: number; // all its attempts' cost / goals met (goal tasks)
   meanOutputTokens?: number;
   meanRate?: number; // XP per hour (progress tasks)
   bestRate?: number;
@@ -172,18 +185,25 @@ const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.l
 // One row per model across a task's runs, best first: most goals met, then the fastest mean time.
 export function leaderboard(task: string): ModelRow[] {
   const by = new Map<string, Player[]>();
-  for (const r of runsOf(task)) for (const p of r.players) by.set(p.model, [...(by.get(p.model) ?? []), p]);
+  for (const r of runsOf(task)) for (const p of r.players) by.set(entryKey(p), [...(by.get(entryKey(p)) ?? []), p]);
   return [...by.entries()]
-    .map(([model, ps]) => {
+    .map(([key, ps]) => {
       const times = ps.filter(p => p.met && p.time_to_goal_s).map(p => p.time_to_goal_s!);
+      const costs = ps.flatMap(p => (p.cost_usd != null ? [p.cost_usd] : []));
+      const met = ps.filter(p => p.met).length;
       return {
-        model,
+        key,
+        model: ps[0].model,
+        effort: effortOf(ps[0]),
+        lab: labOf(ps[0].model),
         runtime: ps[0].runtime,
         attempts: ps.length,
         met: ps.filter(p => p.met).length,
         meanTime: mean(times),
         bestTime: times.length ? Math.min(...times) : undefined,
-        meanCost: mean(ps.flatMap(p => (p.cost_usd != null ? [p.cost_usd] : []))),
+        meanCost: mean(costs),
+        // over attempts whose cost is known, so a missing cost doesn't make successes look cheap
+        costPerSuccess: met && costs.length === ps.length ? costs.reduce((a, b) => a + b, 0) / met : undefined,
         meanOutputTokens: mean(ps.flatMap(p => (p.tokens ? [p.tokens.output] : []))),
         meanRate: mean(ps.flatMap(p => (xpRate(p) != null ? [xpRate(p)!] : []))),
         bestRate: bestRate(ps),
@@ -316,4 +336,57 @@ export function bestRate(ps: Player[]): number | undefined {
 export function meanRate(ps: Player[]): number | undefined {
   const rs = ps.flatMap(p => (xpRate(p) != null ? [xpRate(p)!] : []));
   return rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : undefined;
+}
+
+// A leaderboard entry is a model at a reasoning effort: the same model at high and low effort rank apart.
+export const effortOf = (p: Player) => (p.effort && p.effort !== 'default' ? p.effort : undefined);
+export const entryKey = (p: Player) => (effortOf(p) ? `${p.model}|${effortOf(p)}` : p.model);
+export const entryName = (r: { model: string; effort?: string }) => (r.effort ? `${modelName(r.model)} · ${r.effort}` : modelName(r.model));
+
+// The lab behind a model, and its colour on every chart.
+export const LABS: Record<string, string> = {
+  Anthropic: '#d97757',
+  OpenAI: '#10a37f',
+  Google: '#4f8ff7',
+  DeepSeek: '#7c8cff',
+  xAI: '#c9c9cf',
+  Moonshot: '#a78bfa',
+  Mistral: '#fa7a35',
+  Meta: '#38bdf8',
+  Zhipu: '#e879f9',
+  Alibaba: '#fbbf24',
+  Other: '#86868f',
+};
+export function labOf(model: string): string {
+  const m = model.toLowerCase();
+  const rules: [RegExp, string][] = [
+    [/claude|anthropic|haiku|sonnet|opus|fable/, 'Anthropic'],
+    [/gpt|openai|codex|\bo\d/, 'OpenAI'],
+    [/gemini|google|gemma/, 'Google'],
+    [/deepseek/, 'DeepSeek'],
+    [/grok|x-ai|xai/, 'xAI'],
+    [/kimi|moonshot/, 'Moonshot'],
+    [/mistral|magistral|codestral/, 'Mistral'],
+    [/llama|muse|meta/, 'Meta'],
+    [/glm|zhipu|z-ai/, 'Zhipu'],
+    [/qwen|qvq|alibaba/, 'Alibaba'],
+  ];
+  return rules.find(([re]) => re.test(m))?.[1] ?? 'Other';
+}
+
+// The cost frontier: the entries no other beats on both cost and result (cheapest first). better(a, b): a's result
+// is better than b's.
+export function frontier<T extends { cost: number; y: number }>(pts: T[], higherIsBetter: boolean): T[] {
+  const out: T[] = [];
+  for (const p of pts.toSorted((a, b) => a.cost - b.cost || (higherIsBetter ? b.y - a.y : a.y - b.y))) {
+    const last = out.at(-1);
+    if (!last || (higherIsBetter ? p.y > last.y : p.y < last.y)) out.push(p);
+  }
+  return out;
+}
+
+// Where each entry stands in each task, for the cross-task table: 1 for a task's best, 0 for its worst (linear in rank).
+export function percentiles(task: string): Map<string, number> {
+  const rows = leaderboard(task);
+  return new Map(rows.map((r, i) => [r.key, rows.length > 1 ? 1 - i / (rows.length - 1) : 1]));
 }

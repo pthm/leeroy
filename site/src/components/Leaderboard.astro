@@ -1,6 +1,7 @@
 ---
-// A task's models, best first: goals met, mean time to the goal, best time, mean cost and output tokens per attempt.
-import { dollars, duration, harnessName, isProgress, leaderboard, modelName, rate, thousands } from '../lib/results';
+// A task's entries (a model at an effort), best first: goals met, then mean time; or on a progress task, mean XP per
+// hour. With the formulas under it.
+import { LABS, dollars, duration, entryName, harnessName, isProgress, leaderboard, rate, thousands } from '../lib/results';
 
 interface Props {
   task: string;
@@ -23,7 +24,8 @@ const progress = isProgress(task);
         <th class="num">{progress ? 'Mean' : 'Mean time'}</th>
         <th class="num">Best</th>
         {progress && <th class="num">Levels</th>}
-        <th class="num">Cost / run</th>
+        <th class="num">Cost / attempt</th>
+        {!progress && !compact && <th class="num">Cost / success</th>}
         {!compact && <th class="num">Output tokens</th>}
       </tr>
     </thead>
@@ -31,7 +33,7 @@ const progress = isProgress(task);
       {rows.map((r, i) => (
         <tr>
           <td class="num text-faint">{i + 1}</td>
-          <td class="font-medium text-fg">{modelName(r.model)}</td>
+          <td class="font-medium text-fg"><span style={`color:${LABS[r.lab]}`} title={r.lab}>●</span> {entryName(r)}</td>
           <td class="text-muted">{harnessName(r.runtime)}</td>
           {progress ? (
             <td class="num text-muted">{r.attempts}</td>
@@ -42,9 +44,18 @@ const progress = isProgress(task);
           <td class="num text-muted">{progress ? rate(r.bestRate) : duration(r.bestTime)}</td>
           {progress && <td class="num text-muted">{r.meanLevels?.toFixed(1) ?? '–'}</td>}
           <td class="num text-muted">{dollars(r.meanCost)}</td>
+          {!progress && !compact && <td class="num text-muted">{dollars(r.costPerSuccess)}</td>}
           {!compact && <td class="num text-muted">{thousands(r.meanOutputTokens)}</td>}
         </tr>
       ))}
     </tbody>
   </table>
 </div>
+{!compact && (
+  <p class="mt-3 font-mono text-[11px] leading-relaxed text-faint">
+    {progress
+      ? 'XP/h = XP earned ÷ hours played, from the judge (every 15 s). Mean and best are over every attempt. Levels = levels gained, mean. '
+      : 'Met = goal reached before the clock ran out. Time = from the start to the judge first seeing the goal (it checks every 15 s): mean and best over the attempts that met it. Cost / success = all attempts\' cost ÷ goals met (left blank if any cost is unknown). '}
+    Cost / attempt = tokens at list price (models.dev), mean. An entry is a model at a reasoning effort (“· high”); none shown = the runtime's default. n is small: read the ranking with a wide margin.
+  </p>
+)}

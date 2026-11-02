@@ -231,6 +231,9 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 		// sandboxed to its workspace (writes) with network on (the session API is on localhost)
 		common := []string{"--json", "--skip-git-repo-check", "-c", "sandbox_workspace_write.network_access=true",
 			"-c", `approval_policy="never"`, "-c", "shell_environment_policy.inherit=all"}
+		if a.Effort != "" {
+			common = append(common, "-c", fmt.Sprintf("model_reasoning_effort=%q", a.Effort))
+		}
 		if resume != "" {
 			cmd = exec.Command("codex", append(append([]string{"exec", "resume", resume}, common...),
 				"-c", `sandbox_mode="workspace-write"`, text)...)
@@ -253,6 +256,9 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 		if a.Model != "" {
 			args = append(args, "--model", a.Model)
 		}
+		if a.Effort != "" {
+			args = append(args, "--effort", a.Effort)
+		}
 		args = append(args, "--add-dir", repo+"/azeroth-sdk", repo+"/server/azerothcore/src/server/game", repo+"/server/azerothcore/src/server/shared",
 			"--allowedTools")
 		for _, c := range agentCommands {
@@ -264,6 +270,9 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 		args := []string{"run", "--pure", "--format", "json", "--print-logs", "--log-level", "ERROR", "-m", a.Model, "--dir", p.ws}
 		if resume != "" {
 			args = append(args, "--session", resume)
+		}
+		if a.Effort != "" {
+			args = append(args, "--variant", a.Effort)
 		}
 		cmd = exec.Command("opencode", append(args, text)...)
 	}
@@ -537,12 +546,32 @@ func (p *player) meta(spec config.Spec) {
 	if model == "" {
 		model = "default"
 	}
+	effort := p.a.Effort
+	if effort == "" {
+		effort = DetectEffort(p.a.Runtime, filepath.Join(p.dir, "agent.jsonl"))
+	}
 	b, _ := json.Marshal(map[string]any{"agent": p.a.Name, "char": p.a.Char, "runtime": p.a.Runtime, "model": model,
-		"provider": p.a.Provider, "spec": spec.Title, "role": spec.Role, "goal": p.r.s.Goal, "port": p.port})
+		"effort": effort, "provider": p.a.Provider, "spec": spec.Title, "role": spec.Role, "goal": p.r.s.Goal, "port": p.port})
 	os.WriteFile(filepath.Join(p.dir, "meta.json"), b, 0o644)
 }
 
-func detectModel(runtime, transcript string) string {
+// DetectEffort is the reasoning effort a runtime used when none was set: Codex writes it in its session file
+// ("effort"); Claude Code and opencode don't say, so "default".
+func DetectEffort(runtime, transcript string) string {
+	if f := codexSession(runtime, transcript); f != "" {
+		b, _ := os.ReadFile(f)
+		if x := regexp.MustCompile(`"effort":"([^"]*)"`).FindSubmatch(b); x != nil {
+			return string(x[1])
+		}
+	}
+	return "default"
+}
+
+// codexSession is the session file of a Codex transcript (its thread.started id), or "".
+func codexSession(runtime, transcript string) string {
+	if runtime != "codex" {
+		return ""
+	}
 	f, err := os.Open(transcript)
 	if err != nil {
 		return ""
@@ -552,24 +581,39 @@ func detectModel(runtime, transcript string) string {
 	sc.Buffer(make([]byte, 1<<20), 1<<26)
 	for i := 0; i < 5 && sc.Scan(); i++ {
 		var e struct {
-			Type, Subtype, Model string
-			ThreadID             string `json:"thread_id"`
+			Type     string
+			ThreadID string `json:"thread_id"`
 		}
-		if json.Unmarshal(sc.Bytes(), &e) != nil {
-			continue
-		}
-		if runtime == "claude" && e.Subtype == "init" {
-			return e.Model
-		}
-		if runtime == "codex" && e.Type == "thread.started" && e.ThreadID != "" {
+		if json.Unmarshal(sc.Bytes(), &e) == nil && e.Type == "thread.started" && e.ThreadID != "" {
 			home, _ := os.UserHomeDir()
 			m, _ := filepath.Glob(filepath.Join(home, ".codex/sessions/*/*/*/*"+e.ThreadID+".jsonl"))
 			if len(m) > 0 {
-				b, _ := os.ReadFile(m[0])
-				if x := regexp.MustCompile(`"model":"([^"]*)"`).FindSubmatch(b); x != nil {
-					return string(x[1])
-				}
+				return m[0]
 			}
+		}
+	}
+	return ""
+}
+
+func detectModel(runtime, transcript string) string {
+	if f := codexSession(runtime, transcript); f != "" {
+		b, _ := os.ReadFile(f)
+		if x := regexp.MustCompile(`"model":"([^"]*)"`).FindSubmatch(b); x != nil {
+			return string(x[1])
+		}
+		return ""
+	}
+	f, err := os.Open(transcript)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 1<<26)
+	for i := 0; i < 5 && sc.Scan(); i++ {
+		var e struct{ Subtype, Model string }
+		if json.Unmarshal(sc.Bytes(), &e) == nil && runtime == "claude" && e.Subtype == "init" {
+			return e.Model
 		}
 	}
 	return ""

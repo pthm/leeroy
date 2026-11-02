@@ -1,54 +1,77 @@
 ---
-// Mean time to the goal against mean cost per run, one dot per model: lower left is better. Drawn at build time.
-import { dollars, duration, harnessColor, harnessName, isProgress, leaderboard, modelName, rate } from '../lib/results';
+// Each entry's result against its mean cost per attempt, cost on a log scale (prices span 100x), coloured by lab, with
+// the frontier: the entries nothing beats on both. Goal tasks plot mean minutes to the goal (lower is better);
+// progress tasks mean XP per hour (higher is better). Hover a point for the detail.
+import { LABS, dollars, duration, entryName, frontier, harnessName, isProgress, leaderboard, rate, thousands } from '../lib/results';
 
 interface Props {
   task: string;
 }
 
-const progress = isProgress(Astro.props.task);
-// time tasks: mean minutes to the goal (lower is better); progress tasks: mean XP per hour (higher is better)
-const yOf = (r: ReturnType<typeof leaderboard>[number]) => (progress ? r.meanRate : r.meanTime != null ? r.meanTime / 60 : undefined);
-const rows = leaderboard(Astro.props.task).filter(r => yOf(r) != null && r.meanCost != null);
-const W = 720, H = 360, L = 64, R = 24, T = 20, B = 48;
-const maxX = Math.max(...rows.map(r => r.meanCost!)) * 1.15;
-const maxY = Math.max(...rows.map(r => yOf(r)!)) * 1.15;
-const x = (v: number) => L + (v / maxX) * (W - L - R);
+const { task } = Astro.props;
+const progress = isProgress(task);
+const rows = leaderboard(task);
+const pts = rows
+  .map(r => ({ r, cost: r.meanCost ?? NaN, y: progress ? r.meanRate ?? NaN : r.meanTime != null ? r.meanTime / 60 : NaN }))
+  .filter(p => p.cost > 0 && Number.isFinite(p.y));
+const W = 760, H = 380, L = 64, R = 130, T = 20, B = 50;
+const lo = Math.min(...pts.map(p => p.cost)) / 1.6, hi = Math.max(...pts.map(p => p.cost)) * 1.6;
+const x = (v: number) => L + ((Math.log(v) - Math.log(lo)) / (Math.log(hi) - Math.log(lo))) * (W - L - R);
+const maxY = Math.max(...pts.map(p => p.y)) * 1.15;
 const y = (v: number) => H - B - (v / maxY) * (H - T - B);
-const ticks = (max: number) => {
-  const step = [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000].find(s => max / s <= 6) ?? 20000;
-  return Array.from({ length: Math.floor(max / step) + 1 }, (_, i) => +(i * step).toFixed(2));
-};
-const points = rows.map(r => ({ name: modelName(r.model), cx: x(r.meanCost ?? 0), cy: y(yOf(r)!), model: r.model, runtime: r.runtime, time: progress ? rate(r.meanRate) : duration(r.meanTime), cost: dollars(r.meanCost) }));
-const harnesses = [...new Set(rows.map(r => r.runtime))];
+const xTicks = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500].filter(v => v >= lo && v <= hi);
+const step = [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000].find(s => maxY / s <= 6) ?? 20000;
+const yTicks = Array.from({ length: Math.floor(maxY / step) + 1 }, (_, i) => i * step);
+const front = frontier(pts, progress);
+const labs = [...new Set(pts.map(p => p.r.lab))];
+const tip = (p: (typeof pts)[number]) =>
+  [
+    `${entryName(p.r)} (${p.r.lab}, ${harnessName(p.r.runtime)})`,
+    progress
+      ? `${rate(p.r.meanRate)} mean, ${rate(p.r.bestRate)} best, ${p.r.attempts} attempt${p.r.attempts === 1 ? '' : 's'}`
+      : `${p.r.met}/${p.r.attempts} reached the goal; ${duration(p.r.meanTime)} mean, ${duration(p.r.bestTime)} best`,
+    `${dollars(p.r.meanCost)} per attempt${p.r.costPerSuccess != null ? `, ${dollars(p.r.costPerSuccess)} per success` : ''}`,
+    `${thousands(p.r.meanOutputTokens)} output tokens per attempt`,
+    front.includes(p) ? 'On the frontier: nothing is both cheaper and better' : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 ---
 
-{rows.length > 1 && (
+{pts.length > 1 && (
   <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-    <svg viewBox={`0 0 ${W} ${H}`} class="w-full" role="img" aria-label="Each model's result against its mean cost per run">
-      {ticks(maxY).map(v => (
+    <svg viewBox={`0 0 ${W} ${H}`} class="w-full" role="img" aria-label="Each model's result against its mean cost per attempt">
+      {yTicks.map(v => (
         <g>
           <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="var(--color-hairline)" />
           <text x={L - 8} y={y(v) + 4} text-anchor="end" class="fill-faint font-mono text-[11px]">{v >= 1000 ? `${v / 1000}k` : v}</text>
         </g>
       ))}
-      {ticks(maxX).map(v => (
-        <text x={x(v)} y={H - B + 18} text-anchor="middle" class="fill-faint font-mono text-[11px]">{`$${v}`}</text>
+      {xTicks.map(v => (
+        <g>
+          <line x1={x(v)} x2={x(v)} y1={T} y2={H - B} stroke="var(--color-hairline)" stroke-dasharray="2 4" />
+          <text x={x(v)} y={H - B + 18} text-anchor="middle" class="fill-faint font-mono text-[11px]">{`$${v}`}</text>
+        </g>
       ))}
-      <text x={(L + W - R) / 2} y={H - 8} text-anchor="middle" class="fill-muted font-mono text-[11px]">mean cost per run (USD)</text>
+      <text x={(L + W - R) / 2} y={H - 8} text-anchor="middle" class="fill-muted font-mono text-[11px]">mean cost per attempt (USD, log scale)</text>
       <text x={14} y={(T + H - B) / 2} text-anchor="middle" transform={`rotate(-90 14 ${(T + H - B) / 2})`} class="fill-muted font-mono text-[11px]">
         {progress ? 'mean XP per hour' : 'mean minutes to the goal'}
       </text>
-      {points.map(p => (
-        <g data-key={p.model}>
-          <title>{p.name}: {p.time}, {p.cost} a run</title>
-          <circle cx={p.cx} cy={p.cy} r="6" fill={harnessColor(p.runtime).fill} />
-          <text x={p.cx + 10} y={p.cy + 4} class="fill-fg font-mono text-[12px]">{p.name}</text>
+      {front.length > 1 && (
+        <path d={front.map((p, i) => `${i ? 'L' : 'M'}${x(p.cost).toFixed(1)},${y(p.y).toFixed(1)}`).join('')} fill="none" stroke="var(--color-muted)" stroke-width="1.2" stroke-dasharray="5 4" />
+      )}
+      {pts.map(p => (
+        <g data-key={p.r.key}>
+          <title>{tip(p)}</title>
+          <circle cx={x(p.cost)} cy={y(p.y)} r="12" fill="transparent" />
+          <circle cx={x(p.cost)} cy={y(p.y)} r={front.includes(p) ? 6.5 : 5} fill={LABS[p.r.lab]} stroke={front.includes(p) ? 'var(--color-fg)' : 'none'} stroke-width="1.5" />
+          <text x={x(p.cost) + 10} y={y(p.y) + 4} class="fill-fg font-mono text-[11px]">{entryName(p.r)}</text>
         </g>
       ))}
     </svg>
-    <figcaption class="mt-2 font-mono text-[11px] text-faint">
-      {progress ? 'Upper left is better.' : 'Lower left is better.'} {harnesses.map(h => <span><span class={harnessColor(h).text}>●</span> {harnessName(h)} </span>)}
+    <figcaption class="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-faint">
+      <span>{progress ? 'Up and to the left is better.' : 'Down and to the left is better.'} Dashed: the frontier, where nothing is both cheaper and better.</span>
+      {labs.map(l => <span><span style={`color:${LABS[l]}`}>●</span> {l}</span>)}
     </figcaption>
   </figure>
 )}

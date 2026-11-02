@@ -12,6 +12,7 @@ import (
 
 	"github.com/pthm/leeroy/azbench/config"
 	"github.com/pthm/leeroy/azbench/judge"
+	"github.com/pthm/leeroy/azbench/run"
 )
 
 // publish writes a run's results for the website (site/src/data/runs/<run>.json): the scenario, then each player's
@@ -86,7 +87,7 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 				r[k] = v
 			}
 		}
-		p := pick(r, "char", "runtime", "model", "hours", "deaths", "cost_usd", "tokens", "calls", "time_pct_by_state", "time_use", "combat")
+		p := pick(r, "char", "runtime", "model", "effort", "hours", "deaths", "cost_usd", "tokens", "calls", "time_pct_by_state", "time_use", "combat")
 		if th, ok := r["think_s"].(map[string]any); ok {
 			p["think_median_s"] = th["median"]
 		}
@@ -127,6 +128,9 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 				}
 			}
 			p["series"], p["deaths_at"] = series(filepath.Join(adir, "samples.jsonl"))
+			if p["effort"] == nil || p["effort"] == "" { // runs from before effort was recorded: Codex's session says
+				p["effort"] = run.DetectEffort(fmt.Sprint(p["runtime"]), filepath.Join(adir, "agent.jsonl"))
+			}
 			if rec, err := readRecording(filepath.Join(runDir, a.Name+".record.jsonl"), char, started.UnixMilli(), chat); err == nil {
 				recs, recOf[char] = append(recs, rec), rec
 			}

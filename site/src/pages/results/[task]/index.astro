@@ -7,7 +7,7 @@ import Section from '../../../components/Section.astro';
 import SectionHeader from '../../../components/SectionHeader.astro';
 import Layout from '../../../layouts/Layout.astro';
 import { Icon } from 'astro-icon/components';
-import { TASKS, dollars, duration, harnessName, isProgress, leaderboard, modelName, outcome, bestRate, meanRate, rate, runDate, runsOf, specLabel, taskTitle, tasks, totals, xpRate, type MapBox } from '../../../lib/results';
+import { TASKS, dollars, duration, harnessName, isProgress, leaderboard, modelName, outcome, bestRate, effortOf, entryKey, entryName, meanRate, rate, runDate, runsOf, specLabel, taskTitle, tasks, totals, xpRate, type MapBox } from '../../../lib/results';
 import { url } from '../../../lib/url';
 
 export function getStaticPaths() {
@@ -19,8 +19,8 @@ const info = TASKS[task];
 const runs = runsOf(task).toReversed();
 const all = runs.flatMap(r => r.players);
 // one map per map the runs crossed: the widest run's box (its backdrop), every attempt over it in its model's colour
-const models = leaderboard(task).map(r => r.model);
-const modelCls = (m: string) => `pc-${models.indexOf(m) % 8}`;
+const entries = leaderboard(task);
+const modelCls = (key: string) => `pc-${entries.findIndex(e => e.key === key) % 8}`;
 const boxes = new Map<number, MapBox>();
 for (const r of runs)
   for (const b of r.maps ?? []) {
@@ -28,7 +28,7 @@ for (const r of runs)
     if (!have || (b.x_max - b.x_min) * (b.y_max - b.y_min) > (have.x_max - have.x_min) * (have.y_max - have.y_min)) boxes.set(b.map, b);
   }
 const attempts = runs.flatMap(r =>
-  r.players.map(p => ({ key: p.model, name: `${modelName(p.model)} · ${p.char} · ${runDate(r)}`, cls: modelCls(p.model), track: p.track ?? [], deaths: p.death_list ?? [] })),
+  r.players.map(p => ({ key: entryKey(p), name: `${entryName({ model: p.model, effort: effortOf(p) })} · ${p.char} · ${runDate(r)}`, cls: modelCls(entryKey(p)), track: p.track ?? [], deaths: p.death_list ?? [] })),
 );
 const tiles = [
   { v: String(runs.length), k: runs.length === 1 ? 'run' : 'runs' },
@@ -87,7 +87,7 @@ const tiles = [
       <SectionHeader eyebrow="Where they went" title="Every route." description="Every attempt in every run, one colour per model, over the game's own map (an instance: its floor plan). Hover a line for the attempt, click a map to enlarge it." />
       <div class:list={['grid grid-cols-1 gap-4', boxes.size > 1 && 'lg:grid-cols-2']}>
         {[...boxes.values()].map(box => (
-          <RouteMap box={box} routes={attempts} legend={models.map(m => ({ key: m, name: modelName(m), cls: modelCls(m) }))} thin />
+          <RouteMap box={box} routes={attempts} legend={entries.map(e => ({ key: e.key, name: entryName(e), cls: modelCls(e.key) }))} thin />
         ))}
       </div>
     </Section>
@@ -133,7 +133,7 @@ const tiles = [
                   .map(p => (
                     <tr>
                       <td class="text-fg">{p.char}</td>
-                      <td class="text-fg">{modelName(p.model)}</td>
+                      <td class="text-fg">{entryName({ model: p.model, effort: effortOf(p) })}</td>
                       <td class="text-muted">{harnessName(p.runtime)}</td>
                       <td class="text-muted">{specLabel(p)}</td>
                       <td class:list={[outcome(p, isProgress(task)).good ? 'text-success' : 'text-warning']} title={p.gave_up}>{outcome(p, isProgress(task)).text}</td>

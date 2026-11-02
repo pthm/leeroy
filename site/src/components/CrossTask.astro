@@ -1,0 +1,78 @@
+---
+// Every entry (a model at an effort) across every task: each cell its result there (goals met and mean time, or XP
+// per hour) and n, shaded by where it ranks in that task. Blank: not run. Sortable by any column (scripts/interact.ts).
+import { LABS, duration, entryName, harnessName, isProgress, leaderboard, percentiles, rate, taskShort, taskTitle, tasks, type ModelRow } from '../lib/results';
+import { url } from '../lib/url';
+
+const ts = tasks();
+const by = new Map<string, { row: ModelRow; cells: Map<string, ModelRow>; pct: Map<string, number> }>();
+for (const t of ts) {
+  const pct = percentiles(t);
+  for (const row of leaderboard(t)) {
+    const e = by.get(row.key) ?? { row, cells: new Map(), pct: new Map() };
+    e.cells.set(t, row);
+    e.pct.set(t, pct.get(row.key)!);
+    by.set(row.key, e);
+  }
+}
+const best = new Map(ts.map(t => [t, leaderboard(t)[0]?.key]));
+const entries = [...by.values()]
+  .map(e => ({ ...e, mean: [...e.pct.values()].reduce((a, b) => a + b, 0) / e.pct.size }))
+  .sort((a, b) => b.pct.size - a.pct.size || b.mean - a.mean);
+const cellText = (t: string, r: ModelRow) => (isProgress(t) ? rate(r.meanRate).replace(' XP/h', '') : `${r.met}/${r.attempts}`);
+const cellSub = (t: string, r: ModelRow) => (isProgress(t) ? `n=${r.attempts}` : r.meanTime != null ? duration(r.meanTime) : 'none met');
+const cellValue = (t: string, r: ModelRow) => (isProgress(t) ? r.meanRate ?? 0 : r.met / r.attempts - (r.meanTime ?? 1e6) / 1e9);
+---
+
+<div class="overflow-x-auto rounded border border-hairline bg-raised" data-chart>
+  <table class="data cross" data-sortable>
+    <thead>
+      <tr>
+        <th data-sort="text">Model</th>
+        <th data-sort="text">Harness</th>
+        {ts.map(t => (
+          <th class="num" data-sort="num" title={taskTitle(t)}>
+            <a href={url(`/results/${t}`)} class="whitespace-nowrap hover:text-accent">{taskShort(t)}</a>
+          </th>
+        ))}
+        <th class="num" data-sort="num" title="Tasks this entry has run">Tasks</th>
+        <th class="num whitespace-nowrap" data-sort="num" title="Mean of its per-task percentiles, over the tasks it has run">Pct.</th>
+      </tr>
+    </thead>
+    <tbody>
+      {entries.map(e => (
+        <tr data-key={e.row.key}>
+          <td class="whitespace-nowrap text-fg" data-v={entryName(e.row)}>
+            <span style={`color:${LABS[e.row.lab]}`} title={e.row.lab}>●</span> {entryName(e.row)}
+          </td>
+          <td class="whitespace-nowrap text-muted" data-v={e.row.runtime}>{harnessName(e.row.runtime)}</td>
+          {ts.map(t => {
+            const r = e.cells.get(t);
+            const p = e.pct.get(t) ?? 0;
+            return r ? (
+              <td
+                class:list={['num cell', best.get(t) === r.key && 'font-semibold text-fg']}
+                style={`background:color-mix(in oklab, var(--color-accent) ${Math.round(p * 38)}%, transparent)`}
+                data-v={cellValue(t, r)}
+                title={`${entryName(r)} in ${taskTitle(t)}: ${isProgress(t) ? `${rate(r.meanRate)} mean over ${r.attempts}` : `${r.met} of ${r.attempts} reached the goal, ${duration(r.meanTime)} mean`}; ranks ${Math.round(p * 100)}th percentile`}
+              >
+                <span class="block">{cellText(t, r)}</span>
+                <span class="block text-[10px] text-faint">{cellSub(t, r)}</span>
+              </td>
+            ) : (
+              <td class="num text-faint" data-v="-1e12">·</td>
+            );
+          })}
+          <td class="num text-muted" data-v={e.pct.size}>{e.pct.size}</td>
+          <td class="num text-fg" data-v={e.mean}>{Math.round(e.mean * 100)}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
+<p class="mt-3 font-mono text-[11px] leading-relaxed text-faint">
+  Each cell is the entry's result in that task: goals met / attempts and mean time to the goal, or mean XP per hour and
+  the number of attempts. Shading: its percentile within the task (the task's best 100, its worst 0, linear in rank);
+  bold: the task's best. Pct. = the mean of those percentiles over the tasks it ran, not an overall score: tasks
+  differ in kind and in which models ran them. Click a column to sort.
+</p>

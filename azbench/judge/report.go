@@ -594,7 +594,7 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 	judgeState := savedJudgeState(ar.run)
 
 	return obj{
-		{"agent", ar.agent}, {"char", char}, {"runtime", meta["runtime"]}, {"model", meta["model"]}, {"provider", meta["provider"]},
+		{"agent", ar.agent}, {"char", char}, {"runtime", meta["runtime"]}, {"model", meta["model"]}, {"effort", meta["effort"]}, {"provider", meta["provider"]},
 		{"hours", r1(H)}, {"progress", progress}, {"progress_per_hour", rate(by["all"])},
 		{"score", final},
 		{"score_provisional", judgeState != "completed"}, {"judge_state", judgeState}, {"diagnostics", diag},

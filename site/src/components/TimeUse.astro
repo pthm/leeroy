@@ -52,3 +52,10 @@ const ps = run.players.filter(p => p.time_use || p.time_pct_by_state);
     ))}
   </div>
 )}
+{ps.length > 0 && (
+  <p class="mt-3 font-mono text-[11px] leading-relaxed text-faint">
+    The character, from its recording: fighting = in combat; travelling = moving; dead = a corpse or a ghost; idle =
+    the rest. The agent, from the harness: thinking = the model generating; script running = waiting while its Lua
+    plays; in a call = a tool command running; nothing running = neither.
+  </p>
+)}

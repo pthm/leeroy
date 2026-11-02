@@ -306,3 +306,11 @@ dialog.enlarge svg[data-zoom] { max-height: 80vh; touch-action: none; }
 .map-click { cursor: zoom-in; transition: border-color 0.15s; }
 .map-click:hover, .map-click:focus-visible { border-color: var(--color-accent); }
 dialog.enlarge .enlarge-hide { display: none; }
+
+table[data-sortable] th[data-sort] { cursor: pointer; user-select: none; }
+table[data-sortable] th[data-sort]:hover { color: var(--color-fg); }
+table[data-sortable] th[data-dir='desc']::after { content: ' ↓'; color: var(--color-accent); }
+table[data-sortable] th[data-dir='asc']::after { content: ' ↑'; color: var(--color-accent); }
+table.cross td.cell { min-width: 5.5rem; }
+table.cross td.cell { min-width: 4.5rem; }
+table.cross th, table.cross td { padding-left: 0.5rem; padding-right: 0.5rem; }
