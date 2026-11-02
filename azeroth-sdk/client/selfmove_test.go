@@ -268,3 +268,14 @@ func TestSwimmingAndTransportInMovement(t *testing.T) {
 		t.Fatal("still on the boat after teleporting off it")
 	}
 }
+
+// a speed change acked with the falling flag left over from a fall that's over: written without one (no nil fall)
+func TestSpeedAckAfterFall(t *testing.T) {
+	w, sent := moveTestClient()
+	w.currentMoveFlags = MoveFlagFalling
+	w.sendForceSpeedAck(0xE3, 4, 7)
+	_, mi, _ := readSent(t, (*sent)[0], true)
+	if mi.flags&MoveFlagFalling != 0 {
+		t.Fatalf("flags %#x: falling with no fall", mi.flags)
+	}
+}

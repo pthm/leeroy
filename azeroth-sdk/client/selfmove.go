@@ -166,8 +166,8 @@ func (w *WorldClient) setSelfTransportLocked(mi movementInfo) {
 // writeSelfMovement writes our MovementInfo with the given keys held, adding the flags our state implies. Caller holds
 // moveMu.
 func (w *WorldClient) writeSelfMovement(buf *bytes.Buffer, flags, ts uint32) {
-	flags |= w.moveState
-	var fallTime uint32
+	flags = (flags | w.moveState) &^ MoveFlagFalling // falling is ours to say, from a fall in progress: a caller's
+	var fallTime uint32                              // flags can carry it after the fall (a speed change's ack did, with none to write)
 	if f := w.fall; f != nil {
 		flags |= MoveFlagFalling
 		fallTime = uint32(f.elapsed.Milliseconds())
