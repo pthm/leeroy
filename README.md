@@ -214,8 +214,7 @@ bin/azbench judge Agentone level:10 --timeout 4h                  # prints JSON 
 ## Modules and releases
 
 Two Go modules: `github.com/pthm/leeroy/azsdk` (the client, usable on its own) and `github.com/pthm/leeroy` (the
-benchmark tools and their shared packages). `go.work` builds them together from the checkout. Once published, each
-tool installs on its own, and the packages import with `go get`:
+benchmark tools and their shared packages). Each tool installs on its own, and the packages import with `go get`:
 
 ```sh
 go install github.com/pthm/leeroy/azsdk/cmd/azsdk@latest   # the client daemon (also cmd/wow, cmd/clientdata)
@@ -224,9 +223,13 @@ go get github.com/pthm/leeroy/azsdk                         # the client as a li
 go get github.com/pthm/leeroy                               # world, runfiles, gamelog, trajectory
 ```
 
-A release tags the SDK first, then the root: `git tag azsdk/vX.Y.Z`, push it, then in the root
-`go get github.com/pthm/leeroy/azsdk@vX.Y.Z`, tag `vX.Y.Z` and push. Neither `go.mod` may carry a `replace` directive
-(`go install` refuses one); the root's points at `./azsdk` only until the SDK's first tag.
+In the checkout, `go.work` (`use . ./azsdk`) builds the two together: the tools always compile against `azsdk/` as
+it is on disk, whatever version the root `go.mod` names, so a change to the SDK is used at once, with no tag, push or
+`go get`. The root `go.mod` names the SDK version everyone else gets; it moves only when the SDK should reach them:
+tag `azsdk/vX.Y.Z` (or just push a commit), then `GOWORK=off go get github.com/pthm/leeroy/azsdk@<tag or commit>` in
+the root, and tag the root `vX.Y.Z` when its tools should be installable at that version. Neither `go.mod` carries a
+`replace` directive (`go install` refuses one). CI (`.github/workflows/go.yml`) builds both modules with
+`GOWORK=off`, as an outside user would.
 
 ## License
 
