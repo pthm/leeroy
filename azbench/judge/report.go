@@ -117,8 +117,7 @@ func r1(v float64) any {
 type agentRun struct {
 	agent, char string
 	run         string // the agent's directory (agents/<agent>/)
-	record      string // game/<char>/record.jsonl
-	events      string // game/<char>/events.jsonl
+	events      string // game/<char>/events.jsonl: its game log
 	samples     string // judge/<char>/samples.jsonl
 	result      string // judge/<char>/result.json
 	diag        string // diagnostics/<agent>.jsonl
@@ -134,7 +133,7 @@ func reportAgents(dir string) []agentRun {
 	}
 	var out []agentRun
 	for _, p := range m.Players {
-		out = append(out, agentRun{agent: p.Agent, char: p.Char, run: f.Agent(p.Agent), record: f.Record(p.Char),
+		out = append(out, agentRun{agent: p.Agent, char: p.Char, run: f.Agent(p.Agent),
 			events: f.Events(p.Char), samples: f.Samples(p.Char), result: f.Result(p.Char), diag: f.Diagnostics(p.Agent),
 			live: f.Live("")})
 	}
@@ -148,9 +147,9 @@ type call struct {
 
 func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]metrics.Coop, pos map[string][]metrics.Pos) obj {
 	meta := readJSON(filepath.Join(ar.run, "meta.json"))
-	var score []map[string]any
-	for _, e := range jsonl(ar.record) {
-		if e["ev"] == "score" {
+	var score []map[string]any // the judge's samples, every 15 s
+	for _, e := range jsonl(ar.samples) {
+		if e["t"] != nil {
 			score = append(score, e)
 		}
 	}
@@ -621,30 +620,33 @@ func sum(a []float64) (s float64) {
 	return s
 }
 
-// positions of every character in a run's game records (client side: each agent's own samples)
+// positions of every character in a run's game logs: each state sample
 func readPositions(dir string) map[string][]metrics.Pos {
 	out := map[string][]metrics.Pos{}
-	files, _ := filepath.Glob(runfiles.Run(dir).RecordsGlob())
+	files, _ := filepath.Glob(runfiles.Run(dir).EventsGlob())
 	for _, f := range files {
 		fh, err := os.Open(f)
 		if err != nil {
 			continue
 		}
+		char := filepath.Base(filepath.Dir(f))
 		sc := bufio.NewScanner(fh)
 		sc.Buffer(make([]byte, 1<<20), 1<<26)
 		for sc.Scan() {
 			l := sc.Bytes()
-			if !strings.Contains(string(l), `"ev":"pos"`) {
+			if !strings.Contains(string(l), `"type":"state"`) {
 				continue
 			}
-			var p struct {
-				T             int64
-				N             string
-				X, Y, M, Grp  float64
-				Alive, Combat any
+			var e struct {
+				T    int64
+				Data struct {
+					X, Y, M, Grp  float64
+					Alive, Combat any
+				}
 			}
-			if json.Unmarshal(l, &p) == nil {
-				out[p.N] = append(out[p.N], metrics.Pos{T: p.T, X: p.X, Y: p.Y, Map: p.M, Alive: truthy(p.Alive),
+			if json.Unmarshal(l, &e) == nil {
+				p := e.Data
+				out[char] = append(out[char], metrics.Pos{T: e.T, X: p.X, Y: p.Y, Map: p.M, Alive: truthy(p.Alive),
 					Combat: truthy(p.Combat), Group: p.Grp})
 			}
 		}

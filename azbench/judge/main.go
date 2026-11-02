@@ -15,7 +15,6 @@
 // Reads the character DB (saved every 15s, see server/override.yml), so it can't be gamed from the client.
 // Prints one JSON line when the goal is met or the timeout hits; exit 0 = met, 1 = timed out.
 // --samples appends {elapsed_s, level, xp, money, value, rate, ..., signals} each poll, for partial credit and curves.
-// --record also appends each sample as a {"ev":"score"} event to a recorder log, so the replay/live viewers chart it.
 //
 // Rate of progress (all goals, from the value curve):
 //
@@ -70,7 +69,7 @@ type failure string
 
 func fail(f string, a ...any) { panic(failure(fmt.Sprintf(f, a...))) }
 
-const usage = "usage: judge <character> <level|item|quality|money|quests|quest|achievement|achpoints|zone|score>:<n> | skill:<id>:<n> [--timeout 4h] [--every 15s] [--samples f] [--resume f] [--record f] [--board dir] [--events f] [--role r] [--runtime r] [--hardcore]\n       judge signals <character>"
+const usage = "usage: judge <character> <level|item|quality|money|quests|quest|achievement|achpoints|zone|score>:<n> | skill:<id>:<n> [--timeout 4h] [--every 15s] [--samples f] [--resume f] [--board dir] [--events f] [--role r] [--runtime r] [--hardcore]\n       judge signals <character>"
 
 var goalRe = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|zone|score):\d+|skill:\d+:\d+)$`)
 
@@ -132,7 +131,7 @@ func Main(args []string) (code int) {
 	}
 	has := func(name string) bool { return slices.Contains(rest, "--"+name) }
 	o := Options{Char: args[0], Goal: args[1], Timeout: dur(flag("timeout", "4h")), Every: dur(flag("every", "15s")),
-		Samples: flag("samples", ""), Record: flag("record", ""), Board: flag("board", ""), Events: flag("events", ""),
+		Samples: flag("samples", ""), Board: flag("board", ""), Events: flag("events", ""),
 		Role: flag("role", ""), Runtime: flag("runtime", ""), Resume: flag("resume", ""), Hardcore: has("hardcore")}
 	res, met, err := Run(context.Background(), o)
 	if err != nil {
@@ -150,7 +149,6 @@ type Options struct {
 	Char, Goal     string
 	Timeout, Every time.Duration
 	Samples        string // append each sample (JSONL)
-	Record         string // append each sample as an {"ev":"score"} event (the viewer's recorder log)
 	Board          string // dir: write <Char>.json with the latest result each poll (standings)
 	Events         string // the character's event stream: combat totals and, from its neighbours, cooperation
 	Role, Runtime  string // added to the board (and the runtime to the result)
@@ -183,7 +181,7 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 	if every == 0 {
 		every = 15 * time.Second
 	}
-	samples, record, board := o.Samples, o.Record, o.Board
+	samples, board := o.Samples, o.Board
 	eventsFile, role, runtime := o.Events, o.Role, o.Runtime
 	// cooperation needs everyone's streams: the run's other game/<char>/events.jsonl
 	var team *streams
@@ -336,9 +334,6 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 			}
 			j, _ := json.Marshal(b)
 			os.WriteFile(board+"/"+char+".json", j, 0o644)
-		}
-		if record != "" {
-			appendLine(record, append(obj{{"t", nowMs()}, {"ev", "score"}, {"n", char}, {"value", value}, {"level", level}}, rates...))
 		}
 		if value >= need || died || gaveUp != nil || nowMs()-start > timeout.Milliseconds() {
 			res := obj{{"char", char}, {"goal", goal}, {"met", value >= need}}

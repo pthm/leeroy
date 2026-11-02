@@ -335,7 +335,7 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 	spec := r.b.Specs[p.a.Spec]
 	o := judge.Options{Char: p.a.Char, Goal: r.s.Goal, Timeout: time.Duration(r.s.Minutes) * time.Minute,
 		Every: 15 * time.Second, Samples: r.f().Samples(p.a.Char),
-		Record: r.f().Record(p.a.Char), Board: r.f().Board(),
+		Board:  r.f().Board(),
 		Events: r.f().Events(p.a.Char), Role: spec.Role, Runtime: p.a.Runtime,
 		Hardcore: r.s.Hardcore, Hold: p.held}
 	if resume {

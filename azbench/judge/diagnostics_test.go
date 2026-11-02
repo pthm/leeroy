@@ -16,7 +16,7 @@ func TestPausedReportPreservesProvisionalScores(t *testing.T) {
 	os.MkdirAll(f.Live(""), 0755)
 	os.WriteFile(f.Live("paused"), []byte("paused"), 0600)
 	os.WriteFile(f.Meta("a1"), []byte(`{"agent":"a1","char":"Tester"}`), 0600)
-	os.WriteFile(f.Record("Tester"), []byte(`{"t":1000,"ev":"score","n":"Tester","value":10,"score":10}`+"\n"), 0600)
+	os.WriteFile(f.Samples("Tester"), []byte(`{"t":1000,"elapsed_s":0,"value":10,"score":10}`+"\n"), 0600)
 	os.WriteFile(f.Diagnostics("a1"), []byte(`{"schema":1,"seq":1,"t":1000,"agent":"a1","session":"s1","kind":"action_finished","op":"act.accept","outcome":"failed","code":"timeout","details":{}}`+"\n"), 0600)
 	dir := string(f)
 	Report(dir) // includes a player whose agent never wrote a transcript
@@ -72,7 +72,7 @@ func TestMissingUsageNeverBecomesFreeCost(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "meta.json"), []byte(`{"agent":"a1","runtime":"claude","model":"claude-sonnet-4-5"}`), 0600)
 	os.WriteFile(filepath.Join(dir, "transcript.jsonl"), []byte(`{"type":"result","session_id":"s1","total_cost_usd":3}`+"\n"), 0600)
-	c := card(agentRun{agent: "a1", char: "Tester", run: dir, record: filepath.Join(dir, "record.jsonl")}, nil, nil, nil)
+	c := card(agentRun{agent: "a1", char: "Tester", run: dir}, nil, nil, nil)
 	b, _ := json.Marshal(c)
 	var m map[string]any
 	json.Unmarshal(b, &m)

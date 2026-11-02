@@ -151,7 +151,7 @@ func publish(root, runDir, task, out string) (string, error) {
 			if t := trajectory(f.Events(char), started.UnixMilli()); len(t) > 0 {
 				p["trajectory"] = t
 			}
-			if rec, err := readRecording(f.Record(char), char, started.UnixMilli(), chat); err == nil {
+			if rec, err := readRecording(f.Events(char), char, started.UnixMilli(), chat); err == nil {
 				recs, recOf[char] = append(recs, rec), rec
 			}
 		}

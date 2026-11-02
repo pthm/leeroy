@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/pthm/leeroy/azbench/config"
+	"github.com/pthm/leeroy/azbench/gamelog"
 	"github.com/pthm/leeroy/azworld/world"
 )
 
@@ -55,15 +56,31 @@ func readRecording(f, char string, start int64, chat map[string]chatMsg) (*recor
 	defer fh.Close()
 	rec := &recording{casts: map[string]int{}, spells: map[string]int{}}
 	last := -1e9
-	var prev struct {
-		t    float64
-		m    int
-		x, y float64
-	}
+	var prev place
 	speed := 0.0 // yd/s over the last second
 	sc := bufio.NewScanner(fh)
 	sc.Buffer(make([]byte, 1<<20), 16<<20)
+	r := gamelog.Reader{Char: char}
 	for sc.Scan() {
+		for _, ev := range r.Line(sc.Bytes()) {
+			b, _ := json.Marshal(ev)
+			readEvent(rec, b, char, start, chat, &last, &prev, &speed)
+		}
+	}
+	return rec, sc.Err()
+}
+
+type place struct {
+	t    float64
+	m    int
+	x, y float64
+}
+
+// readEvent files one event of the character's game log (gamelog's form) in rec.
+func readEvent(rec *recording, line []byte, char string, start int64, chat map[string]chatMsg, last *float64, prevp *place, speedp *float64) {
+	prev, speed := *prevp, *speedp
+	defer func() { *prevp, *speedp = prev, speed }()
+	{
 		var e struct {
 			Ev, N, Msg string
 			T          int64
@@ -75,8 +92,8 @@ func readRecording(f, char string, start int64, chat map[string]chatMsg) (*recor
 			Name       string
 			Spell      int
 		}
-		if json.Unmarshal(sc.Bytes(), &e) != nil || e.N != char {
-			continue
+		if json.Unmarshal(line, &e) != nil || e.N != char {
+			return
 		}
 		t := float64(e.T-start) / 1000
 		switch e.Ev {
@@ -92,16 +109,16 @@ func readRecording(f, char string, start int64, chat map[string]chatMsg) (*recor
 				}
 				rec.track = append(rec.track, [5]float64{math.Round(t), mark, 0, 0, 0})
 				rec.raw = append(rec.raw, [5]float64{math.Round(t), mark, 0, 0, 0})
-				last = -1e9
+				*last = -1e9
 			}
 			if prev.t > 0 && prev.m == e.M && d <= 100 && t > prev.t {
 				speed = d / (t - prev.t)
 			}
 			prev.t, prev.m, prev.x, prev.y = t, e.M, e.X, e.Y
 			rec.raw = append(rec.raw, [5]float64{math.Round(t), float64(e.M), math.Round(e.X*10) / 10, math.Round(e.Y*10) / 10, float64(e.Grp)})
-			if t-last >= 15 || len(rec.track) > 0 && rec.track[len(rec.track)-1][1] != float64(e.M) {
+			if t-*last >= 15 || len(rec.track) > 0 && rec.track[len(rec.track)-1][1] != float64(e.M) {
 				rec.track = append(rec.track, [5]float64{math.Round(t), float64(e.M), math.Round(e.X), math.Round(e.Y), float64(e.Grp)})
-				last = t
+				*last = t
 			}
 		case "cast":
 			if e.Name != "" {
@@ -125,7 +142,6 @@ func readRecording(f, char string, start int64, chat map[string]chatMsg) (*recor
 			}
 		}
 	}
-	return rec, sc.Err()
 }
 
 type chatMsg struct {

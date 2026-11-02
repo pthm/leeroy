@@ -46,9 +46,14 @@ func TestReportCard(t *testing.T) {
 	// 10 min of samples, 100 XP per 15 s while the script runs (0-8 min), nothing after it stops
 	var rec []any
 	for i := int64(0); i <= 40; i++ {
-		rec = append(rec, map[string]any{"t": t0 + i*15_000, "ev": "score", "n": "Tester", "value": float64(min64(i, 32) * 100)})
+		deaths := 0
+		if i >= 16 { // the death at 4 min
+			deaths = 1
+		}
+		rec = append(rec, map[string]any{"t": t0 + i*15_000, "elapsed_s": i * 15, "value": float64(min64(i, 32) * 100),
+			"signals": map[string]any{"deaths": deaths}})
 	}
-	lines(f.Record("Tester"), rec)
+	lines(f.Samples("Tester"), rec)
 	lines(f.Events("Tester"), []any{
 		map[string]any{"t": t0, "type": "task_started", "data": map[string]any{"task": 1}},
 		map[string]any{"t": t0 + 3*min, "type": "chat", "data": map[string]any{"kind": "npc_say", "text": "You no take candle!"}},
@@ -106,7 +111,6 @@ func TestReportOpencode(t *testing.T) {
 	iso := func(t int64) string { return time.UnixMilli(t).UTC().Format(time.RFC3339Nano) }
 	model := "openrouter/moonshotai/kimi-k2"
 	os.WriteFile(f.Meta("a1"), []byte(`{"agent":"a1","char":"Tester","runtime":"opencode","model":"`+model+`","provider":"openrouter"}`), 0o644)
-	os.WriteFile(f.Record("Tester"), []byte(`{"t":`+fmt.Sprint(t0)+`,"ev":"score","n":"Tester","value":0}`+"\n"), 0o644)
 	var b []byte
 	for _, x := range []any{
 		map[string]any{"type": "tool_use", "timestamp": iso(t0 + 1000), "part": map[string]any{"tool": "bash",
@@ -193,7 +197,7 @@ func TestBinaryGoalScoredByTime(t *testing.T) {
 	} {
 		os.WriteFile(f.Meta(a.agent), []byte(`{"agent":"`+a.agent+`","char":"`+a.char+`","goal":"achievement:628"}`), 0o600)
 		os.WriteFile(f.Result(a.char), []byte(a.res+"\n"), 0o600)
-		os.WriteFile(f.Record(a.char), []byte(`{"t":1000,"ev":"score","n":"`+a.char+`","value":1,"score":2.1}`+"\n"), 0o600)
+		os.WriteFile(f.Samples(a.char), []byte(`{"t":1000,"elapsed_s":0,"value":1,"score":2.1}`+"\n"), 0o600)
 	}
 	Report(string(f))
 	agents := readJSON(f.Report())["agents"].([]any)
