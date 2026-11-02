@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 
 /* Colors come from palette/palette.json: the layout writes every role as a
- * --tn-* custom property for noir (dark) and paper (light), and these tokens
+ * --tn-* custom property (the dark variant: the site has no light mode), and these tokens
  * point at them. Shapes follow the Stitch design: 4px corners, 1px hairlines. */
 @theme inline {
   --color-base: var(--tn-surface-base);
@@ -124,16 +124,6 @@
 }
 
 
-/* Show content for the active theme only. */
-.only-light {
-  display: none;
-}
-:root[data-theme='light'] .only-light {
-  display: revert;
-}
-:root[data-theme='light'] .only-dark {
-  display: none;
-}
 
 /* Screenshot lightbox (Popover API). */
 html:has(.lightbox:popover-open),
@@ -183,17 +173,9 @@ html:has(.lightbox:popover-open) body {
   color: var(--color-accent);
 }
 
-/* Code blocks: shiki writes both themes as variables; Noir uses the dark one, Paper the light one. */
+/* Code blocks: on the raised surface rather than the theme's own background. */
 .astro-code {
-  background-color: var(--color-raised);
-}
-.astro-code span {
-  color: var(--shiki-dark);
-  font-style: var(--shiki-dark-font-style);
-}
-:root[data-theme='light'] .astro-code span {
-  color: var(--shiki-light);
-  font-style: var(--shiki-light-font-style);
+  background-color: var(--color-raised) !important;
 }
 
 /* Tables in rendered markdown and the results pages. */
@@ -235,14 +217,10 @@ table.data th.num {
   color: var(--color-faint);
 }
 
-/* WoW class colours (Paper: darker, to read on cream). */
+/* WoW class colours. */
 .cc-warrior { color: #c69b6d } .cc-paladin { color: #f48cba } .cc-hunter { color: #aad372 } .cc-rogue { color: #fff468 }
 .cc-priest { color: #f4f4f5 } .cc-death-knight { color: #c41e3a } .cc-shaman { color: #0070dd } .cc-mage { color: #3fc7eb }
 .cc-warlock { color: #8788ee } .cc-druid { color: #ff7c0a }
-:root[data-theme='light'] .cc-warrior { color: #9a6a3a } :root[data-theme='light'] .cc-paladin { color: #c2407f }
-:root[data-theme='light'] .cc-hunter { color: #5c8a2a } :root[data-theme='light'] .cc-rogue { color: #9a8a00 }
-:root[data-theme='light'] .cc-priest { color: #6b6b72 } :root[data-theme='light'] .cc-mage { color: #1588c2 }
-:root[data-theme='light'] .cc-warlock { color: #5f5fc4 } :root[data-theme='light'] .cc-druid { color: #c25a00 }
 
 /* A run's story: phases as h3 with the run time first, quotes from the agents' own chat. */
 .run-story h3 {
@@ -267,10 +245,6 @@ table.data th.num {
 /* Player colours when classes repeat (a travel run of six warriors). */
 .pc-0 { color: #f5a623 } .pc-1 { color: #79c0ff } .pc-2 { color: #34d399 } .pc-3 { color: #f472b6 }
 .pc-4 { color: #c4b5fd } .pc-5 { color: #fb923c } .pc-6 { color: #a3e635 } .pc-7 { color: #f87171 }
-:root[data-theme='light'] .pc-0 { color: #b45309 } :root[data-theme='light'] .pc-1 { color: #0663d0 }
-:root[data-theme='light'] .pc-2 { color: #0b7656 } :root[data-theme='light'] .pc-3 { color: #be185d }
-:root[data-theme='light'] .pc-4 { color: #6d28d9 } :root[data-theme='light'] .pc-5 { color: #c2410c }
-:root[data-theme='light'] .pc-6 { color: #4d7c0f } :root[data-theme='light'] .pc-7 { color: #b91c1c }
 
 /* Chart interactivity (scripts/interact.ts). */
 .chart-tip {

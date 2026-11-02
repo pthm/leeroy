@@ -32,16 +32,11 @@ const block = (vars: Record<string, string>) =>
   Object.entries(vars)
     .map(([k, v]) => `${k}:${v}`)
     .join(';');
-// Noir is the default; Paper is an explicit choice, remembered per visitor.
-const themeCss =
-  `:root{${block(cssVariables('dark'))};color-scheme:dark}` +
-  `:root[data-theme="light"]{${block(cssVariables('light'))};color-scheme:light}`;
+const themeCss = `:root{${block(cssVariables('dark'))};color-scheme:dark}`;
 const navLink = (active: boolean) => [
   'border-b pb-1 font-mono text-xs tracking-wider uppercase transition-colors',
   active ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-fg',
 ];
-const themeButton =
-  'theme-choice flex items-center gap-1 rounded border border-transparent px-2 py-0.5 font-mono text-[11px] text-muted';
 ---
 
 <!doctype html>
@@ -60,11 +55,6 @@ const themeButton =
     <meta property="og:image" content={ogImage} />
     <meta name="twitter:card" content="summary_large_image" />
     <style is:inline set:html={themeCss} />
-    <script is:inline>
-      try {
-        if (localStorage.getItem('tn-theme') === 'light') document.documentElement.dataset.theme = 'light';
-      } catch {}
-    </script>
   </head>
   <body class="flex min-h-screen flex-col bg-base text-fg">
     <a
@@ -89,16 +79,6 @@ const themeButton =
         </nav>
 
         <div class="hidden items-center gap-3 sm:flex">
-          <div role="group" aria-label="Colour theme" class="inline-flex items-center rounded border border-hairline bg-raised p-0.5">
-            <button type="button" data-theme-choice="dark" class={themeButton}>
-              <Icon name="lucide:moon" class="size-3" aria-hidden="true" />
-              Noir
-            </button>
-            <button type="button" data-theme-choice="light" class={themeButton}>
-              <Icon name="lucide:sun" class="size-3" aria-hidden="true" />
-              Paper
-            </button>
-          </div>
           <a
             href={REPO}
             class="hidden items-center gap-1.5 rounded border border-outline px-3 py-1.5 font-mono text-xs text-fg transition-colors hover:border-accent lg:flex"
@@ -135,40 +115,10 @@ const themeButton =
       </div>
     </footer>
 
-    <style>
-      .theme-choice[aria-pressed='true'] {
-        border-color: var(--color-outline);
-        background: var(--color-elevated);
-        color: var(--color-accent);
-      }
-      .theme-choice[aria-pressed='false']:hover {
-        color: var(--color-fg);
-      }
-    </style>
 
     <script>
       import '../scripts/interact.ts';
     </script>
 
-    <script>
-      const root = document.documentElement;
-      const buttons = [...document.querySelectorAll<HTMLButtonElement>('[data-theme-choice]')];
-      const render = () => {
-        const current = root.dataset.theme === 'light' ? 'light' : 'dark';
-        for (const b of buttons) b.setAttribute('aria-pressed', String(b.dataset.themeChoice === current));
-      };
-      for (const b of buttons) {
-        b.addEventListener('click', () => {
-          const next = b.dataset.themeChoice === 'light' ? 'light' : 'dark';
-          if (next === 'light') root.dataset.theme = 'light';
-          else delete root.dataset.theme;
-          try {
-            localStorage.setItem('tn-theme', next);
-          } catch {}
-          render();
-        });
-      }
-      render();
-    </script>
   </body>
 </html>

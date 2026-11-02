@@ -3,7 +3,6 @@ import tailwindcss from '@tailwindcss/vite';
 import icon from 'astro-icon';
 import { defineConfig } from 'astro/config';
 import noir from './src/data/shiki/terminal-noir.json' with { type: 'json' };
-import paper from './src/data/shiki/terminal-noir-paper.json' with { type: 'json' };
 
 const base = process.env.SITE_BASE ?? '/leeroy';
 
@@ -15,7 +14,7 @@ export default defineConfig({
   trailingSlash: 'ignore',
   integrations: [icon(), sitemap()],
   markdown: {
-    shikiConfig: { themes: { dark: noir, light: paper }, defaultColor: false }, // colours as CSS variables, picked in global.css
+    shikiConfig: { theme: noir },
   },
   build: { format: 'directory', inlineStylesheets: 'always' },
   vite: { plugins: [tailwindcss()] },
