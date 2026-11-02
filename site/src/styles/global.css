@@ -56,20 +56,6 @@
     color: var(--color-accent);
   }
 
-  .cursor {
-    display: inline-block;
-    width: 0.5rem;
-    height: 1rem;
-    vertical-align: text-bottom;
-    background: var(--color-accent);
-    animation: blink 1.05s steps(1) infinite;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .cursor {
-      animation: none;
-    }
-  }
 
   /* Rendered markdown: port READMEs and the contributing guide. */
   .prose {
@@ -137,11 +123,6 @@
   }
 }
 
-@keyframes blink {
-  50% {
-    opacity: 0;
-  }
-}
 
 /* Show content for the active theme only. */
 .only-light {

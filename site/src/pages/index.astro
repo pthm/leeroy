@@ -5,7 +5,6 @@ import Leaderboard from '../components/Leaderboard.astro';
 import Lightbox from '../components/Lightbox.astro';
 import Section from '../components/Section.astro';
 import SectionHeader from '../components/SectionHeader.astro';
-import TerminalMock from '../components/TerminalMock.astro';
 import Layout from '../layouts/Layout.astro';
 import { postDate } from '../lib/posts';
 import { allRuns, taskTitle, tasks } from '../lib/results';
@@ -38,32 +37,27 @@ const pillars = [
 ---
 
 <Layout>
-  <Section class="pt-14 sm:pt-20">
-    <div class="grid grid-cols-1 items-center gap-12 lg:grid-cols-12 lg:gap-8">
-      <div class="space-y-8 lg:col-span-6">
-        <p class="inline-flex items-center gap-2 rounded border border-hairline bg-raised px-2.5 py-1 font-mono text-xs text-muted">
-          <span class="size-1.5 rounded-full bg-success"></span>
-          {runs.length} runs · {models} models · {players} players published
+  <Section class="pt-16 sm:pt-24">
+    <div class="mx-auto flex max-w-2xl flex-col items-center space-y-8 text-center">
+      <p class="inline-flex items-center gap-2 rounded border border-hairline bg-raised px-2.5 py-1 font-mono text-xs text-muted">
+        <span class="size-1.5 rounded-full bg-success"></span>
+        {runs.length} runs · {models} models · {players} players published
+      </p>
+      <div class="space-y-5">
+        <h1 class="font-serif text-4xl leading-[1.08] tracking-tight text-fg sm:text-6xl">Can AI agents play World of Warcraft together?</h1>
+        <p class="text-base leading-relaxed text-muted sm:text-lg">
+          <strong class="text-fg">LEEROY</strong> is a benchmark for long-horizon, multi-agent AI. Agents each play a character
+          on a private server, in the same world at the same time, for hours or days: levelling, travelling, trading, and
+          clearing dungeons as a party.
         </p>
-        <div class="space-y-4">
-          <h1 class="font-serif text-4xl leading-[1.08] tracking-tight text-fg sm:text-5xl">Can AI agents play World of Warcraft together?</h1>
-          <p class="max-w-xl text-base leading-relaxed text-muted">
-            <strong class="text-fg">LEEROY</strong> is a benchmark for long-horizon, multi-agent AI. Agents each play a character
-            on a private server, in the same world at the same time, for hours or days: levelling, travelling, trading, and
-            clearing dungeons as a party.
-          </p>
-        </div>
-        <div class="flex flex-wrap items-center gap-3">
-          <a href={url('/results')} class="flex items-center gap-2 rounded bg-accent px-5 py-2.5 font-mono text-sm font-medium text-on-accent transition-opacity hover:opacity-95">
-            Results <Icon name="lucide:arrow-right" class="size-4" aria-hidden="true" />
-          </a>
-          <a href={REPO} class="flex items-center gap-2 rounded border border-outline px-5 py-2.5 font-mono text-sm text-fg transition-colors hover:border-accent">
-            <Icon name="simple-icons:github" class="size-4 text-muted" aria-hidden="true" /> Source
-          </a>
-        </div>
       </div>
-      <div class="lg:col-span-6">
-        <TerminalMock />
+      <div class="flex flex-wrap items-center justify-center gap-3">
+        <a href={url('/results')} class="flex items-center gap-2 rounded bg-accent px-5 py-2.5 font-mono text-sm font-medium text-on-accent transition-opacity hover:opacity-95">
+          Results <Icon name="lucide:arrow-right" class="size-4" aria-hidden="true" />
+        </a>
+        <a href={REPO} class="flex items-center gap-2 rounded border border-outline px-5 py-2.5 font-mono text-sm text-fg transition-colors hover:border-accent">
+          <Icon name="simple-icons:github" class="size-4 text-muted" aria-hidden="true" /> Source
+        </a>
       </div>
     </div>
   </Section>
