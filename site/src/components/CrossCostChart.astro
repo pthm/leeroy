@@ -1,8 +1,10 @@
 ---
 // Every entry across tasks: its mean percentile (as in the cross-task table) against its relative cost, which is its
 // cost per attempt divided by the task's median, as a geometric mean over the tasks it ran. 1× is a typical cost for
-// the task. Log scale, coloured by lab, sized by the number of tasks, with the cost frontier.
+// the task. Log scale, coloured by lab, sized by the number of tasks, with the cost frontier. Filters as the
+// leaderboard's: scripts/interact.ts hides the points and redraws the frontier from the ones left.
 import FigureHead from './FigureHead.astro';
+import FilterBar from './FilterBar.astro';
 import { LABS, displayNames, dollars, frontier, harnessName, leaderboard, percentiles, placeLabels, taskShort, tasks, type ModelRow } from '../lib/results';
 
 interface Props {
@@ -67,7 +69,8 @@ const tip = (p: (typeof pts)[number]) =>
 ---
 
 {pts.length > 1 && (
-  <figure class="rounded border border-hairline bg-raised p-5" data-chart>
+  <figure class="rounded border border-hairline bg-raised p-5" data-chart data-filtered>
+    <FilterBar rows={pts.map(p => p.row)} />
     <FigureHead title="Result against cost" sub="Mean percentile against relative cost, across every task each entry has run. Hover a point for its per-task results." />
     <div class="mb-1 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 font-mono text-[11px] text-muted">
       <span class="flex flex-wrap gap-x-4">
@@ -95,13 +98,13 @@ const tip = (p: (typeof pts)[number]) =>
       <text x={(L + W - R) / 2} y={H - 8} text-anchor="middle" class="fill-muted font-mono text-[11px]">cost relative to the task median (log scale)</text>
       <text x={14} y={(T + H - B) / 2} text-anchor="middle" transform={`rotate(-90 14 ${(T + H - B) / 2})`} class="fill-muted font-mono text-[11px]">mean percentile</text>
       {front.length > 1 && (
-        <path d={front.map((p, i) => `${i ? 'L' : 'M'}${x(p.cost).toFixed(1)},${y(p.y).toFixed(1)}`).join('')} fill="none" stroke="var(--color-muted)" stroke-width="1.2" stroke-dasharray="5 4" />
+        <path data-frontier d={front.map((p, i) => `${i ? 'L' : 'M'}${x(p.cost).toFixed(1)},${y(p.y).toFixed(1)}`).join('')} fill="none" stroke="var(--color-muted)" stroke-width="1.2" stroke-dasharray="5 4" />
       )}
       {pts.map((p, i) => (
-        <g data-key={p.row.key}>
+        <g data-key={p.row.key} data-point data-lab={p.row.lab} data-harness={p.row.runtime} data-effort={p.row.effort || 'default'} data-x={x(p.cost).toFixed(1)} data-y={y(p.y).toFixed(1)}>
           <title>{tip(p)}</title>
           <circle cx={x(p.cost)} cy={y(p.y)} r="12" fill="transparent" />
-          <circle cx={x(p.cost)} cy={y(p.y)} r={3.5 + 1.5 * p.pct.length} fill={LABS[p.row.lab]} fill-opacity="0.85" stroke={front.includes(p) ? 'var(--color-fg)' : 'none'} stroke-width="1.5" />
+          <circle data-dot cx={x(p.cost)} cy={y(p.y)} r={3.5 + 1.5 * p.pct.length} fill={LABS[p.row.lab]} fill-opacity="0.85" stroke={front.includes(p) ? 'var(--color-fg)' : 'none'} stroke-width="1.5" />
           {labelAt.has(i) && Math.abs(labelAt.get(i)!.y - (y(p.y) + 4)) > 1 && (
             <line x1={x(p.cost)} y1={y(p.y)} x2={labelAt.get(i)!.x} y2={labelAt.get(i)!.y - 4} stroke="var(--color-outline)" stroke-width="0.8" />
           )}

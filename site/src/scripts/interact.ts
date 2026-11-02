@@ -231,7 +231,8 @@ document.addEventListener('keydown', e => {
 adoptTitles(document);
 for (const svg of document.querySelectorAll<SVGSVGElement>('svg[data-series]')) crosshair(svg);
 
-// leaderboard filters ([data-filtered]: chip groups [data-filter=k] against body rows' data-k; "" is all; Reset clears)
+// leaderboard and chart filters ([data-filtered]: chip groups [data-filter=k] against data-k on its table's body rows
+// or its chart's [data-point]s; "" is all; Reset clears). A chart's [data-frontier] is redrawn from the points left.
 document.addEventListener('click', e => {
   const t = e.target as Element;
   const chip = t.closest?.<HTMLButtonElement>('[data-filter] button[data-value]');
@@ -246,15 +247,15 @@ document.addEventListener('click', e => {
   const want = [...box.querySelectorAll<HTMLElement>('[data-filter]')]
     .map(g => [g.dataset.filter!, g.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')?.dataset.value ?? ''])
     .filter(([, v]) => v);
-  const body = box.querySelector('tbody')!;
-  body.querySelector('tr[data-empty]')?.remove();
-  const rows = [...body.rows];
-  let shown = 0;
-  for (const tr of rows) {
-    tr.hidden = !want.every(([k, v]) => tr.dataset[k] === v);
-    if (!tr.hidden) shown++;
-  }
-  if (!shown) {
+  const match = (el: HTMLElement | SVGElement) => want.every(([k, v]) => el.dataset[k] === v);
+  const body = box.querySelector('tbody');
+  body?.querySelector('tr[data-empty]')?.remove();
+  const rows = body ? [...body.rows] : [];
+  const points = [...box.querySelectorAll<SVGGElement>('[data-point]')];
+  for (const tr of rows) tr.hidden = !match(tr);
+  for (const g of points) g.style.display = match(g) ? '' : 'none';
+  const shown = body ? rows.filter(tr => !tr.hidden).length : points.filter(g => match(g)).length;
+  if (body && !shown) {
     const tr = body.insertRow();
     tr.dataset.empty = '';
     const td = tr.insertCell();
@@ -262,7 +263,15 @@ document.addEventListener('click', e => {
     td.className = 'py-6 text-center text-faint';
     td.textContent = 'No entries match these filters.';
   }
+  const path = box.querySelector<SVGPathElement>('[data-frontier]');
+  if (path) { // the cheapest point, then each that does better than all cheaper ones (higher: smaller y)
+    const front: SVGGElement[] = [];
+    for (const g of points.filter(g => match(g)).sort((a, b) => +a.dataset.x! - +b.dataset.x! || +a.dataset.y! - +b.dataset.y!))
+      if (!front.length || +g.dataset.y! < +front.at(-1)!.dataset.y!) front.push(g);
+    path.setAttribute('d', front.map((g, i) => `${i ? 'L' : 'M'}${g.dataset.x},${g.dataset.y}`).join(''));
+    for (const g of points) g.querySelector('[data-dot]')!.setAttribute('stroke', front.includes(g) ? 'var(--color-fg)' : 'none');
+  }
   const status = box.querySelector<HTMLElement>('[data-filter-status]')!;
   status.hidden = !want.length;
-  box.querySelector('[data-filter-count]')!.textContent = `${shown} of ${rows.length} entries`;
+  box.querySelector('[data-filter-count]')!.textContent = `${shown} of ${body ? rows.length : points.length} entries`;
 });
