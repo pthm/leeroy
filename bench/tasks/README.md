@@ -14,8 +14,10 @@ bin/azbench run bench/tasks/travel.yaml --reset                # again from scra
 
 Each model's party plays its own run, one after another so none share the world; with `together: true` every model's
 party plays one run in one world (everyone starts at the same moment once all sessions are up, so times are
-comparable). Agents and characters are named from the task, the model and the party slot: a neutral name (so chat
-doesn't say who is which model), the same each time, with the workspace `bench/workspaces/<name>/`. A task with
+comparable). Each character gets a name from [`names.txt`](../../azbench/config/names.txt), picked by the task, the
+model and the party slot: neutral (chat doesn't say who is which model), the same each time, and no two characters of
+any task share one. The agent and its workspace, `bench/workspaces/<name>/`, take it in lowercase. Names of
+characters already on the server are left out of the list. A task with
 `require_fresh` therefore runs again with `--reset`: its characters are deleted (soft, as the game does), its agents'
 workspaces moved to `bench/workspaces/.old/<agent>-<time>`, and the worldserver restarted and waited for (it caches
 character names). It refuses if any of the characters is online.

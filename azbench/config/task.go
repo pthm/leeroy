@@ -1,6 +1,7 @@
 package config
 
 import (
+	_ "embed"
 	"fmt"
 	"hash/fnv"
 	"path/filepath"
@@ -35,17 +36,15 @@ type Model struct {
 
 // LoadTask reads a task and makes its runs: one per model (only those in only, if any), or one with every model's
 // party when the task is played together. Agents and characters are named from the task, the model and the party
-// slot, the same each time, so a model's next run of the task finds its workspace (or --reset clears it).
+// slot (charNames), the same each time, so a model's next run of the task finds its workspace (or --reset clears it).
 func (b *Bench) LoadTask(f string, only []string) ([]*Scenario, error) {
-	var t Task
-	if err := readYAML(f, &t); err != nil {
+	t, err := readTask(f)
+	if err != nil {
 		return nil, err
 	}
-	if t.Name == "" {
-		t.Name = strings.TrimSuffix(filepath.Base(f), filepath.Ext(f))
-	}
-	if len(t.Party) == 0 || len(t.Models) == 0 {
-		return nil, fmt.Errorf("%s: a task needs a party and models", t.Name)
+	names, err := charNames(filepath.Dir(f))
+	if err != nil {
+		return nil, err
 	}
 	models := t.Models
 	if len(only) > 0 {
@@ -64,10 +63,10 @@ func (b *Bench) LoadTask(f string, only []string) ([]*Scenario, error) {
 			return nil, fmt.Errorf("%s: unknown model %q (models.yaml)", t.Name, key)
 		}
 		if t.Together && len(out) == 1 {
-			out[0].Agents = append(out[0].Agents, t.agents(key, m)...)
+			out[0].Agents = append(out[0].Agents, t.agents(key, m, names)...)
 			continue
 		}
-		s := &Scenario{Conditions: t.Conditions, Task: t.Name, Agents: t.agents(key, m), Dir: filepath.Dir(f)}
+		s := &Scenario{Conditions: t.Conditions, Task: t.Name, Agents: t.agents(key, m, names), Dir: filepath.Dir(f)}
 		if !t.Together {
 			s.Name = t.Name + "-" + key
 		}
@@ -81,28 +80,63 @@ func (b *Bench) LoadTask(f string, only []string) ([]*Scenario, error) {
 	return out, nil
 }
 
-func (t *Task) agents(key string, m Model) []Agent {
+func readTask(f string) (*Task, error) {
+	var t Task
+	if err := readYAML(f, &t); err != nil {
+		return nil, err
+	}
+	if t.Name == "" {
+		t.Name = strings.TrimSuffix(filepath.Base(f), filepath.Ext(f))
+	}
+	if len(t.Party) == 0 || len(t.Models) == 0 {
+		return nil, fmt.Errorf("%s: a task needs a party and models", t.Name)
+	}
+	return &t, nil
+}
+
+func (t *Task) agents(key string, m Model, names map[string]string) []Agent {
 	var out []Agent
 	for i, p := range t.Party {
-		char := charName(fmt.Sprintf("%s/%s/%d", t.Name, key, i))
+		char := names[seat(t.Name, key, i)]
 		out = append(out, Agent{Name: strings.ToLower(char), Char: char, Race: p.Race, Class: p.Class, Spec: p.Spec,
 			Runtime: m.Runtime, Model: m.Model, Effort: m.Effort, Provider: m.Provider})
 	}
 	return out
 }
 
-// charName: a neutral character name from a seed, consonant-vowel syllables (letters only, 8), so chat doesn't say
-// which model plays it.
-func charName(seed string) string {
-	const cons, vow = "bcdfghjklmnprstvwxyz", "aeiou"
-	h := fnv.New64a()
-	h.Write([]byte(seed))
-	n := h.Sum64()
-	s := make([]byte, 0, 8)
-	for range 4 {
-		s = append(s, cons[n%20], vow[n/20%5])
-		n /= 100
+func seat(task, model string, slot int) string { return fmt.Sprintf("%s/%s/%d", task, model, slot) }
+
+//go:embed names.txt
+var nameList string
+
+// charNames names every character of every task in dir from names.txt, so no two share one: each seat (task, model,
+// party slot) hashes to a name, and takes the next free one if it's taken. Seats are named in file order, so a
+// seat's name stays the same unless a new task, sorting before its own, lands on it (it then gets the next free one).
+// Neutral names: chat doesn't say which model plays a character.
+func charNames(dir string) (map[string]string, error) {
+	list := strings.Fields(nameList)
+	files, _ := filepath.Glob(filepath.Join(dir, "*.yaml"))
+	taken, out := map[string]bool{}, map[string]string{}
+	for _, f := range files {
+		t, err := readTask(f)
+		if err != nil {
+			return nil, err
+		}
+		for _, key := range t.Models {
+			for i := range t.Party {
+				s := seat(t.Name, key, i)
+				h := fnv.New64a()
+				h.Write([]byte(s))
+				n := int(h.Sum64() % uint64(len(list)))
+				for j := 0; taken[list[n]]; j++ {
+					if j == len(list) {
+						return nil, fmt.Errorf("names.txt has %d names, too few for every task's characters", len(list))
+					}
+					n = (n + 1) % len(list)
+				}
+				taken[list[n]], out[s] = true, list[n]
+			}
+		}
 	}
-	s[0] -= 'a' - 'A'
-	return string(s)
+	return out, nil
 }
