@@ -447,7 +447,7 @@ var commands = []command{
 	}},
 
 	{"zone", "zone <id|name>  sub-areas with locations, mobs by level, graveyards, services (flight master, inn, vendors, trainers)", func(a []string, _ []bool, _ map[string]string) any {
-		s, ok := arg(a, 0)
+		s, ok := strings.Join(a, " "), len(a) > 0 // a name of several words needs no quotes: zone Stormwind City
 		var z *obj
 		if digits.MatchString(s) {
 			z = q1("SELECT * FROM wowbench.area WHERE id = " + s)

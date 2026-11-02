@@ -86,6 +86,14 @@ separate from this proposal.
 | `creature_queststarter` / `creature_questender` | `id` (creature entry), `quest` |
 | `npc_vendor` | `entry` (vendor creature), `item` |
 | `gameobject`, `gameobject_template`, `gameobject_loot_template` | spawns, names and loot of chests, herbs, ore |
+| `areatrigger` | `entry, map, x, y, z`, then a sphere (`radius`) or a box (`length, width, height, orientation`): invisible trigger volumes |
+| `areatrigger_teleport` | `ID` (= `areatrigger.entry`), `target_map, target_position_x, target_position_y, target_position_z`: entering the trigger teleports you (instance entrances, the Dark Portal) |
+| `spell_target_position` | `ID` (a spell), `MapID, PositionX, PositionY, PositionZ`: where a teleport spell sends you. A portal object (`gameobject_template.type` 22) casts its `Data0` spell on whoever uses it |
+| `transports` | `entry` (a `gameobject_template`), `name`: boats and zeppelins and the docks they run between |
+| `conditions` | requirements the server checks before an interaction, a gossip option, loot or a spell target |
+
+The `*_dbc` tables (`taxinodes_dbc`, `taxipath_dbc`, ...) are empty: the server reads those from the client's
+files. Flight points and their costs are in the SDK: `flights.nodes`, `flights.map`.
 
 The `wowbench` schema has derived data (qualify the table names): `creature_spawn` and `gameobject_spawn` (spawns
 with `area` and `zone`), `reaction` (`creature_template.faction` to hostility), `spell` (names, costs,

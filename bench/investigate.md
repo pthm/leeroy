@@ -66,17 +66,9 @@ mountains to the Wetlands (up to z 445 at -4367 -2212, climbs of 55-58 degrees b
 
 ## azworld
 
-- **No portals, teleports or transports.** The working route to Darnassus (the Dark Portal, then Shattrath's portal)
-  was found only by querying `areatrigger_teleport` and `conditions` by hand (Cosimo, Evander, Faramund); Haiku and
-  Sonnet, with only "Boats and zeppelins aren't supported" to go on, decided there was no way and quit. A query for
-  where teleports, portals and transports go (systems, not a route) would answer it. Rules-only, per the doc rule.
 - **`route` fails past about 900 yd**: "plan needs more than 64 waypoints", or `terrain_unreachable` for roads that
   are walked fine (Darkshire to Deadwind Pass). Haiku took a `terrain_unreachable` as proof there was no route.
   Return a coarser or partial plan instead of failing, and find why the terrain grid breaks on that road.
-- **No flight paths:** `taxinodes_dbc`, `taxipath_dbc`, `taxipathnode_dbc` are empty, and nothing answers which flight
-  points connect. Didn't matter here (no money), will for travel with gold.
-- `azworld zone Stormwind City` unquoted looks up "Stormwind": join the arguments.
-
 ## Harness
 
 - **An agent that exits early stays stopped.** Haiku quit with 78 minutes left and Sonnet with 64 (alerts.log; exit 0,
