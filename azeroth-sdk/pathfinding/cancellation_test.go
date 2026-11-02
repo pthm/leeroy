@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/o0olele/detour-go/detour"
+	"github.com/pthm/leeroy/azeroth-sdk/internal/detour"
 )
 
 func TestSearchCancellationStopsBatches(t *testing.T) {

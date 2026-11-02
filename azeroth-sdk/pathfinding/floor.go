@@ -1,6 +1,6 @@
 package pathfinding
 
-import "github.com/o0olele/detour-go/detour"
+import "github.com/pthm/leeroy/azeroth-sdk/internal/detour"
 
 // FloorTriangles is the walkable detail triangles of a map's navmesh in world coordinates: the floor plan of a map
 // with no terrain to draw (an instance), for the viewer. With from, only the floor connected to it (an instance's

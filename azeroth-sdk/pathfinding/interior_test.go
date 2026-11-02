@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/o0olele/detour-go/detour"
+	"github.com/pthm/leeroy/azeroth-sdk/internal/detour"
 )
 
 // Each cell is a ten-yard square, in Detour X/Z coordinates, at height h.

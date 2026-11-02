@@ -9,9 +9,6 @@ require (
 	golang.org/x/exp/eval v0.0.0-20261014143641-f0251eb4aa3e
 )
 
-require (
-	filippo.io/edwards25519 v1.2.0 // indirect
-	github.com/o0olele/detour-go v0.2.3 // indirect
-)
+require filippo.io/edwards25519 v1.2.0 // indirect
 
 replace github.com/pthm/leeroy/azeroth-sdk => ./azeroth-sdk

@@ -3,7 +3,7 @@ package pathfinding
 import (
 	"context"
 	"fmt"
-	"github.com/o0olele/detour-go/detour"
+	"github.com/pthm/leeroy/azeroth-sdk/internal/detour"
 	"math"
 )
 

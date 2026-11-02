@@ -1,7 +1,7 @@
 package navigation
 
 import (
-	"github.com/o0olele/detour-go/detour"
+	"github.com/pthm/leeroy/azeroth-sdk/internal/detour"
 	"testing"
 
 	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
