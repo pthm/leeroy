@@ -3,6 +3,7 @@
 import { getEntry, render } from 'astro:content';
 import FinishChart from '../../../components/FinishChart.astro';
 import Deaths from '../../../components/Deaths.astro';
+import CombatPanel from '../../../components/CombatPanel.astro';
 import ProgressChart from '../../../components/ProgressChart.astro';
 import RouteMap from '../../../components/RouteMap.astro';
 import SectionHeader from '../../../components/SectionHeader.astro';
@@ -60,6 +61,7 @@ const roster = run.players.toSorted((a, b) =>
 const color = colors(run);
 const hasChat = (run.chat_per_min ?? []).some(h => Object.values(h).some(Boolean));
 const hasDeaths = run.players.some(p => p.death_list?.length);
+const hasCombat = run.players.some(p => p.combat && (p.combat.damage_dealt || p.combat.healing_done || p.combat.damage_taken));
 const clock = run.minutes >= 1440 ? `${run.minutes / 1440} days` : `${run.minutes} min`;
 
 const best = bestRate(run.players);
@@ -171,10 +173,13 @@ const tiles = [
     </Section>
   )}
 
-  {hasDeaths && (
+  {(hasCombat || hasDeaths) && (
     <Section>
-      <SectionHeader eyebrow="Combat" title="Deaths" description="Deaths by killer and by zone, split by player." />
-      <Deaths run={run} />
+      <SectionHeader eyebrow="Combat" title={hasDeaths ? 'Fighting and deaths' : 'Fighting'} description={`Each player's damage, healing and kills from its game log${hasDeaths ? ', then deaths by killer and by zone' : ''}.`} />
+      <div class="space-y-4">
+        {hasCombat && <CombatPanel run={run} />}
+        {hasDeaths && <Deaths run={run} />}
+      </div>
     </Section>
   )}
 

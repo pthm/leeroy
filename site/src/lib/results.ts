@@ -28,9 +28,9 @@ export interface Player {
   track?: [number, number, number, number, number][]; // [s from the start, map, x, y, group id]; map -1: a teleport
   death_list?: { t: number; map: number; x: number; y: number; killer: string; place: string }[];
   failures?: { op: string; code: string; count: number }[];
-  time_use?: { seconds: number; fighting_pct: number; travelling_pct: number; idle_pct: number; dead_pct: number; with_group_pct: number };
+  time_use?: { seconds: number; fighting_pct: number; travelling_pct: number; idle_pct: number; dead_pct: number; with_group_pct: number; broken_weapon_pct?: number };
   time_pct_by_state?: Record<string, number>; // the agent: thinking, waiting (a script running), in_call, no_script
-  combat?: { damage_dealt: number; damage_taken: number; healing_done: number; kills: number };
+  combat?: { damage_dealt: number; damage_taken: number; healing_done: number; kills: number; party_kills?: number; deaths?: number; xp?: number };
   think_median_s?: number;
   kit?: {
     gear: { slot: number; entry: number; name: string; quality: number; level: number; icon?: string }[];

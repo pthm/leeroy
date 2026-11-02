@@ -1,0 +1,52 @@
+---
+// Each player's fighting over the run, from the game log (the report's combat totals): damage dealt and taken, healing
+// done, killing blows and kills its party made, each with a bar against the run's highest.
+import { colors, thousands, type Run } from '../lib/results';
+
+interface Props {
+  run: Run;
+}
+
+const { run } = Astro.props;
+const color = colors(run);
+const ps = run.players.filter(p => p.combat);
+const cols = [
+  { k: 'damage_dealt', label: 'Damage dealt', fmt: thousands },
+  { k: 'damage_taken', label: 'Damage taken', fmt: thousands },
+  { k: 'healing_done', label: 'Healing done', fmt: thousands },
+  { k: 'kills', label: 'Killing blows', fmt: (v?: number) => String(v ?? 0) },
+  { k: 'party_kills', label: 'Party kills', fmt: (v?: number) => String(v ?? 0) },
+] as const;
+const max = Object.fromEntries(cols.map(c => [c.k, Math.max(1, ...ps.map(p => (p.combat as any)[c.k] ?? 0))]));
+---
+
+{ps.length > 0 && (
+  <div class="overflow-x-auto rounded border border-hairline bg-raised">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Character</th>
+          {cols.map(c => <th class="num">{c.label}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {ps.map(p => (
+          <tr>
+            <td class:list={['font-medium', color[p.char]]}>{p.char}</td>
+            {cols.map(c => {
+              const v = (p.combat as any)[c.k] ?? 0;
+              return (
+                <td class="num text-muted">
+                  <span class="inline-flex items-center justify-end gap-2">
+                    <span class:list={['inline-block h-1.5 rounded-sm', color[p.char]]} style={`width:${(v / max[c.k]) * 3}rem;background:currentColor`} />
+                    {v ? c.fmt(v) : '–'}
+                  </span>
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)}
