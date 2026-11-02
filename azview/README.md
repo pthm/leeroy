@@ -15,97 +15,58 @@ maps and names, the extracted game data and the world database (via `azworld`'s 
 | `store.go` | the run in memory: samples, units and events by player and time, read from the logs as they grow |
 | `format.go` | events as lines of HTML (the feed, tooltips, the roster) |
 | `roster.go`, `feed.go`, `stats.go`, `panels.go` | the panels, rendered on the server |
-| `view.go` | recorder logs, run sources, agent transcripts, `meta.json`, chat filtering |
+| `view.go` | run sources, agent transcripts, `meta.json`, chat filtering |
 | `movecheck.go` | the movement audit |
 | `templates/` | the page and the panels (`html/template`) |
 | `static/` | the client (`viewer.js`: the map, seek bar and playback), styles, and vendored htmx 2.0.11, idiomorph 0.7.4 (htmx's morph swap) and Alpine 3.17.5 |
 
-The server-side writer, `mod-recorder`, is an AzerothCore module in `server/recorder/mod-recorder/`. Build
-everything with `./build.sh` (binaries in `bin/`); all commands run from the repo root.
+Build everything with `./build.sh` (binaries in `bin/`); all commands run from the repo root.
 
-## Recording format
+## Game log
 
-A recording is JSON Lines, one event per line, appended as it happens. Two writers produce the same format:
+Each character's session writes one game log, JSON Lines, appended as it happens: `azsdk -events <file>`, which
+`azbench run` points at `game/<char>/events.jsonl` in the run dir. Every line has `t` (unix ms), `type` and `data`.
+Two kinds of line share the file:
 
-| Writer | Who it sees | Where it writes |
+- **Events** (with `seq`): what the agent saw, the same stream its `events` API reads (damage, kills, chat, loot,
+  quests...; the SDK's event types, [azeroth-sdk/docs](../azeroth-sdk/docs/sdk.md)).
+- **Records** (no `seq`; the agent never sees them): what the session kept for the viewer and the report.
+
+| Record `type` | `data` | When |
 |---|---|---|
-| `mod-recorder` (server side, optional) | Every player on the server | `$RECORDER_FILE`, default `server/azerothcore/env/dist/logs/recorder.jsonl` |
-| `azsdk -record <file>` (client side, `azeroth-sdk/session/recorder.go`) | The daemon's own characters, plus agent-side events | The given file; `azbench run` uses `<agent>.record.jsonl` in the run dir |
+| `state` | `m` map, `x` `y` `z` `o`, `hp` `hpmax`, `pt` power type, `pw` `pwmax`, `lvl`, `xp`, `money` (copper), `grp` (group id, 0 = none), `alive` `ghost` `combat` (0/1); `tgt` the target, if any; `pet` when one is out: `{e` entry, `n` name, `x` `y` `z`, `hp` `hpmax`, `lvl`, `alive}` | every 1 s |
+| `units` | `m` map, `u`: the creatures within 60 yd, each `[entry, level, x, y, health %, state]` (state 0 hostile, 1 neutral, 2 friendly, +4 dead); pets are in their master's `state`, totems are here | every 2 s |
+| `transports` | each boat and zeppelin on the map: `[guid counter, entry, name, map, x, y, o]` | every 4 s |
+| `login` | `race`, `cls`, `lvl` | at login |
+| `logout` | | at logout |
+| `group` | `grp`, `leader`, `members` (names); `grp` 0 and no members = left | on any change |
+| `api` | `method`, `params` (raw JSON, cut at 500 chars) | each daemon API call (except read-only and waiting ones) |
+| `script_error` | the script errors from a Lua eval | as they happen |
 
-Every line has:
+Units (a target, attacker, victim) are `{"id", "n", "pl": 1}` for a player (`id` = guid counter), or `{"id", "n",
+"lvl"}` for a creature (`id` = creature entry); the viewer fills in missing creature names from
+`acore_world.creature_template`.
 
-| Field | Meaning |
-|---|---|
-| `t` | Unix time in ms |
-| `ev` | Event kind (below) |
-| `p` | Player guid counter |
-| `n` | Player name |
+`azbench/gamelog` turns each line into what the viewer, publish and the report use, maps with `t`, `ev` (the kind)
+and `n` (the character); its package doc lists the mapping (`state` becomes `pos`, and `tgt` when the target changes;
+`damage` becomes `dmg`; `chat` keeps `type` as the game's chat type number with `by` the player who said it, `from`
+an NPC, `to` a whisper's target or channel). Two more kinds come from elsewhere:
+- `score`: the judge's samples (`judge/<char>/samples.jsonl`, each with `t`). The viewer charts them.
+- `say`: the viewer turns each agent's transcript into `say` events (below).
 
-Units (attacker, target, killer, victim) are objects: `{"id", "n", "pl": 1}` for a player (`id` = guid counter), or
-`{"id", "n", "lvl"}` for a creature (`id` = creature entry). Client-side records may lack a creature's name; the
-viewer fills it in from `acore_world.creature_template`.
-
-| `ev` | Fields | Server | Client |
-|---|---|---|---|
-| `pos` | `m` map, `x` `y` `z` `o`, `hp` `hpmax`, `pt` power type, `pw` `pwmax`, `lvl`, `xp`, `money` (copper), `zone`, `area`, `alive` `ghost` `combat` (0/1), `grp` (group id, 0 = none), `tgt` (current victim, if any); client side, `pet` when one is out: `{e` entry, `n` name, `x` `y` `z`, `hp` `hpmax`, `lvl`, `alive}` | every 1 s | every 1 s |
-| `login` | `race`, `cls`, `lvl` | yes | yes |
-| `logout` | | yes | yes |
-| `chat` | `type` (chat message type), `msg`, `to` (whisper target, `party`, `guild`, channel) | messages a player sends | messages the character says (its whispers with `to`), and messages it hears: from an NPC with `from` = the NPC, from a player with `by` = the player |
-| `dmg` | `src`, `dst`, `amount` | any damage involving a player | melee and spell damage to or from the character, plus `spell` |
-| `heal` | `src`, `dst`, `amount` | yes | no |
-| `cast` | `spell`, `name`, `target` | non-passive casts | spells the character casts (no `target`) |
-| `kill` | `victim` | yes | yes |
-| `death` | `killer` | yes | yes (`killer` = last attacker) |
-| `pvp` | `victim` | yes | no |
-| `release`, `resurrect` | `resurrect`: `pct`, `sickness` | yes | no |
-| `level` | `from`, `to` | yes | `to` only |
-| `xp` | `amount`, `src`, `victim` | yes | `amount` only |
-| `money` | `delta` (copper) | yes | no |
-| `units` | `m` map, `u`: the creatures within 60 yd, each `[entry, level, x, y, health %, state]` (state 0 hostile, 1 neutral, 2 friendly, +4 dead); players' pets aren't among them (they're in their master's `pos`), totems are | no | every 2 s |
-| `transport` | `id`, `e` entry, `n` name, `m` map, `x` `y` `z` `o`, `pp` path progress (ms), `period` (ms): each boat and zeppelin (not elevators) | every 1 s | no |
-| `quest` (completed) | `id`, `title` | yes | `id`, `xp`, `money` |
-| `achievement` | `id`, `title`, `points` | yes | `id` only |
-| `loot` | `item` (entry), `count` | yes | yes |
-| `zone` | `zone`, `area` | yes | no |
-| `spell` (learned) | `id` | yes | no |
-| `group` | `grp`, `leader`, `members` (names); `grp` 0 and no members = left | one per online member on any change | yes |
-| `api` | `method`, `params` (raw JSON, cut at 500 chars) | no | each daemon API call (except read-only and waiting ones) |
-| `script_error` | the script errors from a Lua eval | no | yes |
-
-Two more kinds come from elsewhere:
-- `score`: the judge's `--record <file>` appends each judge sample (`value`, `level`, `rate`,
-  `recent_rate`, `best_window`, `pace`, `score`) to the run's record file. The viewer charts them.
-- `say`: not in any log. The viewer turns each agent's transcript into `say` events (below).
-
-Client-side differences worth knowing: `pos` has `zone` 0 and no `area` or `tgt`. A message is in the speaker's record and
-in each listener's (`by`): the viewer merges the copies into one event, said by the speaker, `heard` by everyone who
-recorded it. Records from before 2 November 2026 have heard messages without `by` (no speaker), and not the character's own.
-
-`mod-recorder` reads two environment variables on its first write: `RECORDER_FILE` (the path, inside the container)
-and `RECORDER_INTERVAL_MS` (the `pos` interval, default 1000, minimum 100). Neither is set by `override.yml`.
-
-## Installing mod-recorder
-
-```sh
-cp -r server/recorder/mod-recorder server/azerothcore/modules/
-docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml build
-docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml up -d
-```
-
-AzerothCore picks up modules in `modules/` at build time, so the worldserver image must be rebuilt after copying (and
-after changing `recorder.cpp`: copy again, rebuild). The module is optional: without it `azbench run`
-still records every run client-side.
+A message is in the speaker's log and in each listener's (`by`): the viewer merges the copies into one event, said by
+the speaker, `heard` by everyone who logged it.
 
 ## The viewer
 
 ```sh
-bin/azview live [log.jsonl ...] [--run <run or team dir>] [--port 8800] [--chars A,B] [--since 60m]
+bin/azview live [events.jsonl ...] [--run <run or team dir>] [--port 8800] [--chars A,B] [--since 60m]
 ```
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `log.jsonl ...` | the server log | Recorder files to read, any mix of server and client-side |
-| `--run <dir>` | | A bench run dir or team dir, running or finished: its record files plus each agent's transcript, from the run's start |
+| `events.jsonl ...` | | Game logs to read |
+| `--run <dir>` | | A bench run dir or team dir, running or finished: its game logs, the judge's samples and each agent's transcript, from the run's start |
 | `--port` | 8800 | HTTP port |
 | `--chars A,B` | everyone | Only these characters |
 | `--since` | `60m` | Without `--run`: how far back to read, in minutes (`m` suffix optional) |
@@ -136,13 +97,10 @@ moves (playing back or seeking), when something new comes into view (watching li
 filters, metric, sort) is an Alpine store, kept in `localStorage`. Updates ease in: bars slide to their new width, card states fade, new feed rows slide in (rows and cards keep stable ids, so a refresh inserts the new ones rather than rewriting the old); off with reduced motion. `AZVIEW_DEV=<path to azview/>` serves the templates
 and static files from disk on every request instead of the built-in copies: edit, then reload the browser.
 
-With `--run`, and when the server log exists, these come from it for the run's characters (`ServerEvents`): player
-chat, once, with sender names, instead of each agent's received copy; damage and heals (in place of the client
-records' damage, which has no heals); and each change of target (a `tgt` event: the `pos` samples' `tgt`, or none). NPC
-chat from the client records is kept once, with who heard it. Quest titles and achievement names and points, which
-client records lack, are filled in from the world database and `data/dbc/Achievement.dbc`. The run's players, their records
-(`game/<char>/record.jsonl`) and transcripts (`agents/<agent>/transcript.jsonl`) and the clock's start come from its
-`run.json`.
+Quest titles and achievement names and points, which game logs lack, are filled in from the world database and
+`data/dbc/Achievement.dbc`. With `--run`, the run's players, their game logs (`game/<char>/events.jsonl`), the judge's
+samples (`judge/<char>/samples.jsonl`), transcripts (`agents/<agent>/transcript.jsonl`) and the clock's start come
+from its `run.json`.
 
 Map tiles (one per 533-yard grid square) are rendered on demand and kept in memory:
 - With client data extracted (`data/minimap`, from `go run ./azeroth-sdk/cmd/clientdata ... extract data`): the
@@ -258,10 +216,10 @@ skipped.
 ## azview movecheck
 
 ```sh
-bin/azview movecheck [recorder.jsonl] [--chars A,B] [--from <ms>]
+bin/azview movecheck <events.jsonl ...> [--chars A,B] [--from <ms>]
 ```
 
-Checks `pos` samples against the terrain (default file: the server log) and prints one JSON line per player:
+Checks `state` samples against the terrain and prints one JSON line per player:
 
 | Field | Meaning |
 |---|---|

@@ -15,7 +15,6 @@ git clone https://github.com/pthm/leeroy && cd leeroy
 ```sh
 # server
 git clone --depth 1 https://github.com/azerothcore/azerothcore-wotlk.git server/azerothcore
-cp -r server/recorder/mod-recorder server/azerothcore/modules/   # server-side recording (optional)
 docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml build   # ~10-20 min
 docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml up -d   # first boot downloads client data + imports DBs
 

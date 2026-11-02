@@ -7,7 +7,6 @@ The local AzerothCore 3.3.5a server the agents play on, and the tools around it.
 | `azerothcore/` | Upstream [azerothcore-wotlk](https://github.com/azerothcore/azerothcore-wotlk) checkout (gitignored) |
 | `override.yml` | Compose overrides layered on `azerothcore/docker-compose.yml` |
 | `account/` | Create or reset a game account (and its GM level): `bin/account` |
-| `recorder/mod-recorder/` | `mod-recorder`: the server-side event log the viewer reads ([azview](../azview/README.md#recording-format)) |
 
 All commands run from the repo root. First-time setup (clone, build, client data) is in the [root README](../README.md).
 
@@ -110,7 +109,6 @@ don't do it during a run. The in-game alternatives don't work here: `.character 
 | `server/azerothcore/env/dist/logs/Errors.log` | worldserver errors |
 | `server/azerothcore/env/dist/logs/Auth.log` | authserver log |
 | `server/azerothcore/env/dist/logs/DBImport.log` | database import (first boot, updates) |
-| `server/azerothcore/env/dist/logs/recorder.jsonl` | `mod-recorder` events, if installed ([azview](../azview/README.md#recording-format)) |
 | `docker logs ac-worldserver` | worldserver console output (`docker logs -f ac-worldserver`) |
 
 Each container mounts `server/azerothcore/env/dist/logs` as `/azerothcore/env/dist/logs`.

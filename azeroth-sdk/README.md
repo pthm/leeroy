@@ -74,7 +74,6 @@ The config file form (`azsdk.example.json`):
   "auth_server": "127.0.0.1:3724",
   "data_dir": "./data",
   "listen": "127.0.0.1:8780",
-  "record": "events.jsonl",
   "characters": [
     { "name": "Garrick", "account": "agent1", "password": "agent1", "race": 1, "class": 1 },
     { "name": "Paloma", "account": "agent2", "password": "agent2", "race": 1, "class": 2, "script": "scripts/idle.lua" }
@@ -82,7 +81,7 @@ The config file form (`azsdk.example.json`):
 }
 ```
 
-Each character may also set `workspace`. `record` is optional (the example file leaves it out). The daemon exits
+Each character may also set `workspace`. The daemon exits
 non-zero when every session has ended on its own (for example a rejected login); on interrupt or `-duration` it
 logs the characters out first.
 

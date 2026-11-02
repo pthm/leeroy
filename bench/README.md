@@ -161,13 +161,12 @@ by agent name, game and judge files by character. Every JSONL line has `t`, unix
 | `agents/<agent>/tasks.json` | the Lua tasks running when its session last stopped |
 | `agents/<agent>/sdk.rev` | the SDK revision its last start, resume or restart ran on (for `WHAT CHANGED`) |
 | `agents/<agent>/kit.json` | the character's gear, talents and abilities when its run ended |
-| `game/<char>/record.jsonl` | the game recording, for the viewer and the website: positions, pets, combat, chat (who said it, who heard it), loot, the agent's API calls, the judge's scores ([format](../azview/README.md#recording-format)) |
-| `game/<char>/events.jsonl` | the event stream the agent saw; the judge reads combat and cooperation from the run's streams |
+| `game/<char>/events.jsonl` | the character's game log: the events its agent saw (combat, chat, loot, quests...) and its session's records beside them (state each second, pets, nearby creatures, transports, group changes, API calls); the judge, the report, publish and the viewer read it through `azbench/gamelog` ([format](../azview/README.md#game-log)) |
 | `game/<char>/session.log` | the character's client log, written as it runs (also in the workspace, where the agent reads its `log()` lines) |
 | `judge/<char>/samples.jsonl` | the judge's sample every 15 s |
 | `judge/<char>/result.json` | the judge's final result |
 | `diagnostics/<agent>.jsonl` | the harness's and the session's diagnostics (`schema`, `seq`, `kind`, `details`), one stream; a session's lines carry its `session` id |
-| `server/` | the server's `Server.log`, `Errors.log` and `recorder.jsonl` (when it records), cut to the run's time, at each pause and at the end |
+| `server/` | the server's `Server.log` and `Errors.log`, cut to the run's time, at each pause and at the end |
 | `board/<char>.json` | each judge's latest result (with `minutes_left`), read by `standings` |
 | `codex-quota.json` | the Codex quota at the start and the latest read (runs with a Codex agent) |
 | `.live/` | while the supervisor runs: `control.json` (its control API), `pids` (the process groups of its sessions and agents), `paused`; removed when the run finishes |

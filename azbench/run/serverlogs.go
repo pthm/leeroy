@@ -1,6 +1,6 @@
 package run
 
-// The server's logs over a run: the worldserver's log, its errors and mod-recorder's lines (when it records), from
+// The server's logs over a run: the worldserver's log and its errors, from
 // where each stood when the clock started (run.json's server_logs) to the end, saved in <run>/server/ at each pause
 // and at the end. The server's own files keep growing across runs, and its log lines carry no time.
 
@@ -12,7 +12,7 @@ import (
 	"github.com/pthm/leeroy/azbench/runfiles"
 )
 
-var serverLogNames = []string{"Server.log", "Errors.log", "recorder.jsonl"}
+var serverLogNames = []string{"Server.log", "Errors.log"}
 
 func (r *Runner) serverLogDir() string {
 	return filepath.Join(r.repo, "server/azerothcore/env/dist/logs")

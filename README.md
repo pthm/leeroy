@@ -82,7 +82,7 @@ agents weren't given tactics. The party roles, pulls, crowd control and party-ch
     └─ WoW 3.3.5a protocol client (auth, world)
     │
     ▼
-  AzerothCore (docker: authserver, worldserver, MySQL): stock, plus config and the optional mod-recorder
+  AzerothCore (docker: authserver, worldserver, MySQL): stock, plus config
     ▲
   azbench: one supervisor per run: sessions, agents, and a judge per player that reads the character
            database every 15 s → score samples, standings, report card
@@ -96,7 +96,7 @@ sandboxed: they can write only in their workspace, read the docs and source, and
 
 | Folder | What's in it |
 |---|---|
-| [`server/`](server/README.md) | The AzerothCore server: upstream checkout (`azerothcore/`, gitignored), config overrides (`override.yml`), account creation (`account/`) and `recorder/mod-recorder`, the server-side event log |
+| [`server/`](server/README.md) | The AzerothCore server: upstream checkout (`azerothcore/`, gitignored), config overrides (`override.yml`) and account creation (`account/`) |
 | [`bench/`](bench/README.md) | The benchmark's configs and data: tasks and models (YAML), specs and places, what agents get (`agent/`: task docs and their tools), agent `workspaces/` and `runs/` |
 | [`azbench/`](azbench) | `azbench`: runs the benchmark from those configs (one supervisor per run: sessions, judges, agents; pause, resume, restart), the judge and report card, and the agents' `standings` |
 | [`azeroth-sdk/`](azeroth-sdk/README.md) | `azsdk`: the Go headless client and daemon the agents drive, plus the Lua API docs and example scripts. Only a game client: no database access |
@@ -113,7 +113,6 @@ commands below run from the repo root.
 ```sh
 # server
 git clone --depth 1 https://github.com/azerothcore/azerothcore-wotlk.git server/azerothcore
-cp -r server/recorder/mod-recorder server/azerothcore/modules/   # server-side recording (see below)
 docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml build   # ~10-20 min
 docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml up -d   # first boot downloads client data + imports DBs
 
@@ -166,7 +165,7 @@ persistent script library). It can read and write only there, read the client an
 - `run.json`: what the run was (task, players, versions) and how it went (start, pauses, end);
 - `supervisor.log`;
 - `agents/<agent>/`: the transcript, an [ATIF](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md) trajectory (`trajectory.json`, the same for every runtime), notes and usage;
-- `game/<char>/`: the game recording, the events its agent saw, its client log;
+- `game/<char>/`: the game log (the events its agent saw, its state each second, nearby creatures, API calls) and its client log;
 - `judge/<char>/`: samples every 15 s and the final score;
 - `diagnostics/`, and `server/` (the server's logs over the run);
 - `team.json` and `report.json` (the report card).
@@ -182,19 +181,15 @@ resuming, and resetting characters are in [bench/README.md](bench/README.md); sc
 
 ## Replays and live view
 
-Two sources write the same event format (positions once a second, chat, damage, kills, deaths, levels, XP,
-quests, achievements, loot; [azview](azview/README.md#recording-format)):
-- **Client side, by default:** `azsdk -record <file>` logs its own characters plus agent-side events the server can't
-  see (each API call and the Lua it ran, script errors). `azbench run` records every run this way
-  (`game/<char>/record.jsonl` in the run dir). Works on any AzerothCore server.
-- **Server side, optional and authoritative:** the `mod-recorder` module (`server/recorder/mod-recorder`) logs every
-  player to `server/azerothcore/env/dist/logs/recorder.jsonl`, and every boat and zeppelin once a second. After
-  changing it: rebuild the worldserver image and restart it.
+Each character's session writes one game log, `game/<char>/events.jsonl` in the run dir (`azsdk -events <file>`): the
+events its agent saw (damage, kills, chat, loot, quests...) and, beside them, its state once a second, nearby
+creatures, boats and zeppelins, group changes and each API call ([azview](azview/README.md#game-log)). It is all
+client side, so it works on any AzerothCore server.
 
 Viewers ([`azview/`](azview/README.md)):
 - `bin/azview live [log ...] [--run bench/runs/<ts>-team] [--port 8800] [--since 60]`: the viewer at
-  http://localhost:8800/, for a running or finished run (default: the server log; `--run` reads a run's records and
-  agent transcripts); the playhead follows the newest data until you seek back.
+  http://localhost:8800/, for a running or finished run (`--run` reads a run's game logs, judge samples and agent
+  transcripts); the playhead follows the newest data until you seek back.
 - `bin/azview movecheck [log]` audits recorded movement for speed, slopes and swimming.
 
 The viewer shows the game's minimap (when client data is extracted, else a terrain map rendered from `data/maps`),

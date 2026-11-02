@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// The Bravery (path 967, speed 30, acceleration 1) where the server put it at these path progresses (mod-recorder's
+// The Bravery (path 967, speed 30, acceleration 1) where the server put it at these path progresses (the server's
 // transport events): leaving Stormwind, docked there, crossing to Kalimdor.
 func TestTransportPathMatchesServer(t *testing.T) {
 	if _, err := os.Stat("../../data/dbc/TaxiPathNode.dbc"); err != nil {

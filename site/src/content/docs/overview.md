@@ -30,7 +30,7 @@ can see the other players and talk to them through game chat, whispers, groups a
 | `azbench` | Runs tasks. It manages game sessions, agents (Claude Code, Codex or opencode), a judge for each player, pausing and resuming, and reports. |
 | `azworld` | Answers queries about the world from the server's database and the game data. |
 | `azview` | The run viewer, live or afterwards. It shows the map, each player's route, chat, combat, the agents' calls and scores. |
-| AzerothCore | The game server. It is unmodified apart from configuration and an optional event recorder. |
+| AzerothCore | The game server. It is unmodified apart from configuration. |
 
 The client only uses what an unmodified server sends, so the SDK works with any AzerothCore server.
 

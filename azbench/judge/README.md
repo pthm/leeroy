@@ -53,7 +53,6 @@ n and read the value at timeout.
 | `--timeout 4h` | stop after this long (`s`, `m` or `h`); default 4h |
 | `--every 15s` | poll interval; default 15s |
 | `--samples <file>` | append each sample as a JSON line |
-| `--record <file>` | append each sample as an `{"ev":"score"}` event to a recorder log, for the replay and live viewers |
 | `--board <dir>` | write `<dir>/<Char>.json` with the latest result each poll (read by `standings`) |
 | `--events <file>` | the character's event stream (`azsdk -events`); its combat totals, and cooperation from every `game/<char>/events.jsonl` of the run beside it, go on the board |
 | `--role <DPS\|Tank\|Healer>` | added to the board |

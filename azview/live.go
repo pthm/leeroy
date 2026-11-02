@@ -1,9 +1,9 @@
 // azview live [log.jsonl ...] [--run <run or team dir>] [--port 8800] [--chars A,B] [--since 60m]
 //
-// The run viewer: reads recorder-format logs (default: the server's mod-recorder log; also azsdk -record files,
-// several at once) into a store, follows them as they grow, and serves the viewer at http://localhost:<port>/: the
+// The run viewer: reads game logs (azsdk -events files, several at once) into a store, follows them as they grow, and serves the viewer at http://localhost:<port>/: the
 // map as terrain tiles, the samples around a moment, new data as server-sent events, and the panels as HTML.
-// --run <dir> takes a bench run (or team) dir, running or finished: its record files plus each agent's transcript.
+// --run <dir> takes a bench run (or team) dir, running or finished: its game logs, the judge's samples and each
+// agent's transcript.
 package main
 
 import (

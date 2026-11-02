@@ -1,5 +1,5 @@
-// azview: the LEEROY viewer. It reads recorder logs (the server's mod-recorder log, azsdk -record files, a bench
-// run's records and transcripts) and shows a run, live or finished, on the map.
+// azview: the LEEROY viewer. It reads game logs (azsdk -events files, a bench run's game logs, judge samples and
+// transcripts) and shows a run, live or finished, on the map.
 //
 //	azview live [game log ...] [--run <dir>] [--port 8800] [--chars A,B] [--since 60m]   the viewer in the browser
 //	(every command: [--data <dir>], the extracted game data; default $LEEROY_DATA or the nearest data/)
