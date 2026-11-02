@@ -231,19 +231,38 @@ document.addEventListener('keydown', e => {
 adoptTitles(document);
 for (const svg of document.querySelectorAll<SVGSVGElement>('svg[data-series]')) crosshair(svg);
 
-// leaderboard filters ([data-filtered]: selects [data-filter=k] against body rows' data-k; "" is all)
-document.addEventListener('change', e => {
-  const sel = (e.target as Element).closest?.('select[data-filter]');
-  const box = sel?.closest<HTMLElement>('[data-filtered]');
+// leaderboard filters ([data-filtered]: chip groups [data-filter=k] against body rows' data-k; "" is all; Reset clears)
+document.addEventListener('click', e => {
+  const t = e.target as Element;
+  const chip = t.closest?.<HTMLButtonElement>('[data-filter] button[data-value]');
+  const reset = t.closest?.('[data-filter-reset]');
+  const box = (chip ?? reset)?.closest<HTMLElement>('[data-filtered]');
   if (!box) return;
-  const want = [...box.querySelectorAll<HTMLSelectElement>('select[data-filter]')].filter(s => s.value).map(s => [s.dataset.filter!, s.value]);
-  const rows = [...box.querySelectorAll<HTMLTableRowElement>('tbody tr')];
+  for (const g of box.querySelectorAll<HTMLElement>('[data-filter]'))
+    for (const b of g.querySelectorAll<HTMLButtonElement>('button[data-value]')) {
+      if (reset) b.setAttribute('aria-pressed', String(b.dataset.value === ''));
+      else if (g.contains(chip!)) b.setAttribute('aria-pressed', String(b === chip));
+    }
+  const want = [...box.querySelectorAll<HTMLElement>('[data-filter]')]
+    .map(g => [g.dataset.filter!, g.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')?.dataset.value ?? ''])
+    .filter(([, v]) => v);
+  const body = box.querySelector('tbody')!;
+  body.querySelector('tr[data-empty]')?.remove();
+  const rows = [...body.rows];
   let shown = 0;
   for (const tr of rows) {
-    const ok = want.every(([k, v]) => tr.dataset[k] === v);
-    tr.hidden = !ok;
-    if (ok) shown++;
+    tr.hidden = !want.every(([k, v]) => tr.dataset[k] === v);
+    if (!tr.hidden) shown++;
   }
-  const count = box.querySelector<HTMLElement>('[data-filter-count]');
-  if (count) count.textContent = want.length ? `${shown} of ${rows.length} entries` : '';
+  if (!shown) {
+    const tr = body.insertRow();
+    tr.dataset.empty = '';
+    const td = tr.insertCell();
+    td.colSpan = rows[0]?.cells.length ?? 1;
+    td.className = 'py-6 text-center text-faint';
+    td.textContent = 'No entries match these filters.';
+  }
+  const status = box.querySelector<HTMLElement>('[data-filter-status]')!;
+  status.hidden = !want.length;
+  box.querySelector('[data-filter-count]')!.textContent = `${shown} of ${rows.length} entries`;
 });

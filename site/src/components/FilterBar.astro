@@ -1,8 +1,8 @@
 ---
-// Filters for a leaderboard: lab, harness and reasoning effort, each All or one value, from the rows shown. Put it
-// and the table inside one [data-filtered] element, with data-lab, data-harness and data-effort on each body row;
-// scripts/interact.ts hides the rows that don't match.
-import { harnessName } from '../lib/results';
+// Filters for a leaderboard: lab, harness and reasoning effort, each a row of chips (All, or one value) built from the
+// rows shown; a group with only one value isn't shown. Put it and the table inside one [data-filtered] element, with
+// data-lab, data-harness and data-effort on each body row; scripts/interact.ts hides the rows that don't match.
+import { LABS, harnessName } from '../lib/results';
 
 interface Props {
   rows: { lab: string; runtime: string; effort?: string }[];
@@ -11,28 +11,38 @@ interface Props {
 const { rows } = Astro.props;
 const EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'default'];
 const distinct = (xs: string[]) => [...new Set(xs)];
-const filters = [
-  { key: 'lab', label: 'Lab', options: distinct(rows.map(r => r.lab)).sort().map(v => ({ v, label: v })) },
-  { key: 'harness', label: 'Harness', options: distinct(rows.map(r => r.runtime)).sort().map(v => ({ v, label: harnessName(v) })) },
+const groups = [
+  { key: 'lab', label: 'Lab', options: distinct(rows.map(r => r.lab)).sort().map(v => ({ v, label: v, dot: LABS[v] })) },
+  { key: 'harness', label: 'Harness', options: distinct(rows.map(r => r.runtime)).sort().map(v => ({ v, label: harnessName(v), dot: undefined })) },
   {
     key: 'effort',
-    label: 'Reasoning effort',
+    label: 'Effort',
     options: distinct(rows.map(r => r.effort || 'default'))
       .sort((a, b) => EFFORTS.indexOf(a) - EFFORTS.indexOf(b))
-      .map(v => ({ v, label: v === 'default' ? 'default (not set)' : v })),
+      .map(v => ({ v, label: v === 'default' ? 'not set' : v, dot: undefined })),
   },
-];
+].filter(g => g.options.length > 1);
+const chip = 'rounded-sm px-2.5 py-1 transition-colors text-muted hover:text-fg aria-pressed:bg-elevated aria-pressed:text-fg aria-pressed:shadow-[inset_0_0_0_1px_var(--color-outline)]';
 ---
 
-<div class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs">
-  {filters.map(f => (
-    <label class="flex items-center gap-2 text-faint">
-      {f.label}
-      <select data-filter={f.key} class="rounded border border-outline bg-raised px-2 py-1 text-fg hover:border-accent">
-        <option value="">All</option>
-        {f.options.map(o => <option value={o.v}>{o.label}</option>)}
-      </select>
-    </label>
-  ))}
-  <span class="text-faint" data-filter-count></span>
-</div>
+{groups.length > 0 && (
+  <div class="mb-3 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[11px]" role="toolbar" aria-label="Filter the leaderboard">
+    {groups.map(g => (
+      <div class="flex items-center gap-2" role="group" aria-label={g.label} data-filter={g.key}>
+        <span class="tracking-wider text-faint uppercase">{g.label}</span>
+        <div class="flex rounded border border-hairline bg-raised p-0.5">
+          <button type="button" class={chip} data-value="" aria-pressed="true">All</button>
+          {g.options.map(o => (
+            <button type="button" class={chip} data-value={o.v} aria-pressed="false">
+              {o.dot && <span style={`color:${o.dot}`} aria-hidden="true">● </span>}{o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    ))}
+    <span class="ml-auto flex items-center gap-3 text-faint" data-filter-status hidden>
+      <span data-filter-count></span>
+      <button type="button" class="text-accent hover:underline" data-filter-reset>Reset</button>
+    </span>
+  </div>
+)}
