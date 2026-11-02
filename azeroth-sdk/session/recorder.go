@@ -83,6 +83,40 @@ func (b *Bot) Record(ev string, body map[string]any) {
 	}
 }
 
+// GameLog is gameLog, for the API (its calls and script errors).
+func (b *Bot) GameLog(kind string, body any) { b.gameLog(kind, body) }
+
+// gameLog writes a record in the character's event stream file only (script.Bus.Write): the state samples, nearby
+// creatures and transports, group changes and API calls that azbench's game log keeps beside the events.
+func (b *Bot) gameLog(kind string, body any) {
+	if b.lua != nil && b.lua.Bus != nil {
+		b.lua.Bus.Write(kind, body)
+	}
+}
+
+// logTransports: every boat and zeppelin on the character's map (the server shows them all on arrival), where each is
+// now: [guid counter, entry, name, map, x, y, orientation].
+func (b *Bot) logTransports() {
+	b.scanTransports()
+	aboard, _ := b.world.Transport()
+	b.trs.mu.Lock()
+	var guids []uint64
+	for g := range b.trs.recs {
+		guids = append(guids, g)
+	}
+	b.trs.mu.Unlock()
+	var rows [][]any
+	now := time.Now()
+	for _, g := range guids {
+		if v, ok := b.transportView(g, now, aboard); ok {
+			rows = append(rows, []any{g & 0xFFFFFFFF, v.Entry, v.Name, v.Map, round1(float32(v.X)), round1(float32(v.Y)), v.O})
+		}
+	}
+	if len(rows) > 0 {
+		b.gameLog("transports", rows)
+	}
+}
+
 // unitRef identifies a unit like mod-recorder: players by guid counter + name, creatures by entry (+ level).
 func (b *Bot) unitRef(guid uint64) map[string]any {
 	if guid>>48 == 0 { // player
@@ -112,6 +146,7 @@ func (b *Bot) startRecording() {
 	}
 	w := b.world
 	b.Record("login", map[string]any{"race": b.GetRace(), "cls": b.GetClass(), "lvl": w.PlayerLevel()})
+	b.gameLog("login", map[string]any{"race": b.GetRace(), "cls": b.GetClass(), "lvl": w.PlayerLevel()})
 
 	var lastAttacker uint64
 	prevKill, prevDeath, prevLevel := w.OnKill, w.OnDeath, w.OnLevelUp
@@ -150,6 +185,7 @@ func (b *Bot) startRecording() {
 	record := func(g map[string]any) {
 		if !reflect.DeepEqual(g, lastGroup) {
 			lastGroup = g
+			b.gameLog("group", g)
 			b.Record("group", g)
 		}
 	}
@@ -305,9 +341,18 @@ func (b *Bot) startRecording() {
 					pos["pet"] = map[string]any{"e": u.Entry, "n": u.Name, "x": round1(u.PosX), "y": round1(u.PosY), "z": round1(u.PosZ),
 						"hp": u.Health, "hpmax": u.MaxHealth, "lvl": u.Level, "alive": b01(u.IsAlive)}
 				}
+				if tg := b.GetTargetGUID(); tg != 0 && b.IsAlive() {
+					pos["tgt"] = b.unitRef(tg)
+				}
+				b.gameLog("state", pos) // before Record, which adds its own keys to the map
 				b.Record("pos", pos)
 				if tick++; tick%2 == 0 {
-					b.Record("units", map[string]any{"m": m, "u": b.nearbyUnitRows()})
+					rows := b.nearbyUnitRows()
+					b.Record("units", map[string]any{"m": m, "u": rows})
+					b.gameLog("units", map[string]any{"m": m, "u": rows})
+				}
+				if tick%4 == 0 {
+					b.logTransports()
 				}
 			}
 		}

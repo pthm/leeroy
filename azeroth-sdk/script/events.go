@@ -17,8 +17,8 @@ import (
 
 // Event is one thing that happened. Data holds JSON-able values only.
 type Event struct {
-	Seq  uint64 `json:"seq"`
-	T    int64  `json:"t"` // unix ms
+	Seq  uint64 `json:"seq,omitempty"` // 0: a record (Bus.Write), not an event
+	T    int64  `json:"t"`             // unix ms
 	Type string `json:"type"`
 	Data any    `json:"data,omitempty"` // a types.* struct live; a map when read back from the file
 }
@@ -46,7 +46,7 @@ func NewBus(path string) *Bus {
 		sc.Buffer(make([]byte, 1<<20), 1<<24)
 		for sc.Scan() {
 			var e Event
-			if json.Unmarshal(sc.Bytes(), &e) == nil {
+			if json.Unmarshal(sc.Bytes(), &e) == nil && e.Seq > 0 { // seq 0: a record (Write), not an event
 				b.buf = append(b.buf, e)
 				if len(b.buf) > busKeep {
 					b.buf = b.buf[len(b.buf)-busKeep:]
@@ -89,6 +89,19 @@ func (b *Bus) Emit(typ string, data any) Event {
 		fn(e)
 	}
 	return e
+}
+
+// Write records something in the file only, not as an event: no sequence number, nobody woken, and not read back
+// into the stream on a restart (the character's state samples, its API calls: azbench's game log).
+func (b *Bus) Write(typ string, data any) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.file == nil {
+		return
+	}
+	if line, err := json.Marshal(Event{T: time.Now().UnixMilli(), Type: typ, Data: data}); err == nil {
+		b.file.Write(append(line, '\n'))
+	}
 }
 
 // Seq is the latest sequence number.
