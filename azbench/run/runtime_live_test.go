@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/pthm/leeroy/azbench/config"
-	"github.com/pthm/leeroy/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azsdk/types"
 )
 
 // Opt-in: uses installed runtimes and paid model access. Logs stay in the named

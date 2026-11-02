@@ -6,7 +6,7 @@ package world
 
 import (
 	"fmt"
-	"github.com/pthm/leeroy/azeroth-sdk/spelltext"
+	"github.com/pthm/leeroy/azsdk/spelltext"
 	"io"
 	"math"
 	"regexp"

@@ -227,7 +227,7 @@ The generated API reference remains the agent's source for every callable functi
 3. Runs Lua examples from the reference and skeleton against mocked session actions. Test entry versus GUID validation, unexpected option keys, cached and uncached lookups, and all success/partial/failure branches.
 4. Exercises the critical paths on the GM test session: a wrong-floor destination, failed vendor purchase after a sale, failed trainer spell after a learned spell, full bags, object use without quest progress, rest timeout, and a failed reclaim or spirit-healer action.
 
-Update `azeroth-sdk/docs/sdk.md` to introduce raw requests and waiting helper results together. Use distinct notation in the reference: `→ Request<T>`, `→ ActionResult<T>` for `await`, and `→ ActResult<T>` for `act`. Mark nullable queries with `?` only when `nil` has one precise meaning. Regenerate `azeroth-sdk/docs/api-reference.md` via `azbench apidoc`; do not edit the generated file by hand.
+Update `azsdk/docs/sdk.md` to introduce raw requests and waiting helper results together. Use distinct notation in the reference: `→ Request<T>`, `→ ActionResult<T>` for `await`, and `→ ActResult<T>` for `act`. Mark nullable queries with `?` only when `nil` has one precise meaning. Regenerate `azsdk/docs/api-reference.md` via `azbench apidoc`; do not edit the generated file by hand.
 
 ## Verification and rollout
 
@@ -265,7 +265,7 @@ Implementation started on 2026-10-30. The following is a historical change ledge
 
 Verification includes mocked Lua action sequences with real scheduler waits, recorder persistence across sessions, exactly-once request observation, episode boundaries, partial/torn artifacts, paused reports, saved usage after moving runtime homes, tool normalization for all three runtimes, transcript draining and moved/incomplete run directories. Race tests cover SDK diagnostic/request observers and the focused harness/tool paths. The API reference is regenerated from the GM session via `azbench apidoc`; the earlier GM smoke test also verifies an immediate spell refusal, a missing quest, and rejection of the old ambiguous NPC selector. This does not complete the live gameplay acceptance matrix.
 
-`go test ./... ./azeroth-sdk/...` passes after the diagnostics stack. Reports regenerated from temporary copies of `20261029-220217-models-frost` and `20261030-100559-hogger-trio` preserve all 13 per-agent score objects. The former reports completed, the latter paused; both correctly report structured diagnostics as unavailable. Original run artifacts were not modified.
+`go test ./... ./azsdk/...` passes after the diagnostics stack. Reports regenerated from temporary copies of `20261029-220217-models-frost` and `20261030-100559-hogger-trio` preserve all 13 per-agent score objects. The former reports completed, the latter paused; both correctly report structured diagnostics as unavailable. Original run artifacts were not modified.
 
 The lookup/contract stack also passes the full suite and focused race tests for lookups, signatures, observations, GUID round trips and report evidence. Live GM probes confirm valid item/quest lookups, explicit item absence, quest lookup timeout, achievement snapshots, and skill labels/base ranks. Reference generation checks the live registry. These probes do not complete gathering/crafting or the broader gameplay acceptance matrix.
 

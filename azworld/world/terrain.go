@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
+	"github.com/pthm/leeroy/azsdk/pathfinding"
 )
 
 // GridSize is the yards per map grid square (one .map file, one minimap tile).

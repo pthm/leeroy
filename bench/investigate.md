@@ -18,7 +18,7 @@ graveyard, this one, every time (Cosimo about 35 min, Evander about 25 min and a
 (The rule is now in death-and-travel.md; the island itself is still open.)
 
 - Seen: travel-models (20261101-145156), Cosimo (Opus) stuck on it for 20+ minutes.
-- Reproduce: `NAVMAP=530 go run ./azeroth-sdk/cmd/navprobe data -2434 4661 161 -1793 4932 -22` (ends 602 yd short).
+- Reproduce: `NAVMAP=530 go run ./azsdk/cmd/navprobe data -2434 4661 161 -1793 4932 -22` (ends 602 yd short).
 - Questions: how many graveyards (and other spots agents get put: quest teleports, summons) are on islands like
   this? Should routes plan survivable drops (fall height against health), as off-mesh links or a route option?
 

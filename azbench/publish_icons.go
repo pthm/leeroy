@@ -13,7 +13,7 @@ import (
 	"sync"
 
 	"github.com/pthm/leeroy/azbench/run"
-	"github.com/pthm/leeroy/azeroth-sdk/clientdata"
+	"github.com/pthm/leeroy/azsdk/clientdata"
 	"github.com/pthm/leeroy/azworld/world"
 )
 

@@ -23,7 +23,7 @@ import (
 	"github.com/pthm/leeroy/azbench/judge"
 	"github.com/pthm/leeroy/azbench/runfiles"
 	"github.com/pthm/leeroy/azbench/trajectory"
-	"github.com/pthm/leeroy/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azsdk/types"
 )
 
 // player is one agent and its character in a run: workspace, session (an azsdk daemon), judge and agent process.
@@ -75,17 +75,17 @@ func (p *player) account() string {
 // loads it by itself; CLAUDE.md imports it for Claude Code, so both start from the same text) and points to the rest.
 var workspaceFiles = map[string]string{
 	"AGENTS.md":           "bench/agent/AGENTS.md",
-	"game.md":             "azeroth-sdk/docs/game.md",
-	"sdk.md":              "azeroth-sdk/docs/sdk.md",
-	"moving.md":           "azeroth-sdk/docs/moving.md",
-	"fighting.md":         "azeroth-sdk/docs/fighting.md",
-	"npcs-and-items.md":   "azeroth-sdk/docs/npcs-and-items.md",
-	"death-and-travel.md": "azeroth-sdk/docs/death-and-travel.md",
-	"players.md":          "azeroth-sdk/docs/players.md",
-	"troubleshooting.md":  "azeroth-sdk/docs/troubleshooting.md",
-	"azworld.md":          "azeroth-sdk/docs/azworld.md",
-	"api-reference.md":    "azeroth-sdk/docs/api-reference.md",
-	"example.lua":         "azeroth-sdk/examples/lua/skeleton.lua",
+	"game.md":             "azsdk/docs/game.md",
+	"sdk.md":              "azsdk/docs/sdk.md",
+	"moving.md":           "azsdk/docs/moving.md",
+	"fighting.md":         "azsdk/docs/fighting.md",
+	"npcs-and-items.md":   "azsdk/docs/npcs-and-items.md",
+	"death-and-travel.md": "azsdk/docs/death-and-travel.md",
+	"players.md":          "azsdk/docs/players.md",
+	"troubleshooting.md":  "azsdk/docs/troubleshooting.md",
+	"azworld.md":          "azsdk/docs/azworld.md",
+	"api-reference.md":    "azsdk/docs/api-reference.md",
+	"example.lua":         "azsdk/examples/lua/skeleton.lua",
 }
 
 // workspace: refreshed each run: the docs, the example script, CLAUDE.md, and NOTES.md if it has none yet.
@@ -278,7 +278,7 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 		if a.Effort != "" {
 			args = append(args, "--effort", a.Effort)
 		}
-		args = append(args, "--add-dir", repo+"/azeroth-sdk", repo+"/server/azerothcore/src/server/game", repo+"/server/azerothcore/src/server/shared",
+		args = append(args, "--add-dir", repo+"/azsdk", repo+"/server/azerothcore/src/server/game", repo+"/server/azerothcore/src/server/shared",
 			"--allowedTools")
 		for _, c := range agentCommands {
 			args = append(args, "Bash("+c+":*)")
@@ -334,7 +334,7 @@ func opencodeConfig(repo, ws string) string {
 		bash[c], bash[c+" *"] = "allow", "allow"
 	}
 	ext := map[string]string{"*": "deny"}
-	for _, d := range []string{"azeroth-sdk", "server/azerothcore/src/server/game", "server/azerothcore/src/server/shared"} {
+	for _, d := range []string{"azsdk", "server/azerothcore/src/server/game", "server/azerothcore/src/server/shared"} {
 		ext[filepath.Join(repo, d)+"/**"] = "allow"
 	}
 	// edit rules match paths relative to the git root (the repo), not absolute ones

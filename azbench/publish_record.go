@@ -17,8 +17,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pthm/leeroy/azeroth-sdk/metrics"
-	"github.com/pthm/leeroy/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azsdk/metrics"
+	"github.com/pthm/leeroy/azsdk/types"
 	"github.com/pthm/leeroy/azworld/world"
 )
 

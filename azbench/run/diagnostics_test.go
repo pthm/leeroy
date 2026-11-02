@@ -13,7 +13,7 @@ import (
 	"github.com/pthm/leeroy/azbench/config"
 	"github.com/pthm/leeroy/azbench/diagnostics"
 	"github.com/pthm/leeroy/azbench/runfiles"
-	"github.com/pthm/leeroy/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azsdk/types"
 )
 
 func harnessEvents(t *testing.T, path string) []types.Diagnostic {

@@ -99,13 +99,13 @@ sandboxed: they can write only in their workspace, read the docs and source, and
 | [`server/`](server/README.md) | The AzerothCore server: upstream checkout (`azerothcore/`, gitignored), config overrides (`override.yml`) and account creation (`account/`) |
 | [`bench/`](bench/README.md) | The benchmark's configs and data: tasks and models (YAML), specs and places, what agents get (`agent/`: task docs and their tools), agent `workspaces/` and `runs/` |
 | [`azbench/`](azbench) | `azbench`: runs the benchmark from those configs (one supervisor per run: sessions, judges, agents; pause, resume, restart), the judge and report card, and the agents' `standings` |
-| [`azeroth-sdk/`](azeroth-sdk/README.md) | `azsdk`: the Go headless client and daemon the agents drive, plus the Lua API docs and example scripts. Only a game client: no database access |
+| [`azsdk/`](azsdk/README.md) | `azsdk`: the Go headless client and daemon the agents drive, plus the Lua API docs and example scripts. Only a game client: no database access |
 | [`azview/`](azview/README.md) | `azview`: the viewer (live or finished runs) and movement audit, from the recordings |
 | [`azworld/`](azworld/README.md) | `azworld`: world queries for agents, from the server's databases and the game data; `azworld setup` builds the `wowbench` schema they read |
 | [`site/`](site/README.md) | The website (Astro): results from `azbench publish`, write-ups and setup docs, deployed to GitHub Pages |
 | `data/` | Game data, shared by all of the above (gitignored): `maps/`, `vmaps/`, `dbc/` copied out of the server, the SDK's 50° navmesh `mmaps/`, and from a game install `client/` (minimap, terrain, models) and `roads/` |
 
-All Go code builds with `./build.sh` (binaries in `bin/`; `go.work` ties the root module to `azeroth-sdk`). All
+All Go code builds with `./build.sh` (binaries in `bin/`; `go.work` ties the root module to `azsdk`). All
 commands below run from the repo root.
 
 ## Setup (once)
@@ -136,8 +136,8 @@ rm -r data/mmaps && mv data/mmaps50 data/mmaps   # never under a running session
 # optional, from a 3.3.5a game install, into data/ (nothing reads the install afterwards): the game's minimap (viewer
 # and `azworld map`), its road textures (`azworld route`) and the terrain and model files the viewer's zoomed-in map
 # draws; ~5 GB for every continent, about 30 s (-maps 0 for Eastern Kingdoms only: ~1 GB)
-go run ./azeroth-sdk/cmd/clientdata -client <your 3.3.5a game dir> extract data
-go run ./azeroth-sdk/cmd/clientdata roads data   # the road layers again from data/client, after the road rules change (no install needed)
+go run ./azsdk/cmd/clientdata -client <your 3.3.5a game dir> extract data
+go run ./azsdk/cmd/clientdata roads data   # the road layers again from data/client, after the road rules change (no install needed)
 
 # every tool, into bin/ (azbench run does this too)
 ./build.sh
@@ -211,5 +211,5 @@ bin/azbench judge Agentone level:10 --timeout 4h                  # prints JSON 
 
 ## License
 
-MIT, see [LICENSE](LICENSE). `azeroth-sdk/` is derived from AzerothGhost, also MIT
-([`azeroth-sdk/LICENSE.AzerothGhost`](azeroth-sdk/LICENSE.AzerothGhost)).
+MIT, see [LICENSE](LICENSE). `azsdk/` is derived from AzerothGhost, also MIT
+([`azsdk/LICENSE.AzerothGhost`](azsdk/LICENSE.AzerothGhost)).

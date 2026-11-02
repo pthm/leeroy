@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pthm/leeroy/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azsdk/types"
 )
 
 type toolTestBuffer struct{ bytes.Buffer }

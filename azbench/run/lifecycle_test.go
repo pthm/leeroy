@@ -18,7 +18,7 @@ import (
 
 	"github.com/pthm/leeroy/azbench/config"
 	"github.com/pthm/leeroy/azbench/runfiles"
-	"github.com/pthm/leeroy/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azsdk/types"
 )
 
 // A session that exits by itself pauses the run; one the supervisor stopped (no longer p.session) doesn't.

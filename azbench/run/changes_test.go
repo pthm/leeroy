@@ -34,9 +34,9 @@ func TestWhatChanged(t *testing.T) {
 		return r
 	}
 	run("init", "-q")
-	commit("azeroth-sdk/a.go", "azsdk: first")
+	commit("azsdk/a.go", "azsdk: first")
 	first := rev()
-	commit("azeroth-sdk/a.go", "azsdk: spells.stop_casting")
+	commit("azsdk/a.go", "azsdk: spells.stop_casting")
 	commit("azbench/x.go", "azbench: unrelated")
 	commit("bench/agent/AGENTS.md", "agent: wow wait coalesces chat")
 	second := rev()
@@ -56,12 +56,12 @@ func TestWhatChanged(t *testing.T) {
 	}
 
 	// uncommitted changes: a new revision, and only the uncommitted line (no new commits)
-	os.WriteFile(filepath.Join(repo, "azeroth-sdk/new.go"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(repo, "azsdk/new.go"), []byte("x"), 0o644)
 	dirty := rev()
 	if !strings.HasPrefix(dirty, second+"+") {
 		t.Fatalf("dirty revision %q", dirty)
 	}
-	os.WriteFile(filepath.Join(repo, "azeroth-sdk/new.go"), []byte("y"), 0o644)
+	os.WriteFile(filepath.Join(repo, "azsdk/new.go"), []byte("y"), 0o644)
 	if again := rev(); again == dirty {
 		t.Fatal("an edit to an untracked file kept the revision")
 	}

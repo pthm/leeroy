@@ -1,6 +1,6 @@
 // Package gamelog reads a character's game log, game/<char>/events.jsonl: the events its agent saw (lines with seq:
-// the SDK's event types, azeroth-sdk/types/events.go) and the records its session kept beside them (no seq:
-// azeroth-sdk/types/gamelog.go). Nothing is renamed: an Ev is a line's data, its fields beside t (unix ms), type and
+// the SDK's event types, azsdk/types/events.go) and the records its session kept beside them (no seq:
+// azsdk/types/gamelog.go). Nothing is renamed: an Ev is a line's data, its fields beside t (unix ms), type and
 // char (the character), or under data when the data isn't an object (transports, a list).
 package gamelog
 

@@ -31,8 +31,8 @@ for a creature, `level`, `player`):
 
 - **Events** (with `seq`): what the agent saw, the same stream its `events` API reads: `damage`, `heal`, `kill`,
   `death`, `xp`, `level_up`, `item_received`, `money`, `quest_turned_in`, `achievement`, `cast_done`,
-  `area_changed`, `resurrected`, `chat`, `script_error`... (`azeroth-sdk/types/events.go`).
-- **Records** (no `seq`; the agent never sees them; `azeroth-sdk/types/gamelog.go`):
+  `area_changed`, `resurrected`, `chat`, `script_error`... (`azsdk/types/events.go`).
+- **Records** (no `seq`; the agent never sees them; `azsdk/types/gamelog.go`):
 
 | `type` | `data` | When |
 |---|---|---|
@@ -99,7 +99,7 @@ samples (`judge/<char>/samples.jsonl`), transcripts (`agents/<agent>/transcript.
 from its `run.json`.
 
 Map tiles (one per 533-yard grid square) are rendered on demand and kept in memory:
-- With client data extracted (`data/minimap`, from `go run ./azeroth-sdk/cmd/clientdata ... extract data`): the
+- With client data extracted (`data/minimap`, from `go run ./azsdk/cmd/clientdata ... extract data`): the
   game's own minimap image for the square; for an instance, its floor plan from the navmesh.
 - Otherwise: a shaded relief render of `data/maps` (heights, water, zone borders) with a fixed colour scale so tiles
   match.
@@ -115,7 +115,7 @@ one fades in as you zoom, over the coarser (by how far between them the zoom is)
 quarter second, and a sub-square whose tile hasn't come yet shows its part of a coarser one already here. Over that, the
 client's own models are drawn, textured, seen from above: every building, wall and bridge (WMO) and tree, fence, lamp
 and crate (M2) the ADTs place, and the doodads each building places (a city's trees and statues, an inn's lanterns),
-read from the extracted game files (`azeroth-sdk/clientdata`: `ParseADT`'s placements, `LoadWMO`, `LoadM2` over a `Dir`) and placed with the
+read from the extracted game files (`azsdk/clientdata`: `ParseADT`'s placements, `LoadWMO`, `LoadM2` over a `Dir`) and placed with the
 server's own transform (`pathfinding.PlacementWorld`; checked against the vmaps in `azworld/world/placement_test.go`).
 Each pixel is the highest surface's texture, lit by its face's slope from the north-west, outlined where it drops to
 a wall, casting a short shadow (the sun 45 degrees up, at most 10 yd). Foliage (alpha-tested textures) is a layer of

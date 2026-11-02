@@ -3,7 +3,7 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/pthm/leeroy/azeroth-sdk/jqjson"
+	"github.com/pthm/leeroy/azsdk/jqjson"
 	"math"
 	"os"
 	"path/filepath"

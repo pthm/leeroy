@@ -8,7 +8,7 @@ import (
 	"math"
 	"sync"
 
-	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
+	"github.com/pthm/leeroy/azsdk/pathfinding"
 )
 
 // Navmesh tiles: a continent's walkable surfaces (the server's navmesh: streets, floors, stairs, a building's storeys,

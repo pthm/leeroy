@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/pthm/leeroy/azeroth-sdk/metrics"
+	"github.com/pthm/leeroy/azsdk/metrics"
 )
 
 // streams tails every game/<char>/events.jsonl of a run, keeping the decoded events

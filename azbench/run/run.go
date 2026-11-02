@@ -22,7 +22,7 @@ import (
 	"github.com/pthm/leeroy/azbench/config"
 	"github.com/pthm/leeroy/azbench/judge"
 	"github.com/pthm/leeroy/azbench/runfiles"
-	"github.com/pthm/leeroy/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azsdk/types"
 )
 
 // Runner supervises one run.

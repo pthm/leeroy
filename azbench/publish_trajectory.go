@@ -51,7 +51,7 @@ func readTrajectory(adir string, info trajectory.Info) *atif.Trajectory {
 	return nil
 }
 
-// wowCommands: wow's subcommands (azeroth-sdk/cmd/wow); anything else is Lua to evaluate
+// wowCommands: wow's subcommands (azsdk/cmd/wow); anything else is Lua to evaluate
 var wowCommands = map[string]bool{"status": true, "look": true, "fights": true, "fight": true, "tasks": true, "answer": true,
 	"events": true, "wait": true, "subscribe": true, "help": true}
 

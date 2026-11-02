@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/pthm/leeroy/azbench/tools"
-	"github.com/pthm/leeroy/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azsdk/types"
 )
 
 var (

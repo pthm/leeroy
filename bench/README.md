@@ -115,7 +115,7 @@ Each character logs back in, its judge continues from its samples (same baseline
 count) and its agent's conversation is resumed (Claude `--resume <session id>`, Codex `exec resume <thread>`) with
 the message, where `$LEFT` is replaced with the minutes left. The workspaces' docs (`AGENTS.md`, the SDK docs and
 `example.lua`) are refreshed, so SDK and doc changes reach the agents. When the SDK revision (the last commit under
-`azeroth-sdk` or `bench/agent`, plus a hash of their uncommitted changes) differs from the one in `<agent>/meta.json` (`sdk_rev`),
+`azsdk` or `bench/agent`, plus a hash of their uncommitted changes) differs from the one in `<agent>/meta.json` (`sdk_rev`),
 the message ends with a generated `WHAT CHANGED` section: the subjects of the commits since, and a line when there
 are uncommitted SDK changes (in a jj checkout git's `HEAD` is `@-`, so the working copy's changes count as uncommitted).
 Commit subjects are what agents read there, so they state what changed, not advice.
@@ -243,10 +243,10 @@ The agent's context comes in layers, each its own file:
 |---|---|---|
 | task | `prompt.md` (`azbench/run/prompt.tmpl`) | who it plays, the goal, how it's scored, the run's length, the other players, the rules |
 | how it works | `AGENTS.md` (`agent/AGENTS.md`) | the workspace, the three tools, how scripts, events and subscriptions fit together; points to the rest |
-| the game | `game.md` (`../azeroth-sdk/docs/`) | the rules of the game, described, not coached |
-| reference | `sdk.md`, the topic files, `azworld.md`, `api-reference.md` (`../azeroth-sdk/docs/`) | the runtime and the Lua API; how it behaves, a file per topic; `azworld`; every function, type and event |
+| the game | `game.md` (`../azsdk/docs/`) | the rules of the game, described, not coached |
+| reference | `sdk.md`, the topic files, `azworld.md`, `api-reference.md` (`../azsdk/docs/`) | the runtime and the Lua API; how it behaves, a file per topic; `azworld`; every function, type and event |
 
-Each run refreshes those files in the workspace, copies `../azeroth-sdk/examples/lua/skeleton.lua` (the shape of a
+Each run refreshes those files in the workspace, copies `../azsdk/examples/lua/skeleton.lua` (the shape of a
 script, no play in it) to `example.lua`, writes `CLAUDE.md` as `@AGENTS.md` (Codex loads `AGENTS.md` by itself, so
 both runtimes start from the same text), and creates `NOTES.md` only if missing. `NOTES.md` is the agent's
 notebook: kept with the workspace, it's where it writes what it learned and what got in its way, for review. The
@@ -255,7 +255,7 @@ one per thing the agent deals with: the game, the world's data, and its score.
 
 | Tool | Is | |
 |---|---|---|
-| `wow` | the game (`azeroth-sdk/cmd/wow`) | the session on `$WOW_PORT`: `wow '<lua>'`, `wow < file`, `wow -f file.lua`, `wow status`, `wow tasks`, `wow events [--types a,b] [--last n] [--since seq] [--match s]`, `wow wait [--types ...] [--match s] [seconds]` (max 600), `wow subscribe [types]`, `wow answer <id> <choice>`, `wow -w <s> '<lua>'`. Subscribed chat, invites, trades and script questions also go to stderr. Everything in the game, including how the party spends its time (`group.report()`) |
+| `wow` | the game (`azsdk/cmd/wow`) | the session on `$WOW_PORT`: `wow '<lua>'`, `wow < file`, `wow -f file.lua`, `wow status`, `wow tasks`, `wow events [--types a,b] [--last n] [--since seq] [--match s]`, `wow wait [--types ...] [--match s] [seconds]` (max 600), `wow subscribe [types]`, `wow answer <id> <choice>`, `wow -w <s> '<lua>'`. Subscribed chat, invites, trades and script questions also go to stderr. Everything in the game, including how the party spends its time (`group.report()`) |
 | `azworld` | the world's data (`azworld/`) | structured lookups (`azworld help`) and raw read-only SQL (`azworld sql`, tab-separated, at most 300 rows) over the world database |
 | `standings` | the score (`azbench/tools`) | every player's rank, score, rates, level, role stats, cooperation, item level and money from `$WOWBENCH_BOARD`, plus a faction total and the minutes left in the run |
 
@@ -266,7 +266,7 @@ The agent's environment: `PATH` with `agent/bin/` first, `WOW_PORT`, `WOWBENCH_B
 
 Claude Code runs as `claude -p` in the workspace with:
 - `--setting-sources project --strict-mcp-config`: no user settings and no MCP servers;
-- `--add-dir` on `azeroth-sdk/client`, `session`, `script` and `server/azerothcore/src/server/game`, `shared`: the
+- `--add-dir` on `azsdk/client`, `session`, `script` and `server/azerothcore/src/server/game`, `shared`: the
   source it may read;
 - `--allowedTools`: `Bash` for `wow`, `azworld`, `standings`, `sleep`, `tail`, `cat`, `ls`, `grep`,
   `mkdir`, and `Edit(./**)` (the workspace); `--disallowedTools` `Read` and `Edit` on `~/.claude/**`;
@@ -286,7 +286,7 @@ Accounts are non-GM.
 `azbench gm [x y z [map]]` starts the GM test character Devgm (account `devgm`, GM level 3) on port 8112, with
 `.gm on` and `.cheat god on`, optionally teleported; its log is `/tmp/devgm.log`. Query it with
 `WOW_PORT=8112 bench/agent/bin/wow '...'`. Never use a GM account in a scored run. `azbench apidoc` rebuilds
-everything, restarts Devgm on the new build and regenerates `azeroth-sdk/docs/api-reference.md` from its function
+everything, restarts Devgm on the new build and regenerates `azsdk/docs/api-reference.md` from its function
 registry: run it after changing the Lua API or package types.
 
 `--class mage` (any class but warrior) starts a second GM character, Dev<class> (Devmage), on port 8113, for what a

@@ -12,8 +12,8 @@ import (
 	"runtime/debug"
 	"sync"
 
-	"github.com/pthm/leeroy/azeroth-sdk/clientdata"
-	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
+	"github.com/pthm/leeroy/azsdk/clientdata"
+	"github.com/pthm/leeroy/azsdk/pathfinding"
 )
 
 // Detail tiles: a continent's map finer than its minimap (256 px per 533-yard square, ~2 yd a pixel). The minimap has
@@ -285,7 +285,9 @@ func (p *paint) groundAt(x, y float64, mip int) (rgb [3]float64, ok bool) {
 
 // DetailTile is a 256x256 JPEG of sub-square (sx, sy) of grid square gx, gy of continent m, the square cut into
 // 2^level x 2^level (sx from x, north first; sy from y, west first), or nil (no client, not a continent, no minimap).
-func DetailTile(m uint32, gx, gy, level, sx, sy int) []byte { return DetailTileLeaves(m, gx, gy, level, sx, sy, true) }
+func DetailTile(m uint32, gx, gy, level, sx, sy int) []byte {
+	return DetailTileLeaves(m, gx, gy, level, sx, sy, true)
+}
 
 // DetailTileLeaves is DetailTile with or without its foliage (leaves, fences' and banners' see-through textures) and
 // the shadows it casts: the viewer mixes the two to make foliage as see-through as asked.

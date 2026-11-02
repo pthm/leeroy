@@ -1,7 +1,7 @@
 package diagnostics
 
 import (
-	"github.com/pthm/leeroy/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azsdk/types"
 	"testing"
 )
 

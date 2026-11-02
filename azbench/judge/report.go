@@ -14,7 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/pthm/leeroy/azbench/runfiles"
-	"github.com/pthm/leeroy/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azsdk/types"
 	"math"
 	"os"
 	"path/filepath"
@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/pthm/leeroy/azbench/diagnostics"
-	"github.com/pthm/leeroy/azeroth-sdk/metrics"
+	"github.com/pthm/leeroy/azsdk/metrics"
 )
 
 var (

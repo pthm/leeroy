@@ -5,8 +5,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pthm/leeroy/azeroth-sdk/clientdata"
-	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
+	"github.com/pthm/leeroy/azsdk/clientdata"
+	"github.com/pthm/leeroy/azsdk/pathfinding"
 )
 
 // The client's models as placed on the map, for drawing them textured on the detail tiles: every WMO (buildings,

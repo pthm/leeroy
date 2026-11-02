@@ -2,7 +2,7 @@
 
 You are testing a World of Warcraft automation SDK end to end. A GM test character, **Devmage** (a level-1 Human
 Mage on a GM account), is logged in on a local AzerothCore server, and you drive it with the `wow` command
-(`WOW_PORT` is already set). Read `sdk.md` and `api-reference.md` in `../../azeroth-sdk/docs/` if you need the API.
+(`WOW_PORT` is already set). Read `sdk.md` and `api-reference.md` in `../../azsdk/docs/` if you need the API.
 
 - `wow '<lua>'` evaluates Lua in the session and prints the result as JSON. Anything that waits (`act.*`, `await`,
   `wait`) has to run in a task: `wow 'task.spawn("t", function() R = act.go_to{x = 1, y = 2} end)'`, then read

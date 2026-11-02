@@ -3,7 +3,7 @@
 Scoring and reporting, in one place. The judge scores one character by polling the character database (the
 server's record, not the client's); `azbench report` writes the report card and `team.json` after a run. All three are
 `azbench` subcommands. Every measure they share (the score's rates, combat totals, cooperation, time use) is
-defined once, in [`azeroth-sdk/metrics`](../../azeroth-sdk/metrics), which the client's in-game progress events use
+defined once, in [`azsdk/metrics`](../../azsdk/metrics), which the client's in-game progress events use
 too. The server saves characters every 15 s (`server/override.yml`), and the judge polls every 15 s by default.
 
 | Command | |

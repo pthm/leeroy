@@ -8,7 +8,7 @@ import (
 	"sort"
 
 	"github.com/pthm/leeroy/azbench/diagnostics"
-	"github.com/pthm/leeroy/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azsdk/types"
 )
 
 // intervalPlayed excludes whole sample intervals crossing a pause/stop: attributing their progress to

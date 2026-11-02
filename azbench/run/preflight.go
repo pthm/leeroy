@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/pthm/leeroy/azbench/config"
-	"github.com/pthm/leeroy/azeroth-sdk/navigation"
+	"github.com/pthm/leeroy/azsdk/navigation"
 	"github.com/pthm/leeroy/azworld/world"
 )
 

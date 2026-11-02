@@ -17,7 +17,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
+	"github.com/pthm/leeroy/azsdk/pathfinding"
 	"github.com/pthm/leeroy/azworld/world"
 )
 

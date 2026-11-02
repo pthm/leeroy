@@ -39,7 +39,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/pthm/leeroy/azbench/tools"
-	"github.com/pthm/leeroy/azeroth-sdk/metrics"
+	"github.com/pthm/leeroy/azsdk/metrics"
 	"math"
 	"os"
 	"path/filepath"

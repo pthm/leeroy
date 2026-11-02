@@ -67,7 +67,7 @@ func GM(repo, class string, at []string) error {
 	return nil
 }
 
-// APIDoc regenerates the API reference (azeroth-sdk/docs/api-reference.md) from a live session's function
+// APIDoc regenerates the API reference (azsdk/docs/api-reference.md) from a live session's function
 // registry: it builds everything, restarts the GM character on the new build, and runs cmd/apigen against it.
 func APIDoc(repo string) error {
 	if err := Build(repo); err != nil {
@@ -77,7 +77,7 @@ func APIDoc(repo string) error {
 		return err
 	}
 	cmd := exec.Command("go", "run", "./cmd/apigen", "-rpc", "http://127.0.0.1:8112/rpc")
-	cmd.Dir = filepath.Join(repo, "azeroth-sdk")
+	cmd.Dir = filepath.Join(repo, "azsdk")
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	return cmd.Run()
 }

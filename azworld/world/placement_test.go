@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pthm/leeroy/azeroth-sdk/clientdata"
-	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
+	"github.com/pthm/leeroy/azsdk/clientdata"
+	"github.com/pthm/leeroy/azsdk/pathfinding"
 )
 
 // The client's models, placed by their ADT entries, land where the server's collision geometry for them is: the

@@ -6,7 +6,7 @@ Evidence collected on 2026-10-30. These are execution and contract checks, not a
 
 | Check | Result | Saved evidence |
 |---|---|---|
-| Complete Go suite | Pass: `go test ./... ./azeroth-sdk/...` | `/tmp/reliability-full-tests.log` |
+| Complete Go suite | Pass: `go test ./... ./azsdk/...` | `/tmp/reliability-full-tests.log` |
 | Race suite | Pass: script, session, pathfinding, diagnostics and run packages | `/tmp/reliability-race-tests.log` |
 | Real-map paths and concurrency | Pass: real terrain/collision agreement, multiple maps, floor reference and concurrent path/height access | `/tmp/reliability-realdata-tests.log` |
 | Combined GM suite | 25/25 pass: contracts, routes, errands, full bags, crafting, gathering, death and recovery | `bench/runs/20261030-reliability-gm-complete/summary.json` |
@@ -43,7 +43,7 @@ Artifact directories must be new. Run these sequentially because they share the 
 ```sh
 WOWBENCH_LIVE_HARNESS=/absolute/fresh/directory go test ./azbench/run -run TestLifecycleAndSkillGoalLive -count=1 -timeout=8m -v
 WOWBENCH_LIVE_RUNTIMES=claude,codex,opencode WOWBENCH_SMOKE_MODEL_OPENCODE=openai/gpt-6.1-sol WOWBENCH_LIVE_ARTIFACTS=/absolute/fresh/directory go test ./azbench/run -run TestRuntimePermissionsLive -count=1 -timeout=15m -v
-AC_DATA_DIR=/Users/pthm/wowbench/data go test ./azeroth-sdk/pathfinding -run 'TestTerrainContextSampleMatchesRealData|TestFindPath_(Map|ZMatches|SharedService)|TestPathFindingService_Concurrent' -count=1 -timeout=90s
+AC_DATA_DIR=/Users/pthm/wowbench/data go test ./azsdk/pathfinding -run 'TestTerrainContextSampleMatchesRealData|TestFindPath_(Map|ZMatches|SharedService)|TestPathFindingService_Concurrent' -count=1 -timeout=90s
 ```
 
 The runtime smoke uses configured paid model access; normal unit tests skip both opt-in live Go tests. The live skill fixture requires the local server and database. The real-map test requires extracted game data. These dependencies are distinct from unit-test failures.
@@ -99,7 +99,7 @@ Validated in the main workspace on 2026-10-30, after the reliability baseline ab
 Detour remains the planner. The new stack retains polygon surfaces and partial flags,
 prepares floor support and indexed WMO/M2 body clearance outside movement locks,
 tries bounded alternatives, and propagates explicit blocked/unknown evidence.
-The API contract and limits are documented in `azeroth-sdk/docs/moving.md`.
+The API contract and limits are documented in `azsdk/docs/moving.md`.
 
 | Check | Result | Evidence |
 |---|---|---|
@@ -142,9 +142,9 @@ Reproduce the focused acceptance after rebuilding the binaries:
 ```sh
 go run ./azbench apidoc
 go run ./azbench gm && python3 bench/acceptance/reliability.py --suite clearance --artifacts bench/runs/NEW-CLEARANCE-DIRECTORY
-AC_DATA_DIR=/Users/pthm/wowbench/data go test ./azeroth-sdk/pathfinding ./azeroth-sdk/navigation ./azeroth-sdk/movement ./azeroth-sdk/session -count=1 -timeout=120s
-go test -race ./azeroth-sdk/pathfinding ./azeroth-sdk/navigation ./azeroth-sdk/movement ./azeroth-sdk/session -count=1 -timeout=120s
-AC_DATA_DIR=/Users/pthm/wowbench/data go test -race ./azeroth-sdk/pathfinding -run 'TestPreparedReal|TestInteriorReal' -count=1 -v -timeout=120s
+AC_DATA_DIR=/Users/pthm/wowbench/data go test ./azsdk/pathfinding ./azsdk/navigation ./azsdk/movement ./azsdk/session -count=1 -timeout=120s
+go test -race ./azsdk/pathfinding ./azsdk/navigation ./azsdk/movement ./azsdk/session -count=1 -timeout=120s
+AC_DATA_DIR=/Users/pthm/wowbench/data go test -race ./azsdk/pathfinding -run 'TestPreparedReal|TestInteriorReal' -count=1 -v -timeout=120s
 ```
 
 Collision fixture SHA-256 values for this extracted dataset:

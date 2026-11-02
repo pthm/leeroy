@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pthm/leeroy/azeroth-sdk/navigation"
+	"github.com/pthm/leeroy/azsdk/navigation"
 )
 
 const routeTimeout = 15 * time.Second

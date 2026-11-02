@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
+	"github.com/pthm/leeroy/azsdk/pathfinding"
 )
 
 // Instances have no terrain or grid minimap to draw (their maps are buildings), so the viewer draws their navmesh:

@@ -1,5 +1,5 @@
 // azbench: the LEEROY benchmark. One binary for running the benchmark's tasks (bench/tasks), judging and reporting them, and the agents' standings (bench/agent/bin/standings is a link to
-// it: it acts as the one it's called by). The agents' other tools are the game's (wow, in azeroth-sdk) and the
+// it: it acts as the one it's called by). The agents' other tools are the game's (wow, in azsdk) and the
 // world's (azworld).
 //
 //	azbench run <task.yaml> [--model m,...] [--minutes n] [--dry-run] [--reset]  a task, on each of its models (or those

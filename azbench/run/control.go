@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/pthm/leeroy/azbench/diagnostics"
 	"github.com/pthm/leeroy/azbench/runfiles"
-	"github.com/pthm/leeroy/azeroth-sdk/types"
+	"github.com/pthm/leeroy/azsdk/types"
 	"net"
 	"net/http"
 	"os"
