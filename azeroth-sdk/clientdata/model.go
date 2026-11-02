@@ -211,7 +211,7 @@ func parseMLIQ(b []byte) (Liquid, bool) {
 }
 
 // LoadM2 reads an M2 doodad and its first skin (the full-detail triangles). Batches with a texture the game fills in
-// (a creature's skin) or drawn additively (glows) are left out.
+// (a creature's skin), drawn additively (glows) or hidden at rest (an effect's box: smoke, lightning) are left out.
 func LoadM2(c Source, name string) (*Model, error) {
 	name = strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(name, ".mdx"), ".MDX"), ".mdl")
 	if ext := strings.ToLower(path.Ext(name)); ext != ".m2" {
@@ -249,6 +249,25 @@ func LoadM2(c Source, name string) (*Model, error) {
 	}
 	nm, om := arr(0x70)
 	nl, ol := arr(0x80)
+	// opacity at rest: a fixed16 track's first value in its first animation (1 with no keys), for the colours' alpha
+	// (0x48, 40 bytes each: a colour track, then the alpha's) and the texture weights (0x58, through the lookup at 0x90)
+	rest := func(track int) float64 {
+		if !in(track, 1, 20) {
+			return 1
+		}
+		ns, os := arr(track + 12)
+		if ns == 0 || !in(os, 1, 8) {
+			return 1
+		}
+		n, o := arr(os)
+		if n == 0 || !in(o, 1, 2) {
+			return 1
+		}
+		return float64(int16(le.Uint16(b[o:]))) / 32767
+	}
+	nc, oc := arr(0x48)
+	nw, ow := arr(0x58)
+	ntl, otl := arr(0x90)
 	skin, err := c.Read(strings.TrimSuffix(name, path.Ext(name)) + "00.skin")
 	if err != nil || len(skin) < 48 || string(skin[:4]) != "SKIN" {
 		return nil, fmt.Errorf("%s: no skin", name)
@@ -279,6 +298,18 @@ func LoadM2(c Source, name string) (*Model, error) {
 			blend = int(le.Uint16(b[om+4*matIdx+2:]))
 		}
 		if blend >= 3 { // additive and modulated: glows, light shafts
+			continue
+		}
+		alpha := 1.0 // hidden at rest: a colour or texture weight at 0 (a smoke emitter's box, Netherstorm's cracks)
+		if ci := int(int16(le.Uint16(skin[o+8:]))); ci >= 0 && ci < nc && in(oc, nc, 40) {
+			alpha *= rest(oc + ci*40 + 20)
+		}
+		if wi := int(le.Uint16(skin[o+20:])); wi < ntl && in(otl, ntl, 2) {
+			if ti := int(le.Uint16(b[otl+2*wi:])); ti < nw && in(ow, nw, 20) {
+				alpha *= rest(ow + ti*20)
+			}
+		}
+		if alpha < 0.05 {
 			continue
 		}
 		key := [2]int{tex, min(blend, 1)}
