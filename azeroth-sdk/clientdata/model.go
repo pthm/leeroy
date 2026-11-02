@@ -80,8 +80,12 @@ func cstrings(b []byte, off uint32) string {
 	return string(s)
 }
 
+// placeholder: an artist's stand-in texture (DUNGEONS\TEXTURES\TEMP\64.BLP, a grey "64"), on geometry the game never
+// shows: a particle emitter's box (Orgrimmar's smoke and embers, a hundred yards across)
+func placeholder(tex string) bool { return strings.Contains(strings.ToUpper(tex), `\TEXTURES\TEMP\`) }
+
 // LoadWMO reads a WMO: its root (materials, doodads) and every group file (geometry). Triangles drawn by no material
-// (collision only) are left out.
+// (collision only) or a placeholder texture are left out.
 func LoadWMO(c Source, name string) (*Model, error) {
 	root, err := c.Read(name)
 	if err != nil {
@@ -169,7 +173,7 @@ func (m *Model) addGroup(b []byte) {
 	for t := 0; t*3+2 < len(idx) && t*2+1 < len(mopy); t++ {
 		mat := mopy[t*2+1]
 		a, b, c := uint32(idx[t*3]), uint32(idx[t*3+1]), uint32(idx[t*3+2])
-		if mat == 0xFF || int(mat) >= len(m.Materials) || int(max(a, b, c)) >= len(verts) {
+		if mat == 0xFF || int(mat) >= len(m.Materials) || placeholder(m.Materials[mat].Texture) || int(max(a, b, c)) >= len(verts) {
 			continue
 		}
 		m.Tris = append(m.Tris, [3]uint32{base + a, base + b, base + c})
@@ -267,7 +271,7 @@ func LoadM2(c Source, name string) (*Model, error) {
 			continue
 		}
 		tex := int(le.Uint16(b[ol+2*combo:]))
-		if tex >= len(texNames) || texNames[tex] == "" {
+		if tex >= len(texNames) || texNames[tex] == "" || placeholder(texNames[tex]) {
 			continue
 		}
 		blend := 0
