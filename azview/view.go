@@ -229,11 +229,19 @@ func RunSources(dir string) (records []string, transcripts []Transcript) {
 //   - player chat, one event per message, n = sender, to = channel/party/whisper target (every agent's client log has
 //     its own copy of each message it received, with no sender name)
 //   - damage and heals, every one involving a player (client logs have only melee and spell damage, no heals)
+//   - transports: every boat and zeppelin, a sample a second
 //   - targets: a "tgt" event each time a character's target (the pos samples' tgt) changes, tgt absent for none.
 //     lastTgt holds each character's current target across calls, for a log read in pieces.
 func ServerEvents(text string, chars map[string]bool, lastTgt map[string]string) []Ev {
 	var out []Ev
 	for _, l := range lines(text) {
+		if strings.Contains(l, `"ev":"transport"`) { // boats and zeppelins: everyone's
+			var e Ev
+			if json.Unmarshal([]byte(l), &e) == nil && e != nil {
+				out = append(out, e)
+			}
+			continue
+		}
 		pos := strings.Contains(l, `"ev":"pos"`)
 		if !pos && !strings.Contains(l, `"ev":"chat"`) && !strings.Contains(l, `"ev":"dmg"`) && !strings.Contains(l, `"ev":"heal"`) {
 			continue

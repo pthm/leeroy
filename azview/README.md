@@ -210,7 +210,8 @@ everywhere: the map follows it, the feed and the stats narrow to it.
   down to 50 yd, so a mine's levels tell apart; floors with another storey over
   them opaque, so a building's rooms show; walls and drops darkened on their upper side (so a narrow tunnel keeps its colour); the storeys raised over the
   terrain outlined). On the map, each
-  toggleable: trails, group lines, target lines, event markers, creatures (named by choice: the players' targets, the
+  toggleable: trails, **transports** (every boat and zeppelin where the server has it: the server log's transport
+  samples, one kept every 4 s, drawn as the outline of its collision model, rotated to its heading), group lines, target lines, event markers, creatures (named by choice: the players' targets, the
   default; hostile ones; everyone; or none; names skipped where they'd overlap one drawn, players' first; hover a
   creature for its name, level and health), **aggro radii** (off by default: around
   each hostile creature, how close a player can come before it attacks, as the server works it out in

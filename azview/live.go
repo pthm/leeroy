@@ -115,6 +115,7 @@ func newServer(s *Store, title string) *server {
 	v.HandleFunc("GET /tile/{m}/{gx}/{gy}", v.tile)
 	v.HandleFunc("GET /detail/{m}/{level}/{gx}/{gy}/{sx}/{sy}", v.detail)
 	v.HandleFunc("GET /samples", v.samples)
+	v.HandleFunc("GET /transport-shapes", v.transports)
 	v.HandleFunc("GET /heat", v.heat)
 	v.HandleFunc("GET /roads/{m}/{gx}/{gy}", v.roadTile)
 	v.HandleFunc("GET /patrols", v.patrols)
@@ -281,7 +282,14 @@ func (v *server) samples(w http.ResponseWriter, r *http.Request) {
 			hits = append(hits, h)
 		}
 	}
-	writeJSON(w, map[string]any{"s": out, "u": units, "cls": cls, "hits": hits})
+	trs := map[string]any{} // id -> {n, s: [[t, map, x, y, o]...]}, from the sample before the window
+	tat := func(x TrSample) float64 { return x[0] }
+	for id, tr := range s.trs {
+		if a := tr.Track[max(0, upto(tr.Track, from-1, tat)-1):upto(tr.Track, to, tat)]; len(a) > 0 {
+			trs[fmt.Sprint(id)] = map[string]any{"n": tr.Name, "e": tr.Entry, "s": a}
+		}
+	}
+	writeJSON(w, map[string]any{"s": out, "u": units, "cls": cls, "hits": hits, "tr": trs})
 }
 
 // route is a player's whole route: [t, x, y, map] per sample.

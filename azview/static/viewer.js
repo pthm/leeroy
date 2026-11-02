@@ -19,11 +19,11 @@ const V = {
   t: 0, sel: null, grp: null, tab: "feed", sort: "score", bygroup: true,
   cats: Object.fromEntries(B.cats.map((c) => [c.key, c.on])),
   metric: "dmg", range: "all", chart: "total", per: "0", heat: false, heatKind: "time", roads: false, nav: false,
-  trails: true, groups: true, targets: true, marks: true, units: true, unitNames: "targets", aggro: false, combat: true,
+  trails: true, transports: true, groups: true, targets: true, marks: true, units: true, unitNames: "targets", aggro: false, combat: true,
   ...saved,
 };
 V.sel = V.grp = null; V.t = 0;
-const PERSIST = ["tab", "sort", "bygroup", "cats", "metric", "range", "chart", "per", "heat", "heatKind", "roads", "nav", "trails", "groups", "targets", "marks", "units", "unitNames", "aggro", "combat"];
+const PERSIST = ["tab", "sort", "bygroup", "cats", "metric", "range", "chart", "per", "heat", "heatKind", "roads", "nav", "trails", "transports", "groups", "targets", "marks", "units", "unitNames", "aggro", "combat"];
 document.addEventListener("alpine:init", () => {
   Alpine.store("v", V);
   Alpine.effect(() => { // any change to what the panels show: save it and refresh them
@@ -59,7 +59,9 @@ document.addEventListener("htmx:afterSwap", (e) => { const p = e.detail.target; 
 // ---------- players and their samples ----------
 // P: name -> {name, cls, color, nth, dash}. S: name -> samples in time order [{t, x, y, m, a, g, c, grp, ld, tg}],
 // times relative to B.start; U: name -> units samples; R: name -> a selected player's whole route [[t, x, y, m]].
-const P = new Map(), S = {}, U = {}, R = {};
+// TR: transport id -> {n, s: [{t, m, x, y, o}]}, boats and zeppelins.
+const P = new Map(), S = {}, U = {}, R = {}, TR = {};
+const trSample = ([tt, m, x, y, o]) => ({ t: tt - B.start, m, x, y, o });
 function player(name, cls) {
   let p = P.get(name);
   if (!p) { p = { name, cls: "" }; P.set(name, p); }
@@ -104,6 +106,7 @@ async function need(t) {
     for (const [n, a] of Object.entries(d.u)) { const got = a.map(rel); U[n] = overlap ? merge(U[n] ?? [], got) : got; }
     if (!overlap) HITS.length = 0;
     for (const h of d.hits ?? []) addHit(rel(h));
+    for (const [id, v] of Object.entries(d.tr ?? {})) { const got = v.s.map(trSample); TR[id] = { n: v.n, e: v.e, s: overlap ? merge(TR[id]?.s ?? [], got) : got }; }
     if (!overlap) for (const n of Object.keys(S)) if (!(n in d.s)) S[n] = [];
     have = overlap ? { from: Math.min(from, have.from), to: Math.max(to, have.to) } : { from, to };
     trim(); dirty = true; updateMaps();
@@ -112,7 +115,7 @@ async function need(t) {
 const merge = (a, b) => { const m = new Map(a.map((s) => [s.t, s])); for (const s of b) m.set(s.t, s); return [...m.values()].sort((x, y) => x.t - y.t); };
 function trim() { // keep memory bounded: samples more than 15 minutes from the playhead go
   const lo = t - 900000, hi = t + Math.max(900000, speed * 60000);
-  for (const a of [...Object.values(S), ...Object.values(U)]) { const i = upto(a, lo); if (i > 0) a.splice(0, i); const j = upto(a, hi); if (j < a.length) a.splice(j); }
+  for (const a of [...Object.values(S), ...Object.values(U), ...Object.values(TR).map((v) => v.s)]) { const i = upto(a, lo); if (i > 0) a.splice(0, i); const j = upto(a, hi); if (j < a.length) a.splice(j); }
   have.from = Math.max(have.from, lo); have.to = Math.min(have.to, hi);
 }
 async function loadRoute(n) {
@@ -133,6 +136,8 @@ es.addEventListener("s", (m) => { const d = JSON.parse(m.data), s = rel(d.s); pl
   if (have.to >= s.t - 10000) { ins(S[d.n] ??= [], s); have.to = Math.max(have.to, s.t); }
   if (R[d.n]?.length) R[d.n].push([s.t, s.x, s.y, s.m]); });
 es.addEventListener("u", (m) => { const d = JSON.parse(m.data), u = rel(d.u); live(u.t, false); if (have.to >= u.t - 10000) ins(U[d.n] ??= [], u); });
+es.addEventListener("tr", (m) => { const d = JSON.parse(m.data), s = trSample(d.s), v = (TR[d.id] ??= { n: d.n, e: d.e, s: [] });
+  if (have.to >= s.t - 10000) { ins(v.s, s); dirty = true; } }); // not live(): the server's, not the run's
 es.addEventListener("hit", (m) => { addHit(rel(JSON.parse(m.data))); dirty = true; });
 es.addEventListener("mark", (m) => { const e = rel(JSON.parse(m.data)); ins(MARKS, e); live(e.t); });
 es.addEventListener("tick", (m) => { const [tt, k] = JSON.parse(m.data); ins(TICKS, { t: tt - B.start, ev: k }); });
@@ -508,6 +513,7 @@ function drawMap() {
     cx.lineWidth = 3; cx.strokeStyle = "#000a"; cx.fillStyle = l.zone ? "#fff" : "#fffd";
     cx.strokeText(l.name, sx, sy); cx.fillText(l.name, sx, sy);
   }
+  if (s.transports) drawTransports(t);
   // creatures around the players: hostile red, neutral yellow, friendly green, dead grey; named when zoomed in
   const UNIT_COLOR = ["#e04040", "#e8c040", "#40c050"], drawn = new Set();
   if (s.aggro) drawAggro();
@@ -653,6 +659,39 @@ function drawMap() {
 // male's), with a floor so they stay visible further out
 const yd = () => view.s / RES; // screen pixels per yard
 const playerR = () => Math.max(5, PLAYER_RADIUS * yd());
+// Boats and zeppelins on this map at t, their real outlines (transport-shapes: the collision model's, in its own axes,
+// rotated by its orientation), labelled when big enough.
+let SHAPES = {};
+fetch("transport-shapes").then((r) => r.json()).then((d) => { SHAPES = d; dirty = true; }).catch(() => {});
+function drawTransports(t) {
+  for (const v of Object.values(TR)) {
+    const a = v.s, i = upto(a, t) - 1;
+    if (i < 0) continue;
+    const p = a[i], n = a[i + 1];
+    if (p.m !== M.id || (!n && t - p.t > 10000)) continue; // another map, or its samples stopped
+    let x = p.x, y = p.y, o = p.o;
+    if (n && n.m === p.m && n.t - p.t <= 10000) {
+      const f = (t - p.t) / (n.t - p.t);
+      x += (n.x - p.x) * f; y += (n.y - p.y) * f;
+      o += Math.atan2(Math.sin(n.o - p.o), Math.cos(n.o - p.o)) * f;
+    }
+    const zep = /zeppelin/i.test(v.n), c = Math.cos(o), sn = Math.sin(o);
+    const outline = SHAPES[v.e] ?? [[-25, -7], [25, -7], [25, 7], [-25, 7]];
+    cx.beginPath();
+    outline.forEach(([u, w], k) => { const [sx, sy] = scr(x + u * c - w * sn, y + u * sn + w * c); k ? cx.lineTo(sx, sy) : cx.moveTo(sx, sy); });
+    cx.closePath();
+    cx.fillStyle = zep ? "#9aa0b4cc" : "#b88a4ecc"; cx.fill();
+    cx.lineWidth = 1.5; cx.strokeStyle = "#1a1208"; cx.stroke();
+    const [sx, sy] = scr(x, y), size = 80 * view.s;
+    if (size < 8) { cx.beginPath(); cx.arc(sx, sy, 4, 0, 2 * Math.PI); cx.fillStyle = zep ? "#9aa0b4" : "#b88a4e"; cx.fill(); cx.stroke(); }
+    if (size > 30 || store().unitNames === "all") {
+      const name = v.n.replace(/^[^(]*\((.*)\)$/, "$1");
+      cx.font = "600 11px system-ui"; cx.textAlign = "center"; cx.lineWidth = 3; cx.strokeStyle = "#000a"; cx.fillStyle = "#f2dcb0";
+      cx.strokeText(name, sx, sy); cx.fillText(name, sx, sy);
+    }
+  }
+}
+
 const PLAYER_RADIUS = 0.306; // ponytail: every race and gender alike; the models' radii are 0.2 to 0.5 yd
 const GLYPH = { death: ["✕", "--death"], achievement: ["★", "--ach"], level: ["▲", "--level"], quest: ["!", "--quest"] };
 

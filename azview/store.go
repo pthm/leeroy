@@ -72,6 +72,20 @@ type Player struct {
 	scores    []Ev // judge samples
 }
 
+// Transport is a boat or zeppelin (the server log's transport events): where it was, a sample every trEvery.
+type Transport struct {
+	Name  string
+	Entry float64
+	Track []TrSample
+}
+
+// TrSample: [t, map, x, y, orientation]
+type TrSample [5]float64
+
+// trEvery: a transport's samples kept, ms apart (the server logs one a second; at most 30 yd/s, a straight line
+// between samples 4 s apart is close, and a week's run keeps a few million, not tens)
+const trEvery = 4000
+
 // Store holds a run. Everything is kept in time order; events arriving late (a file read after another) are inserted.
 type Store struct {
 	mu      sync.RWMutex
@@ -96,6 +110,7 @@ type Store struct {
 	agents  map[string]any  // name -> meta.json
 	subs    map[chan liveMsg]bool
 	last    float64 // the newest event
+	trs     map[float64]*Transport // by guid counter
 }
 
 // liveMsg is one server-sent event: its type and JSON.
@@ -106,7 +121,7 @@ type liveMsg struct {
 
 func NewStore() *Store {
 	return &Store{byName: map[string]*Player{}, byEv: map[string][]Ev{}, rows: map[string][]statRow{}, lastGrp: map[string]string{}, npcSaid: map[string]Ev{},
-		items: map[int]world.ItemName{}, names: map[int]string{}, radii: map[int]float64{}, detect: map[int]float64{}, zones: map[int]string{}, agents: map[string]any{}, subs: map[chan liveMsg]bool{}}
+		items: map[int]world.ItemName{}, names: map[int]string{}, radii: map[int]float64{}, detect: map[int]float64{}, zones: map[int]string{}, agents: map[string]any{}, subs: map[chan liveMsg]bool{}, trs: map[float64]*Transport{}}
 }
 
 // insert puts v into s, sorted by t; appending is the usual case.
@@ -152,6 +167,9 @@ var (
 // listener's copy of NPC speech).
 func (s *Store) add(e Ev) bool {
 	t, n, kind := N(e, "t"), S(e, "n"), S(e, "ev")
+	if kind == "transport" { // not the run's: they don't move its end
+		return s.addTransport(e)
+	}
 	s.last = math.Max(s.last, t)
 	switch kind {
 	case "pos":
@@ -576,6 +594,22 @@ func (s *Store) Subscribe() (chan liveMsg, func()) {
 	}
 }
 
+// addTransport files a transport sample, if it's trEvery after the last one kept or on another map.
+func (s *Store) addTransport(e Ev) bool {
+	id := N(e, "id")
+	tr := s.trs[id]
+	if tr == nil {
+		tr = &Transport{Name: S(e, "n"), Entry: N(e, "e")}
+		s.trs[id] = tr
+	}
+	x := TrSample{N(e, "t"), N(e, "m"), N(e, "x"), N(e, "y"), N(e, "o")}
+	if k := len(tr.Track); k > 0 && x[0]-tr.Track[k-1][0] < trEvery && x[1] == tr.Track[k-1][1] {
+		return false
+	}
+	tr.Track = insert(tr.Track, x, func(v TrSample) float64 { return v[0] })
+	return true
+}
+
 // broadcast sends new events to subscribers (the caller holds the lock): samples for the map, marks and ticks for the
 // seek bar, and "data" with the newest time when anything else arrived (the panels refresh when the playhead gets there).
 func (s *Store) broadcast(evs []Ev) {
@@ -590,6 +624,9 @@ func (s *Store) broadcast(evs []Ev) {
 		switch kind := S(e, "ev"); {
 		case kind == "pos" && p != nil:
 			msgs = append(msgs, s.liveJSON("s", map[string]any{"n": p.Name, "cls": p.Cls, "s": s.mapSample(p, sampleOf(e))}))
+		case kind == "transport":
+			msgs = append(msgs, s.liveJSON("tr", map[string]any{"id": N(e, "id"), "n": S(e, "n"), "e": N(e, "e"),
+				"s": TrSample{N(e, "t"), N(e, "m"), N(e, "x"), N(e, "y"), N(e, "o")}}))
 		case kind == "units" && p != nil:
 			msgs = append(msgs, s.liveJSON("u", map[string]any{"n": p.Name, "u": s.mapUnits(unitsOf(e))}))
 		default:

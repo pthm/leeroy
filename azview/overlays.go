@@ -12,10 +12,12 @@ import (
 	"image/png"
 	"math"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/pthm/leeroy/azeroth-sdk/pathfinding"
 	"github.com/pthm/leeroy/azworld/world"
 )
 
@@ -254,6 +256,35 @@ func (v *server) patrols(w http.ResponseWriter, r *http.Request) {
 		patrolMu.Unlock()
 	}
 	writeJSON(w, p)
+}
+
+// transportShapes: each transport's outline from above, by entry, in its own axes (rotate by its orientation): the
+// convex hull of its collision model (the server's vmaps), from its display.
+var transportShapes = sync.OnceValue(func() map[string][][2]float32 {
+	out := map[string][][2]float32{}
+	vmaps := filepath.Join(world.DataDir(), "vmaps")
+	models, err := pathfinding.GameObjectModels(vmaps)
+	if err != nil {
+		return out
+	}
+	rows, err := world.Rows(world.World(), "SELECT t.entry, g.displayId FROM transports t JOIN gameobject_template g ON g.entry = t.entry")
+	if err != nil {
+		return out
+	}
+	for _, r := range rows {
+		d, _ := strconv.Atoi(r[1])
+		if name := models[uint32(d)]; name != "" {
+			if hull, err := pathfinding.ModelOutline(filepath.Join(vmaps, name+".vmo")); err == nil {
+				out[r[0]] = hull
+			}
+		}
+	}
+	return out
+})
+
+func (v *server) transports(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("cache-control", "max-age=86400")
+	writeJSON(w, transportShapes())
 }
 
 // nav is a navmesh tile (world.NavTile): the walkable floors of a continent's square, or a sub-square at a level.
