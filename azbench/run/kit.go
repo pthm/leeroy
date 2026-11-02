@@ -140,9 +140,18 @@ func (p *player) saveKit() {
 
 func atoi(s string) int { n, _ := strconv.Atoi(s); return n }
 
-// skills that rise with level (5 per level): the weapon skills and Defense; a kit puts them at their cap, as playing
-// to that level would
-var levelSkills = []int{43, 44, 45, 46, 54, 55, 95, 136, 160, 162, 172, 173, 176, 226, 228, 229, 473}
+// ridingSkill: the riding skill the spells give (Apprentice Riding 75, Journeyman 150, Expert 225)
+func ridingSkill(spells []int) int {
+	switch {
+	case slices.Contains(spells, 34090):
+		return 225
+	case slices.Contains(spells, 33391):
+		return 150
+	case slices.Contains(spells, 33388):
+		return 75
+	}
+	return 0
+}
 
 // skills the proficiency spells teach: weapons (5 per level) and armour (1)
 var spellSkill = map[int][2]int{196: {44, 5}, 197: {172, 5}, 264: {45, 5}, 266: {46, 5}, 198: {54, 5}, 199: {160, 5},
@@ -150,7 +159,7 @@ var spellSkill = map[int][2]int{196: {44, 5}, 197: {172, 5}, 264: {45, 5}, 266: 
 	5011: {226, 5}, 5009: {228, 5}, 9078: {415, 0}, 9077: {414, 0}, 8737: {413, 0}, 750: {293, 0}, 9116: {433, 0}}
 
 // applyKit puts a kit on an offline character: level, money, spells (with trained, those the class trainers teach
-// and the class quests reward up to the level; and the kit's own), the weapon skills and Defense at their cap, gear, bags and items. Items it replaces are deleted. New items
+// and the class quests reward up to the level; and the kit's own), the skills that rise with level at their cap, gear, bags and items. Items it replaces are deleted. New items
 // take guids 100000 above the highest in the database: the worldserver counts item guids up from the highest it saw
 // at startup, so items written while it runs must stay clear of the ones it will make.
 func applyKit(k *config.Kit, char string, class int) error {
@@ -165,19 +174,35 @@ func applyKit(k *config.Kit, char string, class int) error {
 			_, err = db.Exec(q, a...)
 		}
 	}
+	old, err := world.Rows(db, "SELECT level FROM characters WHERE guid = ?", g)
+	if err != nil {
+		return err
+	}
 	exec("UPDATE characters SET level = ?, xp = 0 WHERE guid = ?", k.Level, g)
 	if k.Money > 0 {
 		exec("UPDATE characters SET money = ? WHERE guid = ?", k.Money, g)
 	}
 	spells := slices.Clone(k.Spells)
 	if k.Trained {
-		rows, e := world.Rows(db, `SELECT DISTINCT ts.SpellId FROM acore_world.trainer_spell ts JOIN acore_world.trainer t ON t.Id = ts.TrainerId
-  WHERE t.Type = 0 AND t.Requirement = ? AND ts.ReqLevel <= ?`, class, k.Level)
+		// the class trainers' spells and the riding trainers' up to Journeyman (40; Expert is flying, for Outland), each
+		// once its prerequisites are: the spells it needs, and riding skill for mounts
+		rows, e := world.Rows(db, `SELECT DISTINCT ts.SpellId, ts.ReqSkillLine, ts.ReqSkillRank, ts.ReqAbility1, ts.ReqAbility2, ts.ReqAbility3
+  FROM acore_world.trainer_spell ts JOIN acore_world.trainer t ON t.Id = ts.TrainerId
+  WHERE (t.Type = 0 AND t.Requirement = ? AND ts.ReqLevel <= ?) OR (t.Type = 1 AND ts.ReqLevel <= LEAST(?, 40))`, class, k.Level, k.Level)
 		if e != nil {
 			return e
 		}
-		for _, r := range rows {
-			spells = append(spells, atoi(r[0]))
+		for added := true; added; {
+			added = false
+			for _, r := range rows {
+				sp := atoi(r[0])
+				if slices.Contains(spells, sp) || r[1] == "762" && atoi(r[2]) > ridingSkill(spells) {
+					continue
+				}
+				if !slices.ContainsFunc(r[3:6], func(a string) bool { return a != "0" && !slices.Contains(spells, atoi(a)) }) {
+					spells, added = append(spells, sp), true
+				}
+			}
 		}
 		rows, e = world.Rows(db, `SELECT DISTINCT q.RewardSpell FROM acore_world.quest_template q JOIN acore_world.quest_template_addon a ON a.ID = q.ID
   WHERE a.AllowableClasses & ? AND q.MinLevel <= ? AND q.RewardSpell > 0`, 1<<(class-1), k.Level)
@@ -188,14 +213,17 @@ func applyKit(k *config.Kit, char string, class int) error {
 			spells = append(spells, learnedBy()[atoi(r[0])]...)
 		}
 	}
-	for i := 0; i < len(spells); i++ { // and what each spell teaches, as learning it would (Judgement: Judgement of Light)
-		for _, t := range learnedBy()[spells[i]] {
+	for i := 0; i < len(spells); i++ { // and what each spell teaches, as learning it would (Judgement: Judgement of
+		for _, t := range learnedBy()[spells[i]] { // Light; a druid's Flight Form: Expert Riding)
 			if !slices.Contains(spells, t) {
 				spells = append(spells, t)
 			}
 		}
 	}
 	cap := 5 * k.Level
+	if r := ridingSkill(spells); r > 0 {
+		exec("INSERT INTO character_skills (guid, skill, value, max) VALUES (?, 762, ?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value), max = VALUES(max)", g, r, r)
+	}
 	for _, s := range spells {
 		exec("INSERT IGNORE INTO character_spell (guid, spell, specMask) VALUES (?, ?, 255)", g, s)
 		if sk, ok := spellSkill[s]; ok {
@@ -203,8 +231,10 @@ func applyKit(k *config.Kit, char string, class int) error {
 			exec("INSERT INTO character_skills (guid, skill, value, max) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value), max = VALUES(max)", g, sk[0], v, v)
 		}
 	}
-	exec(`UPDATE character_skills SET value = ?, max = ? WHERE guid = ? AND skill IN (`+
-		strings.Join(strings.Fields(strings.Trim(fmt.Sprint(levelSkills), "[]")), ",")+`)`, cap, cap, g)
+	// the skills that rise with level, 5 a level (weapons, Defense, the class's own lines), at the cap for the new
+	// one, as playing there would leave them: the server grants the spells they unlock when it loads them (a druid's
+	// Teleport: Moonglade at 50 Balance)
+	exec("UPDATE character_skills SET value = ?, max = ? WHERE guid = ? AND max = ?", cap, cap, g, 5*atoi(old[0][0]))
 	if err != nil {
 		return fmt.Errorf("kit: %v", err)
 	}
@@ -218,6 +248,11 @@ func applyKit(k *config.Kit, char string, class int) error {
 	}
 	for i, e := range k.Bags {
 		equip = append(equip, place{19 + i, e, 1})
+	}
+	if k.Pet != nil {
+		if err := applyPet(k, g); err != nil {
+			return err
+		}
 	}
 	if len(equip) == 0 && len(k.Items) == 0 {
 		return nil
@@ -282,6 +317,9 @@ func applyKit(k *config.Kit, char string, class int) error {
 		}
 	}
 	for _, st := range k.Items {
+		if r, _ := world.Rows(db, "SELECT 1 FROM acore_world.item_template WHERE entry = ? AND class = 6", st.Entry); len(r) > 0 {
+			exec("UPDATE characters SET ammoId = ? WHERE guid = ?", st.Entry, g) // arrows or bullets: in the ammo slot
+		}
 		stack, _, _, _, _, e := tmpl(st.Entry)
 		if e != nil {
 			return e
@@ -298,6 +336,33 @@ func applyKit(k *config.Kit, char string, class int) error {
 	}
 	if err != nil {
 		return fmt.Errorf("kit: %v", err)
+	}
+	return nil
+}
+
+// applyPet makes the kit's beast the character's current hunter pet (the one it had out), at the kit's level: the
+// server gives it its abilities for that level when it loads. Pet numbers, like item guids, stay 100000 clear of the
+// highest, which the worldserver counts up from.
+func applyPet(k *config.Kit, g int) error {
+	db := chars()
+	m, err := world.Rows(db, "SELECT CreatureDisplayID FROM acore_world.creature_template_model WHERE CreatureID = ? ORDER BY Idx LIMIT 1", k.Pet.Entry)
+	if err != nil || len(m) == 0 {
+		return fmt.Errorf("kit: pet %d: no such creature", k.Pet.Entry)
+	}
+	top, err := world.Rows(db, "SELECT COALESCE(MAX(id), 0) FROM character_pet")
+	if err != nil {
+		return err
+	}
+	if _, err := db.Exec("DELETE FROM character_pet WHERE owner = ? AND slot = 0", g); err != nil {
+		return err
+	}
+	// CreatedBySpell 13481: Tame Beast's; PetType 1: a hunter's; Reactstate 1: defensive; slot 0: the current pet
+	_, err = db.Exec(`INSERT INTO character_pet (id, entry, owner, modelid, CreatedBySpell, PetType, level, exp, Reactstate,
+  name, renamed, slot, curhealth, curmana, curhappiness, savetime, abdata)
+  VALUES (?, ?, ?, ?, 13481, 1, ?, 0, 1, ?, 0, 0, 100000, 100, 1050000, UNIX_TIMESTAMP(), '')`,
+		atoi(top[0][0])+100000, k.Pet.Entry, g, atoi(m[0][0]), k.Level, k.Pet.Name)
+	if err != nil {
+		return fmt.Errorf("kit: pet: %v", err)
 	}
 	return nil
 }
@@ -356,6 +421,9 @@ func SaveKit(char string) (*config.Kit, map[int]string, error) {
 	}
 	for _, e := range order {
 		k.Items = append(k.Items, config.Stack{Entry: e, Count: count[e]})
+	}
+	if p, _ := world.Rows(db, "SELECT entry, name FROM character_pet WHERE owner = ? AND slot = 0 AND PetType = 1", g); len(p) > 0 {
+		k.Pet = &config.Pet{Entry: atoi(p[0][0]), Name: p[0][1]}
 	}
 	return k, notes, nil
 }

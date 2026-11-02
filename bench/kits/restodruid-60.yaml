@@ -1,0 +1,22 @@
+# azbench kit gen druid 60 --spec restodruid --race night elf --quality rare --max-ilvl 63 --not-from 229: gear the
+# character could get by playing (drops, quest rewards, crafted), bags from vendors; edit freely.
+level: 60
+money: 90000 # copper
+trained: true # every spell the class trainers teach and class quests reward up to the level
+spells: [227]
+gear:
+  head: 16720 # Wildheart Cowl (item level 62, drop)
+  neck: 15856 # Archlight Talisman (item level 60, quest)
+  shoulders: 14688 # Indomitable Epaulets (item level 61, drop)
+  chest: 8296 # Traveler's Jerkin (item level 61, drop)
+  waist: 16716 # Wildheart Belt (item level 58, drop)
+  legs: 14545 # Ghostloom Leggings (item level 62, drop)
+  feet: 22275 # Firemoss Boots (item level 57, drop)
+  wrists: 18525 # Bracers of Prosperity (item level 63, drop)
+  hands: 16717 # Wildheart Gloves (item level 59, drop)
+  finger1: 13345 # Seal of Rivendare (item level 63, drop)
+  finger2: 18395 # Emerald Flame Ring (item level 62, drop)
+  trinket1: 19024 # Arena Grand Master (item level 55, quest)
+  back: 13376 # Royal Tribunal Cloak (item level 59, drop)
+  main_hand: 13249 # Argent Crusader (item level 62, quest)
+bags: [4499, 4499, 4499, 4499] # Huge Brown Sack (12 slots, vendor)

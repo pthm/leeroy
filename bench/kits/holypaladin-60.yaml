@@ -1,0 +1,23 @@
+# azbench kit gen paladin 60 --spec holypaladin --race human --quality rare --max-ilvl 63 --not-from 229: gear the
+# character could get by playing (drops, quest rewards, crafted), bags from vendors; edit freely.
+level: 60
+money: 90000 # copper
+trained: true # every spell the class trainers teach and class quests reward up to the level
+spells: [201]
+gear:
+  head: 16727 # Lightforge Helm (item level 62, drop)
+  neck: 13085 # Horizon Choker (item level 51, drop)
+  shoulders: 11632 # Earthslag Shoulders (item level 52, drop)
+  chest: 18312 # Energized Chestplate (item level 59, drop)
+  waist: 16723 # Lightforge Belt (item level 58, drop)
+  legs: 18739 # Chitinous Plate Legguards (item level 61, drop)
+  feet: 20711 # Crystal Lined Greaves (item level 63, quest)
+  wrists: 18741 # Morlune's Bracer (item level 61, drop)
+  hands: 18383 # Force Imbued Gauntlets (item level 61, drop)
+  finger1: 13345 # Seal of Rivendare (item level 63, drop)
+  finger2: 17045 # Blood of the Martyr (item level 61, quest)
+  trinket1: 19024 # Arena Grand Master (item level 55, quest)
+  back: 13376 # Royal Tribunal Cloak (item level 59, drop)
+  main_hand: 15801 # Valiant Shortsword (item level 58, quest)
+  off_hand: 18485 # Observer's Shield (item level 61, drop)
+bags: [4499, 4499, 4499, 4499] # Huge Brown Sack (12 slots, vendor)

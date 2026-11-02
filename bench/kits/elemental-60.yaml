@@ -1,0 +1,29 @@
+# azbench kit gen shaman 60 --spec elemental --race draenei --quality rare --max-ilvl 63 --not-from 229: gear the
+# character could get by playing (drops, quest rewards, crafted), bags from vendors; edit freely.
+level: 60
+money: 90000 # copper
+trained: true # every spell the class trainers teach and class quests reward up to the level
+spells: [198]
+gear:
+  head: 12549 # Braincage (item level 52, drop)
+  neck: 13085 # Horizon Choker (item level 51, drop)
+  shoulders: 13133 # Drakesfire Epaulets (item level 61, drop)
+  chest: 13123 # Dreamwalker Armor (item level 62, drop)
+  waist: 13950 # Detention Strap (item level 62, drop)
+  legs: 20295 # Blue Dragonscale Leggings (item level 60, crafted)
+  feet: 18318 # Merciful Greaves (item level 59, drop)
+  wrists: 16671 # Bindings of Elements (item level 57, drop)
+  hands: 20296 # Green Dragonscale Gauntlets (item level 54, crafted)
+  finger1: 13345 # Seal of Rivendare (item level 63, drop)
+  finger2: 18395 # Emerald Flame Ring (item level 62, drop)
+  trinket1: 45631 # High-powered Flashlight (item level 54, crafted)
+  trinket2: 17759 # Mark of Resolution (item level 60, quest)
+  back: 13376 # Royal Tribunal Cloak (item level 59, drop)
+  main_hand: 20648 # Cold Forged Hammer (item level 63, quest)
+  off_hand: 18485 # Observer's Shield (item level 61, drop)
+bags: [4499, 4499, 4499, 4499] # Huge Brown Sack (12 slots, vendor)
+items:
+  - {entry: 5175, count: 1} # Earth Totem (class quest)
+  - {entry: 5176, count: 1} # Fire Totem (class quest)
+  - {entry: 5177, count: 1} # Water Totem (class quest)
+  - {entry: 5178, count: 1} # Air Totem (class quest)

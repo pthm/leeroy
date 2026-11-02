@@ -22,3 +22,4 @@ gear:
   main_hand: 5267 # Scarlet Kris (item level 63, drop)
   off_hand: 18737 # Bone Slicing Hatchet (item level 62, drop)
   ranged: 13023 # Eaglehorn Long Bow (item level 63, drop)
+bags: [4499, 4499, 4499, 4499] # Huge Brown Sack (12 slots, vendor)

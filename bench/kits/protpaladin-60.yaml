@@ -1,0 +1,23 @@
+# azbench kit gen paladin 60 --spec protpaladin --race human --quality rare --max-ilvl 63 --not-from 229: gear the
+# character could get by playing (drops, quest rewards, crafted), bags from vendors; edit freely.
+level: 60
+money: 90000 # copper
+trained: true # every spell the class trainers teach and class quests reward up to the level
+spells: [198]
+gear:
+  head: 16731 # Helm of Valor (item level 62, drop)
+  neck: 15704 # Hunter's Insignia Medal (item level 60, quest)
+  shoulders: 12557 # Ebonsteel Spaulders (item level 59, drop)
+  chest: 18503 # Kromcrush's Chestplate (item level 62, drop)
+  waist: 13384 # Rainbow Girdle (item level 58, drop)
+  legs: 16732 # Legplates of Valor (item level 61, drop)
+  feet: 13381 # Master Cannoneer Boots (item level 61, drop)
+  wrists: 13951 # Vigorsteel Vambraces (item level 62, drop)
+  hands: 14525 # Boneclenched Gauntlets (item level 62, drop)
+  finger1: 18522 # Band of the Ogre King (item level 63, drop)
+  finger2: 22255 # Magma Forged Band (item level 57, drop)
+  trinket1: 19024 # Arena Grand Master (item level 55, quest)
+  back: 23127 # Cloak of Revanchion (item level 63, drop)
+  main_hand: 18376 # Timeworn Mace (item level 62, drop)
+  off_hand: 16998 # Sacred Protector (item level 62, quest)
+bags: [4499, 4499, 4499, 4499] # Huge Brown Sack (12 slots, vendor)

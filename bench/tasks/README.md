@@ -32,7 +32,7 @@ character names). It refuses if any of the characters is online.
 | `deadmines.yaml` | 10080 | apart | five new level-1 Humans in Northshire, a dungeon party, goal: clear the Deadmines (`achievement:628`). A week on the clock; each stops when it has the achievement |
 | `travel.yaml` | 90 | together | a new level-30 Human warrior in Northshire per model, goal: reach Darnassus (`zone:1657`) on the other continent |
 | `deadmines-geared.yaml` | 2880 | apart | the Deadmines party at level 20 with [kits](#kits): green gear, bags and the class spells trained |
-| `ubrs.yaml` | 1440 | apart | five level-60s with pre-raid dungeon gear (kits: blues up to item level 63, none from Blackrock Spire), from Morgan's Vigil, goal: clear Upper Blackrock Spire (`achievement:1307`) |
+| `ubrs.yaml` | 1440 | apart | ten level-60s, every Alliance class but the death knight (two tanks, three healers), with pre-raid dungeon gear (kits: blues up to item level 63, none from Blackrock Spire), from Morgan's Vigil, goal: clear Upper Blackrock Spire (`achievement:1307`) |
 | `hardcore.yaml` | 240 | apart | a new level-1 Human Arms warrior in Northshire, levelling with `hardcore`: the first death ends the run |
 
 All but the smoke tests set `require_fresh`.
@@ -89,20 +89,24 @@ is), among items a character of that class, race and level could get by playing:
   deprecated and seasonal items, random-enchantment items ("of the Bear"), items that need a profession, reputation
   or rank, and with `--not-from <map>` a dungeon's own loot and quests (the dungeon the kit is for).
 
-Bags (and a hunter's ammunition) come from vendors. Each item is named in a comment, with where it comes from; edit
+Bags (and a hunter's ammunition) come from vendors. What a class's spells need comes too: a shaman's totems (its class
+quests' rewards), a warlock's soul shards, and a hunter's pet (the highest-level beast in the open world it could
+tame, a cat if there is one). Each item is named in a comment, with where it comes from; edit
 the file freely.
 
 | Field | |
 |---|---|
 | `level` | 1 to 80 |
 | `money` | copper |
-| `trained` | every spell the class trainers teach and the class quests reward (a warrior's stances) up to the level, with what those spells teach in turn (a paladin's Judgement: Judgement of Light) |
+| `trained` | every spell the class trainers teach and the class quests reward (a warrior's stances) up to the level, each once its prerequisites are, with what those spells teach in turn (a paladin's Judgement: Judgement of Light); and riding up to Journeyman (40), so class mounts work |
 | `spells` | more spells by id: weapon proficiencies, or every spell, from `kit save` |
 | `gear` | slot to item entry: `head` `neck` `shoulders` `shirt` `chest` `waist` `legs` `feet` `wrists` `hands` `finger1` `finger2` `trinket1` `trinket2` `back` `main_hand` `off_hand` `ranged` `tabard`. A slot not listed keeps what the character wears |
 | `bags` | up to 4 bag entries |
-| `items` | `{entry, count}` stacks, in the backpack and then the bags |
+| `items` | `{entry, count}` stacks, in the backpack and then the bags. Arrows or bullets go in the ammo slot |
+| `pet` | `{entry, name}`: a hunter's tamed beast (a creature it can tame), its current pet at the kit's level; the server gives it its abilities |
 
-The weapon skills and Defense start at their cap for the level (5 per level), as playing there would leave them.
+The skills that rise with level (weapons, Defense, the class's own) start at their cap for it, as playing there would
+leave them.
 Talents stay unspent: the server gives the points for the level. A kit can't go with an `item:` or `quality:` goal:
 the judge counts every item owned, the kit's too.
 

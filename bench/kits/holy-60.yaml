@@ -20,3 +20,4 @@ gear:
   back: 13376 # Royal Tribunal Cloak (item level 59, drop)
   main_hand: 13249 # Argent Crusader (item level 62, quest)
   ranged: 16997 # Stormrager (item level 62, quest)
+bags: [4499, 4499, 4499, 4499] # Huge Brown Sack (12 slots, vendor)

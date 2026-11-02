@@ -22,3 +22,4 @@ gear:
   main_hand: 15801 # Valiant Shortsword (item level 58, quest)
   off_hand: 43663 # Stormbound Tome (item level 55, crafted)
   ranged: 16997 # Stormrager (item level 62, quest)
+bags: [4499, 4499, 4499, 4499] # Huge Brown Sack (12 slots, vendor)

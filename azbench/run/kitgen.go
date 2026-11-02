@@ -18,7 +18,7 @@ import (
 )
 
 // obtainable: every item a character of a level, race and class can come by in play, with how (drop, quest, crafted,
-// vendor). Quests it can take at its level, of at most 2 levels above it; items it can use, from 10 item levels below it to a cap (some quest rewards
+// vendor). Quests it can take at its level, of at most 2 levels above it; items it can use, from 10 item levels below it (gear: not bags or ammunition) to a cap (some quest rewards
 // have no required level of their own: the quest's level is the gate). Drops: loot of creatures and chests that are spawned, through reference loot. Vendors: of spawned
 // creatures. Quest givers and vendors are only those not hostile to the character's side. Not raids (notMaps).
 var obtainable = fmt.Sprintf(`WITH RECURSIVE
@@ -50,7 +50,7 @@ SELECT it.entry, it.name, it.class, it.subclass, it.InventoryType, it.ItemLevel,
     it.stat_value7, it.stat_type8, it.stat_value8, it.stat_type9, it.stat_value9, it.stat_type10, it.stat_value10),
   GROUP_CONCAT(DISTINCT src.how ORDER BY src.how)
 FROM item_template it JOIN src ON src.e = it.entry
-WHERE it.RequiredLevel <= ? AND it.ItemLevel BETWEEN ? - 10 AND ? AND (it.AllowableClass <= 0 OR it.AllowableClass & ?) AND (it.AllowableRace <= 0 OR it.AllowableRace & ?)
+WHERE it.RequiredLevel <= ? AND (it.ItemLevel >= ? - 10 OR it.class IN (1, 6)) AND it.ItemLevel <= ? AND (it.AllowableClass <= 0 OR it.AllowableClass & ?) AND (it.AllowableRace <= 0 OR it.AllowableRace & ?)
   AND it.RandomProperty = 0 AND it.RandomSuffix = 0 AND it.RequiredSkill = 0 AND it.requiredspell = 0
   AND it.RequiredReputationFaction = 0 AND it.requiredhonorrank = 0 AND it.HolidayId = 0 AND it.Flags & 16 = 0
   AND it.name NOT REGEXP '(^|[^a-z])(test|qa|deprecated|monster|unused|old|ph)([^a-z]|$)'
@@ -95,32 +95,40 @@ func armorType(class, level int) int {
 	return 1
 }
 
-// style: how a spec holds its weapons; weights: what its stats are worth (item stat ids: 3 agility, 4 strength,
+// style: how a spec holds its weapons; melee: whether a weapon's damage counts; weights: what its stats are worth (item stat ids: 3 agility, 4 strength,
 // 5 intellect, 6 spirit, 7 stamina, 12 defense, 13 dodge, 14 parry, 15 block, 31 hit, 32 crit, 36 haste, 38 attack
 // power, 43 mana per 5, 45 spell power, 48 block value)
-func gearPlan(class int, spec string, level int) (style string, w map[int]float64) {
+func gearPlan(class int, spec string, level int) (style string, melee bool, w map[int]float64) {
 	if spec == "" {
-		spec = map[int]string{1: "arms", 2: "ret", 3: "hunter", 4: "combat", 5: "holy", 6: "arms", 7: "caster", 8: "frost", 9: "caster", 11: "caster"}[class]
+		spec = map[int]string{1: "arms", 2: "ret", 3: "marksmanship", 4: "combat", 5: "holy", 6: "arms", 7: "elemental", 8: "frost", 9: "affliction", 11: "balance"}[class]
 	}
-	melee := map[int]float64{4: 2, 3: 1, 7: 1, 38: 0.5, 31: 1, 32: 1}
+	strength := map[int]float64{4: 2, 3: 1, 7: 1, 38: 0.5, 31: 1, 32: 1}
+	agility := map[int]float64{3: 2, 4: 0.5, 7: 1, 38: 0.5, 31: 1, 32: 1}
 	caster := map[int]float64{5: 2, 6: 0.5, 7: 0.8, 45: 2, 31: 1, 32: 1, 36: 1}
+	healer := map[int]float64{5: 2, 6: 1, 7: 0.7, 45: 1.5, 43: 1.5}
 	switch spec {
 	case "arms", "ret":
-		return "two_hand", melee
+		return "two_hand", true, strength
 	case "fury":
-		return map[bool]string{true: "dual", false: "two_hand"}[level >= 20], melee
+		return map[bool]string{true: "dual", false: "two_hand"}[level >= 20], true, strength
 	case "protwarrior", "protpaladin":
-		return "shield", map[int]float64{7: 2, 4: 1.5, 3: 1, 12: 1, 13: 1, 14: 1, 15: 0.5, 48: 0.5, 5: 0.3 * b2f(class == 2)}
-	case "holypaladin":
-		return "shield", map[int]float64{5: 2, 7: 0.7, 45: 1.5, 43: 1.5, 32: 1}
+		return "shield", true, map[int]float64{7: 2, 4: 1.5, 3: 1, 12: 1, 13: 1, 14: 1, 15: 0.5, 48: 0.5, 5: 0.3 * b2f(class == 2)}
+	case "holypaladin", "restoshaman":
+		return "shield", false, map[int]float64{5: 2, 7: 0.7, 45: 1.5, 43: 1.5, 32: 1}
+	case "elemental":
+		return "shield", false, caster
 	case "combat", "assassination", "subtlety":
-		return "dual", map[int]float64{3: 2, 4: 0.5, 7: 1, 38: 0.5, 31: 1, 32: 1}
-	case "holy", "discipline":
-		return "caster", map[int]float64{5: 2, 6: 1, 7: 0.7, 45: 1.5, 43: 1.5}
-	case "hunter":
-		return "two_hand", map[int]float64{3: 2, 5: 0.5, 7: 1, 38: 0.5, 31: 1, 32: 1}
+		return "dual", true, agility
+	case "holy", "discipline", "restodruid":
+		return "caster", false, healer
+	case "beastmastery", "marksmanship", "survival":
+		return "two_hand", true, map[int]float64{3: 2, 5: 0.5, 7: 1, 38: 0.5, 31: 1, 32: 1}
+	case "enhancement": // two-handed: dual wielding is a talent, and kits leave talents unspent
+		return "two_hand", true, map[int]float64{3: 1.5, 4: 1.5, 7: 1, 38: 0.5, 5: 0.5, 31: 1, 32: 1}
+	case "feral": // fights in Bear Form: the weapon's damage doesn't count, its stats do
+		return "two_hand", false, map[int]float64{7: 2, 3: 1.5, 4: 1, 12: 1, 13: 1, 38: 0.3}
 	}
-	return "caster", caster
+	return "caster", false, caster
 }
 
 func b2f(b bool) float64 {
@@ -138,7 +146,7 @@ func GenKit(class, race int, spec string, level, quality, maxIlvl, notFrom int) 
 	if err != nil {
 		return nil, nil, err
 	}
-	style, w := gearPlan(class, spec, level)
+	style, melee, w := gearPlan(class, spec, level)
 	can := classWeapons[class]
 	armor := armorType(class, level)
 	var items []*kitItem
@@ -168,7 +176,6 @@ func GenKit(class, race int, spec string, level, quality, maxIlvl, notFrom int) 
 		}
 		return s + it.armor*0.02*(1+w[12]*3) + it.dps*dpsWeight
 	}
-	melee := style != "caster"
 	weaponDPS := map[bool]float64{true: 4, false: 0}[melee]
 	best := func(dpsWeight float64, ok func(*kitItem) bool, not ...int) *kitItem {
 		var b *kitItem
@@ -249,7 +256,9 @@ func GenKit(class, race int, spec string, level, quality, maxIlvl, notFrom int) 
 		put("ranged", best(2, func(it *kitItem) bool { return isWeapon(it, 26) && it.sub == 19 }))
 	case 1, 3, 4:
 		dw := map[bool]float64{true: 4, false: 0.5}[class == 3]
-		r := best(dw, func(it *kitItem) bool { return isWeapon(it, 15, 25, 26) && it.sub != 19 })
+		r := best(dw, func(it *kitItem) bool { // a hunter's: a bow, gun or crossbow (Auto Shot)
+			return isWeapon(it, 15, 25, 26) && it.sub != 19 && (class != 3 || it.sub != 16)
+		})
 		put("ranged", r)
 		if class == 3 && r != nil && r.sub != 16 { // a hunter's ammunition: the best a vendor sells for it
 			kind := map[bool]int{true: 3, false: 2}[r.sub == 3]
@@ -263,6 +272,29 @@ func GenKit(class, race int, spec string, level, quality, maxIlvl, notFrom int) 
 				k.Items = append(k.Items, config.Stack{Entry: ammo.entry, Count: 1000})
 				notes[ammo.entry] = ammo.name + " (vendor)"
 			}
+		}
+	}
+	switch class { // what the class's spells use up, as a character of that level would carry
+	case 7: // a shaman's totems: rewards of its class quests at 4, 10, 20 and 30
+		for i, e := range []int{5175, 5176, 5177, 5178} {
+			if level >= []int{4, 10, 20, 30}[i] {
+				k.Items = append(k.Items, config.Stack{Entry: e, Count: 1})
+				notes[e] = []string{"Earth", "Fire", "Water", "Air"}[i] + " Totem (class quest)"
+			}
+		}
+	case 9: // soul shards, for summoning demons
+		if level >= 10 {
+			k.Items = append(k.Items, config.Stack{Entry: 6265, Count: 5})
+			notes[6265] = "Soul Shard (Drain Soul)"
+		}
+	}
+	if class == 3 { // a hunter's pet: the highest-level beast in the open world it could tame, a cat if there is one
+		r, err := world.Rows(world.DB(world.Admin, "acore_world"), `SELECT ct.entry, ct.name FROM creature_template ct
+  WHERE ct.type = 1 AND ct.type_flags & 1 AND NOT ct.type_flags & 65536 AND ct.family > 0 AND ct.maxlevel <= ?
+    AND EXISTS (SELECT 1 FROM creature c WHERE c.id = ct.entry AND c.map IN (0, 1))
+  ORDER BY ct.family = 2 DESC, ct.maxlevel DESC, ct.entry LIMIT 1`, level)
+		if err == nil && len(r) > 0 {
+			k.Pet = &config.Pet{Entry: atoi(r[0][0]), Name: r[0][1]}
 		}
 	}
 	var bag *kitItem // four of the roomiest bag a vendor sells
@@ -297,6 +329,9 @@ func KitYAML(k *config.Kit, notes map[int]string, header string) string {
 	}
 	if len(k.Bags) > 0 {
 		fmt.Fprintf(&b, "bags: %s # %s\n", strings.ReplaceAll(fmt.Sprint(k.Bags), " ", ", "), notes[k.Bags[0]])
+	}
+	if k.Pet != nil {
+		fmt.Fprintf(&b, "pet: {entry: %d, name: %q} # a hunter's tamed beast, at the kit's level\n", k.Pet.Entry, k.Pet.Name)
 	}
 	if len(k.Items) > 0 {
 		b.WriteString("items:\n")

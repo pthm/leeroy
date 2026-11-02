@@ -1,0 +1,27 @@
+# azbench kit gen hunter 60 --spec marksmanship --race dwarf --quality rare --max-ilvl 63 --not-from 229: gear the
+# character could get by playing (drops, quest rewards, crafted), bags from vendors; edit freely.
+level: 60
+money: 90000 # copper
+trained: true # every spell the class trainers teach and class quests reward up to the level
+spells: [200, 264]
+gear:
+  head: 18421 # Backwood Helm (item level 63, quest)
+  neck: 20649 # Sunprism Pendant (item level 60, quest)
+  shoulders: 18742 # Stratholme Militia Shoulderguard (item level 60, drop)
+  chest: 18530 # Ogre Forged Hauberk (item level 62, drop)
+  waist: 22207 # Sash of the Grand Hunt (item level 60, drop)
+  legs: 13130 # Windrunner Legguards (item level 56, drop)
+  feet: 13402 # Timmy's Galoshes (item level 59, drop)
+  wrists: 18296 # Marksman Bands (item level 56, drop)
+  hands: 22410 # Gauntlets of Deftness (item level 63, drop)
+  finger1: 18701 # Innervating Band (item level 59, drop)
+  finger2: 22255 # Magma Forged Band (item level 57, drop)
+  trinket1: 45631 # High-powered Flashlight (item level 54, crafted)
+  trinket2: 17759 # Mark of Resolution (item level 60, quest)
+  back: 12552 # Blisterbane Wrap (item level 55, drop)
+  main_hand: 19106 # Ice Barbed Spear (item level 63, quest)
+  ranged: 13023 # Eaglehorn Long Bow (item level 63, drop)
+bags: [4499, 4499, 4499, 4499] # Huge Brown Sack (12 slots, vendor)
+pet: {entry: 7432, name: "Frostsaber Stalker"} # a hunter's tamed beast, at the kit's level
+items:
+  - {entry: 11285, count: 1000} # Jagged Arrow (vendor)

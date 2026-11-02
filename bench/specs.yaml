@@ -76,3 +76,63 @@ arcane:
   role: "DPS"
   optimise: "damage dealt"
   stats: "Intellect and spell power, then Spirit"
+beastmastery:
+  title: "Hunter - Beast Mastery"
+  role: "DPS"
+  optimise: "damage dealt, yours and your pet's"
+  stats: "Agility, then attack power and Intellect"
+marksmanship:
+  title: "Hunter - Marksmanship"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Agility, then attack power and Intellect"
+survival:
+  title: "Hunter - Survival"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Agility, then attack power and Intellect"
+affliction:
+  title: "Warlock - Affliction"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Intellect and spell power, then Stamina"
+demonology:
+  title: "Warlock - Demonology"
+  role: "DPS"
+  optimise: "damage dealt, yours and your demon's"
+  stats: "Intellect and spell power, then Stamina"
+destruction:
+  title: "Warlock - Destruction"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Intellect and spell power, then Stamina"
+elemental:
+  title: "Shaman - Elemental"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Intellect and spell power"
+enhancement:
+  title: "Shaman - Enhancement"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Agility and Strength (attack power), then Intellect"
+restoshaman:
+  title: "Shaman - Restoration"
+  role: "Healer"
+  optimise: "healing done: keeping yourself and the players you're with alive"
+  stats: "Intellect, then spell power and mana per 5 seconds"
+balance:
+  title: "Druid - Balance"
+  role: "DPS"
+  optimise: "damage dealt"
+  stats: "Intellect and spell power, then Spirit"
+feral:
+  title: "Druid - Feral"
+  role: "Tank"
+  optimise: "holding enemies' attention (threat) and surviving the damage you take for your group, in Bear Form"
+  stats: "Stamina, Agility and Armor, then Strength"
+restodruid:
+  title: "Druid - Restoration"
+  role: "Healer"
+  optimise: "healing done: keeping yourself and the players you're with alive"
+  stats: "Intellect and Spirit, then spell power"

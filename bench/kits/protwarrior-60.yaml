@@ -21,3 +21,4 @@ gear:
   main_hand: 18376 # Timeworn Mace (item level 62, drop)
   off_hand: 16998 # Sacred Protector (item level 62, quest)
   ranged: 16996 # Gorewood Bow (item level 62, quest)
+bags: [4499, 4499, 4499, 4499] # Huge Brown Sack (12 slots, vendor)

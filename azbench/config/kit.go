@@ -13,11 +13,18 @@ import (
 type Kit struct {
 	Level   int            `yaml:"level"`
 	Money   int            `yaml:"money"`   // copper
-	Trained bool           `yaml:"trained"` // every spell the class trainers teach and class quests reward up to the level
+	Trained bool           `yaml:"trained"` // every spell the class trainers teach and class quests reward up to the level, and riding
 	Spells  []int          `yaml:"spells"`  // more spells, by id: weapon proficiencies, or every spell for a saved kit
 	Gear    map[string]int `yaml:"gear"`    // slot (Slots) -> item entry
 	Bags    []int          `yaml:"bags"`    // up to 4, in the bag slots
 	Items   []Stack        `yaml:"items"`   // in the backpack, then the bags
+	Pet     *Pet           `yaml:"pet"`     // a hunter's tamed beast, at the kit's level
+}
+
+// Pet is a tamed beast: a creature a hunter can tame (creature_template entry), and its name.
+type Pet struct {
+	Entry int    `yaml:"entry"`
+	Name  string `yaml:"name"`
 }
 
 // Stack is a number of one item.
