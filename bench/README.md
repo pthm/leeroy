@@ -45,7 +45,16 @@ commands below run from the repo root; server and client setup is in the [repo R
 An agent that stops before the clock with no error and without giving up (`standings give-up`) is told to carry on:
 its conversation resumes with the minutes left and the choice of giving up, up to 5 times a run (each is in
 `alerts.log`). Codex ends its job when it ends a reply, and a script left running alone can't adapt; this keeps every
-runtime's agent the one playing. An agent that stopped on an error (a usage limit) is only reported.
+runtime's agent the one playing.
+
+An agent that stops on a temporary provider error (a model at capacity, overloaded, rate limited, a server or network
+error) waits it out without losing clock time. Its character logs out at a safe moment: out of combat, at least half
+health and clear of every hostile's aggro range. During the logout the session fights back and cancels the countdown
+if attacked. Its judge's clock holds while it's away, and the provider is checked with a one-line prompt at growing
+intervals. When the provider answers, the character logs back in and the agent resumes, told how long it was away.
+Other players carry on. Each outage is recorded in `<run>/<agent>/outages.jsonl` and `alerts.log`, and an outage longer
+than two hours ends that player's run. Other errors, such as a used-up quota or failed authentication, are only
+reported.
 
 ## A run
 

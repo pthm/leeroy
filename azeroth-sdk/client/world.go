@@ -81,6 +81,7 @@ const (
 	CmsgLogoutRequest  uint16 = 0x004B
 	SmsgLogoutResponse uint16 = 0x004C
 	SmsgLogoutComplete uint16 = 0x004D
+	CmsgLogoutCancel   uint16 = 0x004E
 
 	SmsgWardenData uint16 = 0x02E6
 	CmsgWardenData uint16 = 0x02E7
@@ -939,10 +940,11 @@ const (
 
 // WorldClient handles the world server protocol
 type WorldClient struct {
-	conn       net.Conn
-	readBuf    *bufio.Reader // buffered for fewer syscalls on readPacket (critical for 500+ bots)
-	username   string
-	sessionKey []byte
+	logoutDenied atomic.Bool // the server refused the last logout request (SMSG_LOGOUT_RESPONSE reason)
+	conn         net.Conn
+	readBuf      *bufio.Reader // buffered for fewer syscalls on readPacket (critical for 500+ bots)
+	username     string
+	sessionKey   []byte
 
 	encryptServer *rc4.Cipher
 	encryptClient *rc4.Cipher
@@ -1923,6 +1925,7 @@ func (w *WorldClient) handleLogoutResponse(data []byte) {
 		reason := binary.LittleEndian.Uint32(data[0:4])
 		if reason != 0 {
 			w.log("Logout denied with reason %d", reason)
+			w.logoutDenied.Store(true)
 		}
 	}
 }
@@ -2234,8 +2237,18 @@ func (w *WorldClient) SendPing(seq uint32) error {
 
 // SendLogout sends CMSG_LOGOUT_REQUEST
 func (w *WorldClient) SendLogout() error {
+	w.logoutDenied.Store(false)
 	return w.sendPacket(CmsgLogoutRequest, nil)
 }
+
+// SendLogoutCancel sends CMSG_LOGOUT_CANCEL: the server never cancels a started logout itself (not even when the
+// character is attacked during its 20 s countdown, sitting and stunned), only the client can.
+func (w *WorldClient) SendLogoutCancel() error {
+	return w.sendPacket(CmsgLogoutCancel, nil)
+}
+
+// LogoutDenied: the server refused the last logout request (in combat, falling, dueling).
+func (w *WorldClient) LogoutDenied() bool { return w.logoutDenied.Load() }
 
 // WaitForLogout waits for the logout to complete
 func (w *WorldClient) WaitForLogout(timeout time.Duration) error {

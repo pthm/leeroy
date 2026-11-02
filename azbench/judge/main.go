@@ -158,6 +158,9 @@ type Options struct {
 	// Hardcore: the first death ends the run, the goal unmet, and the score is the value per hour of the whole clock
 	// (a death freezes progress; a fast start that dies early doesn't score its rate)
 	Hardcore bool
+	// Hold, while it returns true, stops this character's clock: no polls, and the time doesn't count (a provider
+	// outage: the character is logged out until its agent can play again)
+	Hold func() bool
 }
 
 // Run judges until the goal is met, the timeout passes or ctx is done, and returns the final result line (JSON)
@@ -359,7 +362,22 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		return nil, false, false
 
 	}
+	var heldAt int64 // when the current hold began (0: not held)
 	for {
+		if o.Hold != nil && o.Hold() {
+			if heldAt == 0 {
+				heldAt = nowMs()
+			}
+			select {
+			case <-ctx.Done():
+				return nil, false, ctx.Err()
+			case <-time.After(time.Second):
+			}
+			continue
+		} else if heldAt != 0 {
+			start += nowMs() - heldAt // the hold doesn't count
+			heldAt = 0
+		}
 		var done bool
 		func() {
 			defer func() {

@@ -27,6 +27,7 @@ import {
   entryName,
   isProgress,
   levelsGained,
+  outageNote,
   outcome,
   bestRate,
   rate,
@@ -133,7 +134,7 @@ const tiles = [
               <td class:list={['font-medium', color[p.char]]}>{p.char}</td>
               <td class="text-muted">{specLabel(p)}{p.role && <span class="text-faint"> · {p.role}</span>}</td>
               <td class="text-fg">{entryName({ model: p.model, effort: effortOf(p) })} <span class="text-faint">{harnessName(p.runtime)}</span></td>
-              <td class:list={[outcome(p, progress).good ? 'text-success' : 'text-warning']} title={p.gave_up}>{outcome(p, progress).text}</td>
+              <td class:list={[outcome(p, progress).good ? 'text-success' : 'text-warning']} title={outageNote(p) ?? p.gave_up}>{outcome(p, progress).text}{outageNote(p) && <span class="ml-1 text-warning" aria-label={outageNote(p)}>⚠</span>}</td>
               <td class="num">{progress ? rate(xpRate(p)) : p.met ? duration(p.time_to_goal_s) : '–'}</td>
               {levelled && <td class="num text-muted">{p.series?.at(-1)?.[1].toFixed(1) ?? p.level ?? '–'}</td>}
               <td class="num text-muted">{p.deaths ?? '–'}</td>

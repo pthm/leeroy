@@ -38,6 +38,7 @@ type player struct {
 	agent     *exec.Cmd
 	agentEnd  time.Time     // when its agent must stop: the run's clock
 	continues int           // times its agent was told to carry on after stopping early (exited)
+	hold      bool          // a provider outage: logged out, its judge's clock held (outage.go)
 	result    []byte        // the judge's final line
 	agentDone chan struct{} // closed after transcript drain, usage snapshot and exit diagnostics
 	agentStop *time.Timer   // stops the agent at agentEnd
@@ -494,6 +495,10 @@ func (p *player) exited(cmd *exec.Cmd) {
 	msg := fmt.Sprintf("agent exited with %.0f min left", left.Minutes())
 	if why != "" {
 		msg += ": " + why
+	}
+	if transientError(why) && p.conversation() != "" { // a provider outage: wait it out with the clock held
+		go p.outage(why)
+		return
 	}
 	p.mu.Lock()
 	n := p.continues

@@ -788,11 +788,7 @@ func (b *Bot) runAILoop(worldErrCh chan error) {
 	for {
 		select {
 		case <-b.stopCh:
-			// Log out like the real client: a dropped connection leaves the character in the world (and in combat
-			// it can die there). AC takes ~20 s out of combat and refuses in combat, so cap the wait.
-			if b.world.SendLogout() == nil {
-				_ = b.world.WaitForLogout(25 * time.Second)
-			}
+			b.logOut(logoutLimit)
 			return
 		case err := <-worldErrCh:
 			if err != nil {
@@ -1920,5 +1916,66 @@ func (b *Bot) invalidateWorldWork(reason string) {
 	}
 	if b.routes != nil {
 		b.routes.cancelTask(0, reason)
+	}
+}
+
+// logoutLimit: how long logOut keeps trying before it gives up and lets the connection drop
+var logoutLimit = 3 * time.Minute
+
+// logOut logs out like the real client, without leaving the character exposed. A dropped connection leaves it in the
+// world for a minute (DisconnectToleranceInterval), and the server refuses a logout in combat and, once it starts,
+// never cancels its 20 s countdown, during which the character sits stunned even if attacked. So: fight back until out
+// of combat, ask to log out, and if anything attacks (or the server refuses) during the countdown, cancel and go
+// round again, for at most limit.
+func (b *Bot) logOut(limit time.Duration) {
+	end := time.Now().Add(limit)
+	for time.Now().Before(end) {
+		b.fightOff(end)
+		if b.world.SendLogout() != nil {
+			return
+		}
+		for countdown := time.Now().Add(25 * time.Second); time.Now().Before(countdown); {
+			if b.world.WaitForLogout(250*time.Millisecond) == nil {
+				return
+			}
+			if b.world.LogoutDenied() || b.InCombat() {
+				b.log("Logout interrupted (refused or attacked): cancelling, fighting back, trying again")
+				_ = b.world.SendLogoutCancel()
+				break
+			}
+		}
+	}
+	b.log("Logout: gave up after %s; the connection drops", limit)
+}
+
+// fightOff faces and auto-attacks whatever is attacking until the character has been out of combat for two seconds
+// (or until end), and stops its own swing when nothing is attacking (which keeps the combat flag up): the minimum to
+// come out of a fight with no scripts running.
+func (b *Bot) fightOff(end time.Time) {
+	calm := time.Time{}
+	for time.Now().Before(end) {
+		if !b.InCombat() {
+			if calm.IsZero() {
+				calm = time.Now()
+			} else if time.Since(calm) > 2*time.Second {
+				return
+			}
+		} else {
+			calm = time.Time{}
+			attacker := uint64(0)
+			for _, c := range b.creatures(b.GetNearbyUnits(30)) {
+				if uint64(c.Target) == b.world.CharGUID() && c.Alive {
+					attacker = uint64(c.GUID)
+					break
+				}
+			}
+			if attacker != 0 { // face it and swing: an attacker comes to melee range by itself
+				b.FaceTarget(attacker)
+				_ = b.AttackTarget(attacker)
+			} else if b.world.AttackingGUID() != 0 { // nothing on us: our own swing keeps the combat flag up, so stop
+				_ = b.world.AttackStop()
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
 }

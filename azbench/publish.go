@@ -128,6 +128,16 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 				}
 			}
 			p["series"], p["deaths_at"] = series(filepath.Join(adir, "samples.jsonl"))
+			if b, err := os.ReadFile(filepath.Join(adir, "outages.jsonl")); err == nil { // provider outages waited out
+				var outs []map[string]any
+				for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+					var o map[string]any
+					if json.Unmarshal([]byte(line), &o) == nil {
+						outs = append(outs, o)
+					}
+				}
+				p["outages"] = outs
+			}
 			if p["effort"] == nil || p["effort"] == "" { // runs from before effort was recorded: Codex's session says
 				p["effort"] = run.DetectEffort(fmt.Sprint(p["runtime"]), filepath.Join(adir, "agent.jsonl"))
 			}

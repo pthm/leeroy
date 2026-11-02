@@ -293,7 +293,7 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 		Every: 15 * time.Second, Samples: filepath.Join(p.dir, "samples.jsonl"),
 		Record: filepath.Join(r.dir, p.a.Name+".record.jsonl"), Board: filepath.Join(r.dir, "board"),
 		Events: filepath.Join(r.dir, p.a.Char+".events.jsonl"), Role: spec.Role, Runtime: p.a.Runtime,
-		Hardcore: r.s.Hardcore}
+		Hardcore: r.s.Hardcore, Hold: p.held}
 	if resume {
 		o.Resume = o.Samples
 	}

@@ -32,6 +32,8 @@ export interface Player {
   time_pct_by_state?: Record<string, number>; // the agent: thinking, waiting (a script running), in_call, no_script
   combat?: { damage_dealt: number; damage_taken: number; healing_done: number; kills: number };
   think_median_s?: number;
+  // provider outages waited out with the clock held (azbench run outage.go)
+  outages?: { why: string; start: string; held_s: number; safe_wait_s: number; probes: number; outcome: string }[];
 }
 
 export interface MapBox {
@@ -448,4 +450,12 @@ export function placeLabels(
     placed.push({ x0: l.x + gap, x1: l.x + gap + l.w, y: l.y + 4 });
     return { x: l.x + gap, y: l.y + 4, anchor: 'start' };
   });
+}
+
+// A note on a player whose provider had outages: how many, and how long the clock was held.
+export function outageNote(p: Player): string | undefined {
+  const os = p.outages ?? [];
+  if (!os.length) return undefined;
+  const held = Math.round(os.reduce((n, o) => n + (o.held_s ?? 0), 0) / 60);
+  return `${os.length} provider outage${os.length === 1 ? '' : 's'}, clock held ${held} min (${os.map(o => o.why).join('; ')})`;
 }

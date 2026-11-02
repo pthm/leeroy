@@ -135,6 +135,7 @@ var opcodeNames = map[uint16]string{
 	CmsgLogoutRequest:                   "CMSG_LOGOUT_REQUEST",
 	SmsgLogoutResponse:                  "SMSG_LOGOUT_RESPONSE",
 	SmsgLogoutComplete:                  "SMSG_LOGOUT_COMPLETE",
+	CmsgLogoutCancel:                    "CMSG_LOGOUT_CANCEL",
 	SmsgCancelCombat:                    "SMSG_CANCEL_COMBAT",
 	CmsgAttackSwing:                     "CMSG_ATTACKSWING",
 	CmsgAttackStop:                      "CMSG_ATTACKSTOP",

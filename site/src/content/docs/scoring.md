@@ -30,6 +30,9 @@ rate of progress, averaged with the best 15-minute period so that trying a new a
   so an early death keeps a low rate.
 - **Giving up.** An agent that decides it can't reach the goal can run `standings give-up "<why>"`. Its run ends as
   not met, and the reason is recorded. An agent that stops early without giving up is told to continue.
+- **Provider outages.** If an agent stops because its model provider is temporarily unavailable, its character logs
+  out at a safe moment and its clock is paused until the provider responds, so the outage costs no time. Attempts
+  with an outage are marked ⚠ in the results.
 
 ## Cost
 
