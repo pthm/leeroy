@@ -14,7 +14,6 @@
 //	                      second, nearby creatures, transports, API calls: azbench/gamelog reads it), session.log
 //	judge/<char>/         samples.jsonl (every 15 s), result.json (the final score)
 //	diagnostics/<agent>.jsonl   harness and session diagnostics, one stream
-//	server/               the server's logs over the run's time
 //	.live/                the running supervisor's files: control.json, pids (gone when the run ends)
 //
 // Every JSONL line has t, unix milliseconds. The trajectory is a JSON document (ATIF), its timestamps ISO 8601.
@@ -39,7 +38,6 @@ func (r Run) Report() string        { return r.join("report.json") }
 func (r Run) Team() string          { return r.join("team.json") }
 func (r Run) Board() string         { return r.join("board") }
 func (r Run) CodexQuota() string    { return r.join("codex-quota.json") }
-func (r Run) Server() string        { return r.join("server") }
 func (r Run) Live(name string) string {
 	return r.join(".live", name)
 }
@@ -76,9 +74,7 @@ type Manifest struct {
 	Players  []Player `json:"players"`
 	Started  int64    `json:"started,omitempty"` // unix ms: the clock started (all sessions up)
 	Ended    int64    `json:"ended,omitempty"`   // unix ms: the run finished
-	// ServerLogs: how long each server log was when the clock started, so server/ gets what came after
-	ServerLogs map[string]int64 `json:"server_logs,omitempty"`
-	Status     string           `json:"status"` // starting, running, paused, finished
+	Status   string   `json:"status"`            // starting, running, paused, finished
 }
 
 // Player is one agent and the character it played, as configured (agents/<agent>/meta.json has what the runtime

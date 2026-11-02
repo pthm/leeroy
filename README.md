@@ -167,7 +167,7 @@ persistent script library). It can read and write only there, read the client an
 - `agents/<agent>/`: the transcript, an [ATIF](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md) trajectory (`trajectory.json`, the same for every runtime), notes and usage;
 - `game/<char>/`: the game log (the events its agent saw, its state each second, nearby creatures, API calls) and its client log;
 - `judge/<char>/`: samples every 15 s and the final score;
-- `diagnostics/`, and `server/` (the server's logs over the run);
+- `diagnostics/`: the harness's and the sessions' diagnostics;
 - `team.json` and `report.json` (the report card).
 
 The layout is in [bench/README.md](bench/README.md#run-directories).

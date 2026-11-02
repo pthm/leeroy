@@ -166,7 +166,6 @@ by agent name, game and judge files by character. Every JSONL line has `t`, unix
 | `judge/<char>/samples.jsonl` | the judge's sample every 15 s |
 | `judge/<char>/result.json` | the judge's final result |
 | `diagnostics/<agent>.jsonl` | the harness's and the session's diagnostics (`schema`, `seq`, `kind`, `details`), one stream; a session's lines carry its `session` id |
-| `server/` | the server's `Server.log` and `Errors.log`, cut to the run's time, at each pause and at the end |
 | `board/<char>.json` | each judge's latest result (with `minutes_left`), read by `standings` |
 | `codex-quota.json` | the Codex quota at the start and the latest read (runs with a Codex agent) |
 | `.live/` | while the supervisor runs: `control.json` (its control API), `pids` (the process groups of its sessions and agents); removed when the run finishes |

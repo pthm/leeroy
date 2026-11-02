@@ -283,7 +283,6 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 		if m.Started == 0 {
 			m.Started = r.start.UnixMilli()
 		}
-		r.noteServerLogs(m)
 	})
 	r.noteOpenrouter(false)
 	left := time.Duration(r.minutesLeft() * float64(time.Minute))
@@ -311,12 +310,10 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 		r.manifest(func(m *runfiles.Manifest) {
 			m.Status = "paused"
 		})
-		r.saveServerLogs()
 		r.logf("paused: azbench resume %s --message <file>", r.dir)
 		return nil
 	}
 	r.manifest(func(m *runfiles.Manifest) { m.Status, m.Ended = "finished", time.Now().UnixMilli() })
-	r.saveServerLogs()
 	os.RemoveAll(r.f().Live(""))
 	if !quiet {
 		r.finish()
