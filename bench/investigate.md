@@ -31,7 +31,11 @@ graveyards it cuts off are Outland's Twisting Nether corpse catchers and three f
 
 ## SDK
 
-(nothing open)
+- **The Rut'theran portal didn't fire for Haiku.** travel-models-2 (20261101-174506), Gaspard (a62): rode The Bravery
+  and The Moonspray to Rut'theran, then walked at the Darnassus trigger (542, z 30) from several sides with no
+  teleport, and quit with 63 minutes left. The other five got through (act.go_to takes same-map portals). Find out
+  what Haiku's walks did differently (raw move.to stopping short of the trigger? the trigger's box?) and whether
+  walking at a trigger should fire it more reliably.
 
 ## azworld
 
