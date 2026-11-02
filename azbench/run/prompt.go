@@ -96,7 +96,7 @@ the goal met; if time runs out, your progress toward it is the score.`,
 }
 
 // hardcoreText: a hardcore run's scoring. The first death ends the run, so a binary goal is scored as before but a
-// death before it is a 0, and anything else is scored on what was earned by then over the whole clock.
+// death before it is a 0, and anything else is scored on the total earned by then.
 func hardcoreText(goal, score, stop string) (string, string) {
 	const rule = "HARDCORE: your run ends the first time your character dies; nothing after that counts.\n"
 	if kind, _, _ := strings.Cut(goal, ":"); slices.Contains([]string{"achievement", "quest", "item", "quality", "zone"}, kind) {
@@ -104,7 +104,7 @@ func hardcoreText(goal, score, stop string) (string, string) {
 	}
 	return rule + `HOW YOU ARE SCORED: every 15 seconds the judge reads your character from the server database. Your
 progress is the XP you've earned since the start of the run, from any source (kills, quests, exploring). YOUR
-SCORE is that XP divided by the run's full length in hours, so it stops growing when you die.`,
+SCORE is the total XP you've earned when the run ends, so it stops growing when you die.`,
 		"Do not stop early: keep earning XP until the time runs out, and stay alive."
 }
 

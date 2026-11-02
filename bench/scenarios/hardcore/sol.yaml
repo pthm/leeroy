@@ -1,8 +1,8 @@
 name: hardcore-sol
 description: >
   Hardcore levelling on gpt-6.1-sol (Codex): one new level-1 Human Arms warrior in
-  Northshire, 4 hours, and the first death ends the run. Scored on XP earned before the run ends, per hour of the
-  full clock. One of six (bench/scenarios/hardcore/), run one after another so no two share the world.
+  Northshire, 4 hours, and the first death ends the run. Scored on the total XP earned before the run
+  ends. One of six (bench/scenarios/hardcore/), run one after another so no two share the world.
 goal: score:100000000
 hardcore: true
 minutes: 240

@@ -49,7 +49,7 @@ Unknown fields are errors, so a typo doesn't silently change a run.
 | `setup` | for characters from earlier runs: `revive` (no ghost, corpse or resurrection sickness), `repair` (every item), `reset_talents` |
 | `channel` | the zone channel joined at login; default `General - Elwynn Forest` |
 | `hint` | appended to the goal in the prompt |
-| `hardcore` | a character's first death ends its run; the score is then the value per hour of the whole clock (binary goals: unmet, 0), and the prompt states the rule |
+| `hardcore` | a character's first death ends its run; the score is then the total value earned before it ends (binary goals: unmet, 0), and the prompt states the rule |
 | `notice` | added to the prompt: text, or a `.md` file next to the scenario (e.g. what changed since the agents' last run) |
 | `require_fresh` | refuse to start if any agent's workspace exists |
 | `runtime`, `race`, `provider`, `effort` | defaults for agents without their own: `claude`, `human`, the runtime's own, the runtime's default |

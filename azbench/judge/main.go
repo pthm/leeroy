@@ -155,8 +155,8 @@ type Options struct {
 	Events         string // the character's event stream: combat totals and, from its neighbours, cooperation
 	Role, Runtime  string // added to the board (and the runtime to the result)
 	Resume         string // samples.jsonl of a paused run: same baseline and curve; the clock resumes at the last one
-	// Hardcore: the first death ends the run, the goal unmet, and the score is the value per hour of the whole clock
-	// (a death freezes progress; a fast start that dies early doesn't score its rate)
+	// Hardcore: the first death ends the run, the goal unmet, and the score is the total value earned before the death
+	// or the clock (how far it got without dying; a fast start that dies early doesn't score its rate)
 	Hardcore bool
 	// Hold, while it returns true, stops this character's clock: no polls, and the time doesn't count (a provider
 	// outage: the character is logged out until its agent can play again)
@@ -302,7 +302,7 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 			}
 		}
 		if o.Hardcore && !binaryGoal(goal) {
-			score = round1(value / timeout.Hours())
+			score = round1(value)
 		}
 		rates := obj{{"rate", round1(r.Rate)}, {"recent_rate", round1(r.Recent)}, {"best_window", round1(r.BestWindow)},
 			{"pace", round1(r.Pace)}, {"score", score}}

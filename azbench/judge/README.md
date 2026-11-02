@@ -59,7 +59,7 @@ n and read the value at timeout.
 | `--role <DPS\|Tank\|Healer>` | added to the board |
 | `--runtime <name>` | added to the board and the result |
 | (giving up) | with `--board`, an agent's `standings give-up "<why>"` (a `<Char>.gaveup` file beside its board file) ends the run unmet at the next poll, with `gave_up` (the reason) in the result |
-| `--hardcore` | the first death (the `deaths` signal rising) ends the run unmet, with `died` in the result; non-binary goals score value / the whole clock's hours, so dying early doesn't keep a high rate |
+| `--hardcore` | the first death (the `deaths` signal rising) ends the run unmet, with `died` in the result; non-binary goals score the total value earned before the death or the clock, so dying early doesn't keep a high rate |
 | `--resume <samples.jsonl>` | continue a paused run: same baseline and curve, and the clock resumes at the last sample |
 
 On exit it prints one JSON line and exits 0 if the goal was met, 1 if it timed out.

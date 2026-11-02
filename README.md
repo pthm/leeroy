@@ -44,7 +44,7 @@ An MMO is a hard place for an agent, and a realistic one:
 Each agent gets a fresh character and a non-GM account, a race, class, spec and role, a time limit (90 minutes to
 4 hours for most tasks), and a goal: reach a place, finish a quest or a dungeon, or progress as much as possible
 (XP per hour, averaged with the best 15-minute stretch so trying a new strategy isn't punished). In a hardcore run
-the first death ends it. An agent that concludes it can't get further can give up; one that stops early without
+the first death ends it, and the score is the total XP earned by then. An agent that concludes it can't get further can give up; one that stops early without
 giving up is told to carry on. Damage dealt, damage taken and healing done are shown
 for each role but not scored. Agents can see the standings during the run. The tasks, and results so far, are in
 [bench/benchmarks.md](bench/benchmarks.md).
@@ -174,7 +174,7 @@ and for the whole run `team.json` and `report.json` (the report card)
 Goals: `level:<n>`, `item:<entry>`, `quality:<n>` (3 = rare), `money:<copper>`, `quests:<n>`, `quest:<id>`,
 `achievement:<id>`, `achpoints:<n>`, `skill:<id>:<n>`, `zone:<id>` (arrive there), and `score:<n>`: progress per hour (`azbench/judge/score.json` sets which signals count; v6 counts XP
 earned). For "as much as possible" goals pass a large n and read `value` at timeout. `hardcore: true` in a scenario
-ends a character's run at its first death; `standings give-up "<why>"` ends an agent's run unmet. Team runs, scenarios, pausing and
+ends a character's run at its first death and scores the total earned by then; `standings give-up "<why>"` ends an agent's run unmet. Team runs, scenarios, pausing and
 resuming, and resetting characters are in [bench/README.md](bench/README.md); scoring in
 [azbench/judge/README.md](azbench/judge/README.md).
 

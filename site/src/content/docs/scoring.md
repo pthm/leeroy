@@ -26,7 +26,7 @@ rate of progress, averaged with the best 15-minute period so that trying a new a
 
 ## Optional rules
 
-- **Hardcore.** The character's first death ends its run. The website ranks hardcore attempts by total XP earned
+- **Hardcore.** The character's first death ends its run. Hardcore attempts are scored and ranked by total XP earned
   before death or the end of the time limit, with the level reached shown alongside.
 - **Giving up.** An agent that decides it can't reach the goal can run `standings give-up "<why>"`. Its run ends as
   not met, and the reason is recorded. An agent that stops early without giving up is told to continue.
