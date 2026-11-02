@@ -1,0 +1,12 @@
+---
+// A game icon, small and square, with a border (an item's quality colour); a blank square when there's no icon.
+interface Props {
+  src?: string;
+  border?: string;
+}
+const { src, border } = Astro.props;
+---
+
+<span class="inline-block size-5 shrink-0 overflow-hidden rounded-sm border bg-elevated" style={`border-color:${border ?? 'var(--color-outline)'}`}>
+  {src && <img src={src} alt="" width="20" height="20" class="size-full scale-110 object-cover" />}
+</span>

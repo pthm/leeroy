@@ -362,6 +362,7 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 		r.wrapUp(p, time.Duration(r.s.WrapUpMinutes)*time.Minute)
 	}
 	p.stop()
+	p.saveKit() // after the logout saved the character
 }
 
 // wrapUp: the judge recorded p's goal, so its score is final. The agent and session keep going for wrap (a loot roll

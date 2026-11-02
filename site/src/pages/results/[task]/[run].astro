@@ -6,7 +6,9 @@ import Deaths from '../../../components/Deaths.astro';
 import ProgressChart from '../../../components/ProgressChart.astro';
 import RouteMap from '../../../components/RouteMap.astro';
 import SectionHeader from '../../../components/SectionHeader.astro';
-import Spend from '../../../components/Spend.astro';
+import CostPanel from '../../../components/CostPanel.astro';
+import TrajectoryPanel from '../../../components/TrajectoryPanel.astro';
+import KitPanel from '../../../components/KitPanel.astro';
 import Talk from '../../../components/Talk.astro';
 import TimeUse from '../../../components/TimeUse.astro';
 import Section from '../../../components/Section.astro';
@@ -181,6 +183,13 @@ const tiles = [
     <TimeUse run={run} />
   </Section>
 
+  {run.players.some(p => p.trajectory?.length || p.failures?.length) && (
+    <Section>
+      <SectionHeader eyebrow="Trajectory" title="Calls and errors" description="What each agent asked the game to do over the run, where its calls failed, and the errors it hit most often." />
+      <TrajectoryPanel run={run} />
+    </Section>
+  )}
+
   {hasChat && run.players.length > 1 && (
     <Section>
       <SectionHeader eyebrow="Group" title="Chat and proximity" description="Messages between players per hour, and how often the whole party was within 40 yards of each other." />
@@ -188,9 +197,16 @@ const tiles = [
     </Section>
   )}
 
+  {run.players.some(p => p.kit || Object.keys(p.casts ?? {}).length) && (
+    <Section>
+      <SectionHeader eyebrow="Characters" title="Gear, talents and abilities" description="What each character wore and had learned when the run ended, and how often it cast each ability." />
+      <KitPanel run={run} />
+    </Section>
+  )}
+
   <Section last={!Story}>
-    <SectionHeader eyebrow="Spend" title="Cost and errors" description="Cost per player at list prices, token counts, and the SDK errors each player hit most often." />
-    <Spend run={run} />
+    <SectionHeader eyebrow="Spend" title="Cost" description="What each agent cost over the run, and its tokens." />
+    <CostPanel run={run} />
   </Section>
 
   {Story && (

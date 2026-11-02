@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -128,6 +130,19 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 				}
 			}
 			p["series"], p["deaths_at"] = series(filepath.Join(adir, "samples.jsonl"))
+			cs := costSeries(fmt.Sprint(p["runtime"]), fmt.Sprint(r["provider"]), fmt.Sprint(p["model"]), adir, started)
+			// the transcript misses some requests (Claude Code's background calls): keep its shape, end at the run's cost
+			if total, ok := p["cost_usd"].(float64); ok && len(cs) > 0 && cs[len(cs)-1][1] > 0 {
+				k := total / cs[len(cs)-1][1]
+				for i := range cs {
+					cs[i][1] = math.Round(cs[i][1]*k*1000) / 1000
+				}
+			}
+			p["cost_series"] = cs
+			if k := kitOf(root, runDir, adir, char, started); k != nil {
+				kitIcons(k, filepath.Join(out, "../../../public/icons"))
+				p["kit"] = k
+			}
 			if b, err := os.ReadFile(filepath.Join(adir, "outages.jsonl")); err == nil { // provider outages waited out
 				var outs []map[string]any
 				for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -140,6 +155,9 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 			}
 			if p["effort"] == nil || p["effort"] == "" { // runs from before effort was recorded: Codex's session says
 				p["effort"] = run.DetectEffort(fmt.Sprint(p["runtime"]), filepath.Join(adir, "agent.jsonl"))
+			}
+			if t := trajectory(filepath.Join(runDir, char+".events.jsonl"), started.UnixMilli()); len(t) > 0 {
+				p["trajectory"] = t
 			}
 			if rec, err := readRecording(filepath.Join(runDir, a.Name+".record.jsonl"), char, started.UnixMilli(), chat); err == nil {
 				recs, recOf[char] = append(recs, rec), rec
@@ -164,7 +182,8 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 			p["class"] = rec.class
 		}
 		t := simplify(rec.raw)
-		p["track"], p["death_list"] = t, rec.deaths
+		p["track"], p["death_list"], p["casts"] = t, rec.deaths, ownCasts(rec.casts, p["kit"])
+		p["cast_icons"] = castIcons(p["casts"].(map[string]int), rec.spells, filepath.Join(out, "../../../public/icons"))
 		tracks, thin = append(tracks, rec.track), append(thin, t)
 	}
 	maps, err := mapImages(id, thin, filepath.Join(out, "../../assets/runs"))
@@ -210,6 +229,62 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 // still on the global cooldown), not mistakes worth showing
 var benign = map[string]bool{"replaced_by_owner": true, "cancelled": true, "task_stopped": true, "miss": true,
 	"dodge": true, "parry": true, "not_ready": true}
+
+// trajectory: a player's SDK calls minute by minute, from its session's events: [minute, succeeded, failed, the
+// minute's most frequent failure ("op code"), its count], minutes with no calls left out. Benign failures count as
+// succeeded.
+func trajectory(f string, start int64) [][5]any {
+	fh, err := os.Open(f)
+	if err != nil {
+		return nil
+	}
+	defer fh.Close()
+	type minute struct {
+		ok, failed int
+		why        map[string]int
+	}
+	byMin := map[int]*minute{}
+	sc := bufio.NewScanner(fh)
+	sc.Buffer(make([]byte, 1<<20), 16<<20)
+	for sc.Scan() {
+		if !bytes.Contains(sc.Bytes(), []byte(`"type":"result"`)) {
+			continue
+		}
+		var e struct {
+			T    int64
+			Data struct {
+				Op    string
+				OK    bool
+				Error struct{ Code string }
+			}
+		}
+		if json.Unmarshal(sc.Bytes(), &e) != nil || e.T < start {
+			continue
+		}
+		m := int((e.T - start) / 60000)
+		if byMin[m] == nil {
+			byMin[m] = &minute{why: map[string]int{}}
+		}
+		if e.Data.OK || benign[e.Data.Error.Code] {
+			byMin[m].ok++
+		} else {
+			byMin[m].failed++
+			byMin[m].why[e.Data.Op+" "+e.Data.Error.Code]++
+		}
+	}
+	out := [][5]any{}
+	for m, b := range byMin {
+		top, n := "", 0
+		for w, c := range b.why {
+			if c > n || c == n && w < top {
+				top, n = w, c
+			}
+		}
+		out = append(out, [5]any{m, b.ok, b.failed, top, n})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i][0].(int) < out[j][0].(int) })
+	return out
+}
 
 // failures: a player's most frequent failed calls, [{op, code, count}], at most 6.
 func failures(r map[string]any) []map[string]any {
@@ -295,4 +370,58 @@ func readJSON(f string, v any) error {
 		return err
 	}
 	return json.Unmarshal(data, v)
+}
+
+// kitOf: the character's gear, talents and abilities as its run left them: kit.json, which the harness saves at the
+// end of each run; for older runs, the characters database, but only if no later run played a character of that name
+// (else its kit would be that run's).
+func kitOf(root, runDir, adir, char string, started time.Time) *run.Kit {
+	var k run.Kit
+	if readJSON(filepath.Join(adir, "kit.json"), &k) == nil {
+		return &k
+	}
+	later, _ := filepath.Glob(filepath.Join(root, "bench/runs/*"))
+	for _, d := range later {
+		t, err := time.ParseInLocation("20060102-150405", filepath.Base(d)[:min(15, len(filepath.Base(d)))], time.Local)
+		if err != nil || !t.After(started) {
+			continue
+		}
+		if b, err := os.ReadFile(filepath.Join(d, "report.json")); err == nil &&
+			(strings.Contains(string(b), `"char":"`+char+`"`) || strings.Contains(string(b), `"char": "`+char+`"`)) {
+			return nil
+		}
+		if b, err := os.ReadFile(filepath.Join(d, "scenario.yaml")); err == nil && strings.Contains(string(b), "char: "+char+"\n") {
+			return nil
+		}
+	}
+	kk, err := run.CharKit(char)
+	if err != nil || len(kk.Gear) == 0 {
+		return nil
+	}
+	return kk
+}
+
+// ownCasts: the character's casts without the game's own effects (LOGINEFFECT, Ghost, eating and drinking). Starting
+// spells aren't in the characters database, so casts aren't matched against the kit; the recording's casts can include
+// effects triggered on the character (a paladin's Judgement of Light healing whoever hits its target), so the common
+// ones are dropped by name. ponytail: a name list; the recorder could flag triggered casts if more turn up.
+var triggered = map[string]bool{"Judgement of Light": true, "Judgement of Wisdom": true, "Chilled": true, "Resurrection Sickness": true}
+
+func ownCasts(casts map[string]int, kit any) map[string]int {
+	trained := map[string]bool{} // a triggered name the character also trained (a paladin's own Judgement of Light) stays
+	if k, ok := kit.(*run.Kit); ok {
+		for _, a := range k.Abilities {
+			trained[a.Name] = true
+		}
+	}
+	out := map[string]int{}
+	for name, n := range casts {
+		switch {
+		case strings.ToUpper(name) == name, name == "Ghost", name == "Food", name == "Drink", name == "Refreshment",
+			triggered[name] && !trained[name], strings.HasPrefix(name, "Sound Effect"):
+			continue
+		}
+		out[name] = n
+	}
+	return out
 }

@@ -6,6 +6,7 @@
 //	clientdata -client <game dir> -maps 0 extract data      Eastern Kingdoms only
 //	clientdata -client <game dir> cat 'textures\Minimap\md5translate.trs'
 //	clientdata roads data                                   the road layers again, from data/client (no install)
+//	clientdata -client <game dir> icons data                spell and item icons (data/icons) and their DBCs
 package main
 
 import (
@@ -132,7 +133,50 @@ func main() {
 			}
 			log.Printf("map %d: %d minimap tiles, %d squares with roads, %d terrain and model files (%d MB)", id, n, r, f, size>>20)
 		}
+	case "icons": // icons <data dir>: SpellIcon.dbc and ItemDisplayInfo.dbc into dbc/, every icon they name into icons/<name>.png
+		out := flag.Arg(1)
+		if out == "" {
+			log.Fatal("clientdata icons <data dir>")
+		}
+		names := map[string]bool{}
+		for _, d := range []struct {
+			file  string
+			field int
+		}{{"SpellIcon.dbc", 1}, {"ItemDisplayInfo.dbc", 5}} {
+			b, err := c.Read(`DBFilesClient\` + d.file)
+			if err != nil {
+				log.Fatal(err)
+			}
+			os.MkdirAll(filepath.Join(out, "dbc"), 0o755)
+			os.WriteFile(filepath.Join(out, "dbc", d.file), b, 0o644)
+			for _, n := range clientdata.DBCStrings(b, d.field) {
+				if n == "" {
+					continue
+				}
+				names[strings.ToLower(filepath.Base(strings.ReplaceAll(n, `\`, "/")))] = true
+			}
+		}
+		os.MkdirAll(filepath.Join(out, "icons"), 0o755)
+		n := 0
+		for name := range names {
+			b, err := c.Read(`Interface\Icons\` + name + ".blp")
+			if err != nil {
+				continue
+			}
+			img, err := clientdata.DecodeBLP(b)
+			if err != nil {
+				continue
+			}
+			f, err := os.Create(filepath.Join(out, "icons", name+".png"))
+			if err != nil {
+				log.Fatal(err)
+			}
+			png.Encode(f, img)
+			f.Close()
+			n++
+		}
+		log.Printf("%d icons of %d named", n, len(names))
 	default:
-		log.Fatal("usage: clientdata -client <dir> [-maps 0,1] cat <file> | blp <file> <out.png> | textures <map dir> | extract <data dir>")
+		log.Fatal("usage: clientdata -client <dir> [-maps 0,1] cat <file> | blp <file> <out.png> | textures <map dir> | extract <data dir> | icons <data dir>")
 	}
 }

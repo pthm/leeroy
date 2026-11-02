@@ -152,6 +152,8 @@ function crosshair(svg: SVGSVGElement) {
   const d = JSON.parse(svg.dataset.series!) as {
     x0: number; x1: number; t1: number; top: number; bottom: number;
     lines: { name: string; cls: string; pts: [number, number][] }[];
+    prefix?: string; // shown before each value, e.g. $
+    digits?: number; // decimals, default 1
   };
   const ns = 'http://www.w3.org/2000/svg';
   const line = document.createElementNS(ns, 'line');
@@ -185,7 +187,7 @@ function crosshair(svg: SVGSVGElement) {
       .map(l => {
         let best = l.pts[0];
         for (const p of l.pts) if (p[0] <= t) best = p;
-        return `<span class="${l.cls}">●</span> ${esc(l.name)} <b>${best[1].toFixed(1)}</b>`;
+        return `<span class="${l.cls}">●</span> ${esc(l.name)} <b>${d.prefix ?? ''}${best[1].toFixed(d.digits ?? 1)}</b>`;
       })
       .join('<br>');
     const band = own ? `<br><span class="chart-tip-head">${esc(own.dataset.tip!)}</span>` : '';

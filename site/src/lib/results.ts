@@ -32,8 +32,17 @@ export interface Player {
   time_pct_by_state?: Record<string, number>; // the agent: thinking, waiting (a script running), in_call, no_script
   combat?: { damage_dealt: number; damage_taken: number; healing_done: number; kills: number };
   think_median_s?: number;
-  // provider outages waited out with the clock held (azbench run outage.go)
+  kit?: {
+    gear: { slot: number; entry: number; name: string; quality: number; level: number; icon?: string }[];
+    talents: { id: number; name: string; rank?: string; icon?: string }[];
+    abilities: { id: number; name: string; rank?: string; icon?: string }[];
+  };
+  casts?: Record<string, number>; // spell name -> times cast in the run
+  cast_icons?: Record<string, string>; // spell name -> icon (public/icons/<icon>.png)
+  trajectory?: [number, number, number, string, number][]; // [minute, SDK calls succeeded, failed, top failure "op code", its count]
+  cost_series?: [number, number][]; // [s from the start, cumulative USD]
   hardcore?: boolean; // set on load: scored on total XP earned before death or the clock, not XP per hour
+  // provider outages waited out with the clock held (azbench run outage.go)
   outages?: { why: string; start: string; held_s: number; safe_wait_s: number; probes: number; outcome: string }[];
 }
 

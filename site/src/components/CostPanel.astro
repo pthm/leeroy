@@ -1,0 +1,119 @@
+---
+// What the run cost: cumulative cost over the run, one line per player (hover for everyone's spend at that moment),
+// cost per player, and a table of tokens, calls, cost and cost per hour. The cost series is rebuilt from the
+// transcripts by azbench publish and ends at the run's reported cost.
+import FigureHead from './FigureHead.astro';
+import { colors, dollars, timeTicks, thousands, type Run } from '../lib/results';
+
+interface Props {
+  run: Run;
+}
+
+const { run } = Astro.props;
+const color = colors(run);
+const withSeries = run.players.filter(p => (p.cost_series?.length ?? 0) > 1);
+const end = Math.max(1, ...withSeries.map(p => p.cost_series!.at(-1)![0]));
+const top = Math.max(0.01, ...withSeries.map(p => p.cost_series!.at(-1)![1])) * 1.1;
+const W = 900, H = 300, L = 56, R = 16, T = 16, B = 34;
+const x = (s: number) => L + (s / end) * (W - L - R);
+const y = (v: number) => H - B - (v / top) * (H - T - B);
+const step = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100].find(s => top / s <= 6) ?? 200;
+const yTicks = Array.from({ length: Math.floor(top / step) + 1 }, (_, i) => +(i * step).toFixed(2));
+const seriesData = JSON.stringify({
+  x0: L, x1: W - R, t1: end, top: T, bottom: H - B, prefix: '$', digits: 2,
+  lines: withSeries.map(p => ({ name: p.char, cls: color[p.char], pts: p.cost_series })),
+});
+const total = run.players.reduce((n, p) => n + (p.cost_usd ?? 0), 0);
+const maxCost = Math.max(0.01, ...run.players.map(p => p.cost_usd ?? 0));
+const perHour = (p: Run['players'][number]) => (p.cost_usd != null && p.hours ? p.cost_usd / p.hours : undefined);
+---
+
+<div class="space-y-4">
+  {withSeries.length > 0 && (
+    <figure class="rounded border border-hairline bg-raised p-5" data-chart>
+      <FigureHead title="Cost over the run" sub={`Cumulative cost at list prices, ${dollars(total)} in all. Hover for every player's spend at that moment.`} />
+      <p class="mb-2 flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
+        {withSeries.map(p => <button type="button" class={color[p.char]} data-toggle={p.char} aria-pressed="true">● <span class="text-muted">{p.char}</span></button>)}
+      </p>
+      <svg viewBox={`0 0 ${W} ${H}`} class="w-full" role="img" aria-label="Each player's cumulative cost over the run" data-series={seriesData}>
+        {yTicks.map(v => (
+          <g>
+            <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="var(--color-hairline)" />
+            <text x={L - 8} y={y(v) + 4} text-anchor="end" class="fill-faint font-mono text-[11px]">{`$${v}`}</text>
+          </g>
+        ))}
+        {timeTicks(end).map(t => (
+          <text x={x(t.s)} y={H - 10} text-anchor="middle" class="fill-faint font-mono text-[11px]">{t.label}</text>
+        ))}
+        {withSeries.map(p => (
+          <path
+            d={p.cost_series!.map((c, i) => `${i ? 'L' : 'M'}${x(c[0]).toFixed(1)},${y(c[1]).toFixed(1)}`).join('')}
+            fill="none" stroke="currentColor" stroke-width="2" class={color[p.char]} data-key={p.char}
+          />
+        ))}
+      </svg>
+    </figure>
+  )}
+
+  <figure class="rounded border border-hairline bg-raised p-5" data-chart>
+    <FigureHead title="Cost per player" sub="At list prices" />
+    <ul class="space-y-2">
+      {run.players.map(p => (
+        <li class="grid grid-cols-[6.5rem_1fr_3.5rem] items-center gap-3 text-xs" title={`${p.char}: ${dollars(p.cost_usd)}`}>
+          <span class:list={['truncate', color[p.char]]}>{p.char}</span>
+          <span class="h-2.5 rounded-sm bg-accent" style={`width:${((p.cost_usd ?? 0) / maxCost) * 100}%`} />
+          <span class="text-right font-mono text-fg">{dollars(p.cost_usd)}</span>
+        </li>
+      ))}
+    </ul>
+  </figure>
+
+  <div class="overflow-x-auto rounded border border-hairline bg-raised">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Player</th>
+          <th class="num">Hours</th>
+          <th class="num">Input</th>
+          <th class="num">Cache read</th>
+          <th class="num">Cache write</th>
+          <th class="num">Output</th>
+          <th class="num">Calls</th>
+          <th class="num">Cost</th>
+          <th class="num">Per hour</th>
+        </tr>
+      </thead>
+      <tbody>
+        {run.players.map(p => (
+          <tr>
+            <td class:list={[color[p.char]]}>{p.char}</td>
+            <td class="num text-muted">{p.hours ?? '–'}</td>
+            <td class="num text-muted">{thousands(p.tokens?.input)}</td>
+            <td class="num text-muted">{thousands(p.tokens?.cache_read)}</td>
+            <td class="num text-muted">{thousands(p.tokens?.cache_write)}</td>
+            <td class="num text-muted">{thousands(p.tokens?.output)}</td>
+            <td class="num text-muted">{p.calls?.toLocaleString('en') ?? '–'}</td>
+            <td class="num text-fg">{dollars(p.cost_usd)}</td>
+            <td class="num text-muted">{dollars(perHour(p))}</td>
+          </tr>
+        ))}
+        <tr>
+          <td class="font-medium text-fg">Total</td>
+          <td class="num" />
+          <td class="num text-muted">{thousands(run.players.reduce((n, p) => n + (p.tokens?.input ?? 0), 0))}</td>
+          <td class="num text-muted">{thousands(run.players.reduce((n, p) => n + (p.tokens?.cache_read ?? 0), 0))}</td>
+          <td class="num text-muted">{thousands(run.players.reduce((n, p) => n + (p.tokens?.cache_write ?? 0), 0))}</td>
+          <td class="num text-muted">{thousands(run.players.reduce((n, p) => n + (p.tokens?.output ?? 0), 0))}</td>
+          <td class="num text-muted">{run.players.reduce((n, p) => n + (p.calls ?? 0), 0).toLocaleString('en')}</td>
+          <td class="num font-medium text-fg">{dollars(total)}</td>
+          <td class="num" />
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="font-mono text-[11px] leading-relaxed text-faint">
+    Tokens in thousands. Cost is at the provider's list prices (models.dev). The cost over time is rebuilt from each
+    agent's transcript or session file and scaled to end at the run's reported cost, since the transcript can miss a
+    few requests. Per hour is cost divided by hours played.
+  </p>
+</div>

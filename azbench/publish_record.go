@@ -34,9 +34,11 @@ type recDeath struct {
 }
 
 type recording struct {
-	track  [][5]float64 // t, map, x, y, group id: every 15 s; map -1 marks a teleport, -2 a ride (boat, zeppelin)
-	raw    [][5]float64 // the same every second, for drawing (simplify)
-	class  string       // from the login event: runs that kept no meta.json
+	track  [][5]float64   // t, map, x, y, group id: every 15 s; map -1 marks a teleport, -2 a ride (boat, zeppelin)
+	raw    [][5]float64   // the same every second, for drawing (simplify)
+	class  string         // from the login event: runs that kept no meta.json
+	casts  map[string]int // spell name -> times cast
+	spells map[string]int // spell name -> spell id (the last cast), for its icon
 	deaths []recDeath
 }
 
@@ -51,7 +53,7 @@ func readRecording(f, char string, start int64, chat map[string]chatMsg) (*recor
 		return nil, err
 	}
 	defer fh.Close()
-	rec := &recording{}
+	rec := &recording{casts: map[string]int{}, spells: map[string]int{}}
 	last := -1e9
 	var prev struct {
 		t    float64
@@ -70,6 +72,8 @@ func readRecording(f, char string, start int64, chat map[string]chatMsg) (*recor
 			X, Y       float64
 			Killer     struct{ ID int }
 			Cls        int
+			Name       string
+			Spell      int
 		}
 		if json.Unmarshal(sc.Bytes(), &e) != nil || e.N != char {
 			continue
@@ -98,6 +102,11 @@ func readRecording(f, char string, start int64, chat map[string]chatMsg) (*recor
 			if t-last >= 15 || len(rec.track) > 0 && rec.track[len(rec.track)-1][1] != float64(e.M) {
 				rec.track = append(rec.track, [5]float64{math.Round(t), float64(e.M), math.Round(e.X), math.Round(e.Y), float64(e.Grp)})
 				last = t
+			}
+		case "cast":
+			if e.Name != "" {
+				rec.casts[e.Name]++
+				rec.spells[e.Name] = e.Spell
 			}
 		case "login":
 			if e.Cls != 0 {
