@@ -5,11 +5,12 @@ import { LABS, dollars, duration, entryName, harnessName, isProgress, leaderboar
 
 interface Props {
   task: string;
+  version?: string; // a benchmark version, or 'all'
   compact?: boolean; // the home page: no tokens column
 }
 
-const { task, compact = false } = Astro.props;
-const rows = leaderboard(task);
+const { task, version = 'all', compact = false } = Astro.props;
+const rows = leaderboard(task, version);
 const progress = isProgress(task);
 ---
 

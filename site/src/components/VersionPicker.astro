@@ -1,0 +1,38 @@
+---
+// The benchmark version shown: a link per version that has runs (for one task, or any), and All versions, with the
+// selected version's notes. Results aren't compared across versions.
+import { ALL, LATEST, VERSIONS, latestFor, versionLabel, versionsOf } from '../lib/results';
+import { resultsUrl } from '../lib/url';
+
+interface Props {
+  version: string;
+  task?: string;
+}
+
+const { version, task } = Astro.props;
+const options = versionsOf(task);
+const latest = task ? latestFor(task) : VERSIONS.at(-1)?.version;
+const current = VERSIONS.find(v => v.version === version);
+const link = (v: string) => resultsUrl(v, task, latest);
+const chip = (on: boolean) => [
+  'rounded border px-2.5 py-1 font-mono text-xs transition-colors',
+  on ? 'border-accent bg-elevated text-accent' : 'border-hairline text-muted hover:border-outline hover:text-fg',
+];
+---
+
+<nav aria-label="Benchmark version" class="mb-8 rounded border border-hairline bg-raised p-4">
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="eyebrow mr-2">Version</span>
+    {options.toReversed().map(v => (
+      <a href={link(v.version)} aria-current={v.version === version ? 'page' : undefined} class:list={chip(v.version === version)}>
+        {versionLabel(v.version)}{v.version === LATEST && <span class="text-faint"> · latest</span>}
+      </a>
+    ))}
+    <a href={link(ALL)} aria-current={version === ALL ? 'page' : undefined} class:list={chip(version === ALL)}>{versionLabel(ALL)}</a>
+  </div>
+  <p class="mt-3 text-xs text-muted">
+    {current
+      ? `${versionLabel(current.version)}, from ${current.from.slice(0, 10)}. ${current.notes}`
+      : 'Runs from every version together. Versions differ in the SDK and scoring, so compare results within a version where possible.'}
+  </p>
+</nav>

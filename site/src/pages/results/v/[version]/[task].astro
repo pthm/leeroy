@@ -1,0 +1,15 @@
+---
+// A task at an older version it was run in, or across all versions. Its latest version is at /results/<task>.
+import TaskPage from '../../../../components/pages/TaskPage.astro';
+import { ALL, latestFor, tasks, versionsOf } from '../../../../lib/results';
+
+export function getStaticPaths() {
+  return tasks().flatMap(task =>
+    [...versionsOf(task).map(v => v.version).filter(v => v !== latestFor(task)), ALL].map(version => ({ params: { version, task } })),
+  );
+}
+
+const { version, task } = Astro.params;
+---
+
+<TaskPage task={task} version={version} />

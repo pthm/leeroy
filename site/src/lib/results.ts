@@ -1,3 +1,4 @@
+import versionList from '../data/versions.json';
 // Benchmark results: the runs `azbench publish` wrote into src/data/runs, grouped by task and by model.
 
 export interface Player {
@@ -54,6 +55,8 @@ export interface Run {
   level: number;
   started: string;
   players: Player[];
+  version: string; // benchmark version (bench/versions.yaml)
+  sdk_rev?: string;
   maps?: MapBox[];
   together?: number[]; // per 5 minutes: the share of minutes all players stood within 40 yd
   chat_per_hour?: Record<string, number>[];
@@ -123,11 +126,28 @@ const runs: Run[] = Object.values(
   import.meta.glob<Run>('../data/runs/*.json', { eager: true, import: 'default' }),
 ).sort((a, b) => a.started.localeCompare(b.started));
 
-export const allRuns = () => runs;
+// Benchmark versions (bench/versions.yaml, copied by azbench publish). Results from different versions aren't
+// compared: every list below takes a version, or 'all'.
+export interface Version {
+  version: string;
+  from: string;
+  notes: string;
+}
+export const VERSIONS: Version[] = versionList;
+export const ALL = 'all';
+export const LATEST = VERSIONS.at(-1)?.version ?? ALL;
+const inVersion = (r: Run, v: string) => v === ALL || r.version === v;
+
+export const allRuns = (v = ALL) => runs.filter(r => inVersion(r, v));
 export const runById = (id: string) => runs.find(r => r.id === id);
-export const runsOf = (task: string) => runs.filter(r => r.task === task);
-export const tasks = () =>
-  [...new Set(runs.map(r => r.task))].sort((a, b) => (TASKS[a]?.order ?? 99) - (TASKS[b]?.order ?? 99));
+export const runsOf = (task: string, v = ALL) => runs.filter(r => r.task === task && inVersion(r, v));
+export const tasks = (v = ALL) =>
+  [...new Set(allRuns(v).map(r => r.task))].sort((a, b) => (TASKS[a]?.order ?? 99) - (TASKS[b]?.order ?? 99));
+// the versions a task (or any task) has runs in, oldest first
+export const versionsOf = (task?: string) => VERSIONS.filter(v => runs.some(r => r.version === v.version && (!task || r.task === task)));
+// a task's default version: the latest it was run in
+export const latestFor = (task: string) => versionsOf(task).at(-1)?.version ?? ALL;
+export const versionLabel = (v: string) => (v === ALL ? 'All versions' : `v${v}`);
 export const taskTitle = (task: string) => TASKS[task]?.title ?? task;
 export const taskShort = (task: string) => TASKS[task]?.short ?? task;
 
@@ -184,9 +204,9 @@ export interface ModelRow {
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : undefined);
 
 // One row per model across a task's runs, best first: most goals met, then the fastest mean time.
-export function leaderboard(task: string): ModelRow[] {
+export function leaderboard(task: string, v = ALL): ModelRow[] {
   const by = new Map<string, Player[]>();
-  for (const r of runsOf(task)) for (const p of r.players) by.set(entryKey(p), [...(by.get(entryKey(p)) ?? []), p]);
+  for (const r of runsOf(task, v)) for (const p of r.players) by.set(entryKey(p), [...(by.get(entryKey(p)) ?? []), p]);
   return [...by.entries()]
     .map(([key, ps]) => {
       const times = ps.filter(p => p.met && p.time_to_goal_s).map(p => p.time_to_goal_s!);
@@ -387,8 +407,8 @@ export function frontier<T extends { cost: number; y: number }>(pts: T[], higher
 }
 
 // Where each entry stands in each task, for the cross-task table: 1 for a task's best, 0 for its worst (linear in rank).
-export function percentiles(task: string): Map<string, number> {
-  const rows = leaderboard(task);
+export function percentiles(task: string, v = ALL): Map<string, number> {
+  const rows = leaderboard(task, v);
   return new Map(rows.map((r, i) => [r.key, rows.length > 1 ? 1 - i / (rows.length - 1) : 1]));
 }
 

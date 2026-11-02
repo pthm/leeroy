@@ -6,11 +6,12 @@ import { duration, entryKey, entryName, harnessColor, harnessName, isProgress, l
 
 interface Props {
   task: string;
+  version?: string;
 }
 
-const { task } = Astro.props;
-const rows = leaderboard(task);
-const attempts = (key: string): Player[] => runsOf(task).flatMap(r => r.players.filter(p => entryKey(p) === key));
+const { task, version = 'all' } = Astro.props;
+const rows = leaderboard(task, version);
+const attempts = (key: string): Player[] => runsOf(task, version).flatMap(r => r.players.filter(p => entryKey(p) === key));
 const progress = isProgress(task);
 // each attempt's place on the strip: time to the goal (if met), or XP per hour on a progress task
 const valueOf = (p: Player) => (progress ? xpRate(p) : p.met ? p.time_to_goal_s : undefined);

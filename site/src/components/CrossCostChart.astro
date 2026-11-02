@@ -5,17 +5,22 @@
 import FigureHead from './FigureHead.astro';
 import { LABS, displayNames, dollars, frontier, harnessName, leaderboard, percentiles, placeLabels, taskShort, tasks, type ModelRow } from '../lib/results';
 
+interface Props {
+  version?: string;
+}
+
+const { version = 'all' } = Astro.props;
 const median = (xs: number[]) => {
   const s = xs.toSorted((a, b) => a - b);
   return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
 };
 const by = new Map<string, { row: ModelRow; pct: number[]; rel: number[]; lines: string[] }>();
-for (const t of tasks()) {
-  const rows = leaderboard(t);
+for (const t of tasks(version)) {
+  const rows = leaderboard(t, version);
   const costs = rows.flatMap(r => (r.meanCost ? [r.meanCost] : []));
   if (!costs.length) continue;
   const med = median(costs);
-  const pct = percentiles(t);
+  const pct = percentiles(t, version);
   for (const r of rows) {
     if (!r.meanCost) continue;
     const e = by.get(r.key) ?? { row: r, pct: [], rel: [], lines: [] };

@@ -1,0 +1,16 @@
+# Benchmark versions. Bump the version (add an entry at the end) when a change makes new results not comparable with
+# older ones: the SDK gains or changes a capability, the navmesh or scoring changes, or the agents' docs change a lot.
+# azbench run records the current (last) version in each run's version.json; runs from before that are given the
+# version in force when they started. The website lists results by version.
+#   version: a short label
+#   from: when it took effect (local time)
+#   notes: what changed, one or two sentences
+- version: "0.1"
+  from: "2026-10-28T00:00"
+  notes: 'The first team runs. Scored on a weighted progress score, with "Wanted: Hogger" as a suggested target.'
+- version: "0.2"
+  from: "2026-10-29T00:00"
+  notes: 'Scoring changed to XP per hour. Claude Code, Codex and opencode harnesses. SDK reliability fixes for movement, casting and recovery.'
+- version: "0.3"
+  from: "2026-11-01T16:00"
+  notes: 'Boats and zeppelins in the SDK, a 50° navmesh like the game client''s, and portal triggers re-sent while inside. Reasoning effort recorded per agent.'

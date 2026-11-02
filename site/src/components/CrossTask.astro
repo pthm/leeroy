@@ -1,21 +1,26 @@
 ---
 // Every entry (a model at an effort) across every task: each cell its result there (goals met and mean time, or XP
 // per hour) and n, shaded by where it ranks in that task. Blank: not run. Sortable by any column (scripts/interact.ts).
-import { LABS, displayNames, duration, entryName, harnessName, isProgress, leaderboard, percentiles, rate, taskShort, taskTitle, tasks, type ModelRow } from '../lib/results';
-import { url } from '../lib/url';
+import { LABS, latestFor, displayNames, duration, entryName, harnessName, isProgress, leaderboard, percentiles, rate, taskShort, taskTitle, tasks, type ModelRow } from '../lib/results';
+import { resultsUrl } from '../lib/url';
 
-const ts = tasks();
+interface Props {
+  version?: string;
+}
+
+const { version = 'all' } = Astro.props;
+const ts = tasks(version);
 const by = new Map<string, { row: ModelRow; cells: Map<string, ModelRow>; pct: Map<string, number> }>();
 for (const t of ts) {
-  const pct = percentiles(t);
-  for (const row of leaderboard(t)) {
+  const pct = percentiles(t, version);
+  for (const row of leaderboard(t, version)) {
     const e = by.get(row.key) ?? { row, cells: new Map(), pct: new Map() };
     e.cells.set(t, row);
     e.pct.set(t, pct.get(row.key)!);
     by.set(row.key, e);
   }
 }
-const best = new Map(ts.map(t => [t, leaderboard(t)[0]?.key]));
+const best = new Map(ts.map(t => [t, leaderboard(t, version)[0]?.key]));
 const entries = [...by.values()]
   .map(e => ({ ...e, mean: [...e.pct.values()].reduce((a, b) => a + b, 0) / e.pct.size }))
   .sort((a, b) => b.pct.size - a.pct.size || b.mean - a.mean);
@@ -33,7 +38,7 @@ const cellValue = (t: string, r: ModelRow) => (isProgress(t) ? r.meanRate ?? 0 :
         <th data-sort="text">Harness</th>
         {ts.map(t => (
           <th class="num" data-sort="num" title={taskTitle(t)}>
-            <a href={url(`/results/${t}`)} class="whitespace-nowrap hover:text-accent">{taskShort(t)}</a>
+            <a href={resultsUrl(version, t, latestFor(t))} class="whitespace-nowrap hover:text-accent">{taskShort(t)}</a>
             <span class="block text-[9px] tracking-normal text-faint normal-case">{isProgress(t) ? 'XP/h' : 'met · time'}</span>
           </th>
         ))}

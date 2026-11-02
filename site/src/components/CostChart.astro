@@ -7,11 +7,12 @@ import { LABS, dollars, duration, entryName, frontier, harnessName, isProgress, 
 
 interface Props {
   task: string;
+  version?: string;
 }
 
-const { task } = Astro.props;
+const { task, version = 'all' } = Astro.props;
 const progress = isProgress(task);
-const rows = leaderboard(task);
+const rows = leaderboard(task, version);
 const pts = rows
   .map(r => ({ r, cost: r.meanCost ?? NaN, y: progress ? r.meanRate ?? NaN : r.meanTime != null ? r.meanTime / 60 : NaN }))
   .filter(p => p.cost > 0 && Number.isFinite(p.y));

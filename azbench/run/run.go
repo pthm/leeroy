@@ -154,6 +154,12 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 		os.WriteFile(filepath.Join(r.dir, "scenario.yaml"), y, 0o644)
 	}
 	if !resume {
+		// the benchmark version (bench/versions.yaml) and the SDK revision the run starts on, for the results
+		if b, err := config.LoadBench(filepath.Join(r.repo, "bench")); err == nil {
+			rev, _ := sdkRev(r.repo)
+			v, _ := json.Marshal(map[string]string{"version": b.Current().Version, "sdk_rev": rev})
+			os.WriteFile(filepath.Join(r.dir, "version.json"), v, 0o644)
+		}
 		if err := SavePreflight(filepath.Join(r.dir, "preflight.json"), CheckScenario(r.repo, r.s)); err != nil {
 			return fmt.Errorf("save scenario preflight: %w", err)
 		}

@@ -1,0 +1,13 @@
+---
+// An older benchmark version's results, or all versions together. The latest is at /results.
+import ResultsIndex from '../../../../components/pages/ResultsIndex.astro';
+import { ALL, LATEST, versionsOf } from '../../../../lib/results';
+
+export function getStaticPaths() {
+  return [...versionsOf().map(v => v.version).filter(v => v !== LATEST), ALL].map(version => ({ params: { version } }));
+}
+
+const { version } = Astro.params;
+---
+
+<ResultsIndex version={version} />

@@ -255,7 +255,9 @@ func mapImages(id string, tracks [][][5]float64, assetDir string) ([]mapImage, e
 		w = math.Max(w, h*1.6)
 		h = w / 1.6
 		mi := mapImage{Map: m, Name: mapName(m), XMin: cx - h/2, XMax: cx + h/2, YMin: cy - w/2, YMax: cy + w/2}
-		if _, ok := continents[m]; ok {
+		if f := mapFile(id, m); fileExists(filepath.Join(assetDir, f)) { // already drawn: delete the file to redraw
+			mi.File = f
+		} else if _, ok := continents[m]; ok {
 			// the viewer's full-detail map (ground, buildings, trees), in greyscale so the routes' colours stand out
 			mi.File = fmt.Sprintf("%s-%d.jpg", id, m)
 			img := world.DetailBox(uint32(m), mi.XMin, mi.XMax, mi.YMin, mi.YMax, 2400) // sharp enough to zoom into
@@ -359,4 +361,17 @@ func writeJPEG(f string, img image.Image) error {
 		return err
 	}
 	return os.WriteFile(f, b.Bytes(), 0o644)
+}
+
+// mapFile is the file a run's map is drawn to: a JPEG for a continent, a PNG floor plan for an instance.
+func mapFile(id string, m int) string {
+	if _, ok := continents[m]; ok {
+		return fmt.Sprintf("%s-%d.jpg", id, m)
+	}
+	return fmt.Sprintf("%s-%d.png", id, m)
+}
+
+func fileExists(f string) bool {
+	_, err := os.Stat(f)
+	return err == nil
 }

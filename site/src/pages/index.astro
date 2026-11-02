@@ -8,12 +8,12 @@ import Section from '../components/Section.astro';
 import SectionHeader from '../components/SectionHeader.astro';
 import Layout from '../layouts/Layout.astro';
 import { postDate } from '../lib/posts';
-import { allRuns, taskTitle, tasks } from '../lib/results';
-import { REPO, url } from '../lib/url';
+import { LATEST, allRuns, latestFor, taskTitle, tasks, versionLabel } from '../lib/results';
+import { REPO, resultsUrl, url } from '../lib/url';
 import loanShot from '../assets/media/deadmines-training-loan.jpg';
 
 const posts = (await getCollection('blog')).toSorted((a, b) => +b.data.date - +a.data.date).slice(0, 3);
-const featured = tasks()[0];
+const featured = tasks(LATEST)[0];
 const runs = allRuns();
 const models = new Set(runs.flatMap(r => r.players.map(p => p.model))).size;
 const players = runs.reduce((n, r) => n + r.players.length, 0);
@@ -60,12 +60,12 @@ const players = runs.reduce((n, r) => n + r.players.length, 0);
 
   {featured && (
     <Section>
-      <SectionHeader eyebrow="Latest results" title={taskTitle(featured)}>
-        <a href={url(`/results/${featured}`)} class="inline-flex items-center gap-1.5 self-start rounded border border-hairline bg-elevated px-2.5 py-1.5 font-mono text-xs whitespace-nowrap text-muted transition-colors hover:text-fg md:self-auto">
+      <SectionHeader eyebrow={`Latest results · ${versionLabel(LATEST)}`} title={taskTitle(featured)}>
+        <a href={resultsUrl(LATEST, featured, latestFor(featured))} class="inline-flex items-center gap-1.5 self-start rounded border border-hairline bg-elevated px-2.5 py-1.5 font-mono text-xs whitespace-nowrap text-muted transition-colors hover:text-fg md:self-auto">
           All results <Icon name="lucide:arrow-right" class="size-3" aria-hidden="true" />
         </a>
       </SectionHeader>
-      <Leaderboard task={featured} compact />
+      <Leaderboard task={featured} version={LATEST} compact />
     </Section>
   )}
 

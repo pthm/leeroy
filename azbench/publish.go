@@ -171,8 +171,20 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 			}
 		}
 	}
+	// the benchmark version: what the run recorded, else the version in force when it started
+	var ver struct {
+		Version string `json:"version"`
+		SDKRev  string `json:"sdk_rev"`
+	}
+	if readJSON(filepath.Join(runDir, "version.json"), &ver) != nil || ver.Version == "" {
+		ver.Version = b.VersionAt(started).Version
+	}
+	vs, _ := json.MarshalIndent(b.Versions, "", "  ") // the list, for the site's version selector
+	if err := os.WriteFile(filepath.Join(out, "../versions.json"), append(vs, '\n'), 0o644); err != nil {
+		return "", err
+	}
 	doc := map[string]any{
-		"id": id, "task": task, "scenario": name, "description": strings.TrimSpace(s.Description), "goal": s.Goal,
+		"id": id, "task": task, "version": ver.Version, "sdk_rev": ver.SDKRev, "scenario": name, "description": strings.TrimSpace(s.Description), "goal": s.Goal,
 		"minutes": s.Minutes, "hardcore": s.Hardcore, "level": s.Level, "started": started.Format(time.RFC3339),
 		"players": players, "maps": maps, "together": together(tracks, end), "chat_per_hour": chatPerHour(chat),
 	}

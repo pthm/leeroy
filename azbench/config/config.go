@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 )
@@ -162,9 +163,36 @@ var (
 
 // Bench is the bench directory's shared tables.
 type Bench struct {
-	Dir    string // bench/
-	Specs  map[string]Spec
-	Places map[string]Place
+	Dir      string // bench/
+	Specs    map[string]Spec
+	Places   map[string]Place
+	Versions []Version // versions.yaml, oldest first
+}
+
+// Version is a benchmark version: results from different versions aren't compared (versions.yaml).
+type Version struct {
+	Version string `yaml:"version" json:"version"`
+	From    string `yaml:"from" json:"from"` // local time, 2006-01-02T15:04
+	Notes   string `yaml:"notes" json:"notes"`
+}
+
+// Current is the benchmark version new runs record: the last in versions.yaml.
+func (b *Bench) Current() Version {
+	if len(b.Versions) == 0 {
+		return Version{}
+	}
+	return b.Versions[len(b.Versions)-1]
+}
+
+// VersionAt is the version in force at t: for runs from before runs recorded one.
+func (b *Bench) VersionAt(t time.Time) Version {
+	v := Version{}
+	for _, c := range b.Versions {
+		if from, err := time.ParseInLocation("2006-01-02T15:04", c.From, time.Local); err == nil && !t.Before(from) {
+			v = c
+		}
+	}
+	return v
 }
 
 // LoadBench reads specs.yaml and places.yaml from the bench directory.
@@ -175,6 +203,9 @@ func LoadBench(dir string) (*Bench, error) {
 	}
 	var places map[string]string
 	if err := readYAML(filepath.Join(dir, "places.yaml"), &places); err != nil {
+		return nil, err
+	}
+	if err := readYAML(filepath.Join(dir, "versions.yaml"), &b.Versions); err != nil {
 		return nil, err
 	}
 	for k, v := range places {

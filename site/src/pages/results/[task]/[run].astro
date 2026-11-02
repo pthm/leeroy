@@ -21,6 +21,8 @@ import {
   runDate,
   specLabel,
   TASKS,
+  latestFor,
+  versionLabel,
   effortOf,
   entryName,
   isProgress,
@@ -34,7 +36,7 @@ import {
   totals,
   type Run,
 } from '../../../lib/results';
-import { url } from '../../../lib/url';
+import { resultsUrl, url } from '../../../lib/url';
 
 export function getStaticPaths() {
   return allRuns().map(run => ({ params: { task: run.task, run: run.id }, props: { run } }));
@@ -77,11 +79,11 @@ const tiles = [
 
 <Layout title={`${title} · ${taskTitle(run.task)}`} description={lede}>
   <Section>
-    <a href={url(`/results/${run.task}`)} class="eyebrow hover:underline">← {taskTitle(run.task)}</a>
+    <a href={resultsUrl(run.version, run.task, latestFor(run.task))} class="eyebrow hover:underline">← {taskTitle(run.task)} · {versionLabel(run.version)}</a>
     <h1 class="mt-4 font-serif text-4xl leading-tight text-fg sm:text-5xl">{title}</h1>
     <p class="mt-4 max-w-3xl text-lg leading-relaxed text-muted">{lede}</p>
     <p class="mt-4 font-mono text-xs text-faint">
-      {runDate(run)} · {run.scenario} · goal <code>{run.goal}</code> · {clock} on the clock{run.hardcore && ' · hardcore'}
+      {runDate(run)} · {versionLabel(run.version)} · {run.scenario} · goal <code>{run.goal}</code> · {clock} on the clock{run.hardcore && ' · hardcore'}
     </p>
     <ul class="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
       {tiles.map(tile => (

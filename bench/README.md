@@ -11,6 +11,7 @@ commands below run from the repo root; server and client setup is in the [repo R
 | `matrices/*.yaml` | grids of solo runs: task × race × class × minutes × reps ([matrices/README.md](matrices/README.md)) |
 | `specs.yaml` | class specs a scenario's agents can take: class and spec, role, what to optimise, key stats |
 | `places.yaml` | named starting positions (`start: goldshire`) |
+| [`versions.yaml`](versions.yaml) | benchmark versions: bump when a change makes results not comparable; each run records the current one (website: results by version) |
 | [`benchmarks.md`](benchmarks.md) | the tasks the benchmark is growing into: what each measures, how it's scored, results so far, what each needs |
 | [`investigate.md`](investigate.md) | what runs turned up that needs a closer look (navigation, SDK, harness) |
 | [`tooling-reliability-spec.md`](tooling-reliability-spec.md) | unified spec for API signatures and results, diagnostics, routing, movement, casting, recovery, and runtime shell contracts |
