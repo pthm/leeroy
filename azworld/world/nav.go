@@ -5,8 +5,9 @@ package world
 // stone road as painted on the ground) and from the patrol paths of friendly NPCs (guards, patrollers, travelling
 // merchants walk the roads). Map images use the client's minimap where it was extracted.
 // Routes: A* on an 8-yard grid over the server's terrain (no slopes over ~45 degrees, swimming is slow), cheaper on
-// roads and more expensive near hostile mobs around or above your level. Terrain only: buildings, caves and
-// bridges are not modelled. Every plan needs session navmesh validation before execution.
+// roads and more expensive near hostile mobs around or above your level. Bridges are in the road rasters; where the
+// grid can't connect the ends (a steep pass, a building), the navmesh's path is used instead. Routes are thinned to at
+// most 64 waypoints. Every plan needs session navmesh validation before execution.
 //
 // The arithmetic mirrors the TypeScript original (float32 grids, JS rounding, products kept out of FMA with
 // float64(...)) so routes come out the same.

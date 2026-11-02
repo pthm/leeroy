@@ -32,7 +32,7 @@ client (`azeroth-sdk`) doesn't: it needs no database.
 | `render.go` | map images: shaded relief, water, minimap, zone borders, overlays |
 | `names.go` | area names, zone labels, creature and item names |
 | `query.go` | the query commands (`Run`) |
-| `gear.go`, `nav.go` | `upgrades`; `roads`, `route` and `map` |
+| `gear.go`, `nav.go` | `upgrades`; `roads`, `route` (A* on the terrain, cheaper on roads and bridges, away from hostile mobs; the navmesh where the terrain grid can't connect the ends; thinned to 64 waypoints) and `map` |
 | `rows.go` | JSON output helpers |
 | `sql.go` | `azworld sql`: read-only SQL, tab-separated, at most 300 rows |
 | `dbsetup.go` | `azworld setup`: the `wowbench` schema and a small DBC reader |

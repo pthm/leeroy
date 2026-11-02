@@ -16,7 +16,7 @@ bin/azbench matrix bench/matrices/starter.yaml
 | `minutes` | a number or a list (every task runs at each); default for tasks without their own |
 | `races`, `classes` | names (human, dwarf, night elf, gnome; warrior, paladin, rogue, priest, mage, ...) or ids. Pairs the game doesn't allow are skipped |
 | `runtime`, `models`, `provider` | as in a scenario: `claude` (default), `codex`, `opencode` or `none`; runtime to model; `openrouter` |
-| `tasks[]` | `key`, `goal` (any judge goal), and optionally its own `minutes`, `races`, `classes`, `reps`, and the starting conditions `level`, `money`, `start` (a place from `places.yaml`, or `"x y z map zone"`), `channel`, `hint` (as in a scenario) |
+| `tasks[]` | `key`, `goal` (any judge goal), and optionally its own `minutes`, `races`, `classes`, `reps`, and the starting conditions `level`, `money`, `start` (a place from `places.yaml`, or `"x y z map zone"`), `channel`, `hint`, `hardcore` (as in a scenario) |
 
 Goals: `level:10`, `skill:164:75` (Blacksmithing 75), `quest:176` ("Wanted: Hogger": Hogger killed and the
 quest turned in), and the rest in the [judge](../../azbench/judge/README.md).

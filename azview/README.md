@@ -62,6 +62,7 @@ viewer fills it in from `acore_world.creature_template`.
 | `xp` | `amount`, `src`, `victim` | yes | `amount` only |
 | `money` | `delta` (copper) | yes | no |
 | `units` | `m` map, `u`: the creatures within 60 yd, each `[entry, level, x, y, health %, state]` (state 0 hostile, 1 neutral, 2 friendly, +4 dead) | no | every 2 s |
+| `transport` | `id`, `e` entry, `n` name, `m` map, `x` `y` `z` `o`, `pp` path progress (ms), `period` (ms): each boat and zeppelin (not elevators) | every 1 s | no |
 | `quest` (completed) | `id`, `title` | yes | `id`, `xp`, `money` |
 | `achievement` | `id`, `title`, `points` | yes | `id` only |
 | `loot` | `item` (entry), `count` | yes | yes |
@@ -208,7 +209,7 @@ everywhere: the map follows it, the feed and the stats narrow to it.
   dealt damage (each step between position samples adds its seconds along its line; an event adds its count or amount
   at the player's position then; smoothed, in the inferno colours over a slightly dimmed map, time on a log scale and
   events on a square root); **Roads** (R): the painted roads (amber: the road textures, the ones some zones paint roads with under other names, and bridges) and the guards' and travellers' patrol paths
-  (dashed); **Navmesh** (N): where the server lets players walk on a continent, in the instances' floor-plan style
+  (dashed); **Navmesh** (N): where players can walk on a continent (the SDK's 50° navmesh), in the instances' floor-plan style
   (each pixel the lowest walkable floor, a building's ground floor and not its roof, shaded by its height over the
   terrain: raised floors warm up to 16 yd, the open ground faint grey, and under it slate blue, indigo, violet and purple
   down to 50 yd, so a mine's levels tell apart; floors with another storey over

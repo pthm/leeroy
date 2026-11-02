@@ -24,9 +24,14 @@ worldserver ──> client ─────> session ─────> script ─�
   scripts, a coroutine scheduler for tasks, the event `Bus` and action requests. Each tick (`Engine.CallTick`)
   delivers events, polls pending requests, resumes tasks and calls `on_tick`. See `docs/sdk.md`.
 - **api** serves the engines over JSON-RPC. The game API itself is the Lua API; RPC only reaches it.
-- **Movement**: `move.to` asks `navigation` for a path, which wraps `pathfinding` (Detour on the server's `mmaps/`,
-  heights from `maps/` and `vmaps/`). `movement` walks the path and sends the movement packets a real client
-  would, at the server's current run or swim speed.
+- **Movement**: `move.to` asks `navigation` for a path, which wraps `pathfinding` (Detour on `mmaps/`, built with a
+  50° walkable slope like the real client's rather than the server's 60°; heights from `maps/` and `vmaps/`).
+  `movement` walks the path and sends the movement packets a real client would, at the server's current run or swim
+  speed. Area triggers (portals, instance entrances) are re-sent while you stand in them, since the server checks
+  them against its own, lagging, idea of where you are.
+- **Transports**: boats and zeppelins (`transports.list`, `board`, `leave`; `session/transports.go`). Where each is
+  comes from its path progress and a port of the server's path builder (`transportpath.go`, within 0.05 yd of the
+  server's); boarding walks straight onto the deck from the pier while it's docked, and the server then carries you.
 - **Recording**: with `-record`, `session.Recorder` writes the same JSONL format as the server's `mod-recorder`
   (positions, combat, chat, kills, loot, quests, achievements) plus agent-side events: `api` (each RPC call and
   its params) and `script_error`. The viewer (`bin/azview`, `../azview`) reads it.
@@ -41,8 +46,8 @@ bin/azsdk -config azsdk.json             # several characters from a config file
 bin/azsdk -char Garrick -account agent1  # one character, no config file (as the bench runs it)
 ```
 
-`data_dir` needs the server's `maps/`, `mmaps/`, `vmaps/` and `dbc/` (copied out of AzerothCore's client-data
-volume, see the root README). Characters are created on first login if they don't exist (race and class from the
+`data_dir` needs `maps/`, `vmaps/` and `dbc/` (copied out of AzerothCore's client-data volume) and the 50° `mmaps/`
+(built from them; both in the root README). Characters are created on first login if they don't exist (race and class from the
 config or flags). Agents talk to `http://<listen>/rpc`.
 
 | Flag | Default | |
@@ -120,7 +125,8 @@ AC_DATA_DIR=$PWD/../data go test ./...         # with it: pathfinding and moveme
 | Command | |
 |---|---|
 | `go run ./azeroth-sdk/cmd/clientdata -client <WoW dir> extract data` | minimap tiles, road rasters, and the terrain and model files the viewer draws (`data/client`), from a 3.3.5a install (`-maps 0,1` for some continents; also `cat`, `blp`, `textures`) |
-| `go run ./azeroth-sdk/cmd/navprobe <data dir> x1 y1 z1 x2 y2 z2 [...]` | navmesh path length and straightness between points on map 0 |
+| `go run ./azeroth-sdk/cmd/clientdata roads data` | rebuild `data/roads` from the extracted files in `data/client`, without the install: road textures per map, bridges drawn in |
+| `go run ./azeroth-sdk/cmd/navprobe <data dir> x1 y1 z1 x2 y2 z2 [...]` | navmesh path length and straightness between points (`NAVMAP=1` for another map) |
 
 ## Packages
 
@@ -135,7 +141,7 @@ AC_DATA_DIR=$PWD/../data go test ./...         # with it: pathfinding and moveme
 | [`navigation`](navigation) | `Navigator` interface over the embedded pathfinder |
 | [`pathfinding`](pathfinding) | Detour navmesh paths, terrain and vmap heights, water levels, line of sight |
 | [`movement`](movement) | follows a path and sends client-like movement packets |
-| [`clientdata`](clientdata) | reads a game install's MPQ archives: minimap BLPs, ADT texture layers |
+| [`clientdata`](clientdata) | reads a game install's MPQ archives: minimap BLPs, ADT texture layers, terrain and models, road rasters |
 | [`cmd/azsdk`](cmd/azsdk) | the daemon |
 | [`cmd/wow`](cmd/wow) | `wow`: the command line for a session (run Lua, load scripts, read and wait on events) |
 | [`jqjson`](jqjson) | JSON read and printed the way `jq -c` does (`wow`'s output) |

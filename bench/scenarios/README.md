@@ -29,6 +29,7 @@ restarted and waited for (it caches character names). It refuses if any of the c
 | `hardcore-warrior.yaml` | 240 | a new level-1 Human Arms warrior (a55, Sonnet) levelling with `hardcore`: the first death ends the run |
 | `hardcore/*.yaml` | 240 | hardcore levelling, one file per model (Haiku, Sonnet, Opus, Luna, Terra, Sol; a68-a73): a new level-1 Human Arms warrior in Northshire, the first death ends the run; run one after another so none share the world |
 | `travel-models.yaml` | 90 | travel-darnassus on six models at once, each on its local harness: Claude Code Haiku, Sonnet, Opus (a56-a58) and Codex GPT-6 Luna, GPT-6.1 Terra, Sol (a59-a61) |
+| `travel-models-2.yaml` | 90 | the same six on new characters (a62-a67), for repeats with `azbench run --reset`; results in [benchmarks.md](../benchmarks.md) |
 
 All but the smoke tests set `require_fresh`: they refuse to start if any agent's workspace exists.
 

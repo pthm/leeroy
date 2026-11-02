@@ -38,10 +38,13 @@ An MMO is a hard place for an agent, and a realistic one:
 
 ## A run
 
-Each agent gets a fresh character and a non-GM account, a race, class, spec and role, a time limit (60-120 min),
-and a goal. The usual goal is to progress as much as possible: the score is XP per hour, averaged with the best
-15-minute stretch so trying a new strategy isn't punished. Damage dealt, damage taken and healing done are shown
-for each role but not scored. Agents can see the standings during the run.
+Each agent gets a fresh character and a non-GM account, a race, class, spec and role, a time limit (90 minutes to
+4 hours for most tasks), and a goal: reach a place, finish a quest or a dungeon, or progress as much as possible
+(XP per hour, averaged with the best 15-minute stretch so trying a new strategy isn't punished). In a hardcore run
+the first death ends it. An agent that concludes it can't get further can give up; one that stops early without
+giving up is told to carry on. Damage dealt, damage taken and healing done are shown
+for each role but not scored. Agents can see the standings during the run. The tasks, and results so far, are in
+[bench/benchmarks.md](bench/benchmarks.md).
 
 The SDK gives agents utilities, not strategies: movement, targeting, casting, looting, quests, trading, grouping,
 events and a typed view of the world. Rotations, pulling, assisting, healing priorities and group tactics are
@@ -58,7 +61,7 @@ theirs to discover and build. The docs they get describe how the game and the SD
     ├─ Lua runtime: tasks (coroutines), requests and results, event handlers, shared state
     ├─ session API: me, units, objects, move, combat, spells, items, quests, group, chat, trade, flights...
     ├─ events from server packets → event log (JSONL), recording for the viewer
-    ├─ pathfinding on the server's navmesh, collision and terrain data
+    ├─ pathfinding on its own navmesh (a player's 50° slopes), collision and terrain data; boats and zeppelins
     └─ WoW 3.3.5a protocol client (auth, world)
     │
     ▼
@@ -82,7 +85,7 @@ sandboxed: they can write only in their workspace, read the docs and source, and
 | [`azeroth-sdk/`](azeroth-sdk/README.md) | `azsdk`: the Go headless client and daemon the agents drive, plus the Lua API docs and example scripts. Only a game client: no database access |
 | [`azview/`](azview/README.md) | `azview`: the viewer (live or finished runs) and movement audit, from the recordings |
 | [`azworld/`](azworld/README.md) | `azworld`: world queries for agents, from the server's databases and the game data; `azworld setup` builds the `wowbench` schema they read |
-| `data/` | Client data copied out of the server (maps, navmesh, DBC files), shared by all of the above (gitignored) |
+| `data/` | Game data, shared by all of the above (gitignored): `maps/`, `vmaps/`, `dbc/` copied out of the server, the SDK's 50° navmesh `mmaps/`, and from a game install `client/` (minimap, terrain, models) and `roads/` |
 
 All Go code builds with `./build.sh` (binaries in `bin/`; `go.work` ties the root module to `azeroth-sdk`). All
 commands below run from the repo root.
@@ -131,8 +134,12 @@ The compose project is pinned to `server` (`server/override.yml`), so the volume
 ```sh
 bin/azbench run bench/scenarios/smoke.yaml               # 2 minutes, no agents: checks the harness end to end
 bin/azbench run bench/scenarios/fresh-split.yaml         # ten agents (Claude Code and Codex), one clock, 120 minutes
+bin/azbench run --reset bench/scenarios/travel-models-2.yaml  # six models to Darnassus, from the same start every time
 bin/azbench matrix bench/matrices/starter.yaml --dry-run # a grid of solo runs
 ```
+
+`--reset` deletes the scenario's characters, sets its agents' workspaces aside and restarts the worldserver first, so
+repeats start alike.
 
 A scenario ([bench/scenarios/README.md](bench/scenarios/README.md)) lists the agents, the characters they play, the
 goal and the starting conditions. Each agent gets a fresh non-GM account and runs as headless Claude Code (or Codex CLI) inside `bench/workspaces/<name>/` (its
@@ -147,20 +154,22 @@ and for the whole run `team.json` and `report.json` (the report card)
 ([bench/README.md](bench/README.md#run-directories)).
 
 Goals: `level:<n>`, `item:<entry>`, `quality:<n>` (3 = rare), `money:<copper>`, `quests:<n>`, `quest:<id>`,
-`achpoints:<n>`, and `score:<n>`: progress per hour (`azbench/judge/score.json` sets which signals count; v6 counts XP
-earned). For "as much as possible" goals pass a large n and read `value` at timeout. Team runs, scenarios, pausing and
+`achievement:<id>`, `achpoints:<n>`, `skill:<id>:<n>`, `zone:<id>` (arrive there), and `score:<n>`: progress per hour (`azbench/judge/score.json` sets which signals count; v6 counts XP
+earned). For "as much as possible" goals pass a large n and read `value` at timeout. `hardcore: true` in a scenario
+ends a character's run at its first death; `standings give-up "<why>"` ends an agent's run unmet. Team runs, scenarios, pausing and
 resuming, and resetting characters are in [bench/README.md](bench/README.md); scoring in
 [azbench/judge/README.md](azbench/judge/README.md).
 
 ## Replays and live view
 
 Two sources write the same event format (positions once a second, chat, damage, kills, deaths, levels, XP,
-quests, achievements, loot):
+quests, achievements, loot; [azview](azview/README.md#recording-format)):
 - **Client side, by default:** `azsdk -record <file>` logs its own characters plus agent-side events the server can't
   see (each API call and the Lua it ran, script errors). `azbench run` records every run this way
   (`<agent>.record.jsonl` in the run dir). Works on any AzerothCore server.
 - **Server side, optional and authoritative:** the `mod-recorder` module (`server/recorder/mod-recorder`) logs every
-  player to `server/azerothcore/env/dist/logs/recorder.jsonl`.
+  player to `server/azerothcore/env/dist/logs/recorder.jsonl`, and every boat and zeppelin once a second. After
+  changing it: rebuild the worldserver image and restart it.
 
 Viewers ([`azview/`](azview/README.md)):
 - `bin/azview live [log ...] [--run bench/runs/<ts>-team] [--port 8800] [--since 60]`: the viewer at
@@ -169,10 +178,12 @@ Viewers ([`azview/`](azview/README.md)):
 - `bin/azview movecheck [log]` audits recorded movement for speed, slopes and swimming.
 
 The viewer shows the game's minimap (when client data is extracted, else a terrain map rendered from `data/maps`),
-every player's route, a seek bar with key events marked,
+zooming into the game's own terrain and models, with layers for roads, the navmesh, heatmaps, transports and foliage
+(a transparency slider); every player's route, a seek bar with key events marked,
 and panels synced to the playhead: players, events, chat, combat, agent (API calls), scores (chart + leaderboard)
 and groups (current parties, leader, how spread out they are; dashed lines on the map). Colours follow WoW's
-conventions: class colours, health/power bar colours, chat-type colours and item quality colours.
+conventions: class colours, health/power bar colours, chat-type colours and item quality colours. The URL keeps the
+time, map and place, so a link opens on the same moment and a refresh keeps it.
 
 ## Run a task by hand
 
