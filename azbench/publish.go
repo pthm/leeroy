@@ -215,7 +215,7 @@ func publish(root, runDir, task, out, model, runtime string) (string, error) {
 	doc := map[string]any{
 		"id": id, "task": task, "version": ver.Version, "sdk_rev": ver.SDKRev, "scenario": name, "description": strings.TrimSpace(s.Description), "goal": s.Goal,
 		"minutes": s.Minutes, "hardcore": s.Hardcore, "level": s.Level, "started": started.Format(time.RFC3339),
-		"players": players, "maps": maps, "together": together(tracks, end), "chat_per_hour": chatPerHour(chat),
+		"players": players, "maps": maps, "together": together(tracks, end), "chat_per_min": chatPerMinute(chat),
 	}
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return "", err

@@ -70,8 +70,8 @@ export interface Run {
   version: string; // benchmark version (bench/versions.yaml)
   sdk_rev?: string;
   maps?: MapBox[];
-  together?: number[]; // per 5 minutes: the share of minutes all players stood within 40 yd
-  chat_per_hour?: Record<string, number>[];
+  together?: number[]; // per minute: 1 when all players stood within 40 yd
+  chat_per_min?: Record<string, number>[]; // per minute: messages between players by kind
 }
 
 // What each task is, for the pages. A task without an entry here still shows, under its id.
@@ -300,6 +300,16 @@ export const specLabel = (p: Player) => {
 };
 
 // The hours axis for a run: every 1, 2, 4, 6 or 12 h, or minutes for short runs.
+// A round interval for a chart's bars over a run of endS seconds: minutes, so there are at most about `bars` of them.
+export function barInterval(endS: number, bars = 40): number {
+  return [1, 2, 5, 10, 15, 30, 60, 120, 240].find(m => endS / 60 / m <= bars) ?? 480;
+}
+
+export const intervalName = (m: number) => (m === 1 ? 'minute' : m < 60 ? `${m} minutes` : m === 60 ? 'hour' : `${m / 60} hours`);
+
+// A time in minutes as a clock reading: "45 min", "2 h 05".
+export const clock = (m: number) => (m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}` : `${m} min`);
+
 export function timeTicks(maxS: number): { s: number; label: string }[] {
   if (maxS <= 2 * 3600) {
     const step = [5, 10, 15, 30].find(m => maxS / 60 / m <= 8)! * 60;

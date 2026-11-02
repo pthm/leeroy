@@ -289,9 +289,9 @@ func mapImages(id string, tracks [][][5]float64, assetDir string) ([]mapImage, e
 	return out, nil
 }
 
-// together: for each 5-minute window, the share of minutes in which every player was on the same map within 40 yd of
-// each other. Nil for one player.
-func together(tracks [][][5]float64, end float64) []float64 {
+// together: for each minute of the run, 1 when every player was on the same map within 40 yd of each other, else 0.
+// Nil for one player.
+func together(tracks [][][5]float64, end float64) []int {
 	if len(tracks) < 2 {
 		return nil
 	}
@@ -302,36 +302,35 @@ func together(tracks [][][5]float64, end float64) []float64 {
 		}
 		return tr[i], true
 	}
-	var out []float64
-	for w := 0.0; w < end; w += 300 {
-		in := 0
-		for t := w; t < w+300; t += 60 {
-			var ps [][5]float64
-			for _, tr := range tracks {
-				if p, ok := at(tr, t); ok {
-					ps = append(ps, p)
-				}
-			}
-			close := len(ps) == len(tracks)
-			for i := 0; close && i < len(ps); i++ {
-				for j := i + 1; close && j < len(ps); j++ {
-					close = ps[i][1] == ps[j][1] && math.Hypot(ps[i][2]-ps[j][2], ps[i][3]-ps[j][3]) <= 40
-				}
-			}
-			if close {
-				in++
+	var out []int
+	for t := 0.0; t < end; t += 60 {
+		var ps [][5]float64
+		for _, tr := range tracks {
+			if p, ok := at(tr, t); ok {
+				ps = append(ps, p)
 			}
 		}
-		out = append(out, math.Round(float64(in)/5*100)/100)
+		close := len(ps) == len(tracks)
+		for i := 0; close && i < len(ps); i++ {
+			for j := i + 1; close && j < len(ps); j++ {
+				close = ps[i][1] == ps[j][1] && math.Hypot(ps[i][2]-ps[j][2], ps[i][3]-ps[j][3]) <= 40
+			}
+		}
+		if close {
+			out = append(out, 1)
+		} else {
+			out = append(out, 0)
+		}
 	}
 	return out
 }
 
-// chatPerHour: the players' messages per hour of the run, by kind.
-func chatPerHour(chat map[string]chatMsg) []map[string]int {
+// chatPerMinute: the players' messages in each minute of the run, by kind (the website groups the minutes into an
+// interval that suits the run's length).
+func chatPerMinute(chat map[string]chatMsg) []map[string]int {
 	var out []map[string]int
 	for _, c := range chat {
-		h := int(c.t / 3600)
+		h := int(c.t / 60)
 		if h < 0 {
 			continue
 		}

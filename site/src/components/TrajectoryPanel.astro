@@ -3,7 +3,7 @@
 // on top in the warning colour, hover for the interval's most frequent failure), with deaths and level-ups marked;
 // then each player's most frequent errors. From the sessions' event logs, by azbench publish.
 import FigureHead from './FigureHead.astro';
-import { colors, timeTicks, type Run } from '../lib/results';
+import { barInterval, clock, colors, intervalName, timeTicks, type Run } from '../lib/results';
 
 interface Props {
   run: Run;
@@ -13,14 +13,12 @@ const { run } = Astro.props;
 const color = colors(run);
 const ps = run.players.filter(p => p.trajectory?.length);
 const endMin = Math.max(1, ...ps.map(p => p.trajectory!.at(-1)![0] + 1));
-const COLS = 120;
-const per = Math.max(1, Math.ceil(endMin / COLS)); // minutes per column
+const per = barInterval(endMin * 60, 120); // minutes per column
 const W = 900, L = 96, R = 8, LANE = 60, GAP = 14, T = 8;
 const H = T + ps.length * (LANE + GAP) + 18;
 const span = Math.ceil(endMin / per) * per; // the axis, in whole columns
 const colW = ((W - L - R) * per) / span;
 const x = (min: number) => L + (min / span) * (W - L - R);
-const clock = (m: number) => (m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}` : `${m} min`);
 const lanes = ps.map((p, i) => {
   const cols = new Map<number, { ok: number; failed: number; why: Map<string, number> }>();
   for (const [m, ok, failed, top, n] of p.trajectory!) {
@@ -49,7 +47,7 @@ const errs = run.players.filter(p => p.failures?.length);
     <figure class="rounded border border-hairline bg-raised p-5" data-chart>
       <FigureHead
         title="Calls to the game"
-        sub={`SDK calls per ${per === 1 ? 'minute' : `${per} minutes`}, failed calls stacked on top in amber. Ticks above a lane are level-ups, crosses are deaths. Hover a bar for the interval's most frequent failure.`}
+        sub={`SDK calls per ${intervalName(per)}, failed calls stacked on top in amber. Ticks above a lane are level-ups, crosses are deaths. Hover a bar for the interval's most frequent failure.`}
       />
       <svg viewBox={`0 0 ${W} ${H}`} class="w-full" role="img" aria-label="Each player's SDK calls over the run">
         {lanes.map(({ p, y0, cols, levels }) => {

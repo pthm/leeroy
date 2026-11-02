@@ -1,15 +1,24 @@
 ---
-// The party talking and standing together: messages per hour of the run by kind (each once, however many heard it),
-// and the share of each 5 minutes in which every player stood within 40 yd of the others.
+// The party talking and standing together: messages per interval of the run by kind (each once, however many heard
+// it), and the share of each interval in which every player stood within 40 yd of the others. The interval suits the
+// run's length (barInterval): minutes for a short run, hours for a long one.
 import FigureHead from './FigureHead.astro';
-import { type Run, timeTicks } from '../lib/results';
+import { barInterval, clock, intervalName, type Run, timeTicks } from '../lib/results';
 
 interface Props {
   run: Run;
 }
 
 const { run } = Astro.props;
-const hours = run.chat_per_hour ?? [];
+const mins = run.chat_per_min ?? [];
+const tog1 = run.together ?? [];
+const runEnd = Math.max(mins.length, tog1.length, ...run.players.map(p => (p.hours ?? 0) * 60)); // minutes
+const per = barInterval(runEnd * 60);
+const hours = Array.from({ length: Math.ceil(mins.length / per) }, (_, i) => {
+  const b: Record<string, number> = {};
+  for (const m of mins.slice(i * per, (i + 1) * per)) for (const [k, n] of Object.entries(m)) b[k] = (b[k] ?? 0) + n;
+  return b;
+});
 const kinds = [
   { k: 'party', label: 'party', c: 'var(--color-info)' },
   { k: 'whisper', label: 'whisper', c: 'var(--color-accent)' },
@@ -19,29 +28,32 @@ const kinds = [
 const total = (h: Record<string, number>) => kinds.reduce((n, k) => n + (h[k.k] ?? 0), 0);
 const max = Math.max(1, ...hours.map(total));
 const sum = hours.reduce((n, h) => n + total(h), 0);
-const tog = run.together ?? [];
+const tog = Array.from({ length: Math.ceil(tog1.length / per) }, (_, i) => {
+  const w = tog1.slice(i * per, (i + 1) * per);
+  return w.reduce((a, b) => a + b, 0) / w.length;
+});
 const W = 900, H = 120, L = 40, R = 10;
-const end = tog.length * 300;
+const end = tog1.length * 60;
 const tx = (s: number) => L + (s / Math.max(end, 1)) * (W - L - R);
 const area = tog.length
-  ? `M${tx(0)},${H - 20}` + tog.map((v, i) => `L${tx(i * 300).toFixed(1)},${(H - 20 - v * (H - 30)).toFixed(1)}L${tx((i + 1) * 300).toFixed(1)},${(H - 20 - v * (H - 30)).toFixed(1)}`).join('') + `L${tx(end)},${H - 20}Z`
+  ? `M${tx(0)},${H - 20}` + tog.map((v, i) => `L${tx(i * per * 60).toFixed(1)},${(H - 20 - v * (H - 30)).toFixed(1)}L${tx(Math.min(end, (i + 1) * per * 60)).toFixed(1)},${(H - 20 - v * (H - 30)).toFixed(1)}`).join('') + `L${tx(end)},${H - 20}Z`
   : '';
-const share = tog.length ? Math.round((tog.reduce((a, b) => a + b, 0) / tog.length) * 100) : 0;
+const share = tog1.length ? Math.round((tog1.reduce((a, b) => a + b, 0) / tog1.length) * 100) : 0;
 ---
 
 {sum > 0 && (
   <div class="grid grid-cols-1 gap-4">
     <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-      <FigureHead title="Messages per hour" sub={`${sum.toLocaleString('en')} messages between players, each counted once`} />
+      <FigureHead title={`Messages per ${intervalName(per)}`} sub={`${sum.toLocaleString('en')} messages between players, each counted once`} />
       <div class="flex h-40 items-end gap-[2px]">
         {hours.map((h, i) => (
-          <span class="flex h-full flex-1 flex-col-reverse" title={`hour ${i}: ${total(h)} messages`}>
+          <span class="flex h-full flex-1 flex-col-reverse" title={`${clock(i * per)}–${clock((i + 1) * per)}: ${total(h)} messages`}>
             {kinds.map(k => (h[k.k] ? <span style={`height:${(h[k.k] / max) * 100}%;background:${k.c}`} /> : null))}
           </span>
         ))}
       </div>
       <div class="mt-1 flex justify-between font-mono text-[11px] text-faint">
-        <span>0 h</span><span>{hours.length} h</span>
+        <span>0</span><span>{clock(hours.length * per)}</span>
       </div>
       <p class="mt-3 flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
         {kinds.map(k => <span><span style={`color:${k.c}`}>■</span> {k.label}</span>)}
@@ -49,7 +61,7 @@ const share = tog.length ? Math.round((tog.reduce((a, b) => a + b, 0) / tog.leng
     </figure>
     {tog.length > 0 && (
       <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-        <FigureHead title="Time together" sub={`Share of each five minutes with all ${run.players.length} players within 40 yards. ${share}% of the run overall.`} />
+        <FigureHead title="Time together" sub={`Share of each ${intervalName(per)} with all ${run.players.length} players within 40 yards. ${share}% of the run overall.`} />
         <svg viewBox={`0 0 ${W} ${H}`} class="w-full" role="img" aria-label="Share of each 5 minutes the whole party stood together">
           {[0, 0.5, 1].map(v => (
             <g>

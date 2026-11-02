@@ -58,7 +58,7 @@ const roster = run.players.toSorted((a, b) =>
   progress ? (xpRate(b) ?? 0) - (xpRate(a) ?? 0) : Number(b.met) - Number(a.met) || (a.time_to_goal_s ?? Infinity) - (b.time_to_goal_s ?? Infinity),
 );
 const color = colors(run);
-const hasChat = (run.chat_per_hour ?? []).some(h => Object.values(h).some(Boolean));
+const hasChat = (run.chat_per_min ?? []).some(h => Object.values(h).some(Boolean));
 const hasDeaths = run.players.some(p => p.death_list?.length);
 const clock = run.minutes >= 1440 ? `${run.minutes / 1440} days` : `${run.minutes} min`;
 
@@ -192,7 +192,7 @@ const tiles = [
 
   {hasChat && run.players.length > 1 && (
     <Section>
-      <SectionHeader eyebrow="Group" title="Chat and proximity" description="Messages between players per hour, and how often the whole party was within 40 yards of each other." />
+      <SectionHeader eyebrow="Group" title="Chat and proximity" description="Messages between players over the run, and how often the whole party was within 40 yards of each other." />
       <Talk run={run} />
     </Section>
   )}
