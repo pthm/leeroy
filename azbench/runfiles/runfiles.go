@@ -7,7 +7,7 @@
 //	supervisor.log        everything the supervisor said, alerts marked ALERT
 //	report.json, team.json   the report card and the team's numbers, at the end
 //	board/                the judges' live standings (the agents' standings tool reads it)
-//	agents/<agent>/       the agent: transcript.jsonl (the runtime's own), trajectory.jsonl (normalised), meta.json,
+//	agents/<agent>/       the agent: transcript.jsonl (the runtime's own), trajectory.json (ATIF), meta.json,
 //	                      prompt.md, usage.json, the notes it kept, its kit
 //	game/<char>/          the character: record.jsonl (what happened in the game), events.jsonl (what its agent
 //	                      saw), session.log (its client)
@@ -16,7 +16,7 @@
 //	server/               the server's logs over the run's time
 //	.live/                the running supervisor's files: control.json, pids, paused (gone when the run ends)
 //
-// Every JSONL line has t, unix milliseconds.
+// Every JSONL line has t, unix milliseconds. The trajectory is a JSON document (ATIF), its timestamps ISO 8601.
 package runfiles
 
 import (
@@ -47,7 +47,7 @@ func (r Run) Live(name string) string {
 func (r Run) Agent(agent string) string           { return r.join("agents", agent) }
 func (r Run) AgentFile(agent, name string) string { return r.join("agents", agent, name) }
 func (r Run) Transcript(agent string) string      { return r.AgentFile(agent, "transcript.jsonl") }
-func (r Run) Trajectory(agent string) string      { return r.AgentFile(agent, "trajectory.jsonl") }
+func (r Run) Trajectory(agent string) string      { return r.AgentFile(agent, "trajectory.json") }
 func (r Run) Meta(agent string) string            { return r.AgentFile(agent, "meta.json") }
 func (r Run) Diagnostics(agent string) string     { return r.join("diagnostics", agent+".jsonl") }
 func (r Run) Game(char string) string             { return r.join("game", char) }

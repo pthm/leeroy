@@ -165,7 +165,7 @@ persistent script library). It can read and write only there, read the client an
 `azworld` (the world's data), `standings` (the score) and read-only shell commands. Results go to `bench/runs/<time>-<task>-<model>/`:
 - `run.json`: what the run was (task, players, versions) and how it went (start, pauses, end);
 - `supervisor.log`;
-- `agents/<agent>/`: the transcript, a trajectory in one schema for every runtime, notes and usage;
+- `agents/<agent>/`: the transcript, an [ATIF](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md) trajectory (`trajectory.json`, the same for every runtime), notes and usage;
 - `game/<char>/`: the game recording, the events its agent saw, its client log;
 - `judge/<char>/`: samples every 15 s and the final score;
 - `diagnostics/`, and `server/` (the server's logs over the run);

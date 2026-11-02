@@ -422,7 +422,10 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 		if err := judge.SaveUsage(p.dir); err != nil {
 			p.logf("saving usage: %v", err)
 		}
-		if err := trajectory.Write(p.a.Runtime, p.a.Name, filepath.Join(p.dir, "transcript.jsonl"), filepath.Join(p.dir, "trajectory.jsonl")); err != nil {
+		prompt, _ := os.ReadFile(filepath.Join(p.dir, "prompt.md"))
+		if err := trajectory.Write(filepath.Join(p.dir, "transcript.jsonl"), filepath.Join(p.dir, "trajectory.json"), trajectory.Info{
+			Agent: p.a.Name, Char: p.a.Char, Runtime: p.a.Runtime, Model: p.a.Model, Provider: p.a.Provider, Effort: p.a.Effort,
+			Prompt: string(prompt), Usage: filepath.Join(p.dir, "usage.json")}); err != nil {
 			p.logf("trajectory: %v", err)
 		}
 		code := cmd.ProcessState.ExitCode()
