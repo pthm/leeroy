@@ -314,3 +314,7 @@ table[data-sortable] th[data-dir='asc']::after { content: ' ↑'; color: var(--c
 table.cross td.cell { min-width: 5.5rem; }
 table.cross td.cell { min-width: 4.5rem; }
 table.cross th, table.cross td { padding-left: 0.5rem; padding-right: 0.5rem; }
+
+table.cross tbody tr:hover td { background-color: color-mix(in oklab, var(--color-elevated) 70%, transparent); }
+table.cross tbody tr:hover td.cell { filter: brightness(1.15); }
+table.cross th { vertical-align: bottom; }

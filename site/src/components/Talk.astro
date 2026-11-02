@@ -1,6 +1,7 @@
 ---
 // The party talking and standing together: messages per hour of the run by kind (each once, however many heard it),
 // and the share of each 5 minutes in which every player stood within 40 yd of the others.
+import FigureHead from './FigureHead.astro';
 import { type Run, timeTicks } from '../lib/results';
 
 interface Props {
@@ -31,7 +32,7 @@ const share = tog.length ? Math.round((tog.reduce((a, b) => a + b, 0) / tog.leng
 {sum > 0 && (
   <div class="grid grid-cols-1 gap-4">
     <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-      <p class="mb-4 font-mono text-xs text-muted">Messages per hour · {sum.toLocaleString('en')} total</p>
+      <FigureHead title="Messages per hour" sub={`${sum.toLocaleString('en')} messages between players, each counted once`} />
       <div class="flex h-40 items-end gap-[2px]">
         {hours.map((h, i) => (
           <span class="flex h-full flex-1 flex-col-reverse" title={`hour ${i}: ${total(h)} messages`}>
@@ -48,7 +49,7 @@ const share = tog.length ? Math.round((tog.reduce((a, b) => a + b, 0) / tog.leng
     </figure>
     {tog.length > 0 && (
       <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-        <p class="mb-2 font-mono text-xs text-muted">All {run.players.length} players within 40 yards · {share}% of the run</p>
+        <FigureHead title="Time together" sub={`Share of each five minutes with all ${run.players.length} players within 40 yards. ${share}% of the run overall.`} />
         <svg viewBox={`0 0 ${W} ${H}`} class="w-full" role="img" aria-label="Share of each 5 minutes the whole party stood together">
           {[0, 0.5, 1].map(v => (
             <g>

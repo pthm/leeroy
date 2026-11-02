@@ -1,6 +1,7 @@
 ---
 // What each player cost and what they got wrong: list-price cost with tokens by kind, and their most frequent failed
 // calls (the SDK's own error codes; the harmless ones, like a script replacing its own move, are left out).
+import FigureHead from './FigureHead.astro';
 import { colors, dollars, type Run, thousands } from '../lib/results';
 
 interface Props {
@@ -15,7 +16,7 @@ const withFailures = run.players.filter(p => p.failures?.length);
 
 <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
   <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-    <p class="mb-4 font-mono text-xs text-muted">Cost at list prices · tokens: cache read / cache write / output</p>
+    <FigureHead title="Cost" sub="At list prices. Tokens shown as cache read / cache write / output." />
     <ul class="space-y-2.5">
       {run.players.map(p => (
         <li class="text-xs">
@@ -37,7 +38,7 @@ const withFailures = run.players.filter(p => p.failures?.length);
   </figure>
   {withFailures.length > 0 && (
     <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-      <p class="mb-4 font-mono text-xs text-muted">Most frequent errors</p>
+      <FigureHead title="Most frequent errors" sub="SDK error codes, three per player" />
       <ul class="space-y-3">
         {withFailures.map(p => (
           <li class="text-xs">

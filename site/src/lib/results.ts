@@ -399,14 +399,33 @@ export function displayNames(rows: { key: string; model: string; effort?: string
   return new Map(rows.map(r => [r.key, count.get(entryName(r))! > 1 ? `${entryName(r)} (${harnessName(r.runtime)})` : entryName(r)]));
 }
 
-// Label positions that don't overlap: each label starts beside its point and moves down in steps until it clears the
-// ones already placed. ponytail: greedy, fine for a few dozen labels.
-export function placeLabels(pts: { x: number; y: number; w: number }[], h = 13): number[] {
-  const placed: { x: number; y: number; w: number }[] = [];
-  return pts.map(p => {
-    let y = p.y;
-    for (let i = 0; i < 12 && placed.some(q => Math.abs(q.y - y) < h && p.x < q.x + q.w && q.x < p.x + p.w); i++) y += h;
-    placed.push({ x: p.x, y, w: p.w });
-    return y;
+// Label positions that don't overlap each other or other points. Each label tries the right of its point, then the
+// left, then each side a line up or down, and so on; the first spot clear of placed labels and every other point wins.
+// ponytail: greedy, fine for a few dozen labels.
+export function placeLabels(
+  labels: { x: number; y: number; w: number; r?: number }[],
+  points: { x: number; y: number; r: number }[] = [],
+  box = { left: -Infinity, right: Infinity, top: -Infinity, bottom: Infinity }, // where labels may go
+  h = 13,
+): { x: number; y: number; anchor: 'start' | 'end' }[] {
+  const placed: { x0: number; x1: number; y: number }[] = [];
+  const clear = (x0: number, x1: number, y: number, self: { x: number; y: number }) =>
+    !placed.some(q => Math.abs(q.y - y) < h && x0 < q.x1 && q.x0 < x1) &&
+    !points.some(p => !(p.x === self.x && p.y === self.y) && p.x + p.r > x0 && p.x - p.r < x1 && p.y + p.r > y - h + 3 && p.y - p.r < y + 3);
+  return labels.map(l => {
+    const gap = (l.r ?? 5) + 5;
+    for (const dy of [0, -h, h, -2 * h, 2 * h, 3 * h]) {
+      for (const side of ['start', 'end'] as const) {
+        const x0 = side === 'start' ? l.x + gap : l.x - gap - l.w;
+        const y = l.y + 4 + dy;
+        const inside = x0 >= box.left && x0 + l.w <= box.right && y - h + 3 >= box.top && y <= box.bottom;
+        if (inside && clear(x0, x0 + l.w, y, l)) {
+          placed.push({ x0, x1: x0 + l.w, y });
+          return { x: side === 'start' ? l.x + gap : l.x - gap, y, anchor: side };
+        }
+      }
+    }
+    placed.push({ x0: l.x + gap, x1: l.x + gap + l.w, y: l.y + 4 });
+    return { x: l.x + gap, y: l.y + 4, anchor: 'start' };
   });
 }

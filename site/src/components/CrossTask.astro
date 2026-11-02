@@ -25,7 +25,7 @@ const cellSub = (t: string, r: ModelRow) => (isProgress(t) ? `n=${r.attempts}` :
 const cellValue = (t: string, r: ModelRow) => (isProgress(t) ? r.meanRate ?? 0 : r.met / r.attempts - (r.meanTime ?? 1e6) / 1e9);
 ---
 
-<div class="overflow-x-auto rounded border border-hairline bg-raised" data-chart>
+<div class="overflow-x-auto rounded border border-hairline bg-raised" data-chart data-cross>
   <table class="data cross" data-sortable>
     <thead>
       <tr>
@@ -34,10 +34,11 @@ const cellValue = (t: string, r: ModelRow) => (isProgress(t) ? r.meanRate ?? 0 :
         {ts.map(t => (
           <th class="num" data-sort="num" title={taskTitle(t)}>
             <a href={url(`/results/${t}`)} class="whitespace-nowrap hover:text-accent">{taskShort(t)}</a>
+            <span class="block text-[9px] tracking-normal text-faint normal-case">{isProgress(t) ? 'XP/h' : 'met · time'}</span>
           </th>
         ))}
         <th class="num" data-sort="num" title="Tasks this entry has run">Tasks</th>
-        <th class="num whitespace-nowrap" data-sort="num" title="Mean of its per-task percentiles, over the tasks it has run">Pct.</th>
+        <th class="num whitespace-nowrap" data-sort="num" title="Mean of its per-task percentiles, over the tasks it has run">Avg pct.</th>
       </tr>
     </thead>
     <tbody>
@@ -74,7 +75,7 @@ const cellValue = (t: string, r: ModelRow) => (isProgress(t) ? r.meanRate ?? 0 :
 <p class="mt-3 font-mono text-[11px] leading-relaxed text-faint">
   Goal tasks show goals met out of attempts, with mean time to the goal. Levelling tasks show mean XP per hour, with
   the number of attempts. Shading shows the entry's percentile within that task, from 100 for the best to 0 for the
-  worst. The task's best entry is in bold. Pct. is the mean of those percentiles across the tasks an entry has run.
+  worst. The task's best entry is in bold. Avg pct. is the mean of those percentiles across the tasks an entry has run.
   It is not an overall score, since tasks differ and not every model has run every task. Click a column header to
   sort.
 </p>

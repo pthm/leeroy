@@ -1,6 +1,7 @@
 ---
 // Time to the goal, one bar per player, fastest first; players who didn't make it are listed after. Claude Code in
 // amber, Codex in blue.
+import FigureHead from './FigureHead.astro';
 import { duration, harnessColor, modelName, type Run } from '../lib/results';
 
 interface Props {
@@ -15,7 +16,7 @@ const color = (runtime: string) => harnessColor(runtime).bg;
 ---
 
 <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-  <p class="mb-4 font-mono text-xs text-muted">Time to the goal</p>
+  <FigureHead title="Time to the goal" sub="Fastest first. Bars are coloured by harness." />
   <ul class="space-y-2.5">
     {ps.map(p => (
       <li class="grid grid-cols-[9rem_1fr_5.5rem] items-center gap-3 font-mono text-xs" data-key={p.char} title={`${p.char} (${modelName(p.model)}): ${p.met ? duration(p.time_to_goal_s) : 'not met'}, ${p.deaths ?? 0} deaths, $${(p.cost_usd ?? 0).toFixed(2)}`}>

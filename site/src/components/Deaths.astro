@@ -1,5 +1,6 @@
 ---
 // Who killed the players and where, from the recordings: a bar per killer and per place, split by player.
+import FigureHead from './FigureHead.astro';
 import { colors, type Run } from '../lib/results';
 
 interface Props {
@@ -29,11 +30,11 @@ const max = Math.max(...killers.rows.map(r => r.n), ...places.rows.map(r => r.n)
 {deaths.length > 0 && (
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     {[
-      { title: 'Killers', t: killers },
-      { title: 'Zones', t: places },
-    ].map(({ title, t }) => (
+      { title: 'Killers', sub: 'Who killed the players, most deaths first', t: killers },
+      { title: 'Zones', sub: 'Where the players died', t: places },
+    ].map(({ title, sub, t }) => (
       <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-        <p class="mb-2 font-mono text-xs text-muted">{title}</p>
+        <FigureHead title={title} sub={sub} />
         <p class="mb-4 flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
           {run.players.map(p => <button type="button" class={color[p.char]} data-toggle={p.char} aria-pressed="true">● <span class="text-muted">{p.char}</span></button>)}
         </p>

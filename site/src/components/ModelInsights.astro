@@ -1,6 +1,7 @@
 ---
 // A task's models side by side, across every run: each attempt's time to the goal as a dot (the mean as a bar), how
 // the agent spent its time on average, and its most frequent errors.
+import FigureHead from './FigureHead.astro';
 import { duration, entryKey, entryName, harnessColor, harnessName, isProgress, leaderboard, rate, runsOf, xpRate, type Player } from '../lib/results';
 
 interface Props {
@@ -36,7 +37,7 @@ const tickLabel = (t: number) => (progress ? (t >= 1000 ? `${t / 1000}k` : Strin
 
 <div class="space-y-4">
   <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-    <p class="mb-4 font-mono text-xs text-muted">{progress ? "XP per hour by attempt · ● attempt · ▏ mean" : "Time to the goal by attempt · ● attempt · ▏ mean · ✕ not met"}</p>
+    <FigureHead title={progress ? 'XP per hour, every attempt' : 'Time to the goal, every attempt'} sub={progress ? 'Each dot is one attempt. The line is the mean.' : 'Each dot is one attempt. The line is the mean. ✕ marks an attempt that didn’t reach the goal.'} />
     <ul class="space-y-2">
       {rows.map(r => (
         <li class="grid grid-cols-[8rem_1fr] items-center gap-3 font-mono text-xs" data-key={r.key}>
@@ -69,7 +70,7 @@ const tickLabel = (t: number) => (progress ? (t >= 1000 ? `${t / 1000}k` : Strin
 
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-      <p class="mb-4 font-mono text-xs text-muted">Agent time, mean of all attempts</p>
+      <FigureHead title="Agent time" sub="Mean share of each attempt" />
       <ul class="space-y-2">
         {rows.map(r => {
           const ps = attempts(r.key);
@@ -91,7 +92,7 @@ const tickLabel = (t: number) => (progress ? (t >= 1000 ? `${t / 1000}k` : Strin
       </p>
     </figure>
     <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-      <p class="mb-4 font-mono text-xs text-muted">Most frequent errors</p>
+      <FigureHead title="Most frequent errors" sub="SDK error codes, summed over all attempts" />
       <ul class="space-y-2.5">
         {rows.filter(r => topFailures(attempts(r.key)).length).map(r => (
           <li class="text-xs">

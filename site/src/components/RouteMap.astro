@@ -1,6 +1,7 @@
 ---
 // Routes over one map: on the server's terrain (a continent) or the instance's navmesh floor plan, each route in its
 // colour, a cross at each death (hover for who killed them) and a dot where each one ended.
+import FigureHead from './FigureHead.astro';
 import { getImage } from 'astro:assets';
 import { duration, type MapBox, type Player } from '../lib/results';
 
@@ -62,7 +63,9 @@ const anyRide = drawn.some(x => x.rides);
 ---
 
 <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-  <p class="mb-2 font-mono text-xs text-muted">{box.name} <span class="enlarge-hide text-faint">· click to enlarge</span></p>
+  <FigureHead title={box.name} sub={box.file?.endsWith('.png') ? 'Floor plan from the navmesh' : 'Game map in greyscale'}>
+    <span class="enlarge-hide font-mono text-[11px] text-faint">Click to enlarge</span>
+  </FigureHead>
   <div class="map-click overflow-hidden rounded border border-hairline" data-enlarge role="button" tabindex="0" aria-label={`Enlarge the map of ${box.name}`}>
     <svg viewBox={`0 0 ${W} ${H}`} class="block w-full" role="img" aria-label={`Routes in ${box.name}`} data-zoom>
       <rect width={W} height={H} fill="var(--color-base)" />

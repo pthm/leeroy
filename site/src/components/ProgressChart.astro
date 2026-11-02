@@ -1,6 +1,7 @@
 ---
 // Level over the run, one line per player, and under it a row per player with a tick at each death. Shaded: time
 // inside an instance (amber) and party wipes (red). From the judge's samples and the recordings (azbench publish).
+import FigureHead from './FigureHead.astro';
 import { colors, duration, instanceTime, type Run, timeTicks, wipes } from '../lib/results';
 
 interface Props {
@@ -35,12 +36,12 @@ const seriesData = JSON.stringify({
 ---
 
 <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-  <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-    <p class="flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
-      {ps.map(p => <button type="button" class={color[p.char]} data-toggle={p.char} aria-pressed="true">● <span class="text-muted">{p.char}</span></button>)}
-    </p>
+  <FigureHead title="Level and deaths" sub="Hover for every player's level at that moment. Click a name to hide it.">
     <button type="button" class="enlarge-btn" data-enlarge>Enlarge</button>
-  </div>
+  </FigureHead>
+  <p class="mb-2 flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
+    {ps.map(p => <button type="button" class={color[p.char]} data-toggle={p.char} aria-pressed="true">● <span class="text-muted">{p.char}</span></button>)}
+  </p>
   <div class="overflow-x-auto">
     <svg viewBox={`0 0 ${W} ${H}`} class="w-full min-w-[640px]" role="img" aria-label="Each player's level over the run, and when each died" data-series={seriesData}>
       {inside.map(([a, b]) => (

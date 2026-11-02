@@ -1,6 +1,7 @@
 ---
 // How each player's time went, twice: the character (fighting, travelling, idle, dead, from the recordings) and the
 // agent (thinking, a script running while it waits, in a call, or nothing running, from the harness).
+import FigureHead from './FigureHead.astro';
 import { colors, type Run } from '../lib/results';
 
 interface Props {
@@ -27,11 +28,11 @@ const ps = run.players.filter(p => p.time_use || p.time_pct_by_state);
 {ps.length > 0 && (
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     {[
-      { title: 'Character', parts: game, get: (p: (typeof ps)[number], k: string) => (p.time_use as any)?.[k] ?? 0 },
-      { title: 'Agent', parts: agent, get: (p: (typeof ps)[number], k: string) => p.time_pct_by_state?.[k] ?? 0 },
-    ].map(({ title, parts, get }) => (
+      { title: 'Character', sub: 'Share of time in the game', parts: game, get: (p: (typeof ps)[number], k: string) => (p.time_use as any)?.[k] ?? 0 },
+      { title: 'Agent', sub: 'Share of time in the harness', parts: agent, get: (p: (typeof ps)[number], k: string) => p.time_pct_by_state?.[k] ?? 0 },
+    ].map(({ title, sub, parts, get }) => (
       <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-        <p class="mb-4 font-mono text-xs text-muted">{title}</p>
+        <FigureHead title={title} sub={sub} />
         <ul class="space-y-2">
           {ps.map(p => (
             <li class="grid grid-cols-[6rem_1fr] items-center gap-3 text-xs">

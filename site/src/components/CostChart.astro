@@ -2,6 +2,7 @@
 // Each entry's result against its mean cost per attempt, cost on a log scale (prices span 100x), coloured by lab, with
 // the frontier: the entries nothing beats on both. Goal tasks plot mean minutes to the goal (lower is better);
 // progress tasks mean XP per hour (higher is better). Hover a point for the detail.
+import FigureHead from './FigureHead.astro';
 import { LABS, dollars, duration, entryName, frontier, harnessName, isProgress, leaderboard, placeLabels, rate, thousands } from '../lib/results';
 
 interface Props {
@@ -14,7 +15,7 @@ const rows = leaderboard(task);
 const pts = rows
   .map(r => ({ r, cost: r.meanCost ?? NaN, y: progress ? r.meanRate ?? NaN : r.meanTime != null ? r.meanTime / 60 : NaN }))
   .filter(p => p.cost > 0 && Number.isFinite(p.y));
-const W = 760, H = 380, L = 64, R = 130, T = 20, B = 50;
+const W = 900, H = 420, L = 64, R = 16, T = 34, B = 50;
 const lo = Math.min(...pts.map(p => p.cost)) / 1.6, hi = Math.max(...pts.map(p => p.cost)) * 1.6;
 const x = (v: number) => L + ((Math.log(v) - Math.log(lo)) / (Math.log(hi) - Math.log(lo))) * (W - L - R);
 const maxY = Math.max(...pts.map(p => p.y)) * 1.15;
@@ -24,9 +25,16 @@ const step = [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000].
 const yTicks = Array.from({ length: Math.floor(maxY / step) + 1 }, (_, i) => i * step);
 const front = frontier(pts, progress);
 const labs = [...new Set(pts.map(p => p.r.lab))];
-const order = pts.map((p, i) => i).sort((a, b) => y(pts[a].y) - y(pts[b].y));
-const ys = placeLabels(order.map(i => ({ x: x(pts[i].cost) + 10, y: y(pts[i].y) + 4, w: entryName(pts[i].r).length * 6.7 })));
-const labelY = new Map(order.map((i, k) => [i, ys[k]]));
+// every label when there are few points; otherwise the frontier and the best five, the rest on hover
+const byResult = pts.toSorted((a, b) => (progress ? b.y - a.y : a.y - b.y)).slice(0, 5);
+const labelled = (p: (typeof pts)[number]) => pts.length <= 8 || front.includes(p) || byResult.includes(p);
+const order = pts.map((p, i) => i).filter(i => labelled(pts[i])).sort((a, b) => y(pts[a].y) - y(pts[b].y));
+const spots = placeLabels(
+  order.map(i => ({ x: x(pts[i].cost), y: y(pts[i].y), w: entryName(pts[i].r).length * 6.7, r: 6.5 })),
+  pts.map(p => ({ x: x(p.cost), y: y(p.y), r: 7 })),
+  { left: L + 4, right: W - 2, top: 4, bottom: H - B - 4 },
+);
+const labelAt = new Map(order.map((i, k) => [i, spots[k]]));
 const tip = (p: (typeof pts)[number]) =>
   [
     `${entryName(p.r)} (${p.r.lab}, ${harnessName(p.r.runtime)})`,
@@ -42,7 +50,11 @@ const tip = (p: (typeof pts)[number]) =>
 ---
 
 {pts.length > 1 && (
-  <figure class="rounded border border-hairline bg-raised p-4" data-chart>
+  <figure class="rounded border border-hairline bg-raised p-5" data-chart>
+    <FigureHead title="Result against cost" sub="Each point is one model at one reasoning effort. Cost is per attempt, on a log scale. Hover a point for details." />
+    <p class="mb-1 flex flex-wrap gap-x-4 font-mono text-[11px] text-muted">
+      {labs.map(l => <span><span style={`color:${LABS[l]}`}>●</span> {l}</span>)}
+    </p>
     <svg viewBox={`0 0 ${W} ${H}`} class="w-full" role="img" aria-label="Each model's result against its mean cost per attempt">
       {yTicks.map(v => (
         <g>
@@ -68,16 +80,15 @@ const tip = (p: (typeof pts)[number]) =>
           <title>{tip(p)}</title>
           <circle cx={x(p.cost)} cy={y(p.y)} r="12" fill="transparent" />
           <circle cx={x(p.cost)} cy={y(p.y)} r={front.includes(p) ? 6.5 : 5} fill={LABS[p.r.lab]} stroke={front.includes(p) ? 'var(--color-fg)' : 'none'} stroke-width="1.5" />
-          {labelY.get(i)! - (y(p.y) + 4) > 1 && (
-            <line x1={x(p.cost) + 4} y1={y(p.y)} x2={x(p.cost) + 8} y2={labelY.get(i)! - 4} stroke="var(--color-outline)" stroke-width="0.8" />
+          {labelAt.has(i) && Math.abs(labelAt.get(i)!.y - (y(p.y) + 4)) > 1 && (
+            <line x1={x(p.cost)} y1={y(p.y)} x2={labelAt.get(i)!.x} y2={labelAt.get(i)!.y - 4} stroke="var(--color-outline)" stroke-width="0.8" />
           )}
-          <text x={x(p.cost) + 10} y={labelY.get(i)} class="fill-fg font-mono text-[11px]">{entryName(p.r)}</text>
+          {labelAt.has(i) && (
+            <text x={labelAt.get(i)!.x} y={labelAt.get(i)!.y} text-anchor={labelAt.get(i)!.anchor} class="fill-fg font-mono text-[11px]">{entryName(p.r)}</text>
+          )}
         </g>
       ))}
     </svg>
-    <figcaption class="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-faint">
-      <span>{progress ? 'Higher and further left is better.' : 'Lower and further left is better.'} The dashed line is the cost frontier: no other entry is both cheaper and better.</span>
-      {labs.map(l => <span><span style={`color:${LABS[l]}`}>●</span> {l}</span>)}
-    </figcaption>
+    <p class="mt-2 font-mono text-[11px] text-faint">{progress ? 'Higher and further left is better.' : 'Lower and further left is better.'} The dashed line is the cost frontier, where no other entry is both cheaper and better.</p>
   </figure>
 )}

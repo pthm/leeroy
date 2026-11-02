@@ -2,6 +2,7 @@
 // Every entry across tasks: its mean percentile (as in the cross-task table) against its relative cost, which is its
 // cost per attempt divided by the task's median, as a geometric mean over the tasks it ran. 1× is a typical cost for
 // the task. Log scale, coloured by lab, sized by the number of tasks, with the cost frontier.
+import FigureHead from './FigureHead.astro';
 import { LABS, displayNames, dollars, frontier, harnessName, leaderboard, percentiles, placeLabels, taskShort, tasks, type ModelRow } from '../lib/results';
 
 const median = (xs: number[]) => {
@@ -29,7 +30,7 @@ const pts = [...by.values()].map(e => ({
   cost: Math.exp(e.rel.reduce((a, b) => a + Math.log(b), 0) / e.rel.length),
   y: (e.pct.reduce((a, b) => a + b, 0) / e.pct.length) * 100,
 }));
-const W = 760, H = 400, L = 56, R = 150, T = 20, B = 50;
+const W = 900, H = 460, L = 56, R = 16, T = 34, B = 50;
 const lo = Math.min(...pts.map(p => p.cost), 1) / 1.5, hi = Math.max(...pts.map(p => p.cost), 1) * 1.5;
 const x = (v: number) => L + ((Math.log(v) - Math.log(lo)) / (Math.log(hi) - Math.log(lo))) * (W - L - R);
 const y = (v: number) => H - B - (v / 100) * (H - T - B);
@@ -37,9 +38,17 @@ const xTicks = [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50].filter(v => v >= lo &&
 const front = frontier(pts, true);
 const names = displayNames(pts.map(p => p.row));
 // labels from the top down, so the highest points keep theirs
-const order = pts.map((p, i) => i).sort((a, b) => y(pts[a].y) - y(pts[b].y));
-const ys = placeLabels(order.map(i => ({ x: x(pts[i].cost) + 8 + 1.5 * pts[i].pct.length, y: y(pts[i].y) + 4, w: names.get(pts[i].row.key)!.length * 6.7 })));
-const labelY = new Map(order.map((i, k) => [i, ys[k]]));
+// labels for the frontier, entries with more than one task and the top three; the rest on hover
+const top = pts.toSorted((a, b) => b.y - a.y).slice(0, 3);
+const labelled = (p: (typeof pts)[number]) => pts.length <= 8 || front.includes(p) || p.pct.length > 1 || top.includes(p);
+const order = pts.map((p, i) => i).filter(i => labelled(pts[i])).sort((a, b) => y(pts[a].y) - y(pts[b].y));
+const rOf = (p: (typeof pts)[number]) => 3.5 + 1.5 * p.pct.length;
+const spots = placeLabels(
+  order.map(i => ({ x: x(pts[i].cost), y: y(pts[i].y), w: names.get(pts[i].row.key)!.length * 6.7, r: rOf(pts[i]) })),
+  pts.map(p => ({ x: x(p.cost), y: y(p.y), r: rOf(p) + 1 })),
+  { left: L + 4, right: W - 2, top: 4, bottom: H - B - 4 },
+);
+const labelAt = new Map(order.map((i, k) => [i, spots[k]]));
 const labs = [...new Set(pts.map(p => p.row.lab))];
 const tip = (p: (typeof pts)[number]) =>
   [
@@ -53,8 +62,18 @@ const tip = (p: (typeof pts)[number]) =>
 ---
 
 {pts.length > 1 && (
-  <figure class="mt-8 rounded border border-hairline bg-raised p-4" data-chart>
-    <p class="mb-2 font-mono text-xs text-muted">Result against cost, all tasks</p>
+  <figure class="rounded border border-hairline bg-raised p-5" data-chart>
+    <FigureHead title="Result against cost" sub="Mean percentile against relative cost, across every task each entry has run. Hover a point for its per-task results." />
+    <div class="mb-1 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 font-mono text-[11px] text-muted">
+      <span class="flex flex-wrap gap-x-4">
+        {labs.map(l => <span><span style={`color:${LABS[l]}`}>●</span> {l}</span>)}
+      </span>
+      <span class="flex items-center gap-3 text-faint">
+        {[1, 3, 5].map(n => (
+          <span class="flex items-center gap-1"><svg width="20" height="20" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r={3.5 + 1.5 * n} fill="var(--color-outline)" /></svg>{n} task{n === 1 ? '' : 's'}</span>
+        ))}
+      </span>
+    </div>
     <svg viewBox={`0 0 ${W} ${H}`} class="w-full" role="img" aria-label="Each entry's mean percentile against its cost relative to other entries in the same tasks">
       {[0, 25, 50, 75, 100].map(v => (
         <g>
@@ -78,17 +97,16 @@ const tip = (p: (typeof pts)[number]) =>
           <title>{tip(p)}</title>
           <circle cx={x(p.cost)} cy={y(p.y)} r="12" fill="transparent" />
           <circle cx={x(p.cost)} cy={y(p.y)} r={3.5 + 1.5 * p.pct.length} fill={LABS[p.row.lab]} fill-opacity="0.85" stroke={front.includes(p) ? 'var(--color-fg)' : 'none'} stroke-width="1.5" />
-          {labelY.get(i)! - (y(p.y) + 4) > 1 && (
-            <line x1={x(p.cost) + 4} y1={y(p.y)} x2={x(p.cost) + 6 + 1.5 * p.pct.length} y2={labelY.get(i)! - 4} stroke="var(--color-outline)" stroke-width="0.8" />
+          {labelAt.has(i) && Math.abs(labelAt.get(i)!.y - (y(p.y) + 4)) > 1 && (
+            <line x1={x(p.cost)} y1={y(p.y)} x2={labelAt.get(i)!.x} y2={labelAt.get(i)!.y - 4} stroke="var(--color-outline)" stroke-width="0.8" />
           )}
-          <text x={x(p.cost) + 8 + 1.5 * p.pct.length} y={labelY.get(i)} class="fill-fg font-mono text-[11px]">{names.get(p.row.key)}</text>
+          {labelAt.has(i) && (
+            <text x={labelAt.get(i)!.x} y={labelAt.get(i)!.y} text-anchor={labelAt.get(i)!.anchor} class="fill-fg font-mono text-[11px]">{names.get(p.row.key)}</text>
+          )}
         </g>
       ))}
     </svg>
-    <figcaption class="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-faint">
-      <span>Higher and further left is better. Larger points have run more tasks. The dashed line is the cost frontier.</span>
-      {labs.map(l => <span><span style={`color:${LABS[l]}`}>●</span> {l}</span>)}
-    </figcaption>
+    <p class="mt-2 font-mono text-[11px] text-faint">Higher and further left is better. The dashed line is the cost frontier. Unlabelled points are named on hover.</p>
     <p class="mt-3 font-mono text-[11px] leading-relaxed text-faint">
       Tasks cost very different amounts, so cost is relative. For each task an entry ran, its cost per attempt is divided
       by the median cost per attempt of all entries in that task. The chart uses the geometric mean of those ratios, so
