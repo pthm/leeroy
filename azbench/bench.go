@@ -68,6 +68,7 @@ func benchCommand(cmd string, args []string) bool {
 	message := fs.String("message", "", "file: the message an agent's resumed conversation starts with ($LEFT = minutes left)")
 	noBuild := fs.Bool("no-build", false, "don't rebuild bin/ first")
 	reset := fs.Bool("reset", false, "run: start from scratch: delete the scenario's characters, move its agents' workspaces to bench/workspaces/.old, restart the worldserver")
+	port := fs.Int("port", 0, "run: the first session's port (default 8090), to run beside another run")
 	task := fs.String("task", "", "publish: the task the runs belong to on the site (default: the scenario's name)")
 	out := fs.String("out", "", "publish: where to write (default: site/src/data/runs)")
 	model := fs.String("model", "", "publish: the model, for runs that didn't record it")
@@ -104,7 +105,7 @@ func benchCommand(cmd string, args []string) bool {
 		fmt.Println(string(encoded))
 		return true
 	case "run":
-		pos := parse(1, "<scenario.yaml> [--minutes n] [--dry-run] [--no-build] [--reset]")
+		pos := parse(1, "<scenario.yaml> [--minutes n] [--port n] [--dry-run] [--no-build] [--reset]")
 		repo := repoRoot()
 		b, err := config.LoadBench(filepath.Join(repo, "bench"))
 		check(err)
@@ -117,7 +118,7 @@ func benchCommand(cmd string, args []string) bool {
 			fmt.Fprintln(os.Stderr, "reset: deleting the characters, moving the workspaces aside, restarting the worldserver")
 			check(run.Fresh(repo, s))
 		}
-		r, err := run.New(b, s, run.Options{Repo: repo})
+		r, err := run.New(b, s, run.Options{Repo: repo, BasePort: *port})
 		check(err)
 		if *dry {
 			fmt.Print(r.Plan())

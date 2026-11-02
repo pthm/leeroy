@@ -23,7 +23,7 @@ commands below run from the repo root; server and client setup is in the [repo R
 
 | Command | |
 |---|---|
-| `azbench run <scenario.yaml> [--minutes n] [--reset] [--dry-run]` | a run: every session, judge and agent, on one clock. `--reset`: delete the scenario's characters, move its agents' workspaces to `bench/workspaces/.old/` and restart the worldserver first, so every run starts the same |
+| `azbench run <scenario.yaml> [--minutes n] [--port n] [--reset] [--dry-run]` | a run: every session, judge and agent, on one clock. `--reset`: delete the scenario's characters, move its agents' workspaces to `bench/workspaces/.old/` and restart the worldserver first, so every run starts the same. `--port`: the first session's port (default 8090), to run beside another run |
 | `azbench matrix <matrix.yaml> [--dry-run]` | a grid of solo runs, `parallel` at a time; `summary.json` |
 | `azbench status <run dir>` | a running run: each player's state, score and level, and the minutes left |
 | `azbench pause <run dir>` | stop a running run cleanly so it can be resumed (Ctrl-C on `azbench run` does the same) |
