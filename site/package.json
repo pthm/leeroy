@@ -10,7 +10,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "check": "astro check"
+    "check": "astro check",
+    "check:links": "python3 scripts/check-links.py dist"
   },
   "dependencies": {
     "@astrojs/rss": "^4.0.19",

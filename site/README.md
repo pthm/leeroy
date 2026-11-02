@@ -9,6 +9,7 @@ Astro, on a trimmed copy of the [Terminal Noir](https://github.com/nandomoreiram
 cd site && npm install
 npm run dev        # http://localhost:4321/leeroy/
 npm run build      # into dist/; SITE_BASE=/ builds for the root of a domain
+npm run check:links  # after a build: every internal link and anchor resolves
 ```
 
 | | |
