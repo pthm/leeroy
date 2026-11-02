@@ -337,13 +337,17 @@ func (b *Bot) setupCombatInfo() {
 		found.Count = total
 		return *found
 	})
-	e.Func("move.jump", "() → Request", "jump; movement_busy if another task owns movement", func() map[string]any {
-		return b.steeringRequest("move.jump", nil, func() *script.Outcome {
+	e.Func("move.jump", "() → Request", "jump: forward if this task's walk is moving you, and the jump ends that walk (it fails cancelled); movement_busy if another task owns movement", func() map[string]any {
+		if b.moves == nil {
+			return b.refuse("move.jump", nil, "not_available", "movement controller is not initialized")
+		}
+		id, _, _ := e.CurrentTaskIdentity()
+		return e.Reqs.Now(script.Spec{Op: "move.jump"}, b.moves.jump(id, func() *script.Outcome {
 			if err := w.Jump(); err != nil {
 				return script.Fail("failed", err.Error(), nil)
 			}
 			return script.Ok(nil)
-		})
+		}))
 	})
 	e.Func("move.unstuck", "() → Request<Teleport>", "the failsafe when you're truly stuck: what the real client's \"Character stuck\" does: a 10 s cast that hearths you home (me.home()). Not in combat or on a flight; shares the hearthstone's cooldown",
 		func() map[string]any {

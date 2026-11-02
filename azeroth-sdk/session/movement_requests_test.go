@@ -507,3 +507,25 @@ func TestMovementRealBackendRejectsChangedPose(t *testing.T) {
 		t.Fatal("stale plan rewrote current floor")
 	}
 }
+
+// A jump by the walking task ends its walk, after the jump (which carries the walk's speed); another task's jump
+// is refused.
+func TestJumpEndsWalk(t *testing.T) {
+	f := newMovementFixture(t, false)
+	a := f.start(1, 100)
+	f.walking(t, a)
+	if r := f.control.jump(2, func() *script.Outcome { return script.Ok(nil) }); r.Code != "movement_busy" {
+		t.Fatalf("foreign jump: %+v", r)
+	}
+	movingAtJump := false
+	if r := f.control.jump(1, func() *script.Outcome { f.mu.Lock(); movingAtJump = f.moving; f.mu.Unlock(); return script.Ok(nil) }); !r.OK {
+		t.Fatalf("jump: %+v", r)
+	}
+	if !movingAtJump {
+		t.Fatal("the walk stopped before the jump: it would lose its speed")
+	}
+	f.resultCode(t, a, "cancelled")
+	if o, _ := f.control.snapshot(); o != nil {
+		t.Fatalf("still walking: %+v", o)
+	}
+}

@@ -197,6 +197,25 @@ func (m *movementRequests) steer(taskID int, fn func() *script.Outcome) *script.
 	}
 	return fn()
 }
+
+// jump: a jump by the task that's walking ends its walk (which fails cancelled), else the walk, still going, turns
+// the character back to its path when it lands (off a ledge: back up onto it). The jump goes first, so it carries
+// the walk's speed.
+func (m *movementRequests) jump(taskID int, jump func() *script.Outcome) *script.Outcome {
+	m.mu.Lock()
+	defer m.unlock()
+	m.expireLeaseLocked()
+	if out := m.permissionLocked(taskID); out != nil {
+		return out
+	}
+	out := jump()
+	if out.OK && m.active != nil && m.active.lease == nil {
+		m.finishLocked(m.active, script.Fail("cancelled", "a jump (move.jump) ended the walk", m.active.owner))
+		m.advanceLocked()
+	}
+	return out
+}
+
 func (m *movementRequests) registerLeases(e *script.Engine) {
 	e.InternalFunc("move._check", "() → ActResult", func() map[string]any {
 		id, _, _ := e.CurrentTaskIdentity()

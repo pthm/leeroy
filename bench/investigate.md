@@ -51,27 +51,14 @@ mountains to the Wetlands (up to z 445 at -4367 -2212, climbs of 55-58 degrees b
 
 ## SDK
 
-- **A walk outlives a jump.** A walk still running after a jump pulled Cosimo back up to the ledge it jumped from.
-  A jump should end the walk it interrupts, or say it didn't.
 - **No boats or zeppelins.** The SDK drops ONTRANSPORT whenever the character moves (`client/selfmove.go`), so it
   can't ride one; the docs say so. Haiku and Sonnet worked that out at the Stormwind dock (The Bravery to Auberdine
   is the intended route to Darnassus) and quit. Needs: boarding, riding along the transport's path, getting off.
-- **A death mid-walk is reported as `rooted`.** The server roots a corpse; `MovementLock()` (client/control.go)
-  returns `w.rooted` without checking dead or ghost first, so `act.go_to` says "server controls or blocks movement".
-  About 25 times across Cosimo, Evander and Faramund; Evander read it as "a spider rooted Evander ... and he died".
-  Check dead/ghost first and say `dead`.
-- **A portal's failure is reported as range.** `objects.use` on the Shattrath portal (183317) from 2.9 yd returned
-  "timeout: stand within ~5 yd"; the real event was `cast_failed` spell 17608 `targets_dead`. The plain-object path
-  (session/items.go, around 818-829) waits only for a GOBytes1 change, so it never sees `cast_failed`, and probably
-  not `teleported` on success either (unverified). Match those events there.
 - **Teleports to another map (the Dark Portal) are hard to walk into.** Trigger 4354 is a box 3.8 yd deep (15.5 wide);
   `act.go_to` arrives within 3.5 yd (moving.md) and ignores a smaller tolerance, so the walk stops short; and once,
   the teleport happened but the result still said "unreachable: walk completed outside the destination tolerance".
   Same-map portals are walked into (moving.md); `areatrigger_teleport` boxes should be too, and a cross-map
   transfer should end the walk as arrived.
-- **A false `resurrected` event on a long teleport as a ghost.** `stateEvents` (session/events.go) reads
-  `IsAlive() && !IsGhost()`, which flickers true while the player object is rebuilt. Cosimo believed it ("the server
-  resurrected me on arrival") with `me.ghost()` still true at 1 HP.
 - **Routes fail when the destination's z is a few yards off.** `route_unreachable` though the reachable point is
   directly below ("path ends 5.7 yd short ... 5.7 yd below it"): Bertil 20 times through Stormwind (about 6 min),
   Dorian 11 (about 5 min). Without a z, `act.go_to` uses `world.ground_z` (act.lua), which picked a floor 7 yd off
