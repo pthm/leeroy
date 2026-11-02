@@ -24,8 +24,8 @@ import (
 // minimap's baked lighting; the buildings, trees and the rest are drawn over it from their models (drawModels).
 
 // DetailVersion changes when detail tiles do (2: the models drawn, 3: textured, 4: detail everywhere, sharp terrain
-// lighting, 5: water, 6: no placeholder geometry, 7: none hidden at rest), so browsers don't keep old ones.
-const DetailVersion = 7
+// lighting, 5: water, 6: no placeholder geometry, 7: none hidden at rest, 8: no unreachable WMO groups), so browsers don't keep old ones.
+const DetailVersion = 8
 
 // MaxDetail is the finest detail level: a square cut into 2^4 x 2^4 sub-squares, 0.13 yd a pixel.
 const MaxDetail = 4

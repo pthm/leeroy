@@ -85,7 +85,7 @@ func cstrings(b []byte, off uint32) string {
 func placeholder(tex string) bool { return strings.Contains(strings.ToUpper(tex), `\TEXTURES\TEMP\`) }
 
 // LoadWMO reads a WMO: its root (materials, doodads) and every group file (geometry). Triangles drawn by no material
-// (collision only) or a placeholder texture are left out.
+// (collision only) or a placeholder texture are left out, and the groups flagged unreachable.
 func LoadWMO(c Source, name string) (*Model, error) {
 	root, err := c.Read(name)
 	if err != nil {
@@ -128,7 +128,9 @@ func LoadWMO(c Source, name string) (*Model, error) {
 			continue
 		}
 		chunks(b, func(tag string, body []byte) {
-			if tag == "MOGP" && len(body) > 68 {
+			// not a group flagged unreachable (0x80): scenery nobody gets to, like the facades standing around
+			// Stormwind Keep, which seen from above smear over its roofs
+			if tag == "MOGP" && len(body) > 68 && le.Uint32(body[8:])&0x80 == 0 {
 				m.addGroup(body[68:])
 			}
 		})
