@@ -12,6 +12,7 @@ import TrajectoryPanel from '../../../components/TrajectoryPanel.astro';
 import KitPanel from '../../../components/KitPanel.astro';
 import Talk from '../../../components/Talk.astro';
 import TimeUse from '../../../components/TimeUse.astro';
+import AgentPanel from '../../../components/AgentPanel.astro';
 import Section from '../../../components/Section.astro';
 import Layout from '../../../layouts/Layout.astro';
 import {
@@ -187,6 +188,13 @@ const tiles = [
     <SectionHeader eyebrow="Time" title="Time use" description="How each character spent its time in the game, and how each agent spent its time." />
     <TimeUse run={run} />
   </Section>
+
+  {run.players.some(p => p.idle_gaps || p.reliability || p.coop) && (
+    <Section>
+      <SectionHeader eyebrow="Agent" title="How the agents worked" description="Progress by what each agent was doing, the time it left its character idle, and how often the tooling got in its way." />
+      <AgentPanel run={run} />
+    </Section>
+  )}
 
   {run.players.some(p => p.trajectory?.length || p.failures?.length) && (
     <Section>

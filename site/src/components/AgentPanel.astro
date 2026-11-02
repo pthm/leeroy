@@ -1,0 +1,80 @@
+---
+// How each agent worked, from the run's report: for progress tasks, its progress per hour by what it was doing; then
+// its gaps with no script running, stalls, how much of its useful fighting helped a teammate, and how often the
+// tooling got in its way (movement taken over, routes timed out, death recovery attempts), per hour played.
+import FigureHead from './FigureHead.astro';
+import { colors, isProgress, rate, type Run } from '../lib/results';
+
+interface Props {
+  run: Run;
+}
+
+const { run } = Astro.props;
+const color = colors(run);
+const states = [
+  { k: 'thinking', label: 'Thinking' },
+  { k: 'waiting', label: 'Script running' },
+  { k: 'in_call', label: 'In a call' },
+  { k: 'no_script', label: 'Nothing running' },
+] as const;
+const byState = isProgress(run.task) ? run.players.filter(p => Object.values(p.progress_per_hour_by_state ?? {}).some(v => v)) : [];
+const party = run.players.length > 1;
+const perHour = (v: number | null | undefined, h?: number) => (v == null || !h ? '–' : (v / h).toFixed(1));
+const ps = run.players.filter(p => p.idle_gaps || p.reliability || p.coop);
+---
+
+<div class="space-y-4">
+  {byState.length > 0 && (
+    <figure class="rounded border border-hairline bg-raised p-4" data-chart>
+      <FigureHead title="Progress by what the agent was doing" sub="Progress per hour while the model was thinking, while a script played on its own, while a tool command ran, and with nothing running." />
+      <div class="overflow-x-auto">
+        <table class="data">
+          <thead>
+            <tr><th>Character</th>{states.map(s => <th class="num">{s.label}</th>)}</tr>
+          </thead>
+          <tbody>
+            {byState.map(p => (
+              <tr>
+                <td class:list={['font-medium', color[p.char]]}>{p.char}</td>
+                {states.map(s => <td class="num text-muted">{p.progress_per_hour_by_state?.[s.k] == null ? '–' : rate(p.progress_per_hour_by_state[s.k]!, run.task)}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </figure>
+  )}
+  {ps.length > 0 && (
+    <div class="overflow-x-auto rounded border border-hairline bg-raised">
+      <table class="data">
+        <thead>
+          <tr>
+            <th>Character</th>
+            <th class="num" title="Stretches with no script running: how many, the median length, and their total">Idle gaps</th>
+            <th class="num" title="The session's stall warnings: no XP for a while, or XP well below its recent rate">Stalls</th>
+            {party && <th class="num" title="Of its useful hits and heals, the share that also paid a teammate">Assist share</th>}
+            <th class="num" title="Its movement taken over by another of its own requests, per hour">Moves taken over/h</th>
+            <th class="num" title="Routes that didn't arrive in time, per hour">Route timeouts/h</th>
+            <th class="num" title="Attempts to recover from death (reclaiming the corpse or the spirit healer), per hour">Recoveries/h</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ps.map(p => {
+            const g = p.idle_gaps, r = p.reliability;
+            return (
+              <tr>
+                <td class:list={['font-medium', color[p.char]]}>{p.char}</td>
+                <td class="num text-muted" title={g?.n ? `median ${g.median_s} s, 90th percentile ${g.p90_s} s` : undefined}>{g && g.n ? `${g.total_min} min in ${g.n}` : '–'}</td>
+                <td class="num text-muted">{p.stalls ? (p.stalls.no_xp ?? 0) + p.stalls.slow : '–'}</td>
+                {party && <td class="num text-muted">{p.coop ? `${Math.round(p.coop.assist_share * 100)}%` : '–'}</td>}
+                <td class="num text-muted">{perHour(r?.movement_preemptions, p.hours)}</td>
+                <td class="num text-muted">{perHour(r?.route_timeouts, p.hours)}</td>
+                <td class="num text-muted">{perHour(r?.recovery_attempts, p.hours)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  )}
+</div>

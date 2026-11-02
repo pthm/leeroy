@@ -82,7 +82,11 @@ func publish(root, runDir, task, out string) (string, error) {
 	recOf := map[string]*recording{}
 	for _, r := range report.Agents {
 		char := fmt.Sprint(r["char"])
-		p := pick(r, "char", "runtime", "model", "effort", "hours", "deaths", "cost_usd", "tokens", "calls", "time_pct_by_state", "time_use", "combat")
+		p := pick(r, "char", "runtime", "model", "effort", "hours", "deaths", "cost_usd", "tokens", "calls", "time_pct_by_state", "time_use", "combat",
+			"progress_per_hour_by_state", "coop", "idle_gaps", "stalls")
+		if diag, ok := r["diagnostics"].(map[string]any); ok && diag["reliability"] != nil { // the tooling's: movement, routes, recovery
+			p["reliability"] = diag["reliability"]
+		}
 		if th, ok := r["think_s"].(map[string]any); ok {
 			p["think_median_s"] = th["median"]
 		}

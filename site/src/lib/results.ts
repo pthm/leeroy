@@ -32,6 +32,13 @@ export interface Player {
   time_pct_by_state?: Record<string, number>; // the agent: thinking, waiting (a script running), in_call, no_script
   combat?: { damage_dealt: number; damage_taken: number; healing_done: number; kills: number; party_kills?: number; deaths?: number; xp?: number };
   think_median_s?: number;
+  // the report's: progress per hour while the agent was thinking, waiting on a script, in a call or with nothing running
+  progress_per_hour_by_state?: Record<string, number | null>;
+  coop?: { assist_share: number; assists: number; useful: number; hits: number; contested_hits: number };
+  idle_gaps?: { n: number; median_s: number; p90_s: number; total_min: number }; // stretches with no script running
+  stalls?: { no_xp: number | null; slow: number };
+  // the tooling's counts (null: not instrumented)
+  reliability?: { movement_preemptions: number | null; movement_wait_ms: number | null; route_timeouts: number | null; recovery_attempts: number | null };
   kit?: {
     gear: { slot: number; entry: number; name: string; quality: number; level: number; icon?: string }[];
     talents: { id: number; name: string; rank?: string; icon?: string }[];
