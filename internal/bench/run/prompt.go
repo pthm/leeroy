@@ -22,8 +22,8 @@ var skillNames = map[string]string{
 	"393": "Skinning", "129": "First Aid", "755": "Jewelcrafting", "773": "Inscription",
 }
 
-// goalText: what the prompt asks for.
-func goalText(goal string, mins int) string {
+// goalText: what the prompt asks for (a checkpoints goal: every checkpoint, listed).
+func goalText(goal string, mins int, cps []config.Checkpoint) string {
 	kind, n, _ := strings.Cut(goal, ":")
 	switch kind {
 	case "level":
@@ -37,7 +37,7 @@ func goalText(goal string, mins int) string {
 	case "quality":
 		return "own any item of quality " + n + " or better (3 = rare)"
 	case "score":
-		return fmt.Sprintf("progress as much as you can in %d minutes. You choose your own adventure: where to go, what to\nfight, which quests to take, who to play with", mins)
+		return fmt.Sprintf("progress as much as you can in %d minutes. You choose your own adventure: where to go, what to\nfight, which quests to take", mins)
 	case "achievement":
 		name, desc := "achievement "+n, ""
 		if r, err := world.Rows(world.World(), "SELECT name, description FROM wowbench.achievement WHERE id = ?", n); err == nil && len(r) > 0 {
@@ -57,6 +57,16 @@ func goalText(goal string, mins int) string {
 			name = "skill " + sk
 		}
 		return fmt.Sprintf("raise %s to %s: learn it from a trainer and practise it", name, lvl)
+	case "checkpoints":
+		var each []string
+		for _, c := range cps {
+			if c.Zone != 0 {
+				each = append(each, fmt.Sprintf("travel to %s (zone %d)", c.Name, c.Zone))
+			} else {
+				each = append(each, fmt.Sprintf("kill %s (creature %d)", c.Name, c.Kill))
+			}
+		}
+		return "do each of these, in any order: " + strings.Join(each, "; ")
 	case "zone":
 		name := "zone " + n
 		if r, err := world.Rows(world.Bench(), "SELECT name FROM area WHERE id = ?", n); err == nil && len(r) > 0 {
@@ -74,8 +84,18 @@ func goalText(goal string, mins int) string {
 	return goal
 }
 
-func scoreText(goal string) (score, stop string) {
+func scoreText(goal string, cps []config.Checkpoint) (score, stop string) {
 	kind, _, _ := strings.Cut(goal, ":")
+	if len(cps) > 0 && kind != "checkpoints" {
+		var names []string
+		for _, c := range cps {
+			names = append(names, c.Name)
+		}
+		return `You are scored on the time until the goal is met: your score is 3600 / seconds to the goal (1 = met in an
+hour). Along the way are checkpoints, each a kill: ` + strings.Join(names, ", ") + `. If time runs out first, each checkpoint
+done counts for a share of the score of finishing just as the clock ends, so any finish beats any unfinished run.`,
+			"Do not stop until the goal is met: confirm it yourself with wow before finishing."
+	}
 	switch kind {
 	case "achpoints":
 		return `Your score is the total points of the achievements you earn during the run (ones already earned don't
@@ -83,9 +103,8 @@ count). Achievement names, points and criteria are in the world database (azworl
 me.achievements() shows your progress.`,
 			"Do not stop early: keep earning points until the time runs out."
 	case "score":
-		return `HOW YOU ARE SCORED: every 15 seconds the judge reads your character from the server database. Your
-progress is the XP you've earned since the start of the run, from any source (kills, quests, exploring). Nothing
-else is scored. YOUR SCORE is the average of two rates, in XP per hour: your rate over the whole run, and your best
+		return `HOW YOU ARE SCORED: your progress is the XP you've earned since the start of the run, from any source
+(kills, quests, exploring). Nothing else is scored. YOUR SCORE is the average of two rates, in XP per hour: your rate over the whole run, and your best
 rate over any 15-minute stretch of it.
 FACTION SCORE: every player on this server is on your faction (Alliance); the faction's score, reported alongside
 yours, is the sum of all players' scores. standings shows every player's score, rates, level and role, their damage
@@ -96,13 +115,17 @@ dealt, damage taken and healing done (not scored), and the faction total.`,
 or yields, or stays over 50 yards from the duel flag for 10 seconds; that player loses. Declined or withdrawn
 challenges don't count. Health, mana and cooldowns are not restored between duels.`,
 			"Do not stop until all the duels are decided or the time runs out."
+	case "checkpoints":
+		return `You are scored on the time until the last of them is done: your score is 3600 / seconds to the last (1 = all
+done in an hour). If time runs out first, each one done counts for a share of the score of finishing just as the
+clock ends, so any finish beats any unfinished run.`,
+			"Do not stop until every one is done: confirm it yourself with wow before finishing."
 	case "achievement", "quest", "item", "quality", "zone", "kills":
-		return `You are scored on the time until the judge, which reads your character from the server database, sees
-the goal met: your score is 3600 / seconds to the goal (1 = met in an hour). If time runs out first, your score is 0.`,
+		return `You are scored on the time until the goal is met: your score is 3600 / seconds to the goal (1 = met in an
+hour). If time runs out first, your score is 0.`,
 			"Do not stop until the goal is met: confirm it yourself with wow before finishing."
 	}
-	return `You are scored on the time until the judge, which reads your character from the server database, sees
-the goal met; if time runs out, your progress toward it is the score.`,
+	return `You are scored on the time until the goal is met; if time runs out, your progress toward it is the score.`,
 		"Do not stop until the goal is met: confirm it yourself with wow before finishing."
 }
 
@@ -110,28 +133,33 @@ the goal met; if time runs out, your progress toward it is the score.`,
 // death before it is a 0, and anything else is scored on the total earned by then.
 func hardcoreText(goal, score, stop string) (scoreText, stopText string) {
 	const rule = "HARDCORE: your run ends the first time your character dies; nothing after that counts.\n"
-	if kind, _, _ := strings.Cut(goal, ":"); slices.Contains([]string{"achievement", "quest", "item", "quality", "zone"}, kind) {
+	if kind, _, _ := strings.Cut(goal, ":"); slices.Contains([]string{"achievement", "quest", "item", "quality", "zone", "checkpoints"}, kind) {
 		return rule + score + " Dying before the goal is a score of 0.", stop
 	}
-	return rule + `HOW YOU ARE SCORED: every 15 seconds the judge reads your character from the server database. Your
-progress is the XP you've earned since the start of the run, from any source (kills, quests, exploring). YOUR
-SCORE is the total XP you've earned when the run ends, so it stops growing when you die.`,
+	return rule + `HOW YOU ARE SCORED: your progress is the XP you've earned since the start of the run, from any source
+(kills, quests, exploring). YOUR SCORE is the total XP you've earned when the run ends, so it stops growing when you die.`,
 		"Do not stop early: keep earning XP until the time runs out, and stay alive."
 }
 
 // prompt renders an agent's task prompt.
 func prompt(s *config.Scenario, b *config.Bench, a config.Agent, repo string) (string, error) {
 	race, _ := config.ID(config.Races, a.Race)
-	identity := fmt.Sprintf("Your character %s is already logged in and waiting.", a.Char)
+	class, _ := config.ID(config.Classes, a.Class)
+	identity := fmt.Sprintf("You are %s, a %s %s.\n%s is already logged in and waiting.", a.Char, config.RaceName(race), config.ClassName(class), a.Char)
 	if sp, ok := b.Specs[a.Spec]; ok {
 		identity = fmt.Sprintf(`You are %s, a %s %s. Your role is %s: %s. The spec's key stats are %s.
 %s is already logged in and waiting.`, a.Char, config.RaceName(race), sp.Title, sp.Role, sp.Optimise, sp.Stats, a.Char)
 	}
-	if k := a.Kit; k != nil { // the facts of the kit, not how to use it
+	switch k := a.Kit; {
+	case k != nil: // the facts of the kit, not how to use it
 		identity += fmt.Sprintf("\nIt starts at level %d, with gear equipped and the class spells trained up to its level.", k.Level)
 		if !k.Trained {
 			identity = strings.TrimSuffix(identity, " and the class spells trained up to its level.") + "."
 		}
+	case s.Level > 0:
+		identity += fmt.Sprintf("\nIt starts at level %d.", s.Level)
+	case s.RequireFresh:
+		identity += "\nIt is a new character, at level 1."
 	}
 	// a duel: the class and spec without the group role, and the one other player named as the opponent
 	opponent := ""
@@ -161,15 +189,17 @@ func prompt(s *config.Scenario, b *config.Bench, a config.Agent, repo string) (s
 	if err != nil {
 		return "", err
 	}
-	score, stop := scoreText(s.Goal)
+	score, stop := scoreText(s.Goal, s.Checkpoints)
 	if s.Hardcore {
 		score, stop = hardcoreText(s.Goal, score, stop)
 	}
+	kind, _, _ := strings.Cut(s.Goal, ":") // giving up is for a goal that can be out of reach, not a score to build
+	giveUp := !slices.Contains([]string{"score", "achpoints", "duels"}, kind)
 	var out strings.Builder
 	err = promptTmpl.Execute(&out, map[string]any{
-		"Identity": identity, "GoalText": goalText(s.Goal, s.Minutes),
+		"Identity": identity, "GoalText": goalText(s.Goal, s.Minutes, s.Checkpoints),
 		"Hint": strings.TrimSpace(s.Hint), "ScoreText": score, "StopText": stop, "Repo": repo,
-		"Roster": strings.Join(roster, "\n"), "Notice": notice, "Minutes": s.Minutes, "Opponent": opponent,
+		"Roster": strings.Join(roster, "\n"), "Notice": notice, "Minutes": s.Minutes, "Opponent": opponent, "GiveUp": giveUp,
 	})
 	return out.String(), err
 }
