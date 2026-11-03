@@ -25,7 +25,8 @@ runs on a schedule.
 5. **The snapshot.** `just remote-image`: a builder server in Hillsboro, Oregon (`hil`, US West; `LEEROY_LOCATION`
    for another) gets this checkout, the AzerothCore source and your `data/`
    (about 8 GB, uploaded from here), installs Docker and the pinned tools, builds the server images, imports the
-   databases and the `wowbench` schema, and is snapshotted, then deleted. About an hour. Again whenever the server,
+   databases and the `wowbench` schema, and is snapshotted, then deleted. The system is brought up to date first
+   (`apt-get full-upgrade`); run servers take no updates of their own, so rebuild the snapshot to update them. About an hour. Again whenever the server,
    `data/` or `mise.toml` change; the newest two snapshots are kept.
 
 ## A run
