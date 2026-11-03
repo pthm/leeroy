@@ -18,12 +18,16 @@ type Recovery struct {
 	RepairOptions []Creature            `json:"repair_options,omitempty" doc:"at most 20 observed repair NPCs; no automatic travel"`
 	SpiritOption  *RecoverySpiritOption `json:"spirit_option,omitempty"`
 }
+
+// RecoveryStep is one operation the recovery helper ran, in order.
 type RecoveryStep struct {
 	Op        string `json:"op"`
 	OK        bool   `json:"ok"`
 	RequestID int    `json:"request_id,omitempty"`
 	Error     *Error `json:"error,omitempty"`
 }
+
+// RecoverySpiritOption is a spirit healer the character could resurrect at instead of reaching its corpse.
 type RecoverySpiritOption struct {
 	NPCGUID            GUID `json:"npc_guid"`
 	DurabilityLoss     bool `json:"durability_loss" doc:"spirit healing has a durability penalty"`

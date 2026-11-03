@@ -83,7 +83,7 @@ type DiagnosticDetails struct {
 	Sight         *DiagnosticSight       `json:"sight,omitempty"`
 }
 
-// DiagnosticSight: a spell the server refused for line of sight (sight_refused), with both ends as the client saw
+// DiagnosticSight is a spell the server refused for line of sight (sight_refused), with both ends as the client saw
 // them and the SDK's own check (spells.check's in_sight) at that moment. Predicted true is a disagreement.
 type DiagnosticSight struct {
 	Map       uint32      `json:"map"`
@@ -98,6 +98,8 @@ type DiagnosticQuestLog struct {
 	Available bool              `json:"available"`
 	Quests    []DiagnosticQuest `json:"quests"`
 }
+
+// DiagnosticQuest is one quest in an observed quest log.
 type DiagnosticQuest struct {
 	ID       uint32    `json:"id"`
 	Complete bool      `json:"complete"`
@@ -122,7 +124,6 @@ type DiagnosticDestination struct {
 	Map *uint32  `json:"map,omitempty"`
 }
 
-// DiagnosticGear reports observed equipment condition, not a repair plan.
 // DiagnosticOutage is a provider outage the harness waited out, written when it ends (kind outage: code its class,
 // outcome resumed, gave_up or stopped, duration_ms the clock held). Times are unix ms.
 type DiagnosticOutage struct {
@@ -133,6 +134,7 @@ type DiagnosticOutage struct {
 	Probes     int   `json:"probes"`               // provider checks until one answered
 }
 
+// DiagnosticGear reports observed equipment condition, not a repair plan.
 type DiagnosticGear struct {
 	Money          uint32   `json:"money"`
 	MainHandBroken bool     `json:"main_hand_broken"`

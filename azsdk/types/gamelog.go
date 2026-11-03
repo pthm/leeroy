@@ -71,7 +71,7 @@ type APICall struct {
 	Params string `json:"params" doc:"raw JSON, cut at 500 characters"`
 }
 
-// RecordTypes: every game log record, as EventTypes lists the events (records aren't events: the agent never sees
+// RecordTypes is every game log record, as EventTypes lists the events (records aren't events: the agent never sees
 // them, and the API references leave them out).
 var RecordTypes = map[string]EventType{
 	"state":      {State{}, "the character, every second"},

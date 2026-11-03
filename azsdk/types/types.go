@@ -16,6 +16,7 @@ import (
 // precision. Zero is null ("none").
 type GUID uint64
 
+// MarshalJSON writes a GUID as a decimal string, and zero as null.
 func (g GUID) MarshalJSON() ([]byte, error) {
 	if g == 0 {
 		return []byte("null"), nil
@@ -23,6 +24,7 @@ func (g GUID) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + strconv.FormatUint(uint64(g), 10) + `"`), nil
 }
 
+// UnmarshalJSON reads a GUID from a decimal string, a number or null.
 func (g *GUID) UnmarshalJSON(b []byte) error {
 	if bytes.Equal(bytes.TrimSpace(b), []byte("null")) {
 		*g = 0
@@ -47,6 +49,7 @@ func (g *GUID) UnmarshalJSON(b []byte) error {
 
 // ---------- the world ----------
 
+// Position is a point in the world: x, y and z in yards on a map.
 type Position struct {
 	X   float64  `json:"x"`
 	Y   float64  `json:"y"`
@@ -63,6 +66,7 @@ type MemberPosition struct {
 	Map uint32   `json:"map"`
 }
 
+// Location is the zone and area a point is in.
 type Location struct {
 	Zone   string `json:"zone" doc:"e.g. Elwynn Forest"`
 	Area   string `json:"area" doc:"e.g. Goldshire"`
@@ -115,6 +119,7 @@ type Control struct {
 	DamageLimit    bool    `json:"damage_limit,omitempty" doc:"the damage it takes adds up, and past a limit set by the caster's level (that level's warrior base health / 4.75) removes it"`
 }
 
+// Creature is an NPC or mob: a unit with its template's details and what it offers you.
 type Creature struct {
 	Unit
 	Entry         uint32   `json:"entry" doc:"creature template id (azworld npc <entry>)"`
@@ -135,6 +140,7 @@ type Creature struct {
 	ThreatPct     *float64 `json:"threat_pct,omitempty" doc:"your threat on it as a share of the top (100 = it attacks you; another unit pulls it off you past 110 in melee, 130 at range); only while it has you on its threat table"`
 }
 
+// Player is a player character as a unit.
 type Player struct {
 	Unit
 	Ghost bool   `json:"ghost,omitempty" doc:"released spirit: alive is false, though the server gives a ghost 1 health"`
@@ -142,13 +148,13 @@ type Player struct {
 	Race  string `json:"race" doc:"human, dwarf, night_elf, gnome, draenei, orc, undead, tauren, troll, blood_elf"`
 }
 
-// UnitRef names a unit in events and results.
 // Engaged is a creature in combat with you, your pet or your party (units.engaged).
 type Engaged struct {
 	Creature
 	OnThreat []GUID `json:"on_threat" doc:"you, your pet and party members on its threat list, highest threat first (the server sends a creature's threat list to everyone near it); empty when only its target is one of you"`
 }
 
+// UnitRef names a unit in events and results.
 type UnitRef struct {
 	GUID   GUID   `json:"guid"`
 	Name   string `json:"name"`
@@ -158,6 +164,7 @@ type UnitRef struct {
 	Me     bool   `json:"me,omitempty" doc:"it's you"`
 }
 
+// Object is a game object in view: a chest, door, gathering node, portal, mailbox, ...
 type Object struct {
 	GUID  GUID   `json:"guid"`
 	Entry uint32 `json:"entry" doc:"game object template id"`
@@ -244,23 +251,27 @@ type RouteCheck struct {
 
 // ---------- your character ----------
 
+// Resource is a current and maximum value: health, or power with its type.
 type Resource struct {
 	Current uint32 `json:"current"`
 	Max     uint32 `json:"max"`
 	Type    string `json:"type,omitempty" doc:"power only: mana, rage, energy, focus, runic_power (rage and runic power are x10: 0-1000)"`
 }
 
+// XP is your progress through your current level.
 type XP struct {
 	Current uint32 `json:"current" doc:"into this level"`
 	Next    uint32 `json:"next" doc:"needed for the next level"`
 }
 
+// Casting is a spell being cast or channelled, and the time left on it.
 type Casting struct {
 	Spell  uint32 `json:"spell"`
 	Name   string `json:"name"`
 	MSLeft uint32 `json:"ms_left"`
 }
 
+// Stats is your character sheet: attributes, armour, and attack and spell numbers.
 type Stats struct {
 	Strength          uint32     `json:"strength"`
 	Agility           uint32     `json:"agility"`
@@ -281,6 +292,7 @@ type Stats struct {
 	BonusHealing      uint32     `json:"bonus_healing"`
 }
 
+// Corpse is where your corpse is, and when you can reclaim it (death.corpse, me.status).
 type Corpse struct {
 	Place
 	Map       uint32  `json:"map"`
@@ -290,6 +302,7 @@ type Corpse struct {
 	Radius    float64 `json:"radius,omitempty" doc:"the portal triggers anywhere within this many yards of x, y, z"`
 }
 
+// Achievements is the achievements you've earned and your criteria progress (me.achievements).
 type Achievements struct {
 	Earned   []uint32    `json:"earned"`
 	Criteria [][2]uint64 `json:"criteria" doc:"{criteria id, counter}"`
@@ -355,6 +368,7 @@ type Comparison struct {
 	Stats     map[string]int32 `json:"stats" doc:"difference per stat"`
 }
 
+// VendorItem is an item a vendor sells, with its price and stock (vendor.items).
 type VendorItem struct {
 	Item
 	VendorSlot uint32 `json:"vendor_slot"`
@@ -363,6 +377,7 @@ type VendorItem struct {
 	Stock      int32  `json:"stock" doc:"-1 = unlimited"`
 }
 
+// Threat is one unit's place on a creature's threat table.
 type Threat struct {
 	Unit   UnitRef `json:"unit"`
 	Threat float64 `json:"threat"`
@@ -380,6 +395,7 @@ type GossipWindow struct {
 	Value *Gossip `json:"value,omitempty"`
 }
 
+// Gossip is an NPC's gossip window: what it says, its options and its quests.
 type Gossip struct {
 	NPC     GUID           `json:"npc"`
 	Menu    uint32         `json:"menu"`
@@ -389,6 +405,7 @@ type Gossip struct {
 	Quests  []GossipQuest  `json:"quests" doc:"quests it offers or takes (quests.accept / quests.turn_in)"`
 }
 
+// GossipOption is one choice in a gossip window.
 type GossipOption struct {
 	Index   uint32 `json:"index" doc:"pass to gossip.select"`
 	Icon    string `json:"icon" doc:"chat, vendor, taxi, trainer, interact, banker, talk, tabard, battle, dot: what choosing it does"`
@@ -398,18 +415,21 @@ type GossipOption struct {
 	Confirm string `json:"confirm,omitempty" doc:"the confirmation a real client would show"`
 }
 
+// GossipQuest is a quest an NPC offers or takes in its gossip window.
 type GossipQuest struct {
 	Quest uint32 `json:"quest"`
 	Title string `json:"title"`
 	Level int32  `json:"level"`
 }
 
+// Trainer is a trainer's list of spells (trainer.list).
 type Trainer struct {
 	NPC      GUID           `json:"npc"`
 	Greeting string         `json:"greeting,omitempty"`
 	Spells   []TrainerSpell `json:"spells"`
 }
 
+// TrainerSpell is a spell a trainer teaches, and whether you can learn it now.
 type TrainerSpell struct {
 	Spell     uint32   `json:"spell" doc:"pass to trainer.learn"`
 	Name      string   `json:"name"`
@@ -423,6 +443,7 @@ type TrainerSpell struct {
 
 // ---------- spells, quests, talents ----------
 
+// Spell is a spell's details: cost, range, cast time and cooldowns, and whether you know it.
 type Spell struct {
 	ID                 uint32  `json:"id"`
 	Name               string  `json:"name"`
@@ -440,6 +461,7 @@ type Spell struct {
 	Aura               string  `json:"aura,omitempty" doc:"what its buff or debuff says while it's on a unit"`
 }
 
+// Objective is one of a quest's objectives and your progress on it.
 type Objective struct {
 	Text  string `json:"text" doc:"what the quest log says"`
 	Kind  string `json:"kind" doc:"kill, object (use a game object), item (collect), explore (go somewhere or do something: done when the quest completes)"`
@@ -449,6 +471,7 @@ type Objective struct {
 	Done  bool   `json:"done"`
 }
 
+// Quest is a quest in your quest log.
 type Quest struct {
 	ID         uint32      `json:"id"`
 	Title      string      `json:"title" doc:"empty until the server answers the quest query: ask again a moment later"`
@@ -460,7 +483,7 @@ type Quest struct {
 	NextQuest  uint32      `json:"next_quest,omitempty" doc:"the next in its chain"`
 }
 
-// QuestInfo: a quest's text and rewards, as the quest giver and the quest log show them.
+// QuestInfo is a quest's text and rewards, as the quest giver and the quest log show them.
 type QuestInfo struct {
 	ID         uint32   `json:"id"`
 	Title      string   `json:"title"`
@@ -477,6 +500,7 @@ type QuestInfo struct {
 	NextQuest  uint32   `json:"next_quest,omitempty"`
 }
 
+// Talent is one talent in a tree, with your ranks in it.
 type Talent struct {
 	ID        uint32 `json:"id"`
 	Name      string `json:"name"`
@@ -491,12 +515,14 @@ type Talent struct {
 	Next      string `json:"next,omitempty" doc:"what the next rank gives"`
 }
 
+// TalentTree is one of your class's talent trees.
 type TalentTree struct {
 	Name    string   `json:"name"`
 	Spent   int      `json:"spent"`
 	Talents []Talent `json:"talents"`
 }
 
+// Talents is your talent trees and unspent points (talents.list).
 type Talents struct {
 	Points uint32       `json:"points" doc:"unspent"`
 	Trees  []TalentTree `json:"trees"`
@@ -504,6 +530,7 @@ type Talents struct {
 
 // ---------- pet ----------
 
+// Pet is your pet: its health, stance, command, target and abilities.
 type Pet struct {
 	GUID      GUID       `json:"guid"`
 	Name      string     `json:"name"`
@@ -517,6 +544,7 @@ type Pet struct {
 	Spells    []PetSpell `json:"spells" doc:"its abilities"`
 }
 
+// PetSpell is one of your pet's abilities.
 type PetSpell struct {
 	ID       uint32 `json:"id"`
 	Name     string `json:"name"`
@@ -524,14 +552,15 @@ type PetSpell struct {
 	Autocast bool   `json:"autocast,omitempty" doc:"it uses this by itself (pet.autocast; some abilities are only cast, as Sacrifice)"`
 }
 
-// Happiness: a hunter's pet's. Below content it does less damage; at 0 it leaves you. Feeding raises it (pet.feed).
+// Happiness is a hunter's pet's happiness. Below content it does less damage; at 0 it leaves you. Feeding raises
+// it (pet.feed).
 type Happiness struct {
 	Current uint32 `json:"current"`
 	Max     uint32 `json:"max"`
 	State   string `json:"state" doc:"unhappy, content or happy"`
 }
 
-// Totem: one of a shaman's totems that is up.
+// Totem is one of a shaman's totems that is up.
 type Totem struct {
 	Element     string `json:"element" doc:"fire, earth, water or air: one totem of each at a time"`
 	GUID        GUID   `json:"guid" doc:"its unit"`
@@ -542,6 +571,7 @@ type Totem struct {
 
 // ---------- others ----------
 
+// Group is your party or raid: its leader, loot rules and the other members.
 type Group struct {
 	Leader     string        `json:"leader"`
 	MeLeader   bool          `json:"me_leader" doc:"you lead the group"`
@@ -599,11 +629,13 @@ type GroupMemberReport struct {
 	Deaths        int     `json:"deaths"`
 }
 
+// TradeSide is what one side of a trade puts up.
 type TradeSide struct {
 	Money uint32 `json:"money"`
 	Items []Item `json:"items"`
 }
 
+// Trade is the trade window's state (trade; the trade.* results).
 type Trade struct {
 	State        string    `json:"state" doc:"none, waiting (you asked), requested (they asked: trade.open), open, complete, or why it ended: cancelled, rejected, busy, too_far, no_target, wrong_faction, ignored, dead, target_dead, stunned, closed, ..."`
 	With         string    `json:"with,omitempty"`
@@ -613,12 +645,14 @@ type Trade struct {
 	Error        string    `json:"error,omitempty" doc:"why it ended, or why the last step (an accept, an item) was refused"`
 }
 
+// Inspect is another player and the gear they wear.
 type Inspect struct {
 	Player
 	Gear         []Item  `json:"gear"`
 	AvgItemLevel float64 `json:"avg_item_level"`
 }
 
+// CombatEntry is one combat log line: a hit, heal, tick, kill or environmental damage.
 type CombatEntry struct {
 	T      int64   `json:"t" doc:"unix ms"`
 	Kind   string  `json:"kind" doc:"melee, spell, dot, heal, hot, kill, environment (falls, drowning, lava: no src)"`
@@ -630,6 +664,7 @@ type CombatEntry struct {
 	Crit   bool    `json:"crit,omitempty"`
 }
 
+// SpellMeter is one spell's part of a unit's Meter.
 type SpellMeter struct {
 	Spell   uint32 `json:"spell"`
 	Name    string `json:"name"`
@@ -638,6 +673,7 @@ type SpellMeter struct {
 	Hits    uint32 `json:"hits"`
 }
 
+// Meter is one unit's damage and healing over a period (a fight, the last minute).
 type Meter struct {
 	Unit    UnitRef      `json:"unit"`
 	Damage  uint32       `json:"damage"`
@@ -654,6 +690,7 @@ type Meter struct {
 
 // ---------- requests and events ----------
 
+// Error is why a request failed: a stable code, a message and, when known, what to do about it.
 type Error struct {
 	Code    string `json:"code" doc:"stable, e.g. out_of_range, not_known, bags_full, stuck, timeout"`
 	Message string `json:"message"`
@@ -696,6 +733,7 @@ type ActionStep struct {
 	Count     int    `json:"count,omitempty" doc:"number of identical attempts when summarized"`
 }
 
+// Event is one event as the agent receives it: its type and data (EventTypes).
 type Event struct {
 	Seq  uint64 `json:"seq" doc:"counts up for the whole run"`
 	T    int64  `json:"t" doc:"unix ms"`
@@ -705,6 +743,7 @@ type Event struct {
 
 // ---------- scripts and status ----------
 
+// TaskInfo is a script task's state (wow tasks, me.status).
 type TaskInfo struct {
 	Movement   []MovementOwner `json:"movement,omitempty" doc:"active or queued movement belonging to this task"`
 	ID         int             `json:"id"`
@@ -728,6 +767,7 @@ type Gear struct {
 	Broken       []string   `json:"broken"`
 }
 
+// GearSlot is one equipment slot's grade in Gear.
 type GearSlot struct {
 	Slot  string `json:"slot"`
 	Item  string `json:"item,omitempty"`
@@ -735,7 +775,7 @@ type GearSlot struct {
 	Score int    `json:"score" doc:"0-100"`
 }
 
-// Spellbook: the class spells you could know at your level (Spell.dbc and SkillLineAbility.dbc, as the real
+// Spellbook is the class spells you could know at your level (Spell.dbc and SkillLineAbility.dbc, as the real
 // client's spellbook knows them) against the ones you do.
 type Spellbook struct {
 	Known   int            `json:"known"`
@@ -743,6 +783,7 @@ type Spellbook struct {
 	Missing []MissingSpell `json:"missing" doc:"learn them at your class trainer (some come from class quests, e.g. stances)"`
 }
 
+// MissingSpell is a class spell you could know at your level but don't.
 type MissingSpell struct {
 	ID    uint32 `json:"id"`
 	Name  string `json:"name"`
@@ -750,6 +791,7 @@ type MissingSpell struct {
 	Level uint32 `json:"level"`
 }
 
+// MobSummary counts the hostile creatures around you (me.status).
 type MobSummary struct {
 	Count       int      `json:"count" doc:"hostile creatures within 30 yd, at most 5 levels below you"`
 	MaxLevel    uint32   `json:"max_level"`
@@ -759,7 +801,7 @@ type MobSummary struct {
 	AggroMargin *float64 `json:"aggro_margin,omitempty" doc:"yards to the nearest hostile creature's aggro range (negative: you're inside it)"`
 }
 
-// Danger: a hostile creature whose aggro range you're in or near: what attacks you if you stay, or step closer.
+// Danger is a hostile creature whose aggro range you're in or near: what attacks you if you stay, or step closer.
 type Danger struct {
 	GUID  GUID   `json:"guid"`
 	Name  string `json:"name"`
@@ -817,7 +859,7 @@ type Status struct {
 	Tasks          []TaskInfo    `json:"tasks"`
 }
 
-// Hostile: a creature in your fight, as a unit frame shows it.
+// Hostile is a creature in your fight, as a unit frame shows it.
 type Hostile struct {
 	GUID      GUID    `json:"guid"`
 	Name      string  `json:"name"`
@@ -831,7 +873,7 @@ type Hostile struct {
 	Casting   *Casting `json:"casting,omitempty" doc:"interrupt it, or get out of the way"`
 }
 
-// NearbyNPC: a friendly NPC and what it offers.
+// NearbyNPC is a friendly NPC and what it offers.
 type NearbyNPC struct {
 	GUID GUID   `json:"guid"`
 	Name string `json:"name"`
@@ -840,6 +882,7 @@ type NearbyNPC struct {
 	QuestStatus string   `json:"quest_status,omitempty" doc:"available (a quest for you), reward (turn one in here), incomplete, ... (see Creature)"`
 }
 
+// GearSummary is Gear in brief, for me.status.
 type GearSummary struct {
 	Score        int      `json:"score" doc:"0-100: how well your gear suits your level"`
 	Grade        string   `json:"grade" doc:"poor, weak, ok, good"`
@@ -848,12 +891,14 @@ type GearSummary struct {
 	Broken       []string `json:"broken,omitempty" doc:"slots at 0 durability: they give nothing; repair at an armorer"`
 }
 
+// Upgrade is an item in your bags that beats what you wear in its slot.
 type Upgrade struct {
 	Item      ItemRef `json:"item"`
 	Slot      string  `json:"slot"`
 	ItemLevel int32   `json:"item_level" doc:"gain over what you wear there"`
 }
 
+// ItemRef names an item.
 type ItemRef struct {
 	GUID  GUID   `json:"guid"`
 	Entry uint32 `json:"entry"`
@@ -862,7 +907,6 @@ type ItemRef struct {
 
 // ---------- travel ----------
 
-// TaxiNode is a flight point (TaxiNodes.dbc).
 // Transport is a boat or zeppelin: where it is now, and where and when it docks.
 type Transport struct {
 	GUID    GUID            `json:"guid"`
@@ -898,6 +942,7 @@ type Boarding struct {
 	Z         float64 `json:"z"`
 }
 
+// TaxiNode is a flight point (TaxiNodes.dbc).
 type TaxiNode struct {
 	ID    uint32  `json:"id"`
 	Name  string  `json:"name" doc:"e.g. Stormwind, Elwynn"`
@@ -917,6 +962,7 @@ type FlightMap struct {
 	Learned      bool       `json:"learned,omitempty" doc:"talking to this flight master discovered its node"`
 }
 
+// Flight is a flight between two flight points (flight_start, flight_end; the flights.take result).
 type Flight struct {
 	From    TaxiNode `json:"from"`
 	To      TaxiNode `json:"to"`
@@ -936,6 +982,8 @@ type MovementOwner struct {
 	Destination *Position `json:"destination,omitempty" doc:"present only when a raw walk has a destination"`
 }
 
+// Movement is what's moving you: you, or the server (a flight, fear, a stun or root), and the local
+// movement owner and queue.
 type Movement struct {
 	Owner *MovementOwner  `json:"owner,omitempty" doc:"active local movement owner; server movement lock is independent"`
 	Queue []MovementOwner `json:"queue,omitempty"`
@@ -946,12 +994,14 @@ type Movement struct {
 	Flight      *Flight   `json:"flight,omitempty"`
 }
 
+// Teleport is a jump from one place to another (teleported; the move.unstuck and summon.accept results).
 type Teleport struct {
 	From Position `json:"from"`
 	To   Position `json:"to"`
 	Far  bool     `json:"far" doc:"to another map (a loading screen)"`
 }
 
+// Reputation is your standing with a faction.
 type Reputation struct {
 	Faction  uint32 `json:"faction"`
 	Name     string `json:"name"`
@@ -960,11 +1010,13 @@ type Reputation struct {
 	AtWar    bool   `json:"at_war,omitempty"`
 }
 
+// MovementChanged is a change in who moves you (movement_changed).
 type MovementChanged struct {
 	State    string `json:"state" doc:"see Movement"`
 	Previous string `json:"previous"`
 }
 
+// FlightLearned is a flight point you discovered (flight_learned).
 type FlightLearned struct {
 	Node TaxiNode `json:"node"`
 }
@@ -991,6 +1043,7 @@ type Aura struct {
 	Dispel      string   `json:"dispel,omitempty" doc:"what can remove it: magic, curse, disease, poison"`
 }
 
+// ComboPoints is the combo points you have on a target.
 type ComboPoints struct {
 	Target GUID  `json:"target"`
 	Points uint8 `json:"points"`
@@ -1018,6 +1071,7 @@ type SpellCheck struct {
 	Unknown              []string `json:"unknown" doc:"checks for which evidence is unavailable; usable does not promise server acceptance"`
 }
 
+// LOSSpot is a spot near you from which a point is in sight (world.los_spot).
 type LOSSpot struct {
 	X        float64 `json:"x"`
 	Y        float64 `json:"y"`
