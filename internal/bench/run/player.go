@@ -329,6 +329,15 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 		if err := os.MkdirAll(cfg, 0o755); err != nil {
 			p.logf("opencode config: %v", err)
 		}
+		// mise keeps its tools and trusted configs in the XDG dirs too: pin it to its own first, or opencode run through
+		// a mise shim (the run servers) fails with "config files … are not trusted"
+		home, _ := os.UserHomeDir()
+		for _, d := range [][3]string{{"MISE_CONFIG_DIR", "XDG_CONFIG_HOME", ".config"}, {"MISE_DATA_DIR", "XDG_DATA_HOME", ".local/share"},
+			{"MISE_STATE_DIR", "XDG_STATE_HOME", ".local/state"}} {
+			if os.Getenv(d[0]) == "" {
+				env = append(env, d[0]+"="+filepath.Join(cmp.Or(os.Getenv(d[1]), filepath.Join(home, d[2])), "mise"))
+			}
+		}
 		env = append(env, "XDG_CONFIG_HOME="+cfg, "XDG_DATA_HOME="+filepath.Join(cfg, "data"), "XDG_STATE_HOME="+filepath.Join(cfg, "state"),
 			"XDG_CACHE_HOME="+filepath.Join(cfg, "cache"), "OPENCODE_CONFIG_CONTENT="+opencodeConfig(repo, p.ws))
 	}
