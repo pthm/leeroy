@@ -18,12 +18,12 @@ const (
 // Bound support sampling as well as path interpolation near steps and ledges.
 const surfaceSampleSpacing = 0.25
 
-// MaxSupportBelow: real ground may lie this far below the navmesh. Its detail mesh floats up to about its climb
+// MaxSupportBelow is how far real ground may lie this far below the navmesh. Its detail mesh floats up to about its climb
 // height over the terrain near fences and on slopes with nothing in between (Northshire's vineyards, the road to
 // Goldshire), where characters stand on the ground.
 const MaxSupportBelow = float32(2.0)
 
-// MaxEndpointVertical: a requested start or destination this close above or below its navmesh projection is on the
+// MaxEndpointVertical is the vertical distance within which a requested start or destination this close above or below its navmesh projection is on the
 // same floor. Requested heights are often a creature's spawn or a pose on stairs, and the detail mesh floats over
 // steps and slopes (the Sentinel Hill tower's stairs: 2-3 yd); storeys are further apart than this, and the
 // session's floor checks use the same 3 yd.
@@ -129,7 +129,7 @@ func (pf *PathFinder) sampleSurfaceCorners(ctx context.Context, corridor []detou
 	return
 }
 
-// ValidateSurface checks polygon containment, portal adjacency and vertical support
+// validateSurface checks polygon containment, portal adjacency and vertical support
 // for the exact segments that will be followed. A 2D ray alone cannot verify a floor.
 func (pf *PathFinder) validateSurface(ctx context.Context, r *PathResult) error {
 	if len(r.Points) != len(r.PointPolys) {
@@ -211,6 +211,7 @@ func (pf *PathFinder) sharedPoly(corridor []detour.DtPolyRef, p Point3D, ref det
 	return 0, false
 }
 
+// ValidateSurfaceContext checks r's surface on map m (see validateSurface) under ctx.
 func (s *PathFindingService) ValidateSurfaceContext(ctx context.Context, m uint32, r *PathResult) error {
 	pf, err := s.acquirePathFinderContext(ctx, m)
 	if err != nil {
@@ -392,6 +393,7 @@ func (pf *PathFinder) centeredCorridor(ctx context.Context, r *PathResult, fract
 	return out, pf.validateSurface(ctx, out)
 }
 
+// CenteredPathContext returns r through its portals' interiors at fraction (see centeredCorridor), under ctx.
 func (s *PathFindingService) CenteredPathContext(ctx context.Context, m uint32, r *PathResult, fraction float32) (*PathResult, error) {
 	pf, err := s.acquirePathFinderContext(ctx, m)
 	if err != nil {

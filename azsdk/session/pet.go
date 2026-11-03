@@ -171,9 +171,9 @@ func (b *Bot) setupPet() {
 				out.Target = &r
 			}
 		}
-		if max := o.Value(client.UnitFieldMaxPower1 + powerHappy); max > 0 {
+		if most := o.Value(client.UnitFieldMaxPower1 + powerHappy); most > 0 {
 			v := o.Value(client.UnitFieldPower1 + powerHappy)
-			out.Happiness = &types.Happiness{Current: v, Max: max, State: []string{"unhappy", "content", "happy"}[min(2, v/333000)]}
+			out.Happiness = &types.Happiness{Current: v, Max: most, State: []string{"unhappy", "content", "happy"}[min(2, v/333000)]}
 		}
 		p.mu.Lock()
 		defer p.mu.Unlock()

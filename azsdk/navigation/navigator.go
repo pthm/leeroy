@@ -175,7 +175,7 @@ func (n *embeddedNavigator) GetHeight(mapID uint32, x, y, z float32) (float32, b
 }
 
 // InLineOfSight: line of sight between two points against world models (buildings, caves), as the server checks spells.
-func (n *embeddedNavigator) InLineOfSight(mapID uint32, a, b Point3D) (bool, bool) {
+func (n *embeddedNavigator) InLineOfSight(mapID uint32, a, b Point3D) (clearPath, ok bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
 	defer cancel()
 	return n.InLineOfSightContext(ctx, mapID, a, b)
@@ -224,7 +224,7 @@ func NewRemoteNavigator(address string) (Navigator, error) {
 	return nil, fmt.Errorf("remote pathfinding (gRPC) is optional and not built-in for core use; use NewEmbeddedNavigator(dataDir) instead")
 }
 
-func (n *embeddedNavigator) InLineOfSightContext(ctx context.Context, m uint32, a, b Point3D) (bool, bool) {
+func (n *embeddedNavigator) InLineOfSightContext(ctx context.Context, m uint32, a, b Point3D) (clearPath, ok bool) {
 	return n.svc.InLineOfSightContext(ctx, m, a.X, a.Y, a.Z, b.X, b.Y, b.Z)
 }
 
@@ -241,6 +241,7 @@ func (n *embeddedNavigator) GetTerrainHeightContext(ctx context.Context, m uint3
 	return n.svc.GetTerrainHeightContext(ctx, m, x, y)
 }
 
+// Clone returns a deep copy of r.
 func (r *PathResult) Clone() *PathResult {
 	if r == nil {
 		return nil

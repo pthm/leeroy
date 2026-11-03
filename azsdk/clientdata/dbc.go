@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 )
 
-// DBCStrings: a string field of every record in a DBC file, in record order ("" where empty).
+// DBCStrings returns a string field of every record in a DBC file, in record order ("" where empty).
 func DBCStrings(b []byte, field int) []string {
 	if len(b) < 20 || string(b[:4]) != "WDBC" {
 		return nil

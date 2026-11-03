@@ -45,7 +45,7 @@ Subscribed chat, invites, trades, script questions, script errors and slow ticks
 Session: the azsdk daemon on port $WOW_PORT (default 8090), through its socket /tmp/azsdk-$WOW_PORT.sock when there is one.
 `
 
-var digits = regexp.MustCompile(`^[0-9]+$`)
+var digits = regexp.MustCompile(`^\d+$`)
 
 // rpc calls the session and returns jq's view of the reply: the result or {"error": message}; ok is false when
 // there was no reply (the error went to stderr, like curl's).

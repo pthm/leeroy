@@ -217,10 +217,11 @@ func (m *movementRequests) worker() {
 		noPath := planErr != nil
 		m.mu.Lock()
 		m.expireLeaseLocked()
-		if m.active == r && !r.cancelled.Load() && (r.ctx.Err() != nil || !m.now().Before(deadline)) {
+		switch {
+		case m.active == r && !r.cancelled.Load() && (r.ctx.Err() != nil || !m.now().Before(deadline)):
 			m.finishLocked(r, script.Fail("route_timeout", "planning deadline expired", r.owner))
 			m.advanceLocked()
-		} else if m.active == r && !r.cancelled.Load() && planErr != nil {
+		case m.active == r && !r.cancelled.Load() && planErr != nil:
 			code := "route_unreachable"
 			var evidence any = r.owner
 			var blocked *pathfinding.TraversalError
@@ -242,7 +243,7 @@ func (m *movementRequests) worker() {
 			}
 			m.finishLocked(r, script.Fail(code, planErr.Error(), evidence))
 			m.advanceLocked()
-		} else if m.active == r && !r.cancelled.Load() {
+		case m.active == r && !r.cancelled.Load():
 			r.noPath = noPath
 			r.started = m.now()
 			// the route can be far longer than the straight line (round the abbey to reach its back stairs)
@@ -352,11 +353,11 @@ func (m *movementRequests) close() {
 	m.queue = nil
 }
 
-func (m *movementRequests) snapshot() (*types.MovementOwner, []types.MovementOwner) {
+func (m *movementRequests) snapshot() (owner *types.MovementOwner, queue []types.MovementOwner) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	owner := m.ownerLocked()
-	queue := make([]types.MovementOwner, 0, len(m.queue))
+	owner = m.ownerLocked()
+	queue = make([]types.MovementOwner, 0, len(m.queue))
 	for _, r := range m.queue {
 		queue = append(queue, r.owner)
 	}
@@ -406,7 +407,7 @@ func (b *Bot) setupMovementRequests() {
 		prepare: func(ctx context.Context, p types.Position, valid func() bool) error {
 			return b.prepareMoveContext(ctx, float32(p.X), float32(p.Y), float32(p.Z), valid)
 		},
-		stop: func() { b.StopMoving() },
+		stop: func() { _ = b.StopMoving() }, // never fails
 		position: func() types.Position {
 			x, y, z, _ := b.GetPosition()
 			return types.Position{X: float64(x), Y: float64(y), Z: float64(z)}

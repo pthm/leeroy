@@ -119,7 +119,9 @@ func main() {
 			if one.Name != "" && strings.HasSuffix(*events, ".jsonl") {
 				path = *events
 			}
-			os.MkdirAll(filepath.Dir(path), 0o755)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				log.Printf("events file: %v", err)
+			}
 			b.SetEventsFile(path)
 		}
 		b.SetDiagnostics(diagnostics)
@@ -140,11 +142,11 @@ func main() {
 	// its client port in TIME_WAIT for 30 s, and enough calls ran the machine out of ports.
 	if _, port, err := net.SplitHostPort(cfg.Listen); err == nil {
 		sock := "/tmp/azsdk-" + port + ".sock"
-		os.Remove(sock)
+		_ = os.Remove(sock) // a stale socket from an earlier run, if any
 		if l, err := net.Listen("unix", sock); err != nil {
 			log.Printf("agent API socket: %v", err)
 		} else {
-			go http.Serve(l, api.Handler(sessions))
+			go func() { log.Printf("agent API socket: %v", http.Serve(l, api.Handler(sessions))) }()
 		}
 	}
 	stop := make(chan os.Signal, 1)

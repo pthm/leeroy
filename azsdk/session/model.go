@@ -112,7 +112,7 @@ func (b *Bot) creature(u UnitInfo) types.Creature {
 	}
 	b.unitExtras(&c.Unit, u.GUID)
 	b.creatureExtras(&c, u)
-	aggro(&c, b.me3(), uint32(b.GetLevel()))
+	aggro(&c, b.me3(), b.GetLevel())
 	return c
 }
 
@@ -246,7 +246,7 @@ func inBags(it types.Item) bool { return it.Bag != 255 || it.BagSlot >= 23 }
 // findItem: an item in your bags (not worn) by guid or, when key is small, by entry.
 func findItem(w *client.WorldClient, key uint64) *types.Item {
 	for _, it := range bagItems(w) {
-		if inBags(it) && (uint64(it.GUID) == key || (key < 1<<32 && it.Entry == uint32(key))) {
+		if inBags(it) && (uint64(it.GUID) == key || uint64(it.Entry) == key) {
 			return &it
 		}
 	}
@@ -374,7 +374,7 @@ func questInfo(w *client.WorldClient, id uint32) *questProto {
 	}
 	if time.Since(quests.asked[id]) > 3*time.Second {
 		quests.asked[id] = time.Now()
-		go w.SendPacketRaw(cmsgQuestQuery, binary.LittleEndian.AppendUint32(nil, id))
+		go func() { _ = w.SendPacketRaw(cmsgQuestQuery, binary.LittleEndian.AppendUint32(nil, id)) }() // best effort: asked again after 3 s
 	}
 	return nil
 }

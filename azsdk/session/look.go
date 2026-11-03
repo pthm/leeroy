@@ -132,7 +132,7 @@ func compassOf(dx, dy float64) string {
 // lower, # no walkable floor at your height: wall, water, a building), and the aggro range of hostile creatures
 // (:). height(x, y) is the floor nearest your height there, or the terrain where there's no walkable floor near it
 // (a hillside); ok false where there's neither.
-func renderLook(me me3, myLevel uint32, radius float64, units []lookUnit, height func(x, y float64) (float64, bool)) string {
+func renderLook(me me3, radius float64, units []lookUnit, height func(x, y float64) (float64, bool)) string {
 	cols, rows := int(radius/lookColYd)*2+1, int(radius/lookRowYd)*2+1
 	cc, rc := cols/2, rows/2
 	grid := make([][]byte, rows)
@@ -210,7 +210,7 @@ func renderLook(me me3, myLevel uint32, radius float64, units []lookUnit, height
 
 // look gathers the map's units around you and draws it (world.look).
 func (b *Bot) look(radius float64) string {
-	me, lvl := b.me3(), uint32(b.GetLevel())
+	me := b.me3()
 	var us []UnitInfo
 	for _, u := range b.GetNearbyUnits(float32(radius * 1.5)) {
 		if u.Flags&0x2000000 == 0 {
@@ -275,5 +275,5 @@ func (b *Bot) look(radius float64) string {
 		}
 		return 0, false
 	}
-	return renderLook(me, lvl, radius, units, height)
+	return renderLook(me, radius, units, height)
 }

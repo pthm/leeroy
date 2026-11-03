@@ -23,7 +23,8 @@ func TestSkillFieldsExcludeBonusesAndEmptySlots(t *testing.T) {
 
 func TestSkillMetadataBoundsAndLocales(t *testing.T) {
 	le := binary.LittleEndian
-	b := make([]byte, 20+19*4)
+	strings := []byte("\x00Mining\x00")
+	b := make([]byte, 20+19*4, 20+19*4+len(strings))
 	copy(b, "WDBC")
 	le.PutUint32(b[4:], 1)
 	le.PutUint32(b[8:], 19)
@@ -31,7 +32,6 @@ func TestSkillMetadataBoundsAndLocales(t *testing.T) {
 	le.PutUint32(b[20:], 186)
 	le.PutUint32(b[24:], 11)
 	le.PutUint32(b[20+4*4:], 1) // fallback locale
-	strings := []byte("\x00Mining\x00")
 	le.PutUint32(b[16:], uint32(len(strings)))
 	b = append(b, strings...)
 	if got := parseSkillLines(b)[186]; got.name != "Mining" || got.category != 11 {

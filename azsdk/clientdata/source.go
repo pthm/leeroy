@@ -93,7 +93,7 @@ func (c *Client) ExtractTerrain(mapID int, out string) (files int, bytes int64, 
 	}
 	textures := func(m *Model) {
 		for _, mt := range m.Materials {
-			cp.Read(mt.Texture)
+			_, _ = cp.Read(mt.Texture) // a missing texture is skipped
 		}
 	}
 	m2 := func(name string) {
@@ -115,7 +115,7 @@ func (c *Client) ExtractTerrain(mapID int, out string) (files int, bytes int64, 
 			return nil
 		}
 		for _, t := range a.Textures {
-			cp.Read(t)
+			_, _ = cp.Read(t) // a missing texture is skipped
 		}
 		for _, p := range a.WMOs {
 			if !first(p.Name) {

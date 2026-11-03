@@ -8,6 +8,7 @@ import (
 	"github.com/pthm/leeroy/azsdk/internal/detour"
 )
 
+// PreparedPath is a walking route checked against the collision data, with its jumps and swimming stretches.
 type PreparedPath struct {
 	Points   []Point3D
 	Swimming []bool
@@ -19,6 +20,8 @@ type PreparedPath struct {
 	Collision   CollisionCheck
 	Replanned   bool
 }
+
+// TraversalError is returned for a route the collision check refused.
 type TraversalError struct{ Check CollisionCheck }
 
 func (e *TraversalError) Error() string {

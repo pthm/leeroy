@@ -48,7 +48,7 @@ func TestRenderLook(t *testing.T) {
 		label: 'A', name: "Kobold Tunneler", kind: "hostile", level: 6, x: 4, y: -4, z: -14, distance: 15.5, clock: 2,
 		dz: -14, aggro: 3, inAggro: true,
 	}}
-	out := renderLook(me3{}, 1, 8, units, func(x, y float64) (float64, bool) { return 0, x <= 6 })
+	out := renderLook(me3{}, 8, units, func(x, y float64) (float64, bool) { return 0, x <= 6 })
 	lines := strings.Split(out, "\n")
 	grid := lines[3:8] // after the three header lines: 5 rows of 9
 	want := []string{

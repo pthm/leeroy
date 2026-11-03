@@ -144,7 +144,7 @@ func castFailDetail(code uint8, r *bytes.Reader, item func(uint32) string) strin
 		return ""
 	}
 	items := func() string {
-		var s []string
+		s := make([]string, 0, len(v))
 		for _, e := range v {
 			s = append(s, item(e))
 		}

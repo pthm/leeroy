@@ -15,10 +15,10 @@ import (
 	"github.com/pthm/leeroy/azsdk/pathfinding"
 )
 
-// Maps: the continents (map id -> the client's directory name).
+// Maps holds the continents (map id -> the client's directory name).
 var Maps = map[int]string{0: "Azeroth", 1: "Kalimdor", 530: "Expansion01", 571: "Northrend"}
 
-// RoadTexture: ground textures that are roads or paved paths (cobblestone streets, stone and dirt roads, brick), and
+// RoadTexture matches ground textures that are roads or paved paths (cobblestone streets, stone and dirt roads, brick), and
 // the ones a zone paints its roads with under another name (found by their shape: long thin strips): Ghostlands'
 // path, Hellfire's Path of Glory (bones), Winterspring's roads (its dirt), Tanaris's trails (footprints).
 var RoadTexture = regexp.MustCompile(`(?i)(road|cobble|brick|ghostlandspath|outlandbones|winterspringdirt|tanarisdirtfootprint)`)
@@ -51,8 +51,8 @@ func (c *Client) Minimap(mapID int, out string) (int, error) {
 	for sc.Scan() {
 		if m := re.FindStringSubmatch(strings.TrimSpace(sc.Text())); m != nil {
 			var col, row int
-			fmt.Sscan(m[1], &col)
-			fmt.Sscan(m[2], &row)
+			_, _ = fmt.Sscan(m[1], &col) // the pattern matched digits
+			_, _ = fmt.Sscan(m[2], &row)
 			jobs = append(jobs, job{gx: row, gy: col, file: `textures\Minimap\` + m[3]})
 		}
 	}
@@ -118,7 +118,7 @@ func Roads(c Source, mapID int, out string) (int, error) {
 		const per = 1024 / RoadCells
 		sum := make([]int, RoadCells*RoadCells)
 		any := false
-		for ci, ch := range a.Chunks {
+		for ci, ch := range &a.Chunks {
 			cx, cy := ci%16, ci/16 // chunk column (y falling), row (x falling)
 			for t := range roadTex {
 				found := false

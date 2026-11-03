@@ -45,6 +45,7 @@ type ChatMessage struct {
 	Text    string
 }
 
+// RawPacket is a captured world packet: when it arrived, its opcode and its body in hex.
 type RawPacket struct {
 	Time   int64  `json:"time_ms"`
 	Opcode uint16 `json:"opcode"`
@@ -96,7 +97,7 @@ func (c *controlState) requestStats(w *client.WorldClient, guid uint64) {
 	c.asked[guid] = at
 	c.mu.Unlock()
 	time.Sleep(time.Until(at))
-	w.SendPacketRaw(cmsgRequestPartyMemberStats, binary.LittleEndian.AppendUint64(nil, guid))
+	_ = w.SendPacketRaw(cmsgRequestPartyMemberStats, binary.LittleEndian.AppendUint64(nil, guid)) // best effort: the next change asks again
 }
 
 // parsePartyStats reads the fields up to the auras (pet data after them isn't needed). refresh: an aura was added
@@ -191,7 +192,7 @@ func (b *Bot) setupControl() {
 		}
 		if time.Since(asked[g]) > 3*time.Second { // SMSG_NAME_QUERY_RESPONSE fills c.names
 			asked[g] = time.Now()
-			go w.NameQuery(g)
+			go func() { _ = w.NameQuery(g) }() // best effort: asked again after 3 s
 		}
 		return ""
 	}
@@ -361,13 +362,15 @@ func (b *Bot) setupControl() {
 		c.mu.Lock()
 		c.invitedBy = ""
 		c.mu.Unlock()
-		return b.sent("group.decline", nil, w.GroupDecline())
+		return b.sent("group.decline", w.GroupDecline())
 	})
 	e.Func("group.leave", "() → Request", "leave your group", func() map[string]any {
 		if !w.InGroup() {
 			return b.refuse("group.leave", nil, "not_in_group", "you aren't in a group")
 		}
-		w.GroupLeave()
+		if err := w.GroupLeave(); err != nil {
+			return b.refuse("group.leave", nil, "failed", err.Error())
+		}
 		return b.request("group.leave", nil, 5*time.Second, func() *script.Outcome {
 			if !w.InGroup() {
 				return script.Ok(nil)
@@ -413,7 +416,7 @@ func (b *Bot) setupControl() {
 		if err != nil {
 			return b.refuse("client.send", nil, "invalid_arguments", err.Error())
 		}
-		return b.sent("client.send", nil, w.SendPacketRaw(op, body))
+		return b.sent("client.send", w.SendPacketRaw(op, body))
 	})
 	if err := e.DocumentActionPostconditions(types.ActionPostconditions); err != nil {
 		panic(err)
@@ -551,7 +554,7 @@ func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
 			if m.From == "" && guid != 0 {
 				m.From = c.names[guid]
 				if m.From == "" {
-					go w.NameQuery(guid)
+					go func() { _ = w.NameQuery(guid) }() // best effort: the name shows from the next message
 				}
 			}
 			c.chatEvent(b, m, guid)
@@ -746,22 +749,22 @@ var equipErrors = map[byte]string{
 
 // inventoryError: SMSG_INVENTORY_CHANGE_FAILURE's code and text (Player::SendEquipError: result, item, item2, bag
 // subclass, then the required level for CANT_EQUIP_LEVEL_I and PURCHASE_LEVEL_TOO_LOW).
-func inventoryError(data []byte) (string, string) {
-	code := inventoryResultNames[data[0]]
+func inventoryError(data []byte) (code, text string) {
+	code = inventoryResultNames[data[0]]
 	if code == "inventory_full" {
 		code = "bags_full"
 	}
 	if code == "" {
 		code = fmt.Sprintf("inventory_%d", data[0])
 	}
-	msg := equipErrors[data[0]]
-	if msg == "" {
-		msg = strings.ReplaceAll(code, "_", " ")
+	text = equipErrors[data[0]]
+	if text == "" {
+		text = strings.ReplaceAll(code, "_", " ")
 	}
 	if (data[0] == 1 || data[0] == 87) && len(data) >= 22 {
-		msg = fmt.Sprintf("%s: requires level %d", msg, binary.LittleEndian.Uint32(data[18:]))
+		text = fmt.Sprintf("%s: requires level %d", text, binary.LittleEndian.Uint32(data[18:]))
 	}
-	return code, msg
+	return code, text
 }
 
 // BuyResult and SellResult (Item.h)

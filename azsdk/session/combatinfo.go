@@ -222,35 +222,35 @@ func (b *Bot) setupCombatInfo() {
 	me := w.CharGUID()
 	w.AddPacketHook(func(op uint16, data []byte) { ci.onPacket(op, data) })
 	w.AddPacketHook(func(op uint16, data []byte) {
-		switch op {
-		case smsgSpellStart: // caster item, caster, cast count, spell, flags, cast time
-			r := newReader(data)
-			readPackedGUID(r.Reader)
-			caster := readPackedGUID(r.Reader)
-			if caster == me {
-				return
-			}
-			r.ReadByte()
-			spell, _, castMS := r.u32(), r.u32(), r.u32()
-			if castMS == 0 {
-				return
-			}
-			ci.mu.Lock()
-			ci.casts[caster] = unitCast{spell: spell, until: time.Now().Add(time.Duration(castMS) * time.Millisecond)}
-			ci.mu.Unlock()
-			// at you or your group: tell the agent (an interrupt or a stun stops it)
-			o := w.GetObject(caster)
-			if o == nil || caster>>48 == 0 {
-				return
-			}
-			target := uint64(o.Value(client.UnitFieldTarget)) | uint64(o.Value(client.UnitFieldTarget+1))<<32
-			ours := target == me
-			for _, m := range w.GroupState().Members {
-				ours = ours || target == m.GUID
-			}
-			if ours {
-				b.emit("unit_cast_start", types.UnitCast{Unit: b.ref(caster), Spell: spell, Name: spellName(spell), CastMS: castMS, Target: b.ref(target)})
-			}
+		if op != smsgSpellStart { // caster item, caster, cast count, spell, flags, cast time
+			return
+		}
+		r := newReader(data)
+		readPackedGUID(r.Reader)
+		caster := readPackedGUID(r.Reader)
+		if caster == me {
+			return
+		}
+		r.ReadByte()
+		spell, _, castMS := r.u32(), r.u32(), r.u32()
+		if castMS == 0 {
+			return
+		}
+		ci.mu.Lock()
+		ci.casts[caster] = unitCast{spell: spell, until: time.Now().Add(time.Duration(castMS) * time.Millisecond)}
+		ci.mu.Unlock()
+		// at you or your group: tell the agent (an interrupt or a stun stops it)
+		o := w.GetObject(caster)
+		if o == nil || caster>>48 == 0 {
+			return
+		}
+		target := uint64(o.Value(client.UnitFieldTarget)) | uint64(o.Value(client.UnitFieldTarget+1))<<32
+		ours := target == me
+		for _, m := range w.GroupState().Members {
+			ours = ours || target == m.GUID
+		}
+		if ours {
+			b.emit("unit_cast_start", types.UnitCast{Unit: b.ref(caster), Spell: spell, Name: spellName(spell), CastMS: castMS, Target: b.ref(target)})
 		}
 	})
 
@@ -280,7 +280,7 @@ func (b *Bot) setupCombatInfo() {
 			ci.mu.Lock()
 			l := ci.threat[g]
 			ci.mu.Unlock()
-			out := []types.Threat{}
+			out := make([]types.Threat, 0, len(l))
 			for _, t := range l {
 				ci.mu.Lock()
 				pct := ci.threatPct(g, t.threat)

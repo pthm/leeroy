@@ -17,7 +17,10 @@ type Outcome struct {
 	Data    any
 }
 
+// Ok is a successful outcome with data.
 func Ok(data any) *Outcome { return &Outcome{OK: true, Data: data} }
+
+// Fail is a failed outcome with an error code, message and data.
 func Fail(code, msg string, data any) *Outcome {
 	return &Outcome{Code: code, Message: msg, Data: data}
 }
@@ -39,6 +42,7 @@ type pending struct {
 	observers []func(map[string]any)
 }
 
+// Requests tracks the requests a script starts until each succeeds, fails or times out, and keeps their results.
 type Requests struct {
 	mu       sync.Mutex
 	bus      *Bus
@@ -49,6 +53,7 @@ type Requests struct {
 	lastFail map[string]time.Time // op + code -> when an instant failure was last logged
 }
 
+// NewRequests returns a Requests that watches bus for its requests' events.
 func NewRequests(bus *Bus) *Requests {
 	r := &Requests{bus: bus, pending: map[int]*pending{}, done: map[int]map[string]any{}, lastFail: map[string]time.Time{}}
 	bus.Listen(r.onEvent)

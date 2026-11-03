@@ -95,7 +95,7 @@ func (b *Bot) object(o *client.WorldObject) types.Object {
 	if !known && time.Since(goNames.asked[entry]) > 5*time.Second {
 		goNames.asked[entry] = time.Now()
 		body := binary.LittleEndian.AppendUint32(nil, entry)
-		go b.world.SendPacketRaw(cmsgGameObjectQuery, binary.LittleEndian.AppendUint64(body, o.GUID))
+		go func() { _ = b.world.SendPacketRaw(cmsgGameObjectQuery, binary.LittleEndian.AppendUint64(body, o.GUID)) }() // best effort: asked again after 5 s
 	}
 	creatures.Unlock()
 	ob := types.Object{
@@ -309,7 +309,7 @@ func (b *Bot) setupCoreAPI() {
 		func(g uint64) map[string]any {
 			args := map[string]any{"unit": gs(g)}
 			if w.AttackingGUID() == g {
-				b.AttackTarget(g) // keeps the swing alive
+				_ = b.AttackTarget(g) // keeps the swing alive; best effort, it is already swinging
 				return b.done("combat.attack", args, types.Attacking{Already: true})
 			}
 			if err := b.AttackTarget(g); err != nil {
@@ -448,7 +448,9 @@ func (b *Bot) setupCoreAPI() {
 			binary.Write(&buf, binary.LittleEndian, id)
 			buf.Write([]byte{0, 0})
 			buf.WriteString(name + "\x00\x00") // name, empty password
-			w.SendPacketRaw(cmsgJoinChannel, buf.Bytes())
+			if err := w.SendPacketRaw(cmsgJoinChannel, buf.Bytes()); err != nil {
+				return b.refuse("chat.join", map[string]any{"name": name}, "failed", err.Error())
+			}
 			return b.request("chat.join", map[string]any{"name": name}, 3*time.Second, func() *script.Outcome {
 				if b.acked(key) {
 					return script.Ok(nil)
@@ -457,7 +459,7 @@ func (b *Bot) setupCoreAPI() {
 			}, func(ev script.Event) *script.Outcome { return failOn(ev, "chat.join") })
 		})
 	e.Func("chat.command", "(text) → Request", "a server command (\".help\"); GM commands only work on GM accounts", func(cmd string) map[string]any {
-		return b.sent("chat.command", nil, b.SendCommand(cmd))
+		return b.sent("chat.command", b.SendCommand(cmd))
 	})
 
 	// ---------- client: the raw protocol ----------

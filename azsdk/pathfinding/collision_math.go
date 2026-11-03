@@ -71,7 +71,7 @@ func closestTriangle(p, a, b, c Vector3) Vector3 {
 	return a.Add(ab.Mul(vb / den)).Add(ac.Mul(vc / den))
 }
 
-func segmentDistance(p, q, a, b Vector3) (Vector3, Vector3) {
+func segmentDistance(p, q, a, b Vector3) (onPQ, onAB Vector3) {
 	d, e, r := q.Sub(p), b.Sub(a), p.Sub(a)
 	aa, ee := d.Dot(d), e.Dot(e)
 	f := e.Dot(r)
@@ -129,7 +129,7 @@ func capsuleTriangleDistance(p, q, a, b, c Vector3) (float32, Vector3) {
 
 // Conservative advancement uses the Lipschitz bound on distance under a
 // translation. It cannot jump over a thin triangle between time samples.
-func sweepCapsuleTriangle(ctx context.Context, p, q, delta Vector3, r float32, a, b, c Vector3) (float32, Vector3, bool, error) {
+func sweepCapsuleTriangle(ctx context.Context, p, q, delta Vector3, r float32, a, b, c Vector3) (hitT float32, normal Vector3, hit bool, err error) {
 	speed := length(delta)
 	t := float32(0)
 	for i := 0; i < 96; i++ {

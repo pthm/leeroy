@@ -146,8 +146,9 @@ func (b *Bot) setupCombatLog() {
 			if t == 0 {
 				t = time.Now().UnixMilli() - 30000
 			}
-			out := []types.CombatEntry{}
-			for _, ev := range c.since(t) {
+			evs := c.since(t)
+			out := make([]types.CombatEntry, 0, len(evs))
+			for _, ev := range evs {
 				ce := types.CombatEntry{T: ev.T, Kind: ev.Kind, Src: b.ref(ev.Src), Dst: b.ref(ev.Dst)}
 				if ev.Kind != "kill" {
 					ce.Amount, ce.Spell, ce.Over, ce.Crit = ev.Amount, ev.Spell, ev.Over, ev.Crit
@@ -240,7 +241,7 @@ func (b *Bot) meter(window float64) []types.Meter {
 			d.taken += ev.Amount
 		}
 	}
-	out := []types.Meter{}
+	out := make([]types.Meter, 0, len(units))
 	for g, a := range units {
 		active := math.Max(1, float64(a.last-a.first)/1000)
 		m := types.Meter{

@@ -100,7 +100,7 @@ func (b *Bot) objName(o *client.WorldObject) string {
 	}
 	if time.Since(creatures.asked[o.Entry]) > 5*time.Second {
 		creatures.asked[o.Entry] = time.Now()
-		go b.world.CreatureQuery(o.Entry, o.GUID)
+		go func() { _ = b.world.CreatureQuery(o.Entry, o.GUID) }() // best effort: asked again after 5 s
 	}
 	return ""
 }
@@ -154,11 +154,11 @@ func (b *Bot) done(op string, args map[string]any, data any) map[string]any {
 
 // sent never equates transport success with a game postcondition. Callers with
 // observable state use request/check or a server event instead.
-func (b *Bot) sent(op string, args map[string]any, err error) map[string]any {
+func (b *Bot) sent(op string, err error) map[string]any {
 	if err != nil {
-		return b.refuse(op, args, "failed", err.Error())
+		return b.refuse(op, nil, "failed", err.Error())
 	}
-	return b.refuse(op, args, "unconfirmed", "packet was sent, but this operation has no observed completion; inspect state before retrying")
+	return b.refuse(op, nil, "unconfirmed", "packet was sent, but this operation has no observed completion; inspect state before retrying")
 }
 
 // timeoutHints: the usual reason the server stayed silent
@@ -267,7 +267,7 @@ func (b *Bot) watchEvents() {
 		}
 	}
 	w.AddGroupListHook(func(st client.GroupState) {
-		members := []string{}
+		members := make([]string, 0, len(st.Members))
 		for _, m := range st.Members {
 			members = append(members, m.Name)
 		}

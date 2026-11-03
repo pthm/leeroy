@@ -269,7 +269,7 @@ func (b *Bot) setupAgentAPI() {
 	e.Func("items.cooldown", "(item) → ms", "milliseconds until an item you carry or wear (entry or guid) can be used again: potions, healthstones, trinkets, the Hearthstone; 0 = ready, -1 = until you leave combat (a potion used in combat)", func(item uint64) float64 {
 		var p *itemProto
 		for _, it := range bagItems(w) {
-			if uint64(it.GUID) == item || it.Entry == uint32(item) && item < 1<<32 {
+			if uint64(it.GUID) == item || uint64(it.Entry) == item {
 				p = itemInfo(w, it.Entry)
 				break
 			}
@@ -313,8 +313,8 @@ func (b *Bot) setupAgentAPI() {
 			return nil
 		})
 	los := func(to navigation.Point3D) any {
-		if clear, ok := b.inSight(to); ok {
-			return clear
+		if visible, ok := b.inSight(to); ok {
+			return visible
 		}
 		return nil
 	}
@@ -404,7 +404,9 @@ func (b *Bot) setupAgentAPI() {
 		if wait > 0 {
 			return b.refuse("death.reclaim", nil, "not_yet", fmt.Sprintf("you can reclaim in %.0f s", math.Ceil(wait.Seconds())))
 		}
-		w.ReclaimCorpse()
+		if err := w.ReclaimCorpse(); err != nil {
+			return b.refuse("death.reclaim", nil, "failed", err.Error())
+		}
 		return b.request("death.reclaim", nil, 5*time.Second, alive, nil)
 	})
 	e.Func("death.accept_res", "() → Request", "accept a player's resurrection (after a resurrect_offered event): you come back where your body lies",
@@ -418,14 +420,16 @@ func (b *Bot) setupAgentAPI() {
 			if from == 0 {
 				return b.refuse("death.accept_res", nil, "no_offer", "nobody has offered to resurrect you (wait for resurrect_offered)")
 			}
-			w.SendPacketRaw(cmsgResurrectResponse, append(binary.LittleEndian.AppendUint64(nil, from), 1))
+			if err := w.SendPacketRaw(cmsgResurrectResponse, append(binary.LittleEndian.AppendUint64(nil, from), 1)); err != nil {
+				return b.refuse("death.accept_res", nil, "failed", err.Error())
+			}
 			return b.request("death.accept_res", nil, 5*time.Second, alive, nil)
 		})
 	e.Func("me.timers", "() → MirrorTimer[]", "your breath (underwater), fatigue (deep water) and fire timers while one runs: at 0 you take damage every few seconds until you surface or turn back",
 		func() []types.MirrorTimer {
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			out := []types.MirrorTimer{}
+			out := make([]types.MirrorTimer, 0, len(s.timers))
 			for id, t := range s.timers {
 				out = append(out, t.view(id))
 			}
@@ -440,7 +444,9 @@ func (b *Bot) setupAgentAPI() {
 			if r := b.noNPC("death.spirit_res", args, &npc); r != nil {
 				return r
 			}
-			w.SendPacketRaw(cmsgSpiritHealerAct, binary.LittleEndian.AppendUint64(nil, npc))
+			if err := w.SendPacketRaw(cmsgSpiritHealerAct, binary.LittleEndian.AppendUint64(nil, npc)); err != nil {
+				return b.refuse("death.spirit_res", args, "failed", err.Error())
+			}
 			return b.request("death.spirit_res", map[string]any{"npc_guid": gs(npc)}, 5*time.Second, alive, nil)
 		})
 
@@ -463,8 +469,12 @@ func (b *Bot) setupAgentAPI() {
 		if has() {
 			return b.done("quests.accept", args, types.QuestDone{Quest: quest, Title: questTitle(w, quest)})
 		}
-		w.QuestgiverHello(npc)
-		w.QuestgiverAcceptQuest(npc, quest)
+		if err := w.QuestgiverHello(npc); err != nil {
+			return b.refuse("quests.accept", args, "failed", err.Error())
+		}
+		if err := w.QuestgiverAcceptQuest(npc, quest); err != nil {
+			return b.refuse("quests.accept", args, "failed", err.Error())
+		}
 		return b.request("quests.accept", args, 5*time.Second, func() *script.Outcome {
 			if has() {
 				return script.Ok(types.QuestDone{Quest: quest, Title: questTitle(w, quest)})
@@ -484,7 +494,9 @@ func (b *Bot) setupAgentAPI() {
 		if slot < 0 {
 			return b.refuse("quests.abandon", args, "not_in_log", fmt.Sprintf("quest %d isn't in your quest log", quest))
 		}
-		w.SendPacketRaw(cmsgQuestLogRemoveQuest, []byte{byte(slot)})
+		if err := w.SendPacketRaw(cmsgQuestLogRemoveQuest, []byte{byte(slot)}); err != nil {
+			return b.refuse("quests.abandon", args, "failed", err.Error())
+		}
 		return b.request("quests.abandon", args, 3*time.Second, func() *script.Outcome {
 			if me := w.GetObject(w.CharGUID()); me != nil && me.Value(fieldQuestLog+uint16(slot)*5) != quest {
 				return script.Ok(nil)
@@ -502,10 +514,18 @@ func (b *Bot) setupAgentAPI() {
 				return b.refuse("quests.turn_in", args, "bad_reward", fmt.Sprintf("no reward choice %d (0 = first; quests.info lists the choices)", reward))
 			}
 			// the server answers COMPLETE_QUEST with REQUEST_ITEMS (an incomplete one fails on it) or OFFER_REWARD
-			w.QuestgiverCompleteQuest(npc, quest)
 			body := binary.LittleEndian.AppendUint64(nil, npc)
-			w.SendPacketRaw(cmsgQuestRequestRew, binary.LittleEndian.AppendUint32(body, quest))
-			w.QuestgiverChooseReward(npc, quest, reward)
+			for _, send := range []func() error{
+				func() error { return w.QuestgiverCompleteQuest(npc, quest) },
+				func() error {
+					return w.SendPacketRaw(cmsgQuestRequestRew, binary.LittleEndian.AppendUint32(body, quest))
+				},
+				func() error { return w.QuestgiverChooseReward(npc, quest, reward) },
+			} {
+				if err := send(); err != nil {
+					return b.refuse("quests.turn_in", args, "failed", err.Error())
+				}
+			}
 			return b.request("quests.turn_in", args, 5*time.Second,
 				nil, func(ev script.Event) *script.Outcome {
 					if d, ok := ev.Data.(types.QuestDone); ok && ev.Type == "quest_turned_in" && d.Quest == quest {
@@ -1166,7 +1186,7 @@ func dbcRows(name string) map[uint32][]byte {
 }
 
 // inSight: line of sight from your eyes to a point, against world models (ok = false without collision data).
-func (b *Bot) inSight(to navigation.Point3D) (clear, ok bool) {
+func (b *Bot) inSight(to navigation.Point3D) (visible, ok bool) {
 	l, has := b.nav.(interface {
 		InLineOfSight(mapID uint32, a, b navigation.Point3D) (bool, bool)
 	})
@@ -1213,8 +1233,8 @@ func (r *reach) of(guid uint64, x, y, z float64, eye float32) (inSight *bool, pa
 		return nil, nil, nil
 	}
 	b, to := r.b, navigation.Point3D{X: float32(x), Y: float32(y), Z: float32(z)}
-	if clear, ok := b.inSight(navigation.Point3D{X: to.X, Y: to.Y, Z: to.Z + eye}); ok {
-		inSight = &clear
+	if visible, ok := b.inSight(navigation.Point3D{X: to.X, Y: to.Y, Z: to.Z + eye}); ok {
+		inSight = &visible
 	}
 	e, hit := b.pathCache[guid]
 	if !hit || time.Since(e.at) > 5*time.Second || e.from != r.from || e.to != to {
@@ -1276,9 +1296,9 @@ func (b *Bot) annotatePlayers(ps []types.Player) {
 }
 
 // annotateObjects: reach for game objects (aimed just above their base: chests and nodes sit on the ground)
-func (b *Bot) annotateObjects(os []types.Object) {
+func (b *Bot) annotateObjects(objs []types.Object) {
 	r := b.newReach()
-	for i := range os {
-		r.place(uint64(os[i].GUID), &os[i].Place, 0.5)
+	for i := range objs {
+		r.place(uint64(objs[i].GUID), &objs[i].Place, 0.5)
 	}
 }

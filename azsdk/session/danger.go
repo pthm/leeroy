@@ -45,12 +45,12 @@ func checkDanger(ctx context.Context, here, point types.Position, radius float64
 		eye, target := p, q
 		eye.Z += 1.8
 		target.Z += 1.5
-		clear, known := src.sight(ctx, point.Map, eye, target)
+		visible, known := src.sight(ctx, point.Map, eye, target)
 		if !known {
 			uncertain = "collision_unavailable"
 			continue
 		}
-		if !clear {
+		if !visible {
 			continue
 		}
 		path, err = src.path(ctx, point.Map, p, q)
@@ -65,11 +65,12 @@ func checkDanger(ctx context.Context, here, point types.Position, radius float64
 		}
 		d.Hostiles = append(d.Hostiles, u)
 	}
-	if len(d.Hostiles) > 0 {
+	switch {
+	case len(d.Hostiles) > 0:
 		d.State = "hostile"
-	} else if uncertain != "" {
+	case uncertain != "":
 		return unknown(uncertain)
-	} else {
+	default:
 		d.State = "clear"
 	}
 	return d

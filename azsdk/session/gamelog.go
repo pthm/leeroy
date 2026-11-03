@@ -43,7 +43,7 @@ func (d *Diagnostics) write(ev types.Diagnostic) {
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.f.Write(append(line, '\n'))
+	_, _ = d.f.Write(append(line, '\n')) // best effort: diagnostics never stop the session
 }
 
 // SetDiagnostics attaches the diagnostics file before Run.
@@ -65,7 +65,7 @@ func (b *Bot) logTransports() {
 	b.scanTransports()
 	aboard, _ := b.world.Transport()
 	b.trs.mu.Lock()
-	var guids []uint64
+	guids := make([]uint64, 0, len(b.trs.recs))
 	for g := range b.trs.recs {
 		guids = append(guids, g)
 	}
@@ -174,7 +174,8 @@ func (b *Bot) startGameLog() {
 					st.Target = &r
 				}
 				b.gameLog("state", st)
-				if tick++; tick%2 == 0 {
+				tick++
+				if tick%2 == 0 {
 					b.gameLog("units", types.Nearby{Map: m, Units: b.nearbyUnitRows()})
 				}
 				if tick%4 == 0 {

@@ -165,20 +165,23 @@ func (b *Bot) setupTalents() {
 		args := map[string]any{"talent": id}
 		loadTalents()
 		for _, t := range talentList {
-			if t.id == id {
-				r := rank(t)
-				if r >= len(t.ranks) {
-					return b.refuse("talents.learn", args, "max_rank", "already at max rank")
-				}
-				body := binary.LittleEndian.AppendUint32(nil, id)
-				w.SendPacketRaw(cmsgLearnTalent, binary.LittleEndian.AppendUint32(body, uint32(r)))
-				return b.request("talents.learn", args, 3*time.Second, func() *script.Outcome {
-					if rank(t) > r {
-						return script.Ok(types.TalentLearned{Rank: r + 1})
-					}
-					return nil
-				}, nil)
+			if t.id != id {
+				continue
 			}
+			r := rank(t)
+			if r >= len(t.ranks) {
+				return b.refuse("talents.learn", args, "max_rank", "already at max rank")
+			}
+			body := binary.LittleEndian.AppendUint32(nil, id)
+			if err := w.SendPacketRaw(cmsgLearnTalent, binary.LittleEndian.AppendUint32(body, uint32(r))); err != nil {
+				return b.refuse("talents.learn", args, "failed", err.Error())
+			}
+			return b.request("talents.learn", args, 3*time.Second, func() *script.Outcome {
+				if rank(t) > r {
+					return script.Ok(types.TalentLearned{Rank: r + 1})
+				}
+				return nil
+			}, nil)
 		}
 		return b.refuse("talents.learn", args, "no_such_talent", fmt.Sprintf("no talent %d", id))
 	})

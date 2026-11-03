@@ -11,6 +11,7 @@ import (
 	"github.com/pthm/leeroy/azsdk/internal/detour"
 )
 
+// Query limits: the longest a query may run, the longest leg and the most tiles one may load.
 const (
 	QueryTimeout  = 15 * time.Second
 	MaxLegYards   = 4096
@@ -18,9 +19,10 @@ const (
 	maxTileBytes  = 16 << 20
 )
 
+// ErrQueryLimit is returned for a route over the leg or tile limits.
 var ErrQueryLimit = errors.New("route exceeds query limits: use legs of at most 4096 yards and at most 1024 tiles")
 
-// ErrSearchLimit: the navmesh search gave up before it reached the destination (a long, winding route)
+// ErrSearchLimit means the navmesh search gave up before it reached the destination (a long, winding route)
 var ErrSearchLimit = fmt.Errorf("%w: the navmesh search ran out before reaching the destination; use shorter legs (a few hundred yards each)", ErrQueryLimit)
 
 func validateLeg(start, dest Point3D) error {

@@ -181,17 +181,17 @@ func TestRecoveryCoordinatorJoiningCancellationAndExpiry(t *testing.T) {
 	}
 }
 
-func recoveryEngine(t *testing.T) (*script.Engine, *recoveryCoordinator, *movementFixture) {
+func recoveryEngine(t *testing.T) (*script.Engine, *movementFixture) {
 	t.Helper()
 	e, f := leaseEngine(t)
 	evalMovement(t, e, `alive=false;death={corpse=function() return {ok=true,data={x=0,y=0,z=0,reclaim_in=0}} end};spirits=0;death.spirit_res=function() spirits=spirits+1;return {ok=true} end`)
 	c := installTestRecovery(t, e)
 	c.cancelMovement = f.control.cancelTask
-	return e, c, f
+	return e, f
 }
 
 func TestRecoveryDuplicateHandlersJoinWithoutChangingPolicy(t *testing.T) {
-	e, _, f := recoveryEngine(t)
+	e, f := recoveryEngine(t)
 	reclaims, reqID := 0, 0
 	e.Func("death.reclaim", "() → Request", "test", func() map[string]any {
 		reclaims++
@@ -221,7 +221,7 @@ func TestRecoveryDuplicateHandlersJoinWithoutChangingPolicy(t *testing.T) {
 func TestRecoveryOwnerLifecycleTerminatesJoiners(t *testing.T) {
 	for _, operation := range []string{"stop", "pause"} {
 		t.Run(operation, func(t *testing.T) {
-			e, _, f := recoveryEngine(t)
+			e, f := recoveryEngine(t)
 			reqID := 0
 			e.Func("death.reclaim", "() → Request", "test", func() map[string]any {
 				r := e.Reqs.Start(script.Spec{Op: "death.reclaim", Timeout: time.Minute})

@@ -130,16 +130,17 @@ func (m *movementRequests) acquire(taskID int, task, call, priority string, queu
 	r := &movementRequest{owner: l.owner, lease: l, queued: m.now(), queueTimeout: time.Duration(queueSeconds * float64(time.Second))}
 	r.owner.RequestID = id
 	owner := m.ownerLocked()
-	if owner != nil && owner.TaskID == taskID {
+	switch {
+	case owner != nil && owner.TaskID == taskID:
 		// Adopt this task's raw walk into the critical section.
 		m.grantLeaseLocked(r)
 		if m.active != nil {
 			m.active.owner.LeaseID = id
 			m.active.owner.Priority = priority
 		}
-	} else if owner == nil {
+	case owner == nil:
 		m.grantLeaseLocked(r)
-	} else if movementPriority(priority) > movementPriority(owner.Priority) {
+	case movementPriority(priority) > movementPriority(owner.Priority):
 		newOwner := l.owner
 		newOwner.Phase = "held"
 		reason := script.Fail("preempted", "higher-priority movement acquired control", newOwner)
@@ -149,9 +150,9 @@ func (m *movementRequests) acquire(taskID int, task, call, priority string, queu
 			m.finishLocked(m.active, reason)
 		}
 		m.grantLeaseLocked(r)
-	} else if queueSeconds == 0 {
+	case queueSeconds == 0:
 		return complete(script.Fail("movement_busy", "another task owns movement", owner))
-	} else {
+	default:
 		m.enqueueLocked(r)
 	}
 	return h

@@ -6,7 +6,7 @@ import (
 	"github.com/pthm/leeroy/azsdk/types"
 )
 
-// HealWindowMS: a heal counts as useful if its target lands a useful hit within this long after it.
+// HealWindowMS is the window for a useful heal: it counts as useful if its target lands a useful hit within this long after it.
 const HealWindowMS = 30_000
 
 // Coop is one character's cooperation over a run, traced from every player's events the way AgentWorld's causal

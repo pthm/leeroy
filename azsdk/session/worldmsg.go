@@ -191,7 +191,7 @@ func (b *Bot) setupWorldMessages() {
 		if !ready {
 			v = 0
 		}
-		return b.sent("group.ready", nil, w.SendPacketRaw(msgRaidReadyCheck, []byte{v}))
+		return b.sent("group.ready", w.SendPacketRaw(msgRaidReadyCheck, []byte{v}))
 	})
 
 	w.AddSummonRequestHook(func(s client.SummonRequest) {

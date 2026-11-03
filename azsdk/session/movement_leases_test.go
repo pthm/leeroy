@@ -9,8 +9,8 @@ import (
 	"github.com/pthm/leeroy/azsdk/types"
 )
 
-func leaseRequest(f *movementFixture, task int, priority string, queue, max float64) int {
-	return f.control.acquire(task, "owner", "call", priority, queue, max)["id"].(int)
+func leaseRequest(f *movementFixture, task int, priority string, queue, lease float64) int {
+	return f.control.acquire(task, "owner", "call", priority, queue, lease)["id"].(int)
 }
 
 func grantedLease(t *testing.T, f *movementFixture, id int) int {

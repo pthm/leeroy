@@ -18,14 +18,16 @@ type Obj struct {
 	vals map[string]any
 }
 
+// NewObj returns an empty Obj.
 func NewObj() *Obj { return &Obj{vals: map[string]any{}} }
 
+// Get returns k's value, nil if there is none.
 func (o *Obj) Get(k string) any { return o.vals[k] }
 
 // Keys in order.
 func (o *Obj) Keys() []string { return o.keys }
 
-// set replaces a value in place, or appends a new key (jq's `. + {k: v}`).
+// Set replaces a value in place, or appends a new key (jq's `. + {k: v}`).
 func (o *Obj) Set(k string, v any) {
 	if _, ok := o.vals[k]; !ok {
 		o.keys = append(o.keys, k)
@@ -33,7 +35,7 @@ func (o *Obj) Set(k string, v any) {
 	o.vals[k] = v
 }
 
-// parse decodes JSON values into ordered objects, []any, json.Number, string, bool and nil, one per value in the
+// ParseAll decodes JSON values into ordered objects, []any, json.Number, string, bool and nil, one per value in the
 // input (jq's -s reads all of them).
 func ParseAll(data []byte) ([]any, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -56,8 +58,7 @@ func parseValue(dec *json.Decoder) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	switch d := t.(type) {
-	case json.Delim:
+	if d, ok := t.(json.Delim); ok {
 		if d == '{' {
 			o := NewObj()
 			for dec.More() {
@@ -157,13 +158,14 @@ func encString(b *strings.Builder, s string) {
 	b.WriteByte('"')
 }
 
+// Compact returns v as jq -c prints it.
 func Compact(v any) string {
 	var b strings.Builder
 	enc(&b, v)
 	return b.String()
 }
 
-// truthy: jq's truth (everything but null and false).
+// Truthy is jq's truth (everything but null and false).
 func Truthy(v any) bool {
 	switch x := v.(type) {
 	case nil:
@@ -174,7 +176,7 @@ func Truthy(v any) bool {
 	return true
 }
 
-// field is jq's .k on an object (null otherwise).
+// Field is jq's .k on an object (null otherwise).
 func Field(v any, k string) any {
 	if o, ok := v.(*Obj); ok {
 		return o.Get(k)
@@ -182,7 +184,7 @@ func Field(v any, k string) any {
 	return nil
 }
 
-// interp is jq's string interpolation of a value: strings raw, everything else as JSON.
+// Interp is jq's string interpolation of a value: strings raw, everything else as JSON.
 func Interp(v any) string {
 	if s, ok := v.(string); ok {
 		return s
@@ -190,6 +192,7 @@ func Interp(v any) string {
 	return Compact(v)
 }
 
+// Num returns v as a number, 0 if it is not one.
 func Num(v any) float64 {
 	switch x := v.(type) {
 	case json.Number:

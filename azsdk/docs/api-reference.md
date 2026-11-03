@@ -391,6 +391,8 @@ In Lua these are tables with these fields; optional fields (`?`) are nil when un
 
 ### Position
 
+Position is a point in the world: x, y and z in yards on a map.
+
 | Field | Type | |
 |---|---|---|
 | `x` | number |  |
@@ -400,6 +402,8 @@ In Lua these are tables with these fields; optional fields (`?`) are nil when un
 | `map` | number | 0 Eastern Kingdoms, 1 Kalimdor, 530 Outland, 571 Northrend |
 
 ### Location
+
+Location is the zone and area a point is in.
 
 | Field | Type | |
 |---|---|---|
@@ -449,6 +453,8 @@ Place is where something is in the world, measured from you: anything around you
 
 ### Casting
 
+Casting is a spell being cast or channelled, and the time left on it.
+
 | Field | Type | |
 |---|---|---|
 | `spell` | number |  |
@@ -470,6 +476,8 @@ Control is an aura that stops a unit acting, moving or casting as it would: a st
 | `damage_limit?` | bool | the damage it takes adds up, and past a limit set by the caster's level (that level's warrior base health / 4.75) removes it |
 
 ### Creature
+
+Creature is an NPC or mob: a unit with its template's details and what it offers you.
 
 Everything in [Unit](#unit), plus:
 
@@ -494,7 +502,7 @@ Everything in [Unit](#unit), plus:
 
 ### Engaged
 
-UnitRef names a unit in events and results. Engaged is a creature in combat with you, your pet or your party (units.engaged).
+Engaged is a creature in combat with you, your pet or your party (units.engaged).
 
 Everything in [Creature](#creature), plus:
 
@@ -503,6 +511,8 @@ Everything in [Creature](#creature), plus:
 | `on_threat` | GUID[] | you, your pet and party members on its threat list, highest threat first (the server sends a creature's threat list to everyone near it); empty when only its target is one of you |
 
 ### Player
+
+Player is a player character as a unit.
 
 Everything in [Unit](#unit), plus:
 
@@ -514,6 +524,8 @@ Everything in [Unit](#unit), plus:
 
 ### UnitRef
 
+UnitRef names a unit in events and results.
+
 | Field | Type | |
 |---|---|---|
 | `guid` | GUID |  |
@@ -524,6 +536,8 @@ Everything in [Unit](#unit), plus:
 | `me?` | bool | it's you |
 
 ### Object
+
+Object is a game object in view: a chest, door, gathering node, portal, mailbox, ...
 
 Everything in [Place](#place), plus:
 
@@ -643,6 +657,8 @@ RouteLeg is one requested waypoint's navmesh validation, in execution order.
 
 ### Resource
 
+Resource is a current and maximum value: health, or power with its type.
+
 | Field | Type | |
 |---|---|---|
 | `current` | number |  |
@@ -651,12 +667,16 @@ RouteLeg is one requested waypoint's navmesh validation, in execution order.
 
 ### XP
 
+XP is your progress through your current level.
+
 | Field | Type | |
 |---|---|---|
 | `current` | number | into this level |
 | `next` | number | needed for the next level |
 
 ### Stats
+
+Stats is your character sheet: attributes, armour, and attack and spell numbers.
 
 | Field | Type | |
 |---|---|---|
@@ -680,6 +700,8 @@ RouteLeg is one requested waypoint's navmesh validation, in execution order.
 
 ### Corpse
 
+Corpse is where your corpse is, and when you can reclaim it (death.corpse, me.status).
+
 Everything in [Place](#place), plus:
 
 | Field | Type | |
@@ -691,6 +713,8 @@ Everything in [Place](#place), plus:
 | `radius?` | number | the portal triggers anywhere within this many yards of x, y, z |
 
 ### Achievements
+
+Achievements is the achievements you've earned and your criteria progress (me.achievements).
 
 | Field | Type | |
 |---|---|---|
@@ -763,6 +787,8 @@ Comparison is what changes if you swap an item for what you wear in its slot.
 
 ### VendorItem
 
+VendorItem is an item a vendor sells, with its price and stock (vendor.items).
+
 Everything in [Item](#item), plus:
 
 | Field | Type | |
@@ -773,6 +799,8 @@ Everything in [Item](#item), plus:
 | `stock` | number | -1 = unlimited |
 
 ### Spell
+
+Spell is a spell's details: cost, range, cast time and cooldowns, and whether you know it.
 
 | Field | Type | |
 |---|---|---|
@@ -793,6 +821,8 @@ Everything in [Item](#item), plus:
 
 ### Quest
 
+Quest is a quest in your quest log.
+
 | Field | Type | |
 |---|---|---|
 | `id` | number |  |
@@ -806,6 +836,8 @@ Everything in [Item](#item), plus:
 
 ### Objective
 
+Objective is one of a quest's objectives and your progress on it.
+
 | Field | Type | |
 |---|---|---|
 | `text` | string | what the quest log says |
@@ -817,12 +849,16 @@ Everything in [Item](#item), plus:
 
 ### Talents
 
+Talents is your talent trees and unspent points (talents.list).
+
 | Field | Type | |
 |---|---|---|
 | `points` | number | unspent |
 | `trees` | TalentTree[] |  |
 
 ### TalentTree
+
+TalentTree is one of your class's talent trees.
 
 | Field | Type | |
 |---|---|---|
@@ -831,6 +867,8 @@ Everything in [Item](#item), plus:
 | `talents` | Talent[] |  |
 
 ### Talent
+
+Talent is one talent in a tree, with your ranks in it.
 
 | Field | Type | |
 |---|---|---|
@@ -848,6 +886,8 @@ Everything in [Item](#item), plus:
 
 ### Pet
 
+Pet is your pet: its health, stance, command, target and abilities.
+
 | Field | Type | |
 |---|---|---|
 | `guid` | GUID |  |
@@ -863,7 +903,7 @@ Everything in [Item](#item), plus:
 
 ### Happiness
 
-Happiness: a hunter's pet's. Below content it does less damage; at 0 it leaves you. Feeding raises it (pet.feed).
+Happiness is a hunter's pet's happiness. Below content it does less damage; at 0 it leaves you. Feeding raises it (pet.feed).
 
 | Field | Type | |
 |---|---|---|
@@ -872,6 +912,8 @@ Happiness: a hunter's pet's. Below content it does less damage; at 0 it leaves y
 | `state` | string | unhappy, content or happy |
 
 ### PetSpell
+
+PetSpell is one of your pet's abilities.
 
 | Field | Type | |
 |---|---|---|
@@ -882,7 +924,7 @@ Happiness: a hunter's pet's. Below content it does less damage; at 0 it leaves y
 
 ### Totem
 
-Totem: one of a shaman's totems that is up.
+Totem is one of a shaman's totems that is up.
 
 | Field | Type | |
 |---|---|---|
@@ -893,6 +935,8 @@ Totem: one of a shaman's totems that is up.
 | `seconds_left` | number |  |
 
 ### Group
+
+Group is your party or raid: its leader, loot rules and the other members.
 
 | Field | Type | |
 |---|---|---|
@@ -988,6 +1032,8 @@ GroupMemberReport is one member's time over the report's window, in percent of t
 
 ### Trade
 
+Trade is the trade window's state (trade; the trade.* results).
+
 | Field | Type | |
 |---|---|---|
 | `state` | string | none, waiting (you asked), requested (they asked: trade.open), open, complete, or why it ended: cancelled, rejected, busy, too_far, no_target, wrong_faction, ignored, dead, target_dead, stunned, closed, ... |
@@ -999,12 +1045,16 @@ GroupMemberReport is one member's time over the report's window, in percent of t
 
 ### TradeSide
 
+TradeSide is what one side of a trade puts up.
+
 | Field | Type | |
 |---|---|---|
 | `money` | number |  |
 | `items` | Item[] |  |
 
 ### Inspect
+
+Inspect is another player and the gear they wear.
 
 Everything in [Player](#player), plus:
 
@@ -1014,6 +1064,8 @@ Everything in [Player](#player), plus:
 | `avg_item_level` | number |  |
 
 ### CombatEntry
+
+CombatEntry is one combat log line: a hit, heal, tick, kill or environmental damage.
 
 | Field | Type | |
 |---|---|---|
@@ -1027,6 +1079,8 @@ Everything in [Player](#player), plus:
 | `crit?` | bool |  |
 
 ### Meter
+
+Meter is one unit's damage and healing over a period (a fight, the last minute).
 
 | Field | Type | |
 |---|---|---|
@@ -1043,6 +1097,8 @@ Everything in [Player](#player), plus:
 | `by_spell?` | SpellMeter[] | yours only |
 
 ### SpellMeter
+
+SpellMeter is one spell's part of a unit's Meter.
 
 | Field | Type | |
 |---|---|---|
@@ -1101,6 +1157,8 @@ Status is what a player sees on screen, in one call (me.status, `wow status`): e
 
 ### Movement
 
+Movement is what's moving you: you, or the server (a flight, fear, a stun or root), and the local movement owner and queue.
+
 | Field | Type | |
 |---|---|---|
 | `owner?` | MovementOwner | active local movement owner; server movement lock is independent |
@@ -1127,6 +1185,8 @@ MovementOwner identifies an active or queued movement request or control lease.
 
 ### Flight
 
+Flight is a flight between two flight points (flight_start, flight_end; the flights.take result).
+
 | Field | Type | |
 |---|---|---|
 | `from` | TaxiNode |  |
@@ -1135,6 +1195,8 @@ MovementOwner identifies an active or queued movement request or control lease.
 | `seconds?` | number | flight_start: how long it will take; flight_end and results: how long it took |
 
 ### TaxiNode
+
+TaxiNode is a flight point (TaxiNodes.dbc).
 
 | Field | Type | |
 |---|---|---|
@@ -1150,6 +1212,8 @@ MovementOwner identifies an active or queued movement request or control lease.
 
 ### ComboPoints
 
+ComboPoints is the combo points you have on a target.
+
 | Field | Type | |
 |---|---|---|
 | `target` | GUID |  |
@@ -1157,7 +1221,7 @@ MovementOwner identifies an active or queued movement request or control lease.
 
 ### MirrorTimer
 
-MirrorTimer: breath underwater, fatigue in deep water, or fire.
+MirrorTimer is your breath (underwater), fatigue (deep water) or fire timer (mirror_timer, me.timers).
 
 | Field | Type | |
 |---|---|---|
@@ -1168,7 +1232,7 @@ MirrorTimer: breath underwater, fatigue in deep water, or fire.
 
 ### Hostile
 
-Hostile: a creature in your fight, as a unit frame shows it.
+Hostile is a creature in your fight, as a unit frame shows it.
 
 Everything in [Place](#place), plus:
 
@@ -1186,6 +1250,8 @@ Everything in [Place](#place), plus:
 
 ### MobSummary
 
+MobSummary counts the hostile creatures around you (me.status).
+
 | Field | Type | |
 |---|---|---|
 | `count` | number | hostile creatures within 30 yd, at most 5 levels below you |
@@ -1197,7 +1263,7 @@ Everything in [Place](#place), plus:
 
 ### Danger
 
-Danger: a hostile creature whose aggro range you're in or near: what attacks you if you stay, or step closer.
+Danger is a hostile creature whose aggro range you're in or near: what attacks you if you stay, or step closer.
 
 Everything in [Place](#place), plus:
 
@@ -1214,7 +1280,7 @@ Everything in [Place](#place), plus:
 
 ### NearbyNPC
 
-NearbyNPC: a friendly NPC and what it offers.
+NearbyNPC is a friendly NPC and what it offers.
 
 Everything in [Place](#place), plus:
 
@@ -1227,6 +1293,8 @@ Everything in [Place](#place), plus:
 
 ### GearSummary
 
+GearSummary is Gear in brief, for me.status.
+
 | Field | Type | |
 |---|---|---|
 | `score` | number | 0-100: how well your gear suits your level |
@@ -1237,7 +1305,7 @@ Everything in [Place](#place), plus:
 
 ### LootRoll
 
-LootRoll: a group loot roll waiting for your choice.
+LootRoll is a group loot roll waiting for your choice (loot_roll_start, me.status).
 
 | Field | Type | |
 |---|---|---|
@@ -1248,6 +1316,8 @@ LootRoll: a group loot roll waiting for your choice.
 
 ### Upgrade
 
+Upgrade is an item in your bags that beats what you wear in its slot.
+
 | Field | Type | |
 |---|---|---|
 | `item` | ItemRef |  |
@@ -1256,6 +1326,8 @@ LootRoll: a group loot roll waiting for your choice.
 
 ### ItemRef
 
+ItemRef names an item.
+
 | Field | Type | |
 |---|---|---|
 | `guid` | GUID |  |
@@ -1263,6 +1335,8 @@ LootRoll: a group loot roll waiting for your choice.
 | `name` | string |  |
 
 ### TaskInfo
+
+TaskInfo is a script task's state (wow tasks, me.status).
 
 | Field | Type | |
 |---|---|---|
@@ -1278,7 +1352,7 @@ LootRoll: a group loot roll waiting for your choice.
 
 ### Fight
 
-Fight: one fight as the fight log keeps it (combat.fight, wow fight): its summary, where everyone was each second, and every hit, heal, cast and death in order. The map letters: @ you, A-N enemies, P-Z party members and other players.
+Fight is one fight as the fight log keeps it (combat.fight, wow fight): its summary, where everyone was each second, and every hit, heal, cast and death in order. The map letters: @ you, A-N enemies, P-Z party members and other players.
 
 | Field | Type | |
 |---|---|---|
@@ -1291,7 +1365,7 @@ Fight: one fight as the fight log keeps it (combat.fight, wow fight): its summar
 
 ### FightSummary
 
-FightSummary: one fight, from you or a party member in sight entering combat until all of you are out of it (or you die). Your numbers are yours; group has everyone's.
+FightSummary is one fight (fight_end), from you or a party member in sight entering combat until all of you are out of it (or you die). Your numbers are yours; group has everyone's.
 
 | Field | Type | |
 |---|---|---|
@@ -1324,7 +1398,7 @@ FightSummary: one fight, from you or a party member in sight entering combat unt
 
 ### FightPositioning
 
-FightPositioning: what movement did in a fight, from the fight log's positions.
+FightPositioning is what movement did in a fight, from the fight log's positions.
 
 | Field | Type | |
 |---|---|---|
@@ -1334,6 +1408,8 @@ FightPositioning: what movement did in a fight, from the fight log's positions.
 | `died?` | FightDeath |  |
 
 ### FightJoin
+
+FightJoin is an enemy joining a fight: when, how far from you and from which side.
 
 | Field | Type | |
 |---|---|---|
@@ -1347,6 +1423,8 @@ FightPositioning: what movement did in a fight, from the fight log's positions.
 
 ### FightApart
 
+FightApart is a party member who spent part of a fight more than 40 yd from you.
+
 | Field | Type | |
 |---|---|---|
 | `label` | string |  |
@@ -1356,12 +1434,16 @@ FightPositioning: what movement did in a fight, from the fight log's positions.
 
 ### FightDeath
 
+FightDeath is what was around you when you died in a fight.
+
 | Field | Type | |
 |---|---|---|
 | `enemies_within_10` | number | living enemies within 10 yd of you when you died |
 | `nearest_party_yd?` | number |  |
 
 ### FightActor
+
+FightActor is a unit in a fight, with its letter on the fight's map.
 
 | Field | Type | |
 |---|---|---|
@@ -1373,12 +1455,16 @@ FightPositioning: what movement did in a fight, from the fight log's positions.
 
 ### FightFrame
 
+FightFrame is where each actor was at one moment of a fight.
+
 | Field | Type | |
 |---|---|---|
 | `s` | number | seconds into the fight (negative: before it) |
 | `at` | FightSpot[] |  |
 
 ### FightSpot
+
+FightSpot is one actor's position, health and target in a frame.
 
 | Field | Type | |
 |---|---|---|
@@ -1392,6 +1478,8 @@ FightPositioning: what movement did in a fight, from the fight log's positions.
 
 ### FightEntry
 
+FightEntry is one hit, heal, cast, kill, death or join in a fight's timeline.
+
 | Field | Type | |
 |---|---|---|
 | `s` | number |  |
@@ -1404,7 +1492,7 @@ FightPositioning: what movement did in a fight, from the fight log's positions.
 
 ### FightHeader
 
-FightHeader: one line of the fight log (combat.fights, wow fights).
+FightHeader is one line of the fight log (combat.fights, wow fights).
 
 | Field | Type | |
 |---|---|---|
@@ -1419,6 +1507,8 @@ FightHeader: one line of the fight log (combat.fights, wow fights).
 
 ### Threat
 
+Threat is one unit's place on a creature's threat table.
+
 | Field | Type | |
 |---|---|---|
 | `unit` | UnitRef |  |
@@ -1426,6 +1516,8 @@ FightHeader: one line of the fight log (combat.fights, wow fights).
 | `pct` | number | share of the top threat |
 
 ### Gossip
+
+Gossip is an NPC's gossip window: what it says, its options and its quests.
 
 | Field | Type | |
 |---|---|---|
@@ -1438,6 +1530,8 @@ FightHeader: one line of the fight log (combat.fights, wow fights).
 
 ### GossipOption
 
+GossipOption is one choice in a gossip window.
+
 | Field | Type | |
 |---|---|---|
 | `index` | number | pass to gossip.select |
@@ -1448,6 +1542,8 @@ FightHeader: one line of the fight log (combat.fights, wow fights).
 | `confirm?` | string | the confirmation a real client would show |
 
 ### GossipQuest
+
+GossipQuest is a quest an NPC offers or takes in its gossip window.
 
 | Field | Type | |
 |---|---|---|
@@ -1471,6 +1567,8 @@ Gear grades what you wear against your level, from the game's own numbers: item 
 
 ### GearSlot
 
+GearSlot is one equipment slot's grade in Gear.
+
 | Field | Type | |
 |---|---|---|
 | `slot` | string |  |
@@ -1480,7 +1578,7 @@ Gear grades what you wear against your level, from the game's own numbers: item 
 
 ### Spellbook
 
-Spellbook: the class spells you could know at your level (Spell.dbc and SkillLineAbility.dbc, as the real client's spellbook knows them) against the ones you do.
+Spellbook is the class spells you could know at your level (Spell.dbc and SkillLineAbility.dbc, as the real client's spellbook knows them) against the ones you do.
 
 | Field | Type | |
 |---|---|---|
@@ -1489,6 +1587,8 @@ Spellbook: the class spells you could know at your level (Spell.dbc and SkillLin
 | `missing` | MissingSpell[] | learn them at your class trainer (some come from class quests, e.g. stances) |
 
 ### MissingSpell
+
+MissingSpell is a class spell you could know at your level but don't.
 
 | Field | Type | |
 |---|---|---|
@@ -1499,7 +1599,7 @@ Spellbook: the class spells you could know at your level (Spell.dbc and SkillLin
 
 ### QuestInfo
 
-QuestInfo: a quest's text and rewards, as the quest giver and the quest log show them.
+QuestInfo is a quest's text and rewards, as the quest giver and the quest log show them.
 
 | Field | Type | |
 |---|---|---|
@@ -1519,6 +1619,8 @@ QuestInfo: a quest's text and rewards, as the quest giver and the quest log show
 
 ### Trainer
 
+Trainer is a trainer's list of spells (trainer.list).
+
 | Field | Type | |
 |---|---|---|
 | `npc` | GUID |  |
@@ -1526,6 +1628,8 @@ QuestInfo: a quest's text and rewards, as the quest giver and the quest log show
 | `spells` | TrainerSpell[] |  |
 
 ### TrainerSpell
+
+TrainerSpell is a spell a trainer teaches, and whether you can learn it now.
 
 | Field | Type | |
 |---|---|---|
@@ -1539,6 +1643,8 @@ QuestInfo: a quest's text and rewards, as the quest giver and the quest log show
 | `requires?` | number[] | spells you must know first |
 
 ### Reputation
+
+Reputation is your standing with a faction.
 
 | Field | Type | |
 |---|---|---|
@@ -1574,6 +1680,8 @@ ActionResult is a resolved raw request or an await wait_timeout. A wait_timeout 
 
 ### Error
 
+Error is why a request failed: a stable code, a message and, when known, what to do about it.
+
 | Field | Type | |
 |---|---|---|
 | `code` | string | stable, e.g. out_of_range, not_known, bags_full, stuck, timeout |
@@ -1606,6 +1714,8 @@ ActionStep records a required or optional operation within a helper.
 
 ### Event
 
+Event is one event as the agent receives it: its type and data (EventTypes).
+
 | Field | Type | |
 |---|---|---|
 | `seq` | number | counts up for the whole run |
@@ -1627,6 +1737,8 @@ VendorErrand preserves completed work on failure. Remaining starts with the fail
 
 ### Sold
 
+Sold is what selling to a vendor got you (vendor.sell, vendor.sell_junk).
+
 | Field | Type | |
 |---|---|---|
 | `money` | number | copper gained |
@@ -1635,6 +1747,8 @@ VendorErrand preserves completed work on failure. Remaining starts with the fail
 
 ### Repaired
 
+Repaired is the result of vendor.repair.
+
 | Field | Type | |
 |---|---|---|
 | `fixed` | number |  |
@@ -1642,6 +1756,8 @@ VendorErrand preserves completed work on failure. Remaining starts with the fail
 | `still_damaged` | number |  |
 
 ### ItemReceived
+
+ItemReceived is an item going into your bags (item_received; the vendor.buy result).
 
 | Field | Type | |
 |---|---|---|
@@ -1720,6 +1836,8 @@ Recovery is the bounded helper report, including partial work on failure. Lifecy
 
 ### RecoveryStep
 
+RecoveryStep is one operation the recovery helper ran, in order.
+
 | Field | Type | |
 |---|---|---|
 | `op` | string |  |
@@ -1728,6 +1846,8 @@ Recovery is the bounded helper report, including partial work on failure. Lifecy
 | `error?` | Error |  |
 
 ### RecoverySpiritOption
+
+RecoverySpiritOption is a spirit healer the character could resurrect at instead of reaching its corpse.
 
 | Field | Type | |
 |---|---|---|
@@ -1767,9 +1887,8 @@ DiagnosticDetails is an allowlist: arbitrary request arguments, results, error m
 |---|---|---|
 | `route?` | DiagnosticRoute |  |
 | `movement?` | MovementOwner |  |
-| `alive?` | bool |  |
-| `sample_available?` | bool |  |
 | `gear?` | DiagnosticGear |  |
+| `outage?` | DiagnosticOutage |  |
 | `target?` | string |  |
 | `destination?` | DiagnosticDestination |  |
 | `spell_id?` | number |  |
@@ -1820,6 +1939,18 @@ DiagnosticGear reports observed equipment condition, not a repair plan.
 | `main_hand_broken` | bool |  |
 | `broken_slots` | string[] |  |
 
+### DiagnosticOutage
+
+DiagnosticOutage is a provider outage the harness waited out, written when it ends (kind outage: code its class, outcome resumed, gave_up or stopped, duration_ms the clock held). Times are unix ms.
+
+| Field | Type | |
+|---|---|---|
+| `start` | number |  |
+| `logged_out?` | number |  |
+| `end?` | number |  |
+| `safe_wait_ms` | number |  |
+| `probes` | number |  |
+
 ### DiagnosticDestination
 
 DiagnosticDestination preserves omitted altitude/map rather than inventing a zero floor or map.
@@ -1842,6 +1973,8 @@ DiagnosticQuestLog is a complete observed client quest log, at most 25 entries. 
 
 ### DiagnosticQuest
 
+DiagnosticQuest is one quest in an observed quest log.
+
 | Field | Type | |
 |---|---|---|
 | `id` | number |  |
@@ -1862,7 +1995,7 @@ DiagnosticGroup records the server's roster, at most 40 members including self. 
 
 ### DiagnosticSight
 
-DiagnosticSight: a spell the server refused for line of sight (sight_refused), with both ends as the client saw them and the SDK's own check (spells.check's in_sight) at that moment. Predicted true is a disagreement.
+DiagnosticSight is a spell the server refused for line of sight (sight_refused), with both ends as the client saw them and the SDK's own check (spells.check's in_sight) at that moment. Predicted true is a disagreement.
 
 | Field | Type | |
 |---|---|---|
@@ -1873,7 +2006,7 @@ DiagnosticSight: a spell the server refused for line of sight (sight_refused), w
 
 ### Transport
 
-TaxiNode is a flight point (TaxiNodes.dbc). Transport is a boat or zeppelin: where it is now, and where and when it docks.
+Transport is a boat or zeppelin: where it is now, and where and when it docks.
 
 | Field | Type | |
 |---|---|---|
@@ -1917,6 +2050,8 @@ Boarding is where you stand on a transport: its guid and your spot on it, in its
 
 ### Attacking
 
+Attacking is the result of combat.attack.
+
 | Field | Type | |
 |---|---|---|
 | `already?` | bool | you were already attacking it |
@@ -1955,11 +2090,15 @@ Home is where your hearthstone takes you (set by binding at an innkeeper).
 
 ### Equipped
 
+Equipped is the result of items.equip: the slot the item went into.
+
 | Field | Type | |
 |---|---|---|
 | `slot` | string |  |
 
 ### Looted
+
+Looted is what you took from a corpse, chest or container (items.loot, items.open).
 
 | Field | Type | |
 |---|---|---|
@@ -1967,6 +2106,8 @@ Home is where your hearthstone takes you (set by binding at an innkeeper).
 | `money` | number | copper |
 
 ### LootRollResult
+
+LootRollResult is a choice or roll in a group loot roll, or its end (loot_roll, loot_roll_won, loot_roll_all_passed; the items.roll result).
 
 | Field | Type | |
 |---|---|---|
@@ -1979,11 +2120,15 @@ Home is where your hearthstone takes you (set by binding at an innkeeper).
 
 ### CastDone
 
+CastDone is the result of a cast that went off (spells.cast, spells.cast_at, items.use).
+
 | Field | Type | |
 |---|---|---|
 | `spell` | number |  |
 
 ### MoveDone
+
+MoveDone is the result of move.to and move.stop.
 
 | Field | Type | |
 |---|---|---|
@@ -1992,6 +2137,8 @@ Home is where your hearthstone takes you (set by binding at an innkeeper).
 | `no_path?` | bool | no navmesh path: it walked a straight line |
 
 ### Teleport
+
+Teleport is a jump from one place to another (teleported; the move.unstuck and summon.accept results).
 
 | Field | Type | |
 |---|---|---|
@@ -2012,6 +2159,8 @@ ObjectActivation distinguishes a successful opening cast from a non-casting obje
 
 ### Cast
 
+Cast is one of your casts, or your pet's, starting, going off or failing (cast_start, cast_done, cast_failed, pet_cast_done, pet_cast_failed; the pet.cast, pet.cast_at and pet.feed results).
+
 | Field | Type | |
 |---|---|---|
 | `count` | number | protocol cast sequence; zero may be an unsolicited/server cast |
@@ -2027,12 +2176,16 @@ ObjectActivation distinguishes a successful opening cast from a non-casting obje
 
 ### SpellMiss
 
+SpellMiss is a target a spell went off at but didn't land on.
+
 | Field | Type | |
 |---|---|---|
 | `unit` | UnitRef |  |
 | `outcome` | string | miss, resist, dodge, parry, block, evade, immune, deflect, absorb, reflect |
 
 ### QuestDone
+
+QuestDone is a quest whose objectives are done, that you turned in or that failed (quest_complete, quest_turned_in, quest_failed; the quests.accept and quests.turn_in results).
 
 | Field | Type | |
 |---|---|---|
@@ -2044,11 +2197,15 @@ ObjectActivation distinguishes a successful opening cast from a non-casting obje
 
 ### TalentLearned
 
+TalentLearned is the result of talents.learn: the talent's rank now.
+
 | Field | Type | |
 |---|---|---|
 | `rank` | number |  |
 
 ### Learned
+
+Learned is a spell you learned from a trainer (learned; the trainer.learn result).
 
 | Field | Type | |
 |---|---|---|
@@ -2056,6 +2213,8 @@ ObjectActivation distinguishes a successful opening cast from a non-casting obje
 | `name` | string |  |
 
 ### LOSSpot
+
+LOSSpot is a spot near you from which a point is in sight (world.los_spot).
 
 | Field | Type | |
 |---|---|---|
@@ -2068,11 +2227,15 @@ ObjectActivation distinguishes a successful opening cast from a non-casting obje
 
 ### AchievementEarned
 
+AchievementEarned is an achievement you earned (achievement).
+
 | Field | Type | |
 |---|---|---|
 | `id` | number |  |
 
 ### Answer
+
+Answer is the agent's answer to a script's question (answer).
 
 | Field | Type | |
 |---|---|---|
@@ -2081,6 +2244,8 @@ ObjectActivation distinguishes a successful opening cast from a non-casting obje
 
 ### AttackFailed
 
+AttackFailed is a melee swing the server refused (attack_failed).
+
 | Field | Type | |
 |---|---|---|
 | `code` | string | not_in_range (move closer), bad_facing (move.face), dead_target, cant_attack |
@@ -2088,11 +2253,15 @@ ObjectActivation distinguishes a successful opening cast from a non-casting obje
 
 ### AttackStart
 
+AttackStart is your auto-attack starting on a target (attack_start).
+
 | Field | Type | |
 |---|---|---|
 | `target` | GUID |  |
 
 ### Attention
+
+Attention is a script's question for the agent, asked with ask (attention).
 
 | Field | Type | |
 |---|---|---|
@@ -2103,7 +2272,7 @@ ObjectActivation distinguishes a successful opening cast from a non-casting obje
 
 ### AuraChange
 
-AuraChange: an aura on you, or one you cast on another unit, began or ended.
+AuraChange is an aura on you, or one you cast on another unit, beginning or ending (aura_gained, aura_faded).
 
 | Field | Type | |
 |---|---|---|
@@ -2112,7 +2281,7 @@ AuraChange: an aura on you, or one you cast on another unit, began or ended.
 
 ### Battleground
 
-Battleground: a battleground or arena queue changed.
+Battleground is a change to a battleground or arena queue (battleground).
 
 | Field | Type | |
 |---|---|---|
@@ -2126,6 +2295,8 @@ Battleground: a battleground or arena queue changed.
 
 ### Chat
 
+Chat is a message to you, near you or in your channels (chat).
+
 | Field | Type | |
 |---|---|---|
 | `kind` | string | say, yell, party, raid, raid_warning, battleground, guild, officer, whisper, channel, system, emote, npc_say, npc_yell, npc_whisper, npc_emote, battleground_system, achievement, loot, money, xp, reputation... (match one with chat:<kind>; a leader's party, raid and battleground chat is that kind) |
@@ -2137,8 +2308,12 @@ Battleground: a battleground or arena queue changed.
 
 ### None
 
+None is the data of events that carry none.
+
 
 ### Damage
+
+Damage is a hit or heal involving you (damage, heal): melee, a spell, a DoT or HoT tick, or an attack that missed.
 
 | Field | Type | |
 |---|---|---|
@@ -2155,6 +2330,8 @@ Battleground: a battleground or arena queue changed.
 
 ### Death
 
+Death is your own death (death).
+
 | Field | Type | |
 |---|---|---|
 | `killer?` | UnitRef | who last hit you |
@@ -2162,7 +2339,7 @@ Battleground: a battleground or arena queue changed.
 
 ### Dispel
 
-Dispel: auras removed (or stolen) from you, or by you.
+Dispel is auras removed (or stolen) from you, or by you (dispel).
 
 | Field | Type | |
 |---|---|---|
@@ -2175,7 +2352,7 @@ Dispel: auras removed (or stolen) from you, or by you.
 
 ### Energize
 
-Energize: power (mana, rage, energy, runic power) given to you, or by you to another.
+Energize is power (mana, rage, energy, runic power) given to you, or by you to another (energize).
 
 | Field | Type | |
 |---|---|---|
@@ -2189,6 +2366,8 @@ Energize: power (mana, rage, energy, runic power) given to you, or by you to ano
 
 ### ErrorEvent
 
+ErrorEvent is the server refusing something (error).
+
 | Field | Type | |
 |---|---|---|
 | `op` | string | items, items.loot, vendor.buy, vendor.sell, trainer.learn, group, quests, chat.whisper, chat.channel, chat.join |
@@ -2197,7 +2376,7 @@ Energize: power (mana, rage, energy, runic power) given to you, or by you to ano
 
 ### FailureLoop
 
-FailureLoop: a task's top-level call failed the same way many times in a row (at 25, then every 250 more).
+FailureLoop is a task's top-level call failing the same way many times in a row (failure_loop: at 25, then every 250 more).
 
 | Field | Type | |
 |---|---|---|
@@ -2208,11 +2387,15 @@ FailureLoop: a task's top-level call failed the same way many times in a row (at
 
 ### FlightLearned
 
+FlightLearned is a flight point you discovered (flight_learned).
+
 | Field | Type | |
 |---|---|---|
 | `node` | TaxiNode |  |
 
 ### GearBroken
+
+GearBroken is equipped items left at 0 durability when you revived (gear_broken).
 
 | Field | Type | |
 |---|---|---|
@@ -2221,7 +2404,7 @@ FailureLoop: a task's top-level call failed the same way many times in a row (at
 
 ### GoalMet
 
-GoalMet: the benchmark's judge recorded the run's goal for this character (sent by the run's supervisor).
+GoalMet is the benchmark's judge recording the run's goal for this character (goal_met, sent by the run's supervisor).
 
 | Field | Type | |
 |---|---|---|
@@ -2231,6 +2414,8 @@ GoalMet: the benchmark's judge recorded the run's goal for this character (sent 
 
 ### Kill
 
+Kill is a death you or a party member caused (kill, party_kill).
+
 | Field | Type | |
 |---|---|---|
 | `victim` | UnitRef |  |
@@ -2238,11 +2423,15 @@ GoalMet: the benchmark's judge recorded the run's goal for this character (sent 
 
 ### LevelUp
 
+LevelUp is the level you reached (level_up).
+
 | Field | Type | |
 |---|---|---|
 | `level` | number |  |
 
 ### Log
+
+Log is a log(msg [, data]) call from a script (log).
 
 | Field | Type | |
 |---|---|---|
@@ -2252,7 +2441,7 @@ GoalMet: the benchmark's judge recorded the run's goal for this character (sent 
 
 ### Maintenance
 
-Maintenance: an operator notice about the run (sent by the run's supervisor).
+Maintenance is an operator notice about the run (maintenance, sent by the run's supervisor).
 
 | Field | Type | |
 |---|---|---|
@@ -2261,6 +2450,8 @@ Maintenance: an operator notice about the run (sent by the run's supervisor).
 
 ### Money
 
+Money is copper you looted (money).
+
 | Field | Type | |
 |---|---|---|
 | `amount` | number | copper |
@@ -2268,11 +2459,15 @@ Maintenance: an operator notice about the run (sent by the run's supervisor).
 
 ### Notice
 
+Notice is a server message: the message of the day, or a notice such as "Inventory is full" (motd, notice).
+
 | Field | Type | |
 |---|---|---|
 | `message` | string |  |
 
 ### MovementChanged
+
+MovementChanged is a change in who moves you (movement_changed).
 
 | Field | Type | |
 |---|---|---|
@@ -2281,6 +2476,8 @@ Maintenance: an operator notice about the run (sent by the run's supervisor).
 
 ### PartyChanged
 
+PartyChanged is your group after it changed (party_changed).
+
 | Field | Type | |
 |---|---|---|
 | `in_group` | bool |  |
@@ -2288,11 +2485,15 @@ Maintenance: an operator notice about the run (sent by the run's supervisor).
 
 ### PartyInvite
 
+PartyInvite is an invitation to someone's group (party_invite).
+
 | Field | Type | |
 |---|---|---|
 | `from` | string | accept with group.accept(), or group.decline() |
 
 ### Progress
+
+Progress is a periodic digest of your progress (progress, with events.watch{every_s = ...}).
 
 | Field | Type | |
 |---|---|---|
@@ -2304,6 +2505,8 @@ Maintenance: an operator notice about the run (sent by the run's supervisor).
 
 ### QuestProgress
 
+QuestProgress is a quest's kill or object counter going up (quest_progress).
+
 | Field | Type | |
 |---|---|---|
 | `quest` | number |  |
@@ -2313,13 +2516,15 @@ Maintenance: an operator notice about the run (sent by the run's supervisor).
 
 ### ReadyCheck
 
+ReadyCheck is your group leader starting a ready check (ready_check).
+
 | Field | Type | |
 |---|---|---|
 | `from` | UnitRef | answer with group.ready(true) or group.ready(false) |
 
 ### ResurrectOffer
 
-ResurrectOffer: another player cast a resurrection on you.
+ResurrectOffer is another player casting a resurrection on you (resurrect_offered).
 
 | Field | Type | |
 |---|---|---|
@@ -2328,12 +2533,16 @@ ResurrectOffer: another player cast a resurrection on you.
 
 ### ScriptError
 
+ScriptError is an error a script raised (script_error).
+
 | Field | Type | |
 |---|---|---|
 | `where` | string |  |
 | `error` | string |  |
 
 ### SlowTick
+
+SlowTick is a game tick that took over 300 ms (slow_tick).
 
 | Field | Type | |
 |---|---|---|
@@ -2343,6 +2552,8 @@ ResurrectOffer: another player cast a resurrection on you.
 | `count` | number | slow ticks since the last slow_tick event (they're at most 30 s apart; each is a line in session.log) |
 
 ### Stall
+
+Stall is no XP for a while, or the XP rate falling below your threshold (stall).
 
 | Field | Type | |
 |---|---|---|
@@ -2354,6 +2565,8 @@ ResurrectOffer: another player cast a resurrection on you.
 
 ### SummonRequest
 
+SummonRequest is a player summoning you (summon_request).
+
 | Field | Type | |
 |---|---|---|
 | `from` | UnitRef |  |
@@ -2361,6 +2574,8 @@ ResurrectOffer: another player cast a resurrection on you.
 | `seconds_left` | number | summon.accept() or summon.decline() before it expires |
 
 ### TaskEvent
+
+TaskEvent is a script task starting or ending (task_started, task_finished).
 
 | Field | Type | |
 |---|---|---|
@@ -2372,7 +2587,7 @@ ResurrectOffer: another player cast a resurrection on you.
 
 ### TravelRefused
 
-TravelRefused: the server turned a portal or an instance down.
+TravelRefused is the server turning a portal or an instance down (travel_refused).
 
 | Field | Type | |
 |---|---|---|
@@ -2382,7 +2597,7 @@ TravelRefused: the server turned a portal or an instance down.
 
 ### UnitCast
 
-UnitCast: a unit started casting at you or a party member.
+UnitCast is a unit starting a cast at you or a party member (unit_cast_start).
 
 | Field | Type | |
 |---|---|---|
@@ -2393,6 +2608,8 @@ UnitCast: a unit started casting at you or a party member.
 | `target` | UnitRef |  |
 
 ### XPGain
+
+XPGain is XP you gained (xp).
 
 | Field | Type | |
 |---|---|---|

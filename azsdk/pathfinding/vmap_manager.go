@@ -38,27 +38,32 @@ const (
 	maxVMapTrianglesPerGroup = 8 * 1024 * 1024
 )
 
-// Vector3 simple
+// Vector3 is a point or direction in vmap space.
 type Vector3 struct {
 	X, Y, Z float32
 }
 
+// Sub returns v - o.
 func (v Vector3) Sub(o Vector3) Vector3 {
 	return Vector3{v.X - o.X, v.Y - o.Y, v.Z - o.Z}
 }
 
+// Add returns v + o.
 func (v Vector3) Add(o Vector3) Vector3 {
 	return Vector3{v.X + o.X, v.Y + o.Y, v.Z + o.Z}
 }
 
+// Mul returns v scaled by s.
 func (v Vector3) Mul(s float32) Vector3 {
 	return Vector3{v.X * s, v.Y * s, v.Z * s}
 }
 
+// Dot returns the dot product of v and o.
 func (v Vector3) Dot(o Vector3) float32 {
 	return v.X*o.X + v.Y*o.Y + v.Z*o.Z
 }
 
+// Cross returns the cross product of v and o.
 func (v Vector3) Cross(o Vector3) Vector3 {
 	return Vector3{
 		v.Y*o.Z - v.Z*o.Y,
@@ -67,20 +72,22 @@ func (v Vector3) Cross(o Vector3) Vector3 {
 	}
 }
 
-// Ray
+// Ray is a half-line from Origin along Direction.
 type Ray struct {
 	Origin, Direction Vector3
 }
 
+// NewRay returns the ray from origin along dir.
 func NewRay(origin, dir Vector3) Ray {
 	return Ray{Origin: origin, Direction: dir}
 }
 
-// AABox
+// AABox is an axis-aligned box.
 type AABox struct {
 	Low, High Vector3
 }
 
+// IntersectRay reports whether ray meets the box within *maxDist, and if so sets *maxDist to where it leaves.
 func (b AABox) IntersectRay(ray Ray, maxDist *float32) bool {
 	// slab method simplified for our use
 	tmin := float32(0)
@@ -128,10 +135,6 @@ type BIH struct {
 	objs   []uint32
 }
 
-func (b *BIH) readFromFile(f *os.File) error {
-	return b.readFrom(f)
-}
-
 func (b *BIH) readFrom(r io.Reader) error {
 	var lo, hi [3]float32
 	if err := binary.Read(r, binary.LittleEndian, &lo); err != nil {
@@ -167,143 +170,6 @@ func (b *BIH) readFrom(r io.Reader) error {
 	return nil
 }
 
-// intersectRay for height: we want the smallest positive t for hit in negative Z dir.
-func (b *BIH) intersectRay(ray Ray, maxDist *float32, stopAtFirst bool) bool {
-	// Simplified stack based traversal ported from AC BIH
-	// For downward rays we can optimize but keep general for correctness.
-	invDir := Vector3{1 / ray.Direction.X, 1 / ray.Direction.Y, 1 / ray.Direction.Z}
-	org := ray.Origin
-
-	intervalMin := float32(0)
-	intervalMax := *maxDist
-
-	for i := 0; i < 3; i++ {
-		var t1, t2 float32
-		switch i {
-		case 0:
-			t1 = (b.bounds.Low.X - org.X) * invDir.X
-			t2 = (b.bounds.High.X - org.X) * invDir.X
-		case 1:
-			t1 = (b.bounds.Low.Y - org.Y) * invDir.Y
-			t2 = (b.bounds.High.Y - org.Y) * invDir.Y
-		case 2:
-			t1 = (b.bounds.Low.Z - org.Z) * invDir.Z
-			t2 = (b.bounds.High.Z - org.Z) * invDir.Z
-		}
-		if t1 > t2 {
-			t1, t2 = t2, t1
-		}
-		if t1 > intervalMin {
-			intervalMin = t1
-		}
-		if t2 < intervalMax {
-			intervalMax = t2
-		}
-		if intervalMax <= 0 || intervalMin >= *maxDist {
-			return false
-		}
-	}
-	if intervalMin > intervalMax {
-		return false
-	}
-	intervalMin = max32(intervalMin, 0)
-	intervalMax = min32(intervalMax, *maxDist)
-
-	// offsets for signs
-	offsetFront := [3]uint32{}
-	offsetBack := [3]uint32{}
-	for i := 0; i < 3; i++ {
-		dirI := ray.Direction.X
-		switch i {
-		case 1:
-			dirI = ray.Direction.Y
-		case 2:
-			dirI = ray.Direction.Z
-		}
-		bits := floatToRawIntBits(dirI) >> 31
-		offsetFront[i] = bits
-		offsetBack[i] = bits ^ 1
-		offsetFront[i]++
-		offsetBack[i]++
-	}
-
-	type stackNode struct {
-		node int
-		tmin float32
-		tmax float32
-	}
-	stack := make([]stackNode, 0, 64)
-	stack = append(stack, stackNode{0, intervalMin, intervalMax})
-
-	hit := false
-	for len(stack) > 0 {
-		sn := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		node := sn.node
-		tmin := sn.tmin
-		tmax := sn.tmax
-
-		for node < len(b.tree) {
-
-			tn := b.tree[node]
-			axis := (tn & (3 << 30)) >> 30
-			bvh2 := (tn & (1 << 29)) != 0
-			offset := int(tn & ^(uint32(7) << 29))
-
-			if !bvh2 {
-				if axis < 3 {
-					// interior
-					tf := intBitsToFloat(b.tree[node+int(offsetFront[axis])]) - getCoord(org, axis)
-					tf *= getInv(invDir, axis)
-					tb := intBitsToFloat(b.tree[node+int(offsetBack[axis])]) - getCoord(org, axis)
-					tb *= getInv(invDir, axis)
-
-					if tf < tmin && tb > tmax {
-						break
-					}
-					back := offset + int(offsetBack[axis])*3
-					// push back if needed
-					if tb >= tmin && tb <= tmax {
-						stack = append(stack, stackNode{back, tmin, min32(tmax, tb)})
-					}
-					if tf <= tmax && tf >= tmin {
-						node = offset + int(offsetFront[axis])*3
-						tmax = min32(tmax, tf)
-						continue
-					}
-					break
-				} else {
-					// leaf
-					primStart := offset
-					primCount := int(tn & 0x1FFFFFFF) // approx, actual encoding
-					// For our simplified, we will handle in caller via objects
-					// To make height work, we fall to objects for now.
-					// Full impl would intersect primitives here.
-					for j := 0; j < primCount && primStart+j < len(b.objs); j++ {
-						// caller will use objects[b.objs[primStart+j]]
-						_ = b.objs[primStart+j]
-					}
-					break
-				}
-			} else {
-				// BVH2 node simplified handling
-				break
-			}
-		}
-	}
-	return hit
-}
-
-// Helpers for bits
-func floatToRawIntBits(f float32) uint32 {
-	bits := math.Float32bits(f)
-	return bits
-}
-
-func intBitsToFloat(i uint32) float32 {
-	return math.Float32frombits(i)
-}
-
 func max32(a, b float32) float32 {
 	if a > b {
 		return a
@@ -329,18 +195,7 @@ func getCoord(v Vector3, axis uint32) float32 {
 	}
 }
 
-func getInv(v Vector3, axis uint32) float32 {
-	switch axis {
-	case 0:
-		return v.X
-	case 1:
-		return v.Y
-	default:
-		return v.Z
-	}
-}
-
-// ModelSpawn
+// ModelSpawn is a model placed in the world, as a vmap tile lists it.
 type ModelSpawn struct {
 	Flags  uint32
 	ADTId  uint16
@@ -350,10 +205,6 @@ type ModelSpawn struct {
 	iScale float32
 	iBound [2]Vector3 // low,high if MOD_HAS_BOUND
 	name   string
-}
-
-func (s *ModelSpawn) readFromFile(f *os.File) error {
-	return s.readFrom(f)
 }
 
 func (s *ModelSpawn) readFrom(r io.Reader) error {
@@ -457,7 +308,7 @@ func inverseRotationMatrix(rot Vector3) [3][3]float32 {
 		{0, sx, cx},
 	}
 
-	// R = kz * (ky * kx)
+	// the forward rotation: Z times (Y times X)
 	tmp := mat3Mul(ky, kx)
 	r := mat3Mul(kz, tmp)
 
@@ -585,10 +436,6 @@ func readFloat32(r io.Reader) (float32, error) {
 	return v, nil
 }
 
-func (w *WorldModel) getHeight(ray Ray, maxDist float32) float32 {
-	return w.getHeightContext(context.Background(), ray, maxDist)
-}
-
 func (w *WorldModel) getHeightContext(ctx context.Context, ray Ray, maxDist float32) float32 {
 	// return min t , caller computes height
 	minT := maxDist
@@ -619,7 +466,7 @@ func (w *WorldModel) estimatedBytes() int64 {
 	return total
 }
 
-// GroupModel
+// GroupModel is one group of a world model: its triangle mesh.
 type GroupModel struct {
 	TriFlags  uint32
 	Mesh      []MeshTriangle
@@ -627,10 +474,6 @@ type GroupModel struct {
 	bounds    AABox
 	vbounds   AABox // of the vertices: the file's bounds don't always hold every triangle
 	groupTree BIH   // for triangles
-}
-
-func (g *GroupModel) readFromFile(f *os.File) error {
-	return g.readFrom(f)
 }
 
 func (g *GroupModel) readFrom(r io.Reader) error {
@@ -753,10 +596,6 @@ func validateVMapVectorChunk(name string, chunkSize, count, elemBytes, maxCount 
 	return nil
 }
 
-func (g *GroupModel) getHeight(ray Ray, maxDist float32) float32 {
-	return g.getHeightContext(context.Background(), ray, maxDist)
-}
-
 func (g *GroupModel) getHeightContext(ctx context.Context, ray Ray, maxDist float32) float32 {
 	// Brute force over the group's triangles, after a bounds check: most of a building's groups are nowhere near
 	// the ray, and skipping them takes path ground-snapping from ~3 ms to microseconds per point.
@@ -821,6 +660,7 @@ func (g *GroupModel) estimatedBytes() int64 {
 	return total
 }
 
+// MeshTriangle is a triangle as indices into its group's vertices.
 type MeshTriangle struct {
 	idx0, idx1, idx2 uint32
 }
@@ -834,6 +674,7 @@ type VMapManager struct {
 	trees           map[uint32]*StaticMapTree // per mapID
 }
 
+// NewVMapManager returns a VMapManager reading vmaps from vmapsDir.
 func NewVMapManager(vmapsDir string) *VMapManager {
 	return &VMapManager{
 		basePath:        ensureTrailingSlash(vmapsDir),
@@ -873,14 +714,10 @@ func vmapModelCacheLimitFromEnv() int64 {
 }
 
 func ensureTrailingSlash(p string) string {
-	if len(p) > 0 && p[len(p)-1] != '/' && p[len(p)-1] != '\\' {
+	if p != "" && p[len(p)-1] != '/' && p[len(p)-1] != '\\' {
 		return p + "/"
 	}
 	return p
-}
-
-func (vm *VMapManager) getTree(mapID uint32) (*StaticMapTree, error) {
-	return vm.getTreeContext(context.Background(), mapID)
 }
 
 func (vm *VMapManager) getTreeContext(ctx context.Context, mapID uint32) (*StaticMapTree, error) {
@@ -924,6 +761,7 @@ func (vm *VMapManager) GetHeight(mapID uint32, x, y, z, maxSearch float32) (floa
 	return vm.GetHeightContext(context.Background(), mapID, x, y, z, maxSearch)
 }
 
+// GetHeightContext is GetHeight under ctx.
 func (vm *VMapManager) GetHeightContext(ctx context.Context, mapID uint32, x, y, z, maxSearch float32) (float32, bool) {
 	tree, err := vm.getTreeContext(ctx, mapID)
 	if err != nil || tree == nil {
@@ -981,6 +819,7 @@ type modelCacheEntry struct {
 	elem     *list.Element
 }
 
+// InitMap reads the map's .vmtree file fname; false if it could not.
 func (s *StaticMapTree) InitMap(fname string) bool {
 	return s.initMapContext(context.Background(), fname)
 }
@@ -1038,6 +877,7 @@ func (s *StaticMapTree) initMapContext(ctx context.Context, fname string) bool {
 	return ctx.Err() == nil
 }
 
+// LoadMapTile loads the model spawns of the tile (tileX, tileY), once.
 func (s *StaticMapTree) LoadMapTile(tileX, tileY uint32) error {
 	return s.loadMapTileContext(context.Background(), tileX, tileY)
 }
@@ -1122,10 +962,6 @@ func getTileFileName(mapID, tileX, tileY uint32) string {
 	return fmt.Sprintf("%03d_%02d_%02d.vmtile", mapID, tileY, tileX)
 }
 
-func (s *StaticMapTree) getHeight(pos Vector3, maxSearch float32) float32 {
-	return s.getHeightContext(context.Background(), pos, maxSearch)
-}
-
 func (s *StaticMapTree) getHeightContext(ctx context.Context, pos Vector3, maxSearch float32) float32 {
 	candidates := s.heightCandidatesContext(ctx, pos)
 	if len(candidates) == 0 {
@@ -1148,10 +984,6 @@ func (s *StaticMapTree) getHeightContext(ctx context.Context, pos Vector3, maxSe
 		return INVALID_HEIGHT
 	}
 	return pos.Z - minT
-}
-
-func (s *StaticMapTree) heightCandidates(pos Vector3) []*ModelInstance {
-	return s.heightCandidatesContext(context.Background(), pos)
 }
 
 func (s *StaticMapTree) heightCandidatesContext(ctx context.Context, pos Vector3) []*ModelInstance {
@@ -1192,10 +1024,6 @@ func (s *StaticMapTree) modelInstanceNearLocked(mi *ModelInstance, pos Vector3) 
 	lo := mi.spawn.iBound[0]
 	hi := mi.spawn.iBound[1]
 	return pos.X >= lo.X-1 && pos.X <= hi.X+1 && pos.Y >= lo.Y-1 && pos.Y <= hi.Y+1
-}
-
-func (s *StaticMapTree) modelForInstance(mi *ModelInstance) (*WorldModel, bool) {
-	return s.modelForInstanceContext(context.Background(), mi)
 }
 
 func (s *StaticMapTree) modelForInstanceContext(ctx context.Context, mi *ModelInstance) (*WorldModel, bool) {
@@ -1307,10 +1135,6 @@ func bytesToMiB(bytes int64) float64 {
 	return float64(bytes) / (1024.0 * 1024.0)
 }
 
-func (s *StaticMapTree) intersectModelHeight(mi *ModelInstance, model *WorldModel, pos Vector3, maxSearch float32) float32 {
-	return s.intersectModelHeightContext(context.Background(), mi, model, pos, maxSearch)
-}
-
 func (s *StaticMapTree) intersectModelHeightContext(ctx context.Context, mi *ModelInstance, model *WorldModel, pos Vector3, maxSearch float32) float32 {
 	if model == nil {
 		return INVALID_HEIGHT
@@ -1348,46 +1172,15 @@ func (s *StaticMapTree) intersectModelHeightContext(ctx context.Context, mi *Mod
 	return INVALID_HEIGHT
 }
 
-func (s *StaticMapTree) getHeightACStyle(pos Vector3, maxSearch float32) float32 {
-	return s.getHeight(pos, maxSearch)
-}
-
-// Integrate with TerrainManager: combined height.
-func (tm *TerrainManager) getCombinedHeightWithVMap(mapID uint32, x, y, z float32, vmap *VMapManager) (float32, bool) {
-	terrainH, hasT := tm.GetHeight(mapID, x, y, z)
-	var vmapH float32
-	hasV := false
-	if vmap != nil {
-		if vh, ok := vmap.GetHeight(mapID, x, y, z, 1000); ok && vh > INVALID_HEIGHT {
-			vmapH = vh
-			hasV = true
-		}
-	}
-
-	if hasV && hasT {
-		// AC style choice
-		if vmapH > terrainH || math.Abs(float64(terrainH-z)) > math.Abs(float64(vmapH-z)) {
-			return vmapH, true
-		}
-		return terrainH, true
-	}
-	if hasV {
-		return vmapH, true
-	}
-	if hasT {
-		return terrainH, true
-	}
-	return 0, false
-}
-
 // InLineOfSight reports whether the segment a-b is clear of world models (buildings, caves, mines, bridges: WMOs),
 // like the server's spell line-of-sight check, which ignores M2 doodads (trees, fences) and terrain.
 // ok=false when no vmap data could be loaded for the map.
-func (vm *VMapManager) InLineOfSight(mapID uint32, a, b Vector3) (bool, bool) {
+func (vm *VMapManager) InLineOfSight(mapID uint32, a, b Vector3) (clearPath, ok bool) {
 	return vm.InLineOfSightContext(context.Background(), mapID, a, b)
 }
 
-func (vm *VMapManager) InLineOfSightContext(ctx context.Context, mapID uint32, a, b Vector3) (clear, ok bool) {
+// InLineOfSightContext is InLineOfSight under ctx.
+func (vm *VMapManager) InLineOfSightContext(ctx context.Context, mapID uint32, a, b Vector3) (clearPath, ok bool) {
 	tree, err := vm.getTreeContext(ctx, mapID)
 	if err != nil || tree == nil {
 		return true, false

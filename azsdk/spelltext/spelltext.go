@@ -225,7 +225,7 @@ func duration(ms int32) string {
 
 // token reads one placeholder after its '$' at text[i:]: its numeric value (if it has one), its text, and where it
 // ends; ok false if it isn't one we know (the caller then keeps it as written)
-func (r *resolver) token(text string, i, depth int) (v float64, out string, end int, ok bool) {
+func (r *resolver) token(text string, i int) (v float64, out string, end int, ok bool) {
 	scale := 1.0
 	if i < len(text) && (text[i] == '/' || text[i] == '*') {
 		semi := strings.IndexByte(text[i:], ';')
@@ -395,7 +395,7 @@ func (r *resolver) text(text string, depth int) string {
 			}
 			i += len(name)
 		default:
-			v, s, end, ok := r.token(text, i, depth)
+			v, s, end, ok := r.token(text, i)
 			if !ok {
 				out.WriteString(text[start:i])
 				continue
@@ -422,15 +422,10 @@ func (r *resolver) variable(name string, depth int) (float64, bool) {
 	return v, err == nil
 }
 
-// expr evaluates an arithmetic expression after resolving its placeholders: + - * / parentheses and $floor()
-func (r *resolver) expr(e string, depth int) (float64, bool) {
-	v, _, ok := r.exprText(e, depth)
-	return v, ok
-}
-
-// exprText also says how the value scales with stats it wasn't given ("13 (+31% of attack power)"); text is ""
-// when it doesn't
-func (r *resolver) exprText(e string, depth int) (float64, string, bool) {
+// exprText evaluates an arithmetic expression after resolving its placeholders: + - * / parentheses and $floor().
+// It also says how the value scales with stats it wasn't given ("13 (+31% of attack power)"); text is "" when it
+// doesn't.
+func (r *resolver) exprText(e string, depth int) (v float64, text string, ok bool) {
 	// placeholders become numbers (a range's low end); unknown stats become {NAME} slots
 	var b strings.Builder
 	unknown := []string{}
@@ -468,7 +463,7 @@ func (r *resolver) exprText(e string, depth int) (float64, string, bool) {
 			i += end + 1
 			continue
 		}
-		v, _, end, ok := r.token(e, i+1, depth)
+		v, _, end, ok := r.token(e, i+1)
 		if !ok {
 			return 0, "", false
 		}
@@ -580,14 +575,15 @@ func (p *parser) unary() (float64, bool) {
 }
 
 // matching: the index of the bracket closing the one at text[i], or -1
-func matching(text string, i int, open, close byte) int {
+func matching(text string, i int, open, closer byte) int {
 	depth := 0
 	for j := i; j < len(text); j++ {
 		switch text[j] {
 		case open:
 			depth++
-		case close:
-			if depth--; depth == 0 {
+		case closer:
+			depth--
+			if depth == 0 {
 				return j
 			}
 		}
@@ -596,7 +592,7 @@ func matching(text string, i int, open, close byte) int {
 }
 
 // lastBranch: for "$?cond[a]?cond[b][c]" at text[i] ('?'), the last bracketed branch and the index after it
-func lastBranch(text string, i int) (string, int) {
+func lastBranch(text string, i int) (branch string, end int) {
 	alt, end := "", -1
 	for j := i; j < len(text); {
 		switch text[j] {

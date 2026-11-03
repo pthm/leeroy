@@ -168,11 +168,12 @@ func (r *routeRequests) close() {
 func checkRoute(data types.PathCheck, from, to navigation.Point3D, res *navigation.PathResult, err error) *script.Outcome {
 	if err != nil {
 		code, message := "not_available", "navmesh query failed: "+err.Error()
-		if errors.Is(err, context.DeadlineExceeded) {
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
 			code, message = "route_timeout", "route query exceeded its deadline; use shorter legs (maximum 4096 yards)"
-		} else if errors.Is(err, context.Canceled) {
+		case errors.Is(err, context.Canceled):
 			code, message = "cancelled", "route query cancelled"
-		} else if errors.Is(err, pathfinding.ErrQueryLimit) {
+		case errors.Is(err, pathfinding.ErrQueryLimit):
 			code, message = "route_limit", err.Error()
 		}
 		return routeFailure(data, code, message)

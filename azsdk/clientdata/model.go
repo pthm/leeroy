@@ -200,18 +200,18 @@ func parseMLIQ(b []byte) (Liquid, bool) {
 	for i := 0; i < nv; i++ {
 		l.Heights = append(l.Heights, f32(b, 30+i*8+4))
 	}
-	any := false
+	wet := false
 	for _, f := range b[30+nv*8 : 30+nv*8+xt*yt] {
 		t := int8(f & 0xF)
 		if t == 0xF {
 			t = -1
 		} else {
 			t &= 3
-			any = true
+			wet = true
 		}
 		l.Tiles = append(l.Tiles, t)
 	}
-	return l, any
+	return l, wet
 }
 
 // LoadM2 reads an M2 doodad and its first skin (the full-detail triangles). Batches with a texture the game fills in

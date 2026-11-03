@@ -10,11 +10,14 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
+// Parameter is one argument in a signature.
 type Parameter struct {
 	Name     string
 	Optional bool
 	Default  string
 }
+
+// Signature is a parsed API signature: its parameters, whether they form an options table, and its return annotation.
 type Signature struct {
 	Parameters []Parameter
 	Returns    string
@@ -35,11 +38,11 @@ func ParseSignature(sig string) (Signature, error) {
 		return out, fmt.Errorf("expected an argument list or options table")
 	}
 	out.Table = args[0] == '{'
-	close := byte(')')
+	closer := byte(')')
 	if out.Table {
-		close = '}'
+		closer = '}'
 	}
-	if args[len(args)-1] != close {
+	if args[len(args)-1] != closer {
 		return out, fmt.Errorf("unclosed argument list")
 	}
 	body := args[1 : len(args)-1]
@@ -74,11 +77,12 @@ func ParseSignature(sig string) (Signature, error) {
 	for _, c := range body {
 		if quote != 0 {
 			token.WriteRune(c)
-			if escaped {
+			switch {
+			case escaped:
 				escaped = false
-			} else if c == '\\' {
+			case c == '\\':
 				escaped = true
-			} else if c == quote {
+			case c == quote:
 				quote = 0
 			}
 			continue
@@ -138,6 +142,7 @@ func ParseSignature(sig string) (Signature, error) {
 	return out, nil
 }
 
+// Required returns how many arguments a call must pass.
 func (s Signature) Required() int {
 	if s.Table {
 		return 1
@@ -189,9 +194,9 @@ func scalarDefault(s string) lua.LValue {
 	return lua.LNil // symbolic defaults are resolved by the operation itself
 }
 
-func checkNativeArgument(L *lua.LState, name, sig string, p Parameter, t reflect.Type, i int) {
-	v := L.Get(i)
-	bad := func(why string) { L.RaiseError("%s%s: argument %s %s", name, sig, p.Name, why) }
+func checkNativeArgument(ls *lua.LState, name, sig string, p Parameter, t reflect.Type, i int) {
+	v := ls.Get(i)
+	bad := func(why string) { ls.RaiseError("%s%s: argument %s %s", name, sig, p.Name, why) }
 	if v == lua.LNil {
 		if !p.Optional {
 			bad("is required and cannot be nil")
@@ -200,10 +205,10 @@ func checkNativeArgument(L *lua.LState, name, sig string, p Parameter, t reflect
 		if v == lua.LNil {
 			return
 		}
-		for L.GetTop() < i {
-			L.Push(lua.LNil)
+		for ls.GetTop() < i {
+			ls.Push(lua.LNil)
 		}
-		L.Replace(i, v)
+		ls.Replace(i, v)
 	}
 	if p.Name == "item" && t.Kind() == reflect.Uint64 {
 		switch value := v.(type) {
@@ -291,40 +296,40 @@ func checkNativeArgument(L *lua.LState, name, sig string, p Parameter, t reflect
 			if err != nil {
 				bad("has an invalid options schema")
 			}
-			checkOptions(L, name, sig, v, shape.Parameters)
+			checkOptions(ls, name, sig, v, shape.Parameters)
 		}
 	}
 }
 
-func checkOptions(L *lua.LState, name, sig string, v lua.LValue, fields []Parameter) {
+func checkOptions(ls *lua.LState, name, sig string, v lua.LValue, fields []Parameter) {
 	t, ok := v.(*lua.LTable)
 	if !ok {
-		L.RaiseError("%s%s: an options table is required", name, sig)
+		ls.RaiseError("%s%s: an options table is required", name, sig)
 	}
 	allowed := map[string]bool{}
 	for _, p := range fields {
 		allowed[p.Name] = true
 		if t.RawGetString(p.Name) == lua.LNil && !p.Optional {
-			L.RaiseError("%s%s: missing required option %s; accepted fields: %s", name, sig, p.Name, optionFields(fields))
+			ls.RaiseError("%s%s: missing required option %s; accepted fields: %s", name, sig, p.Name, optionFields(fields))
 		}
 		v := t.RawGetString(p.Name)
 		if v != lua.LNil {
 			switch scalarDefault(p.Default).(type) {
 			case lua.LBool:
 				if _, ok := v.(lua.LBool); !ok {
-					L.RaiseError("%s%s: option %s must be boolean", name, sig, p.Name)
+					ls.RaiseError("%s%s: option %s must be boolean", name, sig, p.Name)
 				}
 			case lua.LNumber:
 				f, ok := v.(lua.LNumber)
 				if !ok || math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
-					L.RaiseError("%s%s: option %s must be a finite number", name, sig, p.Name)
+					ls.RaiseError("%s%s: option %s must be a finite number", name, sig, p.Name)
 				}
 			}
 		}
 	}
 	t.ForEach(func(k, v lua.LValue) {
 		if !allowed[lua.LVAsString(k)] {
-			L.RaiseError("%s%s: unknown option %s; accepted fields: %s", name, sig, k.String(), optionFields(fields))
+			ls.RaiseError("%s%s: unknown option %s; accepted fields: %s", name, sig, k.String(), optionFields(fields))
 		}
 	})
 }

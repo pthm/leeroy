@@ -25,6 +25,7 @@ func (p BodyProfile) valid() bool {
 	return p.Radius > 0 && p.Height > p.StepHeight+2*p.Radius && p.Height < 20 && p.StepHeight >= 0 && p.MaxSlope > 0 && p.MaxSlope < 90
 }
 
+// CollisionCheck is the result of checking a route against the collision data: clear, blocked or unknown, and where.
 type CollisionCheck struct {
 	State     string  `json:"state"` // clear, blocked, unknown
 	Reason    string  `json:"reason,omitempty"`

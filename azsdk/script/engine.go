@@ -377,6 +377,7 @@ func (e *Engine) TakeScriptErrors() map[string]any {
 	return out
 }
 
+// Close stops the engine: its tasks end, pending requests close and the Lua state is freed.
 func (e *Engine) Close() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -390,7 +391,7 @@ func (e *Engine) Close() {
 	e.diag.emit(types.Diagnostic{Kind: "runtime_state", Details: types.DiagnosticDetails{Component: "session", State: types.StateStop}})
 	e.L.Close()
 	if e.workspace != nil {
-		e.workspace.Close()
+		_ = e.workspace.Close() // best effort: the session is ending
 	}
 }
 
@@ -524,7 +525,7 @@ func (e *Engine) registerFunc(name, sig, desc string, fn any, internal bool) {
 
 // recoverNative turns a Go panic in a native call into a Lua error naming the op, so the task's traceback has the Lua
 // line that called it. A runtime error (a bug in the SDK) also logs its Go stack to session.log.
-func (e *Engine) recoverNative(L *lua.LState, name string) {
+func (e *Engine) recoverNative(ls *lua.LState, name string) {
 	p := recover()
 	if p == nil {
 		return
@@ -534,12 +535,12 @@ func (e *Engine) recoverNative(L *lua.LState, name string) {
 	}
 	if _, ok := p.(runtime.Error); ok {
 		e.logf("[Lua] %s: Go panic: %v\n%s", name, p, debug.Stack())
-		L.RaiseError("%s: internal error (%v); its Go stack is in session.log", name, p)
+		ls.RaiseError("%s: internal error (%v); its Go stack is in session.log", name, p)
 	}
 	if msg := fmt.Sprint(p); strings.HasPrefix(msg, name) {
-		L.RaiseError("%s", msg)
+		ls.RaiseError("%s", msg)
 	}
-	L.RaiseError("%s: %v", name, p)
+	ls.RaiseError("%s: %v", name, p)
 }
 
 // explain adds what Lua's terser errors usually mean here (it doesn't name what it tried to call): the API name
@@ -564,12 +565,12 @@ func closest(name string, docs map[string]Doc, n int) []string {
 		name string
 		d    int
 	}
-	var all []cand
+	all := make([]cand, 0, len(docs))
 	for d := range docs {
 		all = append(all, cand{d, editDistance(name, d)})
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].d < all[j].d || all[i].d == all[j].d && all[i].name < all[j].name })
-	out := []string{}
+	out := make([]string, 0, min(n, len(all)))
 	for _, c := range all[:min(n, len(all))] {
 		out = append(out, c.name)
 	}
@@ -649,7 +650,7 @@ func (e *Engine) TasksHeld() []types.TaskInfo {
 		}
 	}
 	sort.Ints(ids)
-	out := []types.TaskInfo{}
+	out := make([]types.TaskInfo, 0, len(ids))
 	for _, id := range ids {
 		t := e.tasks[id]
 		ti := types.TaskInfo{
@@ -688,31 +689,31 @@ func (e *Engine) Docs() []Doc {
 
 var errType = reflect.TypeOf((*error)(nil)).Elem()
 
-func callReflect(L *lua.LState, fn reflect.Value, first int) int {
+func callReflect(ls *lua.LState, fn reflect.Value, first int) int {
 	t := fn.Type()
 	if t.IsVariadic() {
-		L.RaiseError("variadic functions are not supported")
+		ls.RaiseError("variadic functions are not supported")
 	}
 	args := make([]reflect.Value, t.NumIn())
 	for i := range args {
-		args[i] = fromLua(L, L.Get(first+i), t.In(i))
+		args[i] = fromLua(ls, ls.Get(first+i), t.In(i))
 	}
 	results := fn.Call(args)
 	for _, r := range results {
 		if r.Type() == errType {
 			if r.IsNil() {
-				L.Push(lua.LNil)
+				ls.Push(lua.LNil)
 			} else {
-				L.Push(lua.LString(r.Interface().(error).Error()))
+				ls.Push(lua.LString(r.Interface().(error).Error()))
 			}
 			continue
 		}
-		L.Push(toLua(L, jsonish(r.Interface())))
+		ls.Push(toLua(ls, jsonish(r.Interface())))
 	}
 	return len(results)
 }
 
-func fromLua(L *lua.LState, lv lua.LValue, t reflect.Type) reflect.Value {
+func fromLua(ls *lua.LState, lv lua.LValue, t reflect.Type) reflect.Value {
 	v := reflect.New(t).Elem()
 	switch t.Kind() {
 	case reflect.String:
@@ -739,15 +740,16 @@ func fromLua(L *lua.LState, lv lua.LValue, t reflect.Type) reflect.Value {
 			break
 		}
 		gv := reflect.ValueOf(g)
-		if gv.Type().AssignableTo(t) {
+		switch {
+		case gv.Type().AssignableTo(t):
 			v.Set(gv)
-		} else if t.Kind() == reflect.Slice && gv.Kind() == reflect.Map && gv.Len() == 0 { // {} is an empty list too
+		case t.Kind() == reflect.Slice && gv.Kind() == reflect.Map && gv.Len() == 0: // {} is an empty list too
 			v.Set(reflect.MakeSlice(t, 0, 0))
-		} else {
-			L.RaiseError("expected %s, got %s", t, lv.Type())
+		default:
+			ls.RaiseError("expected %s, got %s", t, lv.Type())
 		}
 	default:
-		L.RaiseError("unsupported argument type %s", t)
+		ls.RaiseError("unsupported argument type %s", t)
 	}
 	return v
 }
@@ -810,10 +812,10 @@ var (
 	arrayOnce sync.Once
 )
 
-func arrayMT(L *lua.LState) lua.LValue {
-	if L != nil {
+func arrayMT(ls *lua.LState) lua.LValue {
+	if ls != nil {
 		arrayOnce.Do(func() {
-			t := L.NewTable()
+			t := ls.NewTable()
 			t.RawSetString("__name", lua.LString("list"))
 			arrayMeta = t
 		})
@@ -822,7 +824,7 @@ func arrayMT(L *lua.LState) lua.LValue {
 }
 
 // toLua converts JSON-shaped Go values (after jsonish) to Lua.
-func toLua(L *lua.LState, v any) lua.LValue {
+func toLua(ls *lua.LState, v any) lua.LValue {
 	switch x := v.(type) {
 	case nil:
 		return lua.LNil
@@ -843,24 +845,24 @@ func toLua(L *lua.LState, v any) lua.LValue {
 	case float32:
 		return lua.LNumber(x)
 	case map[string]any:
-		t := L.NewTable()
+		t := ls.NewTable()
 		for k, vv := range x {
-			t.RawSetString(k, toLua(L, vv))
+			t.RawSetString(k, toLua(ls, vv))
 		}
 		return t
 	case []any:
-		t := L.CreateTable(len(x), 0)
+		t := ls.CreateTable(len(x), 0)
 		for i, vv := range x {
-			t.RawSetInt(i+1, toLua(L, vv))
+			t.RawSetInt(i+1, toLua(ls, vv))
 		}
 		if len(x) == 0 {
-			L.SetMetatable(t, arrayMT(L))
+			ls.SetMetatable(t, arrayMT(ls))
 		}
 		return t
 	case lua.LValue:
 		return x
 	}
-	return toLua(L, jsonish(v))
+	return toLua(ls, jsonish(v))
 }
 
 // jsonish flattens structs, slices and maps via JSON; integers beyond 2^53 (GUIDs) become strings.
@@ -914,7 +916,6 @@ type Task struct {
 	State   string // new, running, waiting, paused, done, failed, stopped
 	Status  string // what the task says it's doing (task.status)
 	wait    waitCond
-	resume  []lua.LValue // values to resume with once the wait is over
 	Err     string
 	Started time.Time
 	Ended   time.Time
@@ -973,9 +974,10 @@ func (e *Engine) runTasks() {
 				}
 			case "await":
 				res := e.Reqs.Result(w.req)
-				if res != nil && res["pending"] == nil {
+				switch {
+				case res != nil && res["pending"] == nil:
 					args = []lua.LValue{toLua(e.L, res)}
-				} else if now.After(w.until) {
+				case now.After(w.until):
 					op := "unknown"
 					if res != nil {
 						op, _ = res["op"].(string)
@@ -984,15 +986,16 @@ func (e *Engine) runTasks() {
 						"id": w.req, "op": op, "ok": false,
 						"error": map[string]any{"code": "wait_timeout", "message": "stopped waiting; the request may still finish"},
 					})}
-				} else {
+				default:
 					continue
 				}
 			case "event":
-				if w.got != nil {
+				switch {
+				case w.got != nil:
 					args = []lua.LValue{eventToLua(e.L, *w.got)}
-				} else if !w.until.IsZero() && now.After(w.until) {
+				case !w.until.IsZero() && now.After(w.until):
 					args = []lua.LValue{lua.LNil}
-				} else {
+				default:
 					continue
 				}
 			}
@@ -1017,9 +1020,7 @@ func (e *Engine) resume(t *Task, args []lua.LValue) {
 	switch {
 	case err != nil:
 		msg := err.Error()
-		if strings.Contains(msg, "context deadline exceeded") {
-			msg = strings.Replace(msg, "context deadline exceeded", fmt.Sprintf("ran %v without waiting: a loop in a task must wait(), await() or events.wait() on every pass", executionLimit), 1)
-		}
+		msg = strings.Replace(msg, "context deadline exceeded", fmt.Sprintf("ran %v without waiting: a loop in a task must wait(), await() or events.wait() on every pass", executionLimit), 1)
 		msg = e.explain(errors.New(msg)).Error()
 		if t.trace != "" {
 			msg += "\n" + t.trace
@@ -1061,22 +1062,22 @@ func (e *Engine) safeResume(t *Task, args []lua.LValue) (st lua.ResumeState, err
 
 // panicWithTrace is a task's Panic: gopher-lua's own, but the failing task keeps where it was (file:line, innermost
 // first), which the error that reaches the scheduler no longer has.
-func (e *Engine) panicWithTrace(L *lua.LState) {
-	if t := e.byThread[L]; t != nil {
-		t.trace = traceback(L)
+func (e *Engine) panicWithTrace(ls *lua.LState) {
+	if t := e.byThread[ls]; t != nil {
+		t.trace = traceback(ls)
 	}
-	panic(&lua.ApiError{Type: lua.ApiErrorRun, Object: L.Get(-1)})
+	panic(&lua.ApiError{Type: lua.ApiErrorRun, Object: ls.Get(-1)})
 }
 
 // traceback: the Lua frames of L's stack, innermost first ("  main.lua:22 in pull"), at most 8.
-func traceback(L *lua.LState) string {
+func traceback(ls *lua.LState) string {
 	var lines []string
 	for i := 0; len(lines) < 8; i++ {
-		dbg, ok := L.GetStack(i)
+		dbg, ok := ls.GetStack(i)
 		if !ok {
 			break
 		}
-		if _, err := L.GetInfo("nSl", dbg, lua.LNil); err != nil || dbg.CurrentLine <= 0 || dbg.Source == "trampoline" {
+		if _, err := ls.GetInfo("nSl", dbg, lua.LNil); err != nil || dbg.CurrentLine <= 0 || dbg.Source == "trampoline" {
 			continue
 		}
 		line := fmt.Sprintf("  %s:%d", dbg.Source, dbg.CurrentLine)
@@ -1094,10 +1095,10 @@ func traceback(L *lua.LState) string {
 	return "traceback:\n" + strings.Join(lines, "\n")
 }
 
-func (e *Engine) deadline(L *lua.LState) func() {
+func (e *Engine) deadline(ls *lua.LState) func() {
 	ctx, cancel := context.WithTimeout(context.Background(), executionLimit)
-	L.SetContext(ctx)
-	return func() { L.RemoveContext(); cancel() }
+	ls.SetContext(ctx)
+	return func() { ls.RemoveContext(); cancel() }
 }
 
 // SetWorkspace grants Lua read access only to regular files within dir.
@@ -1114,9 +1115,9 @@ func (e *Engine) SetWorkspace(dir string) error {
 	return nil
 }
 
-func (e *Engine) loadFile(L *lua.LState, path string) (*lua.LFunction, error) {
+func (e *Engine) loadFile(ls *lua.LState, path string) (*lua.LFunction, error) {
 	if e.workspace == nil {
-		return nil, fmt.Errorf("Lua file access requires a workspace")
+		return nil, errors.New("file access from Lua requires a workspace")
 	}
 	if filepath.IsAbs(path) {
 		var err error
@@ -1135,13 +1136,13 @@ func (e *Engine) loadFile(L *lua.LState, path string) (*lua.LFunction, error) {
 		return nil, err
 	}
 	if !info.Mode().IsRegular() || info.Size() > 4<<20 {
-		return nil, fmt.Errorf("Lua source must be a regular file of at most 4 MiB")
+		return nil, errors.New("a Lua source must be a regular file of at most 4 MiB")
 	}
 	code, err := io.ReadAll(io.LimitReader(f, 4<<20+1))
 	if err != nil {
 		return nil, err
 	}
-	return L.Load(bytes.NewReader(code), filepath.ToSlash(path)) // errors read main.lua:22:, not <string>:22:
+	return ls.Load(bytes.NewReader(code), filepath.ToSlash(path)) // errors read main.lua:22:, not <string>:22:
 }
 
 func (e *Engine) installFileLoaders() {
@@ -1241,12 +1242,12 @@ func taskOfEvent(ev Event) string {
 	return ""
 }
 
-func eventToLua(L *lua.LState, ev Event) lua.LValue {
-	return toLua(L, map[string]any{"seq": float64(ev.Seq), "t": float64(ev.T), "type": ev.Type, "data": jsonish(ev.Data)})
+func eventToLua(ls *lua.LState, ev Event) lua.LValue {
+	return toLua(ls, map[string]any{"seq": float64(ev.Seq), "t": float64(ev.T), "type": ev.Type, "data": jsonish(ev.Data)})
 }
 
 // taskOf is the task L belongs to, or nil on the main state.
-func (e *Engine) taskOf(L *lua.LState) *Task { return e.byThread[L] }
+func (e *Engine) taskOf(ls *lua.LState) *Task { return e.byThread[ls] }
 
 func strList(lv lua.LValue) []string {
 	switch x := lv.(type) {
@@ -1454,7 +1455,7 @@ func (e *Engine) registerRuntime() {
 			return 0
 		},
 		"handlers": func(L *lua.LState) int {
-			out := []any{}
+			out := make([]any, 0, len(e.handlers))
 			for _, h := range e.handlers {
 				out = append(out, map[string]any{"id": h.id, "types": h.types, "name": h.name})
 			}
@@ -1615,9 +1616,9 @@ func (e *Engine) registerCompat() {
 		return func(L *lua.LState) int {
 			x, n := u(L, 1), int(L.CheckNumber(2))
 			if left == (n >= 0) {
-				x = x << uint(max(n, -n))
+				x <<= uint(max(n, -n))
 			} else {
-				x = x >> uint(max(n, -n))
+				x >>= uint(max(n, -n))
 			}
 			if n >= 32 || n <= -32 {
 				x = 0

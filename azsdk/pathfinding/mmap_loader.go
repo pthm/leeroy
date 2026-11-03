@@ -63,6 +63,7 @@ func (m *MMapManager) EnsureTileLoaded(mapID uint32, x, y int32) error {
 	return m.EnsureTileLoadedContext(context.Background(), mapID, x, y)
 }
 
+// EnsureTileLoadedContext is EnsureTileLoaded under ctx.
 func (m *MMapManager) EnsureTileLoadedContext(ctx context.Context, mapID uint32, x, y int32) error {
 	md, err := m.getOrLoadMapDataContext(ctx, mapID)
 	if err != nil {

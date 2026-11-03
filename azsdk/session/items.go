@@ -140,7 +140,7 @@ func itemInfo(w *client.WorldClient, entry uint32) *itemProto {
 	}
 	if time.Since(items.asked[entry]) > 3*time.Second {
 		items.asked[entry] = time.Now()
-		w.SendPacketRaw(cmsgItemQuery, binary.LittleEndian.AppendUint32(nil, entry))
+		_ = w.SendPacketRaw(cmsgItemQuery, binary.LittleEndian.AppendUint32(nil, entry)) // best effort: asked again after 3 s
 	}
 	return nil
 }
@@ -265,11 +265,11 @@ func (b *Bot) handleLootResponse(data []byte) {
 	}
 	for _, it := range lr.Items {
 		if it.SlotType == 0 || it.SlotType == 4 { // LootSlotType: allow, owner (not roll ongoing, master looter's, locked)
-			b.world.LootItem(it.Index)
+			_ = b.world.LootItem(it.Index) // best effort: what stays is looted next time
 		}
 	}
-	b.world.LootMoney()
-	b.world.LootRelease(lr.GUID)
+	_ = b.world.LootMoney()
+	_ = b.world.LootRelease(lr.GUID)
 }
 
 // rollChoices: RollType (LootMgr.h); a roll's vote mask has bit 1<<type for each choice allowed.
@@ -310,7 +310,7 @@ func (s *lootRolls) start(r client.LootStartRoll) pendingRoll {
 
 // vote: SMSG_LOOT_ROLL's roll, choice and number (0 until the roll is counted). Group::CountRollVote sends each
 // choice with an empty guid, need as number 0 type 0 and the others as number 128; CountTheRoll the numbers.
-func (s *lootRolls) vote(r client.LootRollEvent, me uint64) (uint64, string, uint8) {
+func (s *lootRolls) vote(r client.LootRollEvent, me uint64) (item uint64, choice string, number uint8) {
 	s.Lock()
 	defer s.Unlock()
 	g := r.ItemGUID
@@ -534,6 +534,7 @@ func (b *Bot) setupItems() {
 			}
 			g := it.GUID
 			want := -1
+			var err error
 			if slot != "" {
 				args["slot"] = slot
 				idx, ok := equipSlots[slot]
@@ -544,9 +545,12 @@ func (b *Bot) setupItems() {
 					return b.refuse("items.equip", args, "wrong_slot", fmt.Sprintf("a %s item doesn't go in %s", invSlots[p.InvType].name, slot))
 				}
 				want = int(idx)
-				w.SendPacketRaw(cmsgAutoEquipItemSlot, append(binary.LittleEndian.AppendUint64(nil, uint64(g)), idx))
+				err = w.SendPacketRaw(cmsgAutoEquipItemSlot, append(binary.LittleEndian.AppendUint64(nil, uint64(g)), idx))
 			} else {
-				w.AutoEquipItem(it.Bag, it.BagSlot)
+				err = w.AutoEquipItem(it.Bag, it.BagSlot)
+			}
+			if err != nil {
+				return b.refuse("items.equip", args, "failed", err.Error())
 			}
 			return b.request("items.equip", args, 3*time.Second, func() *script.Outcome {
 				for _, x := range bagItems(w) {
@@ -576,7 +580,9 @@ func (b *Bot) setupItems() {
 			if freeSlots(w) == 0 {
 				return b.refuse("items.unequip", args, "bags_full", "no room in your bags")
 			}
-			w.SendPacketRaw(cmsgAutoStoreBagItem, []byte{255, idx, 0}) // dst NULL_BAG: any bag with room (255 is the backpack only)
+			if err := w.SendPacketRaw(cmsgAutoStoreBagItem, []byte{255, idx, 0}); err != nil { // dst NULL_BAG: any bag with room (255 is the backpack only)
+				return b.refuse("items.unequip", args, "failed", err.Error())
+			}
 			return b.request("items.unequip", args, 3*time.Second, func() *script.Outcome {
 				for _, x := range bagItems(w) {
 					if x.GUID == g && !x.Equipped {
@@ -702,7 +708,7 @@ func (b *Bot) setupItems() {
 			}
 			got, last, start, sent := types.Looted{Items: []types.Item{}}, time.Now(), time.Now(), false
 			var mu sync.Mutex
-			send := func() { b.LootAll(guid); sent, last = true, time.Now() }
+			send := func() { _ = b.LootAll(guid); sent, last = true, time.Now() } // a lost packet shows as the request's timeout
 			if u == nil || u.IsPlayer || u.Lootable {
 				send()
 			}
@@ -773,8 +779,9 @@ func (b *Bot) setupItems() {
 		b.emit("loot_roll_all_passed", types.LootRollResult{Roll: types.GUID(r.ItemGUID), Item: itemTemplate(w, r.ItemID), Choice: "pass"})
 	})
 	e.Func("items.rolls", "() → LootRoll[]", "group loot waiting for your roll (also in me.status().loot_rolls)", func() []types.LootRoll {
-		out := []types.LootRoll{}
-		for _, p := range rolls.open() {
+		open := rolls.open()
+		out := make([]types.LootRoll, 0, len(open))
+		for _, p := range open {
 			out = append(out, p.view(w))
 		}
 		sortBy(out, func(r types.LootRoll) float64 { return r.SecondsLeft })
@@ -905,37 +912,40 @@ func (b *Bot) setupItems() {
 			list, ok := s.vendors[vendor]
 			s.mu.Unlock()
 			if !ok {
-				w.SendPacketRaw(cmsgListInventory, binary.LittleEndian.AppendUint64(nil, vendor))
+				_ = w.SendPacketRaw(cmsgListInventory, binary.LittleEndian.AppendUint64(nil, vendor)) // best effort: vendor.items asks again
 				return b.refuse("vendor.buy", args, "vendor_list_not_loaded", "call vendor.items(npc) first, then buy again")
 			}
 			for _, v := range list {
-				if v.Entry == entry {
-					if v.Stock == 0 {
-						w.SendPacketRaw(cmsgListInventory, binary.LittleEndian.AppendUint64(nil, vendor))
-						return b.refuse("vendor.buy", args, "sold_out", "sold out: limited stock comes back over time; this asked for a fresh count, buy again in a moment to retry")
-					}
-					body := binary.LittleEndian.AppendUint64(nil, vendor)
-					body = binary.LittleEndian.AppendUint32(body, entry)
-					body = binary.LittleEndian.AppendUint32(body, v.Slot)
-					body = binary.LittleEndian.AppendUint32(body, max(count, 1))
-					w.SendPacketRaw(cmsgBuyItem, append(body, 0))
-					return b.request("vendor.buy", args, 5*time.Second, nil, func(ev script.Event) *script.Outcome {
-						if d, ok := ev.Data.(types.ItemReceived); ok && d.Item.Entry == entry {
-							return script.Ok(d)
-						}
-						if o := failOn(ev, "vendor.buy"); o != nil {
-							return o
-						}
-						return failOn(ev, "items")
-					})
+				if v.Entry != entry {
+					continue
 				}
+				if v.Stock == 0 {
+					_ = w.SendPacketRaw(cmsgListInventory, binary.LittleEndian.AppendUint64(nil, vendor)) // best effort: a fresh count for the retry
+					return b.refuse("vendor.buy", args, "sold_out", "sold out: limited stock comes back over time; this asked for a fresh count, buy again in a moment to retry")
+				}
+				body := binary.LittleEndian.AppendUint64(nil, vendor)
+				body = binary.LittleEndian.AppendUint32(body, entry)
+				body = binary.LittleEndian.AppendUint32(body, v.Slot)
+				body = binary.LittleEndian.AppendUint32(body, max(count, 1))
+				if err := w.SendPacketRaw(cmsgBuyItem, append(body, 0)); err != nil {
+					return b.refuse("vendor.buy", args, "failed", err.Error())
+				}
+				return b.request("vendor.buy", args, 5*time.Second, nil, func(ev script.Event) *script.Outcome {
+					if d, ok := ev.Data.(types.ItemReceived); ok && d.Item.Entry == entry {
+						return script.Ok(d)
+					}
+					if o := failOn(ev, "vendor.buy"); o != nil {
+						return o
+					}
+					return failOn(ev, "items")
+				})
 			}
 			return b.refuse("vendor.buy", args, "not_sold_here", fmt.Sprintf("this vendor doesn't sell item %d", entry))
 		})
-	sell := func(vendor uint64, it types.Item, count uint32) {
+	sell := func(vendor uint64, it types.Item, count uint32) error {
 		body := binary.LittleEndian.AppendUint64(nil, vendor)
 		body = binary.LittleEndian.AppendUint64(body, uint64(it.GUID))
-		w.SendPacketRaw(cmsgSellItem, binary.LittleEndian.AppendUint32(body, count))
+		return w.SendPacketRaw(cmsgSellItem, binary.LittleEndian.AppendUint32(body, count))
 	}
 	moneyUp := func(before uint32) func() *script.Outcome {
 		return func() *script.Outcome {
@@ -964,7 +974,9 @@ func (b *Bot) setupItems() {
 			count = it.Count
 		}
 		before := w.Money()
-		sell(vendor, *it, count)
+		if err := sell(vendor, *it, count); err != nil {
+			return b.refuse("vendor.sell", args, "failed", err.Error())
+		}
 		return b.request("vendor.sell", args, 3*time.Second, moneyUp(before), func(ev script.Event) *script.Outcome { return failOn(ev, "vendor.sell") })
 	})
 	e.Func("vendor.sell_junk", "(npc_guid) → Request<Sold>", "sell every grey (poor) item you carry. Items whose info hasn't loaded are skipped", func(vendor uint64) map[string]any {
@@ -978,8 +990,9 @@ func (b *Bot) setupItems() {
 		before, sold := w.Money(), map[types.GUID]bool{}
 		for _, it := range bagItems(w) {
 			if inBags(it) && it.Quality == "poor" && it.SellPrice > 0 {
-				sell(vendor, it, it.Count)
-				sold[it.GUID] = true
+				if sell(vendor, it, it.Count) == nil { // an unsent sale isn't waited for
+					sold[it.GUID] = true
+				}
 			}
 		}
 		if len(sold) == 0 {
@@ -1030,8 +1043,10 @@ func (b *Bot) setupItems() {
 				return b.done("vendor.repair", args, types.Repaired{})
 			}
 			body := binary.LittleEndian.AppendUint64(nil, npc)
-			body = binary.LittleEndian.AppendUint64(body, 0) // 0 = all items
-			w.SendPacketRaw(0x2A8, append(body, 0))          // CMSG_REPAIR_ITEM; no guild bank
+			body = binary.LittleEndian.AppendUint64(body, 0)                // 0 = all items
+			if err := w.SendPacketRaw(0x2A8, append(body, 0)); err != nil { // CMSG_REPAIR_ITEM; no guild bank
+				return b.refuse("vendor.repair", args, "failed", err.Error())
+			}
 			// the server says nothing about a repair: compare durability a moment later
 			start := time.Now()
 			return b.request("vendor.repair", args, 5*time.Second, func() *script.Outcome {

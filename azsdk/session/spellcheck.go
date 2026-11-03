@@ -99,8 +99,8 @@ func (b *Bot) spellCheck(id uint32, guid uint64) types.SpellCheck {
 // it for every target, friendly or hostile, as the server checks line of sight for both.
 func (b *Bot) sightOf(o *client.WorldObject) *bool {
 	x, y, z := o.InterpolatedPosition()
-	if clear, ok := b.inSight(navigation.Point3D{X: x, Y: y, Z: z + 1.5}); ok {
-		return &clear
+	if visible, ok := b.inSight(navigation.Point3D{X: x, Y: y, Z: z + 1.5}); ok {
+		return &visible
 	}
 	return nil
 }

@@ -241,7 +241,7 @@ func (b *Bot) setupNPC() {
 	w := b.world
 	s := &npcState{
 		trainers: map[uint64]types.Trainer{}, trainAt: map[uint64]time.Time{}, texts: map[uint32]string{},
-		status: map[uint64]uint8{}, send: func(op uint16, body []byte) { w.SendPacketRaw(op, body) },
+		status: map[uint64]uint8{}, send: func(op uint16, body []byte) { _ = w.SendPacketRaw(op, body) }, // best effort: callers wait on the answer
 	}
 	b.npc = s
 	w.AddPacketHook(func(op uint16, data []byte) { s.onPacket(op, data) })
@@ -251,7 +251,7 @@ func (b *Bot) setupNPC() {
 	go func() {
 		for range time.Tick(4 * time.Second) {
 			if w.GetObject(w.CharGUID()) != nil {
-				w.SendPacketRaw(cmsgQuestgiverStatusMulti, nil)
+				_ = w.SendPacketRaw(cmsgQuestgiverStatusMulti, nil) // best effort: asked again in 4 s
 			}
 		}
 	}()
@@ -306,7 +306,9 @@ func (b *Bot) setupNPC() {
 				return r
 			}
 			asked := time.Now()
-			w.SendPacketRaw(cmsgTrainerList, binary.LittleEndian.AppendUint64(nil, npc))
+			if err := w.SendPacketRaw(cmsgTrainerList, binary.LittleEndian.AppendUint64(nil, npc)); err != nil {
+				return b.refuse("trainer.list", args, "failed", err.Error())
+			}
 			return b.request("trainer.list", args, 5*time.Second, func() *script.Outcome {
 				s.mu.Lock()
 				defer s.mu.Unlock()

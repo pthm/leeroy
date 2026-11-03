@@ -20,8 +20,10 @@ const (
 	maxPointPathLength = 16384
 	invalidPolyRef     = detour.DtPolyRef(0)
 
+	// GROUND_HEIGHT_TOLERANCE is the slack in yards when comparing a height with the ground.
 	GROUND_HEIGHT_TOLERANCE = 0.05
-	DEFAULT_HEIGHT_SEARCH   = 50.0
+	// DEFAULT_HEIGHT_SEARCH is how far in yards a height query searches down.
+	DEFAULT_HEIGHT_SEARCH = 50.0
 	// Z_OFFSET_FIND_HEIGHT matches AzerothCore SharedDefines.h
 	Z_OFFSET_FIND_HEIGHT = 2.0
 	// DEFAULT_COLLISION_HEIGHT matches AzerothCore ObjectDefines.h (most common model value)
@@ -35,6 +37,7 @@ func fuzzyGe(a, b float32) bool {
 // PathType describes the result status of a pathfinding query.
 type PathType uint32
 
+// PathType flags, as the server's PathType.
 const (
 	PathfindBlank            PathType = 0x00
 	PathfindNormal           PathType = 0x01
@@ -64,6 +67,7 @@ type PathResult struct {
 	ProjectedStart, ProjectedEnd Point3D
 }
 
+// Clone returns a deep copy of r.
 func (r *PathResult) Clone() *PathResult {
 	if r == nil {
 		return nil
@@ -180,9 +184,9 @@ func (pf *PathFinder) haveTile(p Point3D) bool {
 const sizeOfGrids = float32(533.3333)
 
 // gameToGridCoords converts game world coordinates to the grid coordinates used for file naming.
-func gameToGridCoords(gameX, gameY float32) (int, int) {
-	gx := int(32 - gameX/sizeOfGrids)
-	gy := int(32 - gameY/sizeOfGrids)
+func gameToGridCoords(gameX, gameY float32) (gx, gy int) {
+	gx = int(32 - gameX/sizeOfGrids)
+	gy = int(32 - gameY/sizeOfGrids)
 	return gx, gy
 }
 
@@ -258,6 +262,7 @@ func (pf *PathFinder) FindPath(start, dest Point3D) (*PathResult, error) {
 	return pf.FindPathContext(context.Background(), start, dest)
 }
 
+// FindPathContext is FindPath under ctx, bounded by QueryTimeout.
 func (pf *PathFinder) FindPathContext(ctx context.Context, start, dest Point3D) (*PathResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeout)
 	defer cancel()
@@ -614,6 +619,7 @@ func (s *PathFindingService) FindPath(mapID uint32, start, dest Point3D) (*PathR
 	return s.FindPathContext(context.Background(), mapID, start, dest)
 }
 
+// FindPathContext is FindPath under ctx, bounded by QueryTimeout.
 func (s *PathFindingService) FindPathContext(ctx context.Context, mapID uint32, start, dest Point3D) (*PathResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeout)
 	defer cancel()
@@ -659,11 +665,12 @@ func (s *PathFindingService) GetHeight(mapID uint32, x, y, z float32) (float32, 
 	return pf.GetHeight(x, y, z)
 }
 
-// FloorHeight: the navmesh floor nearest (x, y, hint); see PathFinder.FloorHeight.
+// FloorHeight returns the navmesh floor nearest (x, y, hint); see PathFinder.FloorHeight.
 func (s *PathFindingService) FloorHeight(mapID uint32, x, y, hint float32) (float32, bool) {
 	return s.FloorHeightContext(context.Background(), mapID, x, y, hint)
 }
 
+// FloorHeightContext is FloorHeight under ctx.
 func (s *PathFindingService) FloorHeightContext(ctx context.Context, mapID uint32, x, y, hint float32) (float32, bool) {
 	pf, err := s.acquirePathFinderContext(ctx, mapID)
 	if err != nil {
@@ -689,54 +696,6 @@ func (s *PathFindingService) GetWaterLevel(mapID uint32, x, y float32) (float32,
 		return 0, false
 	}
 	return s.terrainMgr.GetWaterLevel(mapID, x, y)
-}
-
-// getMapHeight replicates Map::GetHeight + WorldObject::GetMapHeight bump exactly for path normalization.
-// It does NOT prefer navmesh poly height (unlike GetHeight which optimizes to avoid vmap loads).
-// This produces the Z values that AC writes in NormalizePath via UpdateAllowedPositionZ/GetMap*Level.
-func (pf *PathFinder) getMapHeight(x, y, z float32) (float32, bool) {
-	// Bump matches WorldObject::GetMapHeight: z += max(collisionHeight, Z_OFFSET_FIND_HEIGHT)
-	// We use the AC default collision for creature-based path tests (DEFAULT_COLLISION_HEIGHT).
-	searchZ := z + float32(math.Max(DEFAULT_COLLISION_HEIGHT, Z_OFFSET_FIND_HEIGHT))
-
-	mapH := float32(-100000.0)
-	if pf.terrainMgr != nil {
-		if gridH, ok := pf.terrainMgr.GetGridHeight(pf.mapID, x, y); ok {
-			if fuzzyGe(searchZ, gridH-GROUND_HEIGHT_TOLERANCE) {
-				mapH = gridH
-			}
-		}
-	}
-
-	vmapH := float32(-100000.0)
-	if pf.vmapMgr != nil {
-		if vh, ok := pf.vmapMgr.GetHeight(pf.mapID, x, y, searchZ, DEFAULT_HEIGHT_SEARCH); ok && vh > INVALID_HEIGHT {
-			vmapH = vh
-		}
-	}
-
-	if vmapH > -100000.0 {
-		if mapH > -100000.0 {
-			if vmapH > mapH || math.Abs(float64(mapH-searchZ)) > math.Abs(float64(vmapH-searchZ)) {
-				return vmapH, true
-			}
-			return mapH, true
-		}
-		return vmapH, true
-	}
-	if mapH > -100000.0 {
-		return mapH, true
-	}
-
-	// Fallback: query navmesh poly height at (x,y) using a search near input z.
-	// Ensures usable Z when the test ac-data's maps report sentinel low gridH and vmaps lack coverage for the area.
-	// When full AC-like aux data (vmaps or correct maps) is present this path is not reached and normalize uses it.
-	pf.navMeshRLock()
-	defer pf.navMeshRUnlock()
-	if ph, ok := pf.getNavMeshHeightAtOrBelowLocked(x, y, searchZ, DEFAULT_HEIGHT_SEARCH); ok {
-		return ph, true
-	}
-	return 0, false
 }
 
 func (pf *PathFinder) getNavMeshHeightAtOrBelowLocked(x, y, searchZ, maxSearch float32) (float32, bool) {
@@ -847,9 +806,9 @@ func (pf *PathFinder) getHeightLocked(x, y, z float32) (float32, bool) {
 	return 0, false
 }
 
-// InLineOfSight: is the segment between two points clear of world models (see VMapManager.InLineOfSight)?
+// InLineOfSight reports whether the segment between two points is clear of world models (see VMapManager.InLineOfSight).
 // ok=false without vmap data.
-func (s *PathFindingService) InLineOfSight(mapID uint32, x1, y1, z1, x2, y2, z2 float32) (bool, bool) {
+func (s *PathFindingService) InLineOfSight(mapID uint32, x1, y1, z1, x2, y2, z2 float32) (clearPath, ok bool) {
 	if s.vmapMgr == nil {
 		return true, false
 	}
@@ -913,6 +872,7 @@ func gridHeightContext(ctx context.Context, tm *TerrainManager, m uint32, x, y f
 	return h, err == nil && !math.IsNaN(float64(h))
 }
 
+// GetHeightContext is GetHeight under ctx.
 func (s *PathFindingService) GetHeightContext(ctx context.Context, m uint32, x, y, z float32) (float32, bool) {
 	pf, err := s.acquirePathFinderContext(ctx, m)
 	if err != nil {
@@ -922,6 +882,7 @@ func (s *PathFindingService) GetHeightContext(ctx context.Context, m uint32, x, 
 	return pf.getHeightContext(ctx, x, y, z)
 }
 
+// GetTerrainHeightContext is GetTerrainHeight under ctx.
 func (s *PathFindingService) GetTerrainHeightContext(ctx context.Context, m uint32, x, y float32) (float32, bool) {
 	if s.terrainMgr == nil {
 		return 0, false
@@ -929,7 +890,8 @@ func (s *PathFindingService) GetTerrainHeightContext(ctx context.Context, m uint
 	return gridHeightContext(ctx, s.terrainMgr, m, x, y)
 }
 
-func (s *PathFindingService) InLineOfSightContext(ctx context.Context, m uint32, x1, y1, z1, x2, y2, z2 float32) (bool, bool) {
+// InLineOfSightContext is InLineOfSight under ctx; without vmap data it reports not clear.
+func (s *PathFindingService) InLineOfSightContext(ctx context.Context, m uint32, x1, y1, z1, x2, y2, z2 float32) (clearPath, ok bool) {
 	if s.vmapMgr == nil {
 		return false, false
 	}

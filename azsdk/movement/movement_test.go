@@ -697,7 +697,7 @@ func TestMovementController_LadderTurningPoints_SimilarToManualLog(t *testing.T)
 		typ        string
 		x, y, z, o float32
 	}
-	var simPkts []simPkt
+	simPkts := make([]simPkt, 0, len(sender.pkts))
 	base := sender.pkts[0].at
 	for _, p := range sender.pkts {
 		dt := int(p.at.Sub(base).Milliseconds())
@@ -1097,7 +1097,7 @@ func TestPreparedRouteJumps(t *testing.T) {
 			t.Fatal("never arrived")
 		}
 	}
-	var seq []string
+	seq := make([]string, 0, len(f.pkts))
 	jumpAt, landAt := -1, -1
 	for i, p := range f.pkts {
 		seq = append(seq, p.typ)

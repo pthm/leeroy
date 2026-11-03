@@ -155,8 +155,9 @@ func TestItemErrors(t *testing.T) {
 	c.onPacket(b, 0x1A1, append(sell, 0))             // sold: no error
 	c.onPacket(b, 0x1A1, append(sell, 7))             // SELL_ERR_CANT_SELL_TO_THIS_MERCHANT
 	c.onPacket(b, 0x1A1, append(make([]byte, 16), 3)) // SendListInventory out of range: CANT_FIND_VENDOR, no vendor, no item
-	var got []string
-	for _, ev := range b.lua.Bus.Wait(script.Query{Types: []string{"error"}}, time.Second) {
+	evs := b.lua.Bus.Wait(script.Query{Types: []string{"error"}}, time.Second)
+	got := make([]string, 0, len(evs))
+	for _, ev := range evs {
 		e := ev.Data.(types.ErrorEvent)
 		got = append(got, e.Op+" "+e.Code+" "+e.Message)
 	}
@@ -272,8 +273,9 @@ func TestItemCharges(t *testing.T) {
 		b.world.PutObjectForTest(&client.WorldObject{GUID: g, Values: map[uint16]uint32{3: 1191, fieldItemStack: 1, fieldItemCharges + 1: uint32(ch)}})
 	}
 	b.world.PutObjectForTest(me)
-	var got []uint32
-	for _, it := range bagItems(b.world) {
+	bag := bagItems(b.world)
+	got := make([]uint32, 0, len(bag))
+	for _, it := range bag {
 		got = append(got, it.Charges)
 	}
 	if !slices.Equal(got, []uint32{3, 0, 2}) {

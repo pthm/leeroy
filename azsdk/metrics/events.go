@@ -39,7 +39,7 @@ func Decode(line []byte) (e Event, ok bool) {
 		}
 	}
 	var m map[string]any
-	json.Unmarshal(raw.Data, &m)
+	_ = json.Unmarshal(raw.Data, &m) // data that isn't an object leaves the event without it
 	e.Data = m
 	return e, true
 }

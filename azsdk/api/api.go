@@ -74,7 +74,7 @@ func engine(s Sessions, char string) (*script.Engine, error) {
 
 var methods = map[string]method{
 	"sessions.list": typed(func(s Sessions, _ struct{}) (any, error) {
-		out := []map[string]any{}
+		out := make([]map[string]any, 0, len(s))
 		for name, b := range s {
 			st := b.Status()
 			out = append(out, map[string]any{"char": name, "status": st.Status, "error": st.Error})
@@ -345,7 +345,7 @@ func compactEvents(evs []script.Event, full bool) []script.Event {
 			continue
 		}
 		var data any
-		json.Unmarshal(raw, &data)
+		_ = json.Unmarshal(raw, &data) // raw was just marshalled
 		whole := "wow events --full"
 		if m, ok := data.(map[string]any); ok && ev.Type == "result" && m["id"] != nil {
 			whole = fmt.Sprintf("result(%v)", m["id"])
@@ -400,7 +400,7 @@ func session_(s Sessions, char string) *session.Bot {
 // Read-only and waiting methods are skipped.
 func callRecorded(s Sessions, name string, params json.RawMessage, m method) (any, error) {
 	var p charParams
-	json.Unmarshal(params, &p)
+	_ = json.Unmarshal(params, &p) // bad params are the method's to report; this only names the char
 	if b := session_(s, p.Char); b != nil && name != "sessions.list" && name != "api.docs" && name != "events.query" && name != "events.wait" {
 		raw := string(params)
 		if len(raw) > 500 {
@@ -427,14 +427,14 @@ func Handler(s Sessions) http.Handler {
 			resp["id"], resp["result"] = req.ID, res
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp) // the client has gone
 	})
 	mux.HandleFunc("GET /methods", func(w http.ResponseWriter, _ *http.Request) {
 		names := make([]string, 0, len(methods))
 		for k := range methods {
 			names = append(names, k)
 		}
-		json.NewEncoder(w).Encode(names)
+		_ = json.NewEncoder(w).Encode(names) // the client has gone
 	})
 	return mux
 }

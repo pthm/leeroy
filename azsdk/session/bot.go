@@ -19,8 +19,10 @@ import (
 	"github.com/pthm/leeroy/azsdk/types"
 )
 
+// BotStatus is a session's stage, from idle to done or error.
 type BotStatus string
 
+// Session stages.
 const (
 	BotStatusIdle           BotStatus = "idle"
 	BotStatusAuthenticating BotStatus = "authenticating"
@@ -28,13 +30,6 @@ const (
 	BotStatusInWorld        BotStatus = "in_world"
 	BotStatusDone           BotStatus = "done"
 	BotStatusError          BotStatus = "error"
-)
-
-const (
-	wanderRandomPathAttempts    = 8
-	wanderRetryCooldown         = 500 * time.Millisecond
-	wanderMaxPathLengthFactor   = 3.0
-	wanderMaxSimplifiedPathSize = 260
 )
 
 // BotResult holds the result of a bot run
@@ -109,11 +104,10 @@ type Bot struct {
 
 	// Current pursuit target GUID for sticky chasing of moving creatures.
 	// This ensures we keep updating the destination instead of heading to a stale snapshot.
-	grindTargetGUID       uint64
-	lastPursuitUpdate     time.Time
-	lastBetterTargetCheck time.Time
-	lastMoveToTargetPos   [3]float32
-	lastMoveToTargetTime  time.Time
+	grindTargetGUID      uint64
+	lastPursuitUpdate    time.Time
+	lastMoveToTargetPos  [3]float32
+	lastMoveToTargetTime time.Time
 
 	// lastPursuedTargetPos keeps the last known position for the current pursuit target
 	// so we can continue chasing even if the object temporarily goes out of range or is removed.
@@ -121,11 +115,8 @@ type Bot struct {
 	lastPursuedTargetPos  [3]float32
 	lastPursuedTargetTime time.Time
 
-	lastMovementPacket  time.Time
 	lastMoveCommandPos  [3]float32
 	lastMoveCommandTime time.Time
-	targetCacheGUID     uint64
-	targetCacheTime     time.Time
 
 	// Combat state
 	lastLootGUID        uint64
@@ -133,8 +124,7 @@ type Bot struct {
 	lastLootAttemptGUID uint64
 	lastLootAttemptAt   time.Time
 	lastAttackSwingAt   time.Time
-	lastCastTime        time.Time // GCD tracking
-	lastVictoryRush     bool      // Victory Rush proc available
+	lastVictoryRush     bool // Victory Rush proc available
 
 	// For unstick from bad/dead targets we selected but never entered real combat with
 	currentTargetSetAt  time.Time
@@ -143,9 +133,6 @@ type Bot struct {
 
 	// Decision chat throttling (so we can see high-level AI choices in-game without flooding chat)
 	lastDecisionChat time.Time
-
-	// Separate throttle for "why I think mob is alive" debug messages in chat
-	lastAliveReasonChat time.Time
 
 	// per-bot "known dead" guids. This gives each bot its own version of which objects are dead,
 	// even if the live cache from server packets still has positive health (stale 8/55 etc).
@@ -162,8 +149,6 @@ type Bot struct {
 	// Follows zero-overhead rule: nothing allocated or written on normal paths.
 	validationFile *os.File
 	validationEnc  *json.Encoder
-	validationMu   sync.Mutex
-	validationSeq  uint64
 
 	// Teleport / summon resume: set when near/far transfer returns to in_world.
 	// Lua scripts poll via ConsumeTeleport() so AI can fully restart at the new pose.
@@ -220,6 +205,8 @@ func NewBot(id string, config Config) *Bot {
 	return b
 }
 
+// Run logs in, enters the world with the configured character (creating it if missing) and runs the session until
+// it stops or fails.
 func (b *Bot) Run() BotResult {
 	b.setStatus(BotStatusAuthenticating)
 	b.log("Starting bot for %s@%s, char: %s, mode: %s",
@@ -308,7 +295,7 @@ func (b *Bot) Run() BotResult {
 		if b.world.TargetGUID() == victimGUID {
 			b.world.ClearTarget()
 			b.world.ClearCombat()
-			b.world.AttackStop()
+			_ = b.world.AttackStop()    // best effort: the victim is dead, the server stops the swing anyway
 			if b.config.Mode != "lua" { // lua scripts own movement
 				b.stopCurrentMove()
 			}
@@ -407,8 +394,8 @@ func (b *Bot) Run() BotResult {
 	time.Sleep(2 * time.Second)
 
 	// Step 3: Character list
-	b.world.SendReadyForAccountDataTimes()
-	b.world.SendRealmSplit()
+	_ = b.world.SendReadyForAccountDataTimes() // what the client sends first; a dead connection fails RequestCharList next
+	_ = b.world.SendRealmSplit()
 	if err := b.world.RequestCharList(); err != nil {
 		return b.fail("request char list failed: %v", err)
 	}
@@ -433,8 +420,8 @@ func (b *Bot) Run() BotResult {
 		}
 		// Refresh list after deletes
 		time.Sleep(500 * time.Millisecond)
-		b.world.SendReadyForAccountDataTimes()
-		b.world.SendRealmSplit()
+		_ = b.world.SendReadyForAccountDataTimes() // as above
+		_ = b.world.SendRealmSplit()
 		if err := b.world.RequestCharList(); err != nil {
 			return b.fail("request char list after delete failed: %v", err)
 		}
@@ -450,13 +437,14 @@ func (b *Bot) Run() BotResult {
 	var charGUID uint64
 	found := false
 	for _, ch := range chars {
-		if strings.EqualFold(ch.Name, b.config.CharacterName) {
-			charGUID = ch.GUID
-			b.world.SetCharRace(ch.Race) // leeroy: was never set, so chat always used Common
-			found = true
-			b.log("Found character %s (GUID: %d, Level: %d)", ch.Name, ch.GUID, ch.Level)
-			break
+		if !strings.EqualFold(ch.Name, b.config.CharacterName) {
+			continue
 		}
+		charGUID = ch.GUID
+		b.world.SetCharRace(ch.Race) // leeroy: was never set, so chat always used Common
+		found = true
+		b.log("Found character %s (GUID: %d, Level: %d)", ch.Name, ch.GUID, ch.Level)
+		break
 	}
 
 	if !found {
@@ -497,8 +485,8 @@ func (b *Bot) Run() BotResult {
 		}
 
 		b.log("Character created, requesting updated char list")
-		b.world.SendReadyForAccountDataTimes()
-		b.world.SendRealmSplit()
+		_ = b.world.SendReadyForAccountDataTimes() // as above
+		_ = b.world.SendRealmSplit()
 		if err := b.world.RequestCharList(); err != nil {
 			return b.fail("request char list after create failed: %v", err)
 		}
@@ -553,7 +541,7 @@ func (b *Bot) Run() BotResult {
 	b.log("Character in world on map %d", m)
 
 	time.Sleep(1 * time.Second)
-	b.world.SetActiveMover(charGUID)
+	_ = b.world.SetActiveMover(charGUID) // best effort, as the client; the server assumes the player is its own mover
 	time.Sleep(500 * time.Millisecond)
 
 	b.ensureMovementController()
@@ -562,7 +550,7 @@ func (b *Bot) Run() BotResult {
 	time.Sleep(1 * time.Second)
 
 	// Complete any cinematic (new characters get a cinematic that may block chat)
-	b.world.CompleteCinematic()
+	_ = b.world.CompleteCinematic() // best effort: harmless when no cinematic was playing
 	time.Sleep(500 * time.Millisecond)
 
 	// Step 7: Initialize navigation
@@ -581,8 +569,6 @@ func (b *Bot) Run() BotResult {
 				b.world.UpdatePosition(x, y, gh, o)
 			}
 		}
-	} else {
-		// no nav available for ground snap
 	}
 
 	// Step 8: Initialize Lua engine
@@ -682,7 +668,7 @@ func (b *Bot) warmNavigation() {
 		if (x != 0 || y != 0) && (m != warmMap || here.DistanceTo2D(warmAt) >= 500) { // in the world, somewhere new
 			start := time.Now()
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			b.findPath(ctx, m, here, navigation.Point3D{X: x + 5, Y: y, Z: z})
+			_, _ = b.findPath(ctx, m, here, navigation.Point3D{X: x + 5, Y: y, Z: z})
 			cancel() // the route itself doesn't matter: its tiles do
 			warmMap, warmAt = m, here
 			b.log("navmesh warmed for map %d in %s", m, time.Since(start).Round(time.Millisecond))
@@ -805,12 +791,12 @@ func (b *Bot) runAILoop(worldErrCh chan error) {
 			// Frequent movement HBs are sent from runMovementLoop, independent of AI ticks.
 			b.movementMu.Lock()
 			if !b.isMoving {
-				b.world.SendHeartbeat()
+				_ = b.world.SendHeartbeat() // best effort: the next tick sends another
 			}
 			b.movementMu.Unlock()
 		case <-pingTicker.C:
 			pingSeq++
-			b.world.SendPing(pingSeq)
+			_ = b.world.SendPing(pingSeq) // best effort: a dead connection surfaces on worldErrCh
 		case <-ticker.C:
 			// The agent's on_tick is the only AI: the client never plays on its own.
 			tickStart := time.Now()
@@ -879,7 +865,7 @@ func (b *Bot) prepareMoveContext(ctx context.Context, x, y, z float32, valid fun
 	if b.moveController == nil {
 		b.movementMu.Unlock()
 		// Fallback: at least stop any old movement
-		b.world.MoveStop()
+		_ = b.world.MoveStop() // best effort: the error below is what the caller sees
 		return fmt.Errorf("movement controller unavailable")
 	}
 
@@ -1020,7 +1006,7 @@ func movementGroundHeight(nav navigation.Navigator, mapID uint32, x, y, fallback
 	return gh, ok
 }
 
-func movementGroundHeightWithSource(nav navigation.Navigator, mapID uint32, x, y, fallbackHintZ float32) (float32, bool, bool) {
+func movementGroundHeightWithSource(nav navigation.Navigator, mapID uint32, x, y, fallbackHintZ float32) (height float32, terrain, ok bool) {
 	if gh, ok := nav.GetHeight(mapID, x, y, fallbackHintZ); ok {
 		return gh, false, true
 	}
@@ -1243,16 +1229,19 @@ func (b *Bot) movementActive() bool {
 // LuaEngine BotAPI implementation
 // ============================================================
 
+// GetPosition returns your position and facing.
 func (b *Bot) GetPosition() (x, y, z, o float32) {
 	x, y, z, o, _ = b.world.Position()
 	return
 }
 
+// GetFacing returns your facing in radians.
 func (b *Bot) GetFacing() float32 {
 	_, _, _, o, _ := b.world.Position()
 	return o
 }
 
+// SetFacing turns you to o radians, keeping any forward motion.
 func (b *Bot) SetFacing(o float32) error {
 	// Preserve forward motion when Lua adjusts facing mid-path.
 	if b.movementActive() {
@@ -1261,6 +1250,7 @@ func (b *Bot) SetFacing(o float32) error {
 	return b.world.SetFacing(o)
 }
 
+// FaceTarget turns you towards a unit; false if it isn't known.
 func (b *Bot) FaceTarget(guid uint64) bool {
 	u := b.GetUnitInfo(guid)
 	if u == nil {
@@ -1290,10 +1280,12 @@ func (b *Bot) FaceTarget(guid uint64) bool {
 	return true
 }
 
+// SetSheathed sets the sheath state of your weapons.
 func (b *Bot) SetSheathed(state uint32) error {
 	return b.world.SetSheathed(state)
 }
 
+// MoveTo walks to a point along a navmesh path; it errs when there is none and it walks a straight line instead.
 func (b *Bot) MoveTo(x, y, z float32) error {
 	if b.moveToPointGuarded(x, y, z, nil) {
 		return fmt.Errorf("no navmesh path; walking a straight line")
@@ -1301,6 +1293,7 @@ func (b *Bot) MoveTo(x, y, z float32) error {
 	return nil
 }
 
+// StopMoving aborts the current path, if any.
 func (b *Bot) StopMoving() error {
 	if !b.movementActive() {
 		// Already stopped — do not re-send MoveStop (interrupts attack anim / idles).
@@ -1310,6 +1303,7 @@ func (b *Bot) StopMoving() error {
 	return nil
 }
 
+// AttackTarget selects a unit and keeps auto-attack on it.
 func (b *Bot) AttackTarget(guid uint64) error {
 	if b.world == nil {
 		return nil
@@ -1330,10 +1324,12 @@ func (b *Bot) AttackTarget(guid uint64) error {
 	return b.world.AttackSwing(guid)
 }
 
+// StopAttack stops auto-attack.
 func (b *Bot) StopAttack() error {
 	return b.world.AttackStop()
 }
 
+// SetTarget selects a unit, unless it is already selected.
 func (b *Bot) SetTarget(guid uint64) error {
 	if b.world != nil && b.world.TargetGUID() == guid {
 		return nil
@@ -1346,6 +1342,7 @@ func (b *Bot) IsMoving() bool {
 	return b.movementActive()
 }
 
+// CastSpell casts a spell on a target.
 func (b *Bot) CastSpell(spellID uint32, targetGUID uint64) error {
 	b.logDecision("CAST_SPELL id=%d target=%d", spellID, targetGUID)
 	// Do NOT abort the chase path on cast attempt. Charge often CAST_FAILs
@@ -1358,6 +1355,7 @@ func (b *Bot) CastSpell(spellID uint32, targetGUID uint64) error {
 	return b.world.CastSpell(spellID, targetGUID)
 }
 
+// IsSpellReady reports whether a spell is off cooldown and not waiting out a recent lack of power.
 func (b *Bot) IsSpellReady(spellID uint32) bool {
 	b.noPowerMu.Lock()
 	if b.noPowerUntil != nil {
@@ -1394,11 +1392,13 @@ func (b *Bot) noteSpellNoPower(spellID uint32) {
 	b.noPowerMu.Unlock()
 }
 
-func (b *Bot) GetHealth() (current, max uint32) {
+// GetHealth returns your health and maximum health.
+func (b *Bot) GetHealth() (current, maximum uint32) {
 	return b.world.Health(), b.world.MaxHealth()
 }
 
-func (b *Bot) GetPower() (current, max uint32) {
+// GetPower returns your power and maximum power, of whatever type you use.
+func (b *Bot) GetPower() (current, maximum uint32) {
 	// world.Power() only tracks mana; read UNIT_FIELD_(MAX)POWER1+type for rage/energy/runic too.
 	if o := b.world.GetObject(b.world.CharGUID()); o != nil {
 		t := uint16(b.GetPowerType())
@@ -1407,6 +1407,7 @@ func (b *Bot) GetPower() (current, max uint32) {
 	return b.world.Power()
 }
 
+// GetLevel returns your level.
 func (b *Bot) GetLevel() uint32 {
 	return b.world.PlayerLevel()
 }
@@ -1420,6 +1421,7 @@ func (b *Bot) GetClass() uint8 {
 	return b.config.Class
 }
 
+// GetOwnGUID returns your character's GUID, or 0 without a world connection.
 func (b *Bot) GetOwnGUID() uint64 {
 	if b.world != nil {
 		return b.world.CharGUID()
@@ -1427,6 +1429,7 @@ func (b *Bot) GetOwnGUID() uint64 {
 	return 0
 }
 
+// GetRace returns your race, from UNIT_FIELD_BYTES_0 once known (see GetClass).
 func (b *Bot) GetRace() uint8 {
 	if o := b.world.GetObject(b.world.CharGUID()); o != nil && o.Value(client.UnitFieldBytes0) != 0 {
 		return uint8(o.Value(client.UnitFieldBytes0))
@@ -1434,6 +1437,7 @@ func (b *Bot) GetRace() uint8 {
 	return b.config.Race
 }
 
+// GetPowerType returns your power type (0 mana, 1 rage, 2 focus, 3 energy, 6 runic power), from the class until the server says.
 func (b *Bot) GetPowerType() uint8 {
 	if o := b.world.GetObject(b.world.CharGUID()); o != nil && o.Value(client.UnitFieldMaxHealth) != 0 {
 		return uint8(o.Value(client.UnitFieldBytes0) >> 24) // UNIT_FIELD_BYTES_0 byte 3 = power type
@@ -1466,6 +1470,7 @@ func (b *Bot) GetPowerType() uint8 {
 	}
 }
 
+// InCombat reports the server's in-combat flag.
 func (b *Bot) InCombat() bool {
 	// The server's UNIT_FLAG_IN_COMBAT; the client-side flag went stale after fights.
 	if o := b.world.GetObject(b.world.CharGUID()); o != nil && o.Value(client.UnitFieldMaxHealth) != 0 {
@@ -1474,12 +1479,13 @@ func (b *Bot) InCombat() bool {
 	return b.world.InCombat()
 }
 
-// IsGhost: PLAYER_FLAGS & PLAYER_FLAGS_GHOST (released spirit; health reads 1, not 0).
+// IsGhost reports PLAYER_FLAGS & PLAYER_FLAGS_GHOST (released spirit; health reads 1, not 0).
 func (b *Bot) IsGhost() bool {
 	o := b.world.GetObject(b.world.CharGUID())
 	return o != nil && o.Value(0x96)&0x10 != 0
 }
 
+// IsAlive reports whether you are alive and not a ghost; true before any health has arrived.
 func (b *Bot) IsAlive() bool {
 	h := b.world.Health()
 	mh := b.world.MaxHealth()
@@ -1494,10 +1500,12 @@ func (b *Bot) IsAlive() bool {
 	return h > 0
 }
 
+// GetTargetGUID returns the selected unit's GUID.
 func (b *Bot) GetTargetGUID() uint64 {
 	return b.world.TargetGUID()
 }
 
+// GetNearbyUnits returns the units within maxDist yards.
 func (b *Bot) GetNearbyUnits(maxDist float32) []UnitInfo {
 	objects := b.world.GetNearbyUnits(maxDist)
 	result := make([]UnitInfo, 0, len(objects))
@@ -1511,6 +1519,7 @@ func (b *Bot) GetNearbyUnits(maxDist float32) []UnitInfo {
 	return result
 }
 
+// GetNearbyPlayers returns the players within maxDist yards.
 func (b *Bot) GetNearbyPlayers(maxDist float32) []UnitInfo {
 	objects := b.world.GetNearbyPlayers(maxDist)
 	result := make([]UnitInfo, 0, len(objects))
@@ -1524,6 +1533,7 @@ func (b *Bot) GetNearbyPlayers(maxDist float32) []UnitInfo {
 	return result
 }
 
+// GetUnitInfo returns what is known about a unit, or nil.
 func (b *Bot) GetUnitInfo(guid uint64) *UnitInfo {
 	obj := b.world.GetObject(guid)
 	if obj == nil {
@@ -1566,14 +1576,17 @@ func (b *Bot) worldObjToUnitInfo(obj *client.WorldObject) UnitInfo {
 	}
 }
 
+// SendChat says a message in your race's language.
 func (b *Bot) SendChat(message string) error {
 	return b.world.SendChatMessage(client.ChatMsgSay, b.chatLang(), message) // leeroy: was always Common
 }
 
+// SendCommand sends a GM command.
 func (b *Bot) SendCommand(command string) error {
 	return b.world.SendGMCommand(command)
 }
 
+// SendGuildCommand sends a guild command.
 func (b *Bot) SendGuildCommand(command string) error {
 	if b.world == nil {
 		return nil
@@ -1581,6 +1594,7 @@ func (b *Bot) SendGuildCommand(command string) error {
 	return b.world.SendGuildCommand(command)
 }
 
+// Loot opens a corpse's loot.
 func (b *Bot) Loot(guid uint64) error {
 	return b.world.Loot(guid)
 }
@@ -1609,11 +1623,12 @@ func (b *Bot) LootAll(guid uint64) error {
 	return b.world.Loot(guid)
 }
 
+// Log writes to the session log.
 func (b *Bot) Log(format string, args ...interface{}) {
 	b.log(format, args...)
 }
 
-// Extended BotAPI methods for the Lua AI framework (warrior rends, pet, stance, aura checks, etc.)
+// HasAuraOn reports whether a unit has an aura.
 func (b *Bot) HasAuraOn(guid uint64, spellID uint32) bool {
 	if b.world == nil {
 		return false
@@ -1625,6 +1640,7 @@ func (b *Bot) HasAuraOn(guid uint64, spellID uint32) bool {
 	return obj.HasAura(spellID)
 }
 
+// CanCast reports whether a spell is ready and you have the power for it.
 func (b *Bot) CanCast(spellID uint32, targetGUID uint64) bool {
 	if b.world == nil {
 		return true // optimistic for headless tests
@@ -1653,6 +1669,7 @@ func (b *Bot) CanCast(spellID uint32, targetGUID uint64) bool {
 	return true
 }
 
+// GetPetGUID returns your pet's GUID, or 0.
 func (b *Bot) GetPetGUID() uint64 {
 	if b.world == nil {
 		return 0
@@ -1663,6 +1680,7 @@ func (b *Bot) GetPetGUID() uint64 {
 	return 0
 }
 
+// PetAttack only logs the request: no pet action is sent.
 func (b *Bot) PetAttack(target uint64) {
 	if b.world != nil {
 		b.log("Lua AI: pet attack request on %d", target)
@@ -1688,6 +1706,7 @@ func stanceOf(me *client.WorldObject) any {
 	return name(shapeshiftForms, me.Value(client.UnitFieldBytes2)>>24)
 }
 
+// IsBehindTarget reports whether you stand behind a unit (the selected one for 0).
 func (b *Bot) IsBehindTarget(targetGUID uint64) bool {
 	if b.world == nil {
 		return false
@@ -1749,20 +1768,10 @@ func (b *Bot) isKnownDead(guid uint64) bool {
 	return b.knownDead != nil && b.knownDead[guid]
 }
 
-// clearKnownDead if we see evidence it's alive (positive health update).
-func (b *Bot) clearKnownDead(guid uint64) {
-	b.knownDeadMu.Lock()
-	if b.knownDead != nil {
-		delete(b.knownDead, guid)
-	}
-	b.knownDeadMu.Unlock()
-}
-
 // ============================================================
 // Utility methods
 // ============================================================
 
-// Stop signals the bot to stop running.
 // Engine returns the session's Lua engine, or nil until the character is in the world.
 func (b *Bot) Engine() *script.Engine {
 	b.mu.Lock()
@@ -1773,6 +1782,7 @@ func (b *Bot) Engine() *script.Engine {
 // Name is the character this session plays.
 func (b *Bot) Name() string { return b.config.CharacterName }
 
+// Stop signals the bot to stop running.
 func (b *Bot) Stop() {
 	select {
 	case <-b.stopCh:
@@ -1781,6 +1791,7 @@ func (b *Bot) Stop() {
 	}
 }
 
+// LoadLuaScript runs Lua code in the session's engine.
 func (b *Bot) LoadLuaScript(code string) error {
 	if b.lua == nil {
 		return fmt.Errorf("lua engine not initialized")
@@ -1788,6 +1799,7 @@ func (b *Bot) LoadLuaScript(code string) error {
 	return b.lua.DoString(code)
 }
 
+// Events returns a copy of the session's event log.
 func (b *Bot) Events() []BotEvent {
 	b.mu.Lock()
 	defer b.mu.Unlock()

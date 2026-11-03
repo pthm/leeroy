@@ -13,7 +13,7 @@ type sightNav struct {
 	clear bool
 }
 
-func (n sightNav) InLineOfSight(uint32, navigation.Point3D, navigation.Point3D) (bool, bool) {
+func (n sightNav) InLineOfSight(uint32, navigation.Point3D, navigation.Point3D) (visible, ok bool) {
 	return n.clear, true
 }
 

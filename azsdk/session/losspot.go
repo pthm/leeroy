@@ -26,7 +26,7 @@ type losNavigator interface {
 // the target and 8 points 4 yd round it, so a sliver of a view past a corner, lost when the target steps aside,
 // scores low. The shortest walk with a view of at least 3/4 and 2 yd of range to spare wins; failing that, the best
 // view, then the shortest walk.
-func (b *Bot) losSpot(ctx context.Context, m uint32, from, target navigation.Point3D, rng, maxWalk float32) (types.LOSSpot, string) {
+func (b *Bot) losSpot(ctx context.Context, m uint32, from, target navigation.Point3D, rng, maxWalk float32) (spot types.LOSSpot, why string) {
 	nav, ok := b.nav.(losNavigator)
 	if !ok {
 		return types.LOSSpot{}, "navigation data is unavailable"

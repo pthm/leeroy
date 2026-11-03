@@ -60,8 +60,8 @@ func newView(f types.Fight, maxCols, maxRows int) view {
 }
 
 // cell: x runs north (up), y west (left)
-func (v view) cell(x, y float64) (int, int, bool) {
-	r, c := int(math.Round((v.maxX-x)/(2*v.yd))), int(math.Round((v.maxY-y)/v.yd))
+func (v view) cell(x, y float64) (r, c int, in bool) {
+	r, c = int(math.Round((v.maxX-x)/(2*v.yd))), int(math.Round((v.maxY-y)/v.yd))
 	return r, c, r >= 0 && r < v.rows && c >= 0 && c < v.cols
 }
 
@@ -149,7 +149,7 @@ func frameMap(fr types.FightFrame, v view) string {
 }
 
 // status: one line of who's where at a moment: your health, your party's distance and health, the enemies' health
-func status(f types.Fight, fr types.FightFrame, kinds map[string]string) string {
+func status(fr types.FightFrame, kinds map[string]string) string {
 	var me *types.FightSpot
 	for i := range fr.At {
 		if fr.At[i].Label == "@" {
@@ -272,7 +272,7 @@ func renderFight(f types.Fight, mapOnly bool, at *float64) string {
 	}
 	fmt.Fprintf(&sb, "fight %d · %s · %.1f s · %s · dealt %d, taken %d, healed %d, healed by others %d · xp %d\n", f.ID,
 		time.UnixMilli(f.Start).Format("15:04:05"), s.Seconds, s.Outcome, s.DamageDealt, s.DamageTaken, s.HealingDone, s.HealingTaken, s.XP)
-	var who []string
+	who := make([]string, 0, len(f.Actors))
 	for _, a := range f.Actors {
 		w := a.Label + " " + a.Name
 		if a.Kind != "enemy" {
@@ -289,7 +289,7 @@ func renderFight(f types.Fight, mapOnly bool, at *float64) string {
 
 	if at != nil {
 		fr := frameAt(f, *at)
-		fmt.Fprintf(&sb, "\nat %+.1f s (%s; x dead):\n%s%s\n", fr.S, scale, frameMap(fr, big), status(f, fr, kinds))
+		fmt.Fprintf(&sb, "\nat %+.1f s (%s; x dead):\n%s%s\n", fr.S, scale, frameMap(fr, big), status(fr, kinds))
 		return sb.String()
 	}
 	if p := s.Positioning; p != nil && !mapOnly {
@@ -327,7 +327,7 @@ func renderFight(f types.Fight, mapOnly bool, at *float64) string {
 	sb.WriteString("\nkey moments:\n")
 	for _, m := range moments(f) {
 		fr := frameAt(f, m.s)
-		fmt.Fprintf(&sb, "%+.1f s  %s\n        %s\n%s", m.s, m.what, status(f, fr, kinds), frameMap(fr, small))
+		fmt.Fprintf(&sb, "%+.1f s  %s\n        %s\n%s", m.s, m.what, status(fr, kinds), frameMap(fr, small))
 	}
 	if mapOnly {
 		return sb.String()

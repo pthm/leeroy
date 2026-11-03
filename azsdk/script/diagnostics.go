@@ -94,13 +94,13 @@ func bounded(s string, n int) string {
 	return s
 }
 
-func source(L *lua.LState) (string, int) {
+func source(ls *lua.LState) (file string, line int) {
 	for i := 1; i < 12; i++ {
-		d, ok := L.GetStack(i)
+		d, ok := ls.GetStack(i)
 		if !ok {
 			break
 		}
-		if _, err := L.GetInfo("Sl", d, lua.LNil); err == nil && d.CurrentLine > 0 &&
+		if _, err := ls.GetInfo("Sl", d, lua.LNil); err == nil && d.CurrentLine > 0 &&
 			d.Source != "act.lua" && d.Source != "runtime.lua" && d.Source != "trampoline" && !strings.ContainsAny(d.Source, "\n\r") {
 			return bounded(d.Source, 256), d.CurrentLine
 		}
@@ -108,14 +108,14 @@ func source(L *lua.LState) (string, int) {
 	return "", 0
 }
 
-func (e *Engine) beginDiagnostic(L *lua.LState, op string, details types.DiagnosticDetails) *diagnosticCall {
+func (e *Engine) beginDiagnostic(ls *lua.LState, op string, details types.DiagnosticDetails) *diagnosticCall {
 	e.diag.mu.Lock()
 	e.diag.nextCall++
 	id := fmt.Sprintf("c%d", e.diag.nextCall)
 	e.diag.mu.Unlock()
 	ev := types.Diagnostic{Kind: "action_finished", Call: id, Op: bounded(op, 128), Details: details}
-	ev.Details.Source, ev.Details.Line = source(L)
-	if t := e.taskOf(L); t != nil {
+	ev.Details.Source, ev.Details.Line = source(ls)
+	if t := e.taskOf(ls); t != nil {
 		ev.Task, ev.TaskID = bounded(t.Name, 128), t.ID
 		if len(t.calls) > 0 {
 			ev.ParentCall = t.calls[len(t.calls)-1].event.Call
@@ -211,16 +211,16 @@ func diagnosticArgs(op string, args map[string]lua.LValue) types.DiagnosticDetai
 	return d
 }
 
-func nativeDiagnosticArgs(op, sig string, L *lua.LState) types.DiagnosticDetails {
+func nativeDiagnosticArgs(op, sig string, ls *lua.LState) types.DiagnosticDetails {
 	contract, _ := ParseSignature(sig)
 	args := map[string]lua.LValue{}
 	for i, p := range contract.Parameters {
 		if contract.Table {
-			if table, ok := L.Get(1).(*lua.LTable); ok {
+			if table, ok := ls.Get(1).(*lua.LTable); ok {
 				args[p.Name] = table.RawGetString(p.Name)
 			}
 		} else {
-			args[p.Name] = L.Get(i + 1)
+			args[p.Name] = ls.Get(i + 1)
 		}
 	}
 	return diagnosticArgs(op, args)

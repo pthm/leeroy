@@ -55,7 +55,9 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		os.Stdout.Write(b)
+		if _, err := os.Stdout.Write(b); err != nil {
+			log.Fatal(err)
+		}
 	case "blp": // blp <file> <out.png>
 		b, err := c.Read(flag.Arg(1))
 		if err != nil {
@@ -65,8 +67,13 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		f, _ := os.Create(flag.Arg(2))
-		png.Encode(f, img)
+		f, err := os.Create(flag.Arg(2))
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := png.Encode(f, img); err != nil {
+			log.Fatal(err)
+		}
 		f.Close()
 	case "textures": // textures <map dir>: ground textures used across a map, by how many chunks use them
 		dir := flag.Arg(1)
@@ -81,7 +88,7 @@ func main() {
 				if err != nil {
 					continue
 				}
-				for _, ch := range a.Chunks {
+				for _, ch := range &a.Chunks {
 					for _, l := range ch.Layers {
 						if int(l) < len(a.Textures) {
 							count[a.Textures[l]]++
@@ -147,8 +154,12 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			os.MkdirAll(filepath.Join(out, "dbc"), 0o755)
-			os.WriteFile(filepath.Join(out, "dbc", d.file), b, 0o644)
+			if err := os.MkdirAll(filepath.Join(out, "dbc"), 0o755); err != nil {
+				log.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(out, "dbc", d.file), b, 0o644); err != nil {
+				log.Fatal(err)
+			}
 			for _, n := range clientdata.DBCStrings(b, d.field) {
 				if n == "" {
 					continue
@@ -156,7 +167,9 @@ func main() {
 				names[strings.ToLower(filepath.Base(strings.ReplaceAll(n, `\`, "/")))] = true
 			}
 		}
-		os.MkdirAll(filepath.Join(out, "icons"), 0o755)
+		if err := os.MkdirAll(filepath.Join(out, "icons"), 0o755); err != nil {
+			log.Fatal(err)
+		}
 		n := 0
 		for name := range names {
 			b, err := c.Read(`Interface\Icons\` + name + ".blp")
@@ -171,7 +184,9 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			png.Encode(f, img)
+			if err := png.Encode(f, img); err != nil {
+				log.Fatal(err)
+			}
 			f.Close()
 			n++
 		}

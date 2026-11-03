@@ -95,7 +95,7 @@ func (b *Bot) sampleFightLog() {
 	me := b.me3()
 	hc, hm := b.GetHealth()
 	spots := []spotRec{{
-		guid: b.world.CharGUID(), name: b.config.CharacterName, level: uint32(b.GetLevel()), kind: "you",
+		guid: b.world.CharGUID(), name: b.config.CharacterName, level: b.GetLevel(), kind: "you",
 		x: me.x, y: me.y, z: me.z, hp: frac(hc, hm), alive: b.IsAlive() && !b.IsGhost(), target: b.world.TargetGUID(),
 	}}
 	myFaction := uint32(0)
@@ -190,7 +190,7 @@ func (fl *fightLog) finish(sum *types.FightSummary, start, end time.Time, logf f
 		return
 	}
 	go func() {
-		os.MkdirAll(dir, 0o755)
+		_ = os.MkdirAll(dir, 0o755) // best effort: WriteFile fails below if it didn't work
 		b, _ := json.Marshal(f)
 		name := fmt.Sprintf("%03d.json", f.ID)
 		if os.WriteFile(filepath.Join(dir, name), b, 0o644) == nil {
@@ -328,7 +328,7 @@ func buildFight(id int, sum *types.FightSummary, start, end time.Time, frames []
 		actor(g, string(playerLabels[i]), map[bool]string{true: "party", false: "player"}[party[g]])
 	}
 
-	frm := []types.FightFrame{}
+	frm := make([]types.FightFrame, 0, len(fr))
 	for _, f := range fr {
 		ff := types.FightFrame{S: secs(f.t)}
 		for _, s := range f.spots {
@@ -426,7 +426,7 @@ func positioning(f types.Fight, first map[uint64]time.Time, enemies []uint64, la
 		}
 		if i > 0 && it != nil {
 			for _, o := range joined {
-				if os := spotAt(f, o, s); os != nil && dist2(os, it) <= fightPackYd {
+				if spot := spotAt(f, o, s); spot != nil && dist2(spot, it) <= fightPackYd {
 					j.Near = o
 					break
 				}

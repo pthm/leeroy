@@ -174,7 +174,7 @@ func (b *Bot) watchAreaTriggers() {
 					continue
 				}
 				last[t.id] = now
-				w.SendPacketRaw(cmsgAreaTrigger, binary.LittleEndian.AppendUint32(nil, t.id))
+				_ = w.SendPacketRaw(cmsgAreaTrigger, binary.LittleEndian.AppendUint32(nil, t.id)) // best effort: resent while you stand in it
 			}
 		}
 	}()

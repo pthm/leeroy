@@ -78,7 +78,8 @@ func (b *Bot) transportAt(guid uint64, now time.Time) (transportPose, *transport
 		return transportPose{}, nil, 0, false
 	}
 	pp := r.pp + uint32(now.Sub(r.at).Milliseconds())
-	return tp.at(pp), tp, pp, true
+	pose := tp.at(pp)
+	return pose, tp, pp, true
 }
 
 // transportView is a transport for scripts.
@@ -142,7 +143,7 @@ func (b *Bot) setupTransports() {
 			b.scanTransports()
 			aboard, _ := w.Transport()
 			b.trs.mu.Lock()
-			var guids []uint64
+			guids := make([]uint64, 0, len(b.trs.recs))
 			for g := range b.trs.recs {
 				guids = append(guids, g)
 			}

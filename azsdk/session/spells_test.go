@@ -94,8 +94,9 @@ func TestControls(t *testing.T) {
 	now := time.Now()
 	auras := []client.AuraInfo{{Spell: 118, Caster: 7, Flags: 0x20, MaxDurationMS: 20000, DurationMS: 15000, At: now}, // Polymorph
 		{Spell: 6770}, {Spell: 122}, {Spell: 853}, {Spell: 1243}} // Sap, Frost Nova, Hammer of Justice; Power Word: Fortitude isn't one
-	var got []string
-	for _, c := range controls(auras) {
+	cs := controls(auras)
+	got := make([]string, 0, len(cs))
+	for _, c := range cs {
 		got = append(got, fmt.Sprintf("%d %s %v %v %d %v", c.Spell, c.Mechanic, c.BreaksOnDamage, c.DamageLimit, c.CasterGUID, c.RemainingMS != nil))
 	}
 	want := []string{"118 polymorph true false 7 true", "6770 sap true true 0 false", "122 root false true 0 false", "853 stun false false 0 false"}

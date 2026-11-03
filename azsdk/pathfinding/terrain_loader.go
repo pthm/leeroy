@@ -39,8 +39,6 @@ type TerrainManager struct {
 }
 
 type gridTerrain struct {
-	mu sync.RWMutex
-
 	// height data
 	gridHeight float32
 
@@ -428,10 +426,6 @@ func (gt *gridTerrain) getHeight(x, y float32) float32 {
 	default:
 		h = gt.gridHeight
 	}
-	if math.Abs(float64(x-1568)) < 2 && math.Abs(float64(y+4405.87)) < 2 {
-		// best effort, import math may not be here; use a side log via fmt if needed, but to avoid, just compute
-	}
-	_ = h
 	return h
 }
 
@@ -608,9 +602,6 @@ func (tm *TerrainManager) GetGridHeight(mapID uint32, x, y float32) (float32, bo
 	h := gt.getHeight(x, y)
 	if h <= invalidHeight+1 {
 		return 0, false
-	}
-	if mapID == 1 && math.Abs(float64(x-1568)) < 5 {
-		// fmt not directly, but we can ignore for now or use a side effect; skip detailed here to avoid import cycle risk in edit
 	}
 	return h, true
 }

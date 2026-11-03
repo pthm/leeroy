@@ -52,7 +52,8 @@ func (s *PathFindingService) planJump(ctx context.Context, m uint32, walked []Po
 			if !ok {
 				continue
 			}
-			if tries++; tries > jumpTries || ctx.Err() != nil {
+			tries++
+			if tries > jumpTries || ctx.Err() != nil {
 				return plannedJump{}, false
 			}
 			arc, tri, ok := s.jumpArc(ctx, m, walked[k], aim, air)

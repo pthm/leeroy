@@ -79,8 +79,9 @@ func TestGroupChatPackets(t *testing.T) {
 		t.Fatalf("own chat: %q", chats)
 	}
 
-	var got []string
-	for _, ev := range b.lua.Bus.Wait(script.Query{Types: []string{"error"}}, time.Second) {
+	evs := b.lua.Bus.Wait(script.Query{Types: []string{"error"}}, time.Second)
+	got := make([]string, 0, len(evs))
+	for _, ev := range evs {
 		e := ev.Data.(types.ErrorEvent)
 		got = append(got, e.Op+" "+e.Code)
 	}

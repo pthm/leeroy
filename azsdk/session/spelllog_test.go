@@ -175,8 +175,9 @@ func TestEngaged(t *testing.T) {
 		mob(4, 0, true, "neutral"), mob(5, me, false, "hostile"), mob(6, me, true, "friendly"),
 	}
 	threat := map[uint64][]threatRef{2: {{pal, 50}}, 3: {{other, 90}}, 4: {{other, 90}, {pal, 40}, {me, 10}}}
-	var got []string
-	for _, e := range engagedWith(cs, threat, ours) {
+	engaged := engagedWith(cs, threat, ours)
+	got := make([]string, 0, len(engaged))
+	for _, e := range engaged {
 		got = append(got, fmt.Sprint(uint64(e.GUID), e.OnThreat, e.Fleeing))
 	}
 	if want := []string{"1 [] false", "2 [43] false", "4 [43 42] true"}; !slices.Equal(got, want) {

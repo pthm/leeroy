@@ -41,17 +41,17 @@ func TestPartialPathAndSurfaceMetadataSurviveCopies(t *testing.T) {
 	got.Swimming = []bool{true}
 	got.Collision = &pathfinding.CollisionCheck{State: "clear"}
 	got.Replanned = true
-	copy := got.Clone()
+	cp := got.Clone()
 	got.Swimming[0] = false
 	got.Collision.State = "blocked"
-	if !copy.Swimming[0] || copy.Collision.State != "clear" || !copy.Replanned {
+	if !cp.Swimming[0] || cp.Collision.State != "clear" || !cp.Replanned {
 		t.Fatal("clearance metadata aliased")
 	}
 	raw.Corridor[0] = 8
 	got.Points[0].Z = 99
 	got.surface.PointPolys[0] = 9
 	got.surface.Transitions[0] = false
-	if !copy.Found || !copy.Partial || copy.Points[0].Z != 0 || copy.surface.PointPolys[0] != 7 || copy.surface.Corridor[0] != 7 || !copy.surface.Transitions[0] {
-		t.Fatalf("metadata lost or aliased: %+v", copy)
+	if !cp.Found || !cp.Partial || cp.Points[0].Z != 0 || cp.surface.PointPolys[0] != 7 || cp.surface.Corridor[0] != 7 || !cp.surface.Transitions[0] {
+		t.Fatalf("metadata lost or aliased: %+v", cp)
 	}
 }

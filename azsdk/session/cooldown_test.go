@@ -89,6 +89,7 @@ func TestGCDOncePerCast(t *testing.T) {
 		t.Skip("no game data in ../../data")
 	}
 	spellsDir, spellsOnce = dir, sync.Once{}
+	loadSpells() // before the clock matters: reading Spell.dbc takes ~125 ms under -race, more than the margin below
 	le := binary.LittleEndian
 	const me, heal, fort = uint64(0x2A), uint32(2050), uint32(1243) // Lesser Heal (1.5 s cast), Power Word: Fortitude
 	s := &agentState{
@@ -134,6 +135,7 @@ func TestRangedAttackCooldown(t *testing.T) {
 		t.Skip("no game data in ../../data")
 	}
 	spellsDir, spellsOnce = dir, sync.Once{}
+	loadSpells() // before the clock matters (slow under -race)
 	le := binary.LittleEndian
 	const me = uint64(0x2A)
 	s := &agentState{

@@ -115,7 +115,7 @@ func (b *Bot) alliance() bool {
 }
 
 // route: the cheapest chain of known nodes from -> to (Dijkstra over TaxiPath), with its cost; nil if none.
-func route(from, to uint32, known map[uint32]bool) ([]uint32, uint32) {
+func route(from, to uint32, known map[uint32]bool) (nodes []uint32, price uint32) {
 	loadTaxi()
 	cost, prev := map[uint32]uint32{from: 0}, map[uint32]uint32{}
 	done := map[uint32]bool{}
@@ -142,7 +142,7 @@ func route(from, to uint32, known map[uint32]bool) ([]uint32, uint32) {
 			}
 		}
 	}
-	nodes := []uint32{to}
+	nodes = []uint32{to}
 	for n := to; n != from; {
 		n = prev[n]
 		nodes = append([]uint32{n}, nodes...)
@@ -273,7 +273,7 @@ func (b *Bot) setupTravel() {
 			for len(menus) > 0 {
 				<-menus
 			}
-			ask := func() { w.SendPacketRaw(cmsgTaxiQueryAvailable, binary.LittleEndian.AppendUint64(nil, npc)) }
+			ask := func() { _ = w.SendPacketRaw(cmsgTaxiQueryAvailable, binary.LittleEndian.AppendUint64(nil, npc)) } // a lost packet shows as the request's timeout
 			ask()
 			learned, asked := false, time.Now()
 			return b.request("flights.map", args, 6*time.Second, func() *script.Outcome {
@@ -285,7 +285,7 @@ func (b *Bot) setupTravel() {
 					t.mu.Lock()
 					fm := types.FlightMap{Current: b.taxiNode(uint32(m[1]), true), Destinations: []types.TaxiNode{}, Learned: learned}
 					for id, k := range t.known {
-						if !k || id == uint32(m[1]) {
+						if !k || uint64(id) == m[1] {
 							continue
 						}
 						if nodes, cost := route(uint32(m[1]), id, t.known); nodes != nil {
@@ -329,17 +329,21 @@ func (b *Bot) setupTravel() {
 			case cost > w.Money():
 				return b.refuse("flights.take", args, "not_enough_money", fmt.Sprintf("it costs %dc; you have %dc", cost, w.Money()))
 			}
+			var err error
 			if len(nodes) == 2 {
 				body := binary.LittleEndian.AppendUint64(nil, npc)
 				body = binary.LittleEndian.AppendUint32(body, from)
-				w.SendPacketRaw(cmsgActivateTaxi, binary.LittleEndian.AppendUint32(body, to))
+				err = w.SendPacketRaw(cmsgActivateTaxi, binary.LittleEndian.AppendUint32(body, to))
 			} else {
 				body := binary.LittleEndian.AppendUint64(nil, npc)
 				body = binary.LittleEndian.AppendUint32(body, uint32(len(nodes)))
 				for _, n := range nodes {
 					body = binary.LittleEndian.AppendUint32(body, n)
 				}
-				w.SendPacketRaw(cmsgActivateTaxiExpress, body)
+				err = w.SendPacketRaw(cmsgActivateTaxiExpress, body)
+			}
+			if err != nil {
+				return b.refuse("flights.take", args, "failed", err.Error())
 			}
 			fl := &types.Flight{From: b.taxiNode(from, true), To: b.taxiNode(to, true), Cost: cost}
 			t.mu.Lock()
@@ -379,7 +383,9 @@ func (b *Bot) setupTravel() {
 			return b.refuse("innkeeper.bind", args, "not_an_innkeeper", "that's not an innkeeper in sight")
 		}
 		asked := time.Now()
-		w.SendPacketRaw(cmsgBinderActivate, binary.LittleEndian.AppendUint64(nil, npc))
+		if err := w.SendPacketRaw(cmsgBinderActivate, binary.LittleEndian.AppendUint64(nil, npc)); err != nil {
+			return b.refuse("innkeeper.bind", args, "failed", err.Error())
+		}
 		return b.request("innkeeper.bind", args, 5*time.Second, func() *script.Outcome {
 			t.mu.Lock()
 			defer t.mu.Unlock()
@@ -442,7 +448,7 @@ func (b *Bot) travelEvents(teleported bool) {
 	b.emit("movement_changed", types.MovementChanged{State: state(lock), Previous: state(prev)})
 	switch {
 	case lock == "in_flight":
-		b.StopMoving() // the local walker must not fight the server's path
+		_ = b.StopMoving() // the local walker must not fight the server's path
 		f := types.Flight{}
 		if fl != nil {
 			f = *fl

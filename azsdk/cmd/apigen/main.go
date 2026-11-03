@@ -18,6 +18,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
@@ -142,12 +143,13 @@ func fetchDocs(url string) []fnDoc {
 	if err != nil {
 		log.Fatalf("api.docs: %v (start a session first: azbench gm)", err)
 	}
-	defer res.Body.Close()
 	var out struct {
 		Result []fnDoc `json:"result"`
 		Error  *struct{ Message string }
 	}
-	if err := json.NewDecoder(res.Body).Decode(&out); err != nil || out.Error != nil {
+	err = json.NewDecoder(res.Body).Decode(&out)
+	res.Body.Close()
+	if err != nil || out.Error != nil {
 		log.Fatalf("api.docs: %v %v", err, out.Error)
 	}
 	return out.Result
@@ -156,16 +158,20 @@ func fetchDocs(url string) []fnDoc {
 // parseTypeDocs: type name -> its doc comment, from the types package source
 func parseTypeDocs(dir string) map[string]string {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, nil, parser.ParseComments)
+	paths, err := filepath.Glob(filepath.Join(dir, "*.go"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	out := map[string]string{}
-	for _, p := range pkgs {
-		files := []*ast.File{}
-		for _, f := range p.Files {
-			files = append(files, f)
+	pkgs := map[string][]*ast.File{} // by package name, as the deprecated parser.ParseDir grouped them
+	for _, p := range paths {
+		f, err := parser.ParseFile(fset, p, nil, parser.ParseComments)
+		if err != nil {
+			log.Fatal(err)
 		}
+		pkgs[f.Name.Name] = append(pkgs[f.Name.Name], f)
+	}
+	out := map[string]string{}
+	for _, files := range pkgs {
 		dp, err := doc.NewFromFiles(fset, files, "types")
 		if err != nil {
 			log.Fatal(err)

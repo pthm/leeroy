@@ -150,6 +150,7 @@ func NewMovementController(sender MovementSender, speed float32, nav navigation.
 	}
 }
 
+// SetNavigator sets the navigator that ground heights come from.
 func (m *MovementController) SetNavigator(nav navigation.Navigator) {
 	m.nav = nav
 }
@@ -175,7 +176,7 @@ func (m *MovementController) SetPreparedRoute(r *navigation.PathResult, at time.
 	m.jumps = append([]navigation.Jump(nil), r.Jumps...)
 }
 
-// Airborne: in the air on a route's jump; a new path or a stop has to wait for the landing.
+// Airborne reports whether the character is in the air on a route's jump; a new path or a stop has to wait for the landing.
 func (m *MovementController) Airborne() bool { return m.air >= 0 && m.isMoving }
 
 func (m *MovementController) setPath(path []navigation.Point3D, startTime time.Time, initialO float32, mapID uint32, prepared bool) {
@@ -796,7 +797,7 @@ func (m *MovementController) clampCurrentZToGround() {
 	if m.nav == nil {
 		return
 	}
-	gh, _, ok := movementGroundHeightWithSource(m.nav, m.mapID, m.curX, m.curY, m.curZ)
+	gh, ok := movementGroundHeight(m.nav, m.mapID, m.curX, m.curY, m.curZ)
 	if !ok || math.IsNaN(float64(gh)) || math.IsInf(float64(gh), 0) {
 		return
 	}
@@ -884,14 +885,12 @@ func (s *worldMovementSender) SendRouteJump(at time.Time, x, y, z, o, sinAngle, 
 // Ground helpers (moved from bot.go for isolation; used by movement + bot later)
 // ============================================================
 
-func movementGroundHeightWithSource(nav navigation.Navigator, mapID uint32, x, y, fallbackHintZ float32) (float32, bool, bool) {
+// movementGroundHeight is the ground at (x, y): the navigator's height near fallbackHintZ, else the terrain's.
+func movementGroundHeight(nav navigation.Navigator, mapID uint32, x, y, fallbackHintZ float32) (float32, bool) {
 	if gh, ok := nav.GetHeight(mapID, x, y, fallbackHintZ); ok {
-		return gh, false, true
+		return gh, true
 	}
-	if gh, ok := nav.GetTerrainHeight(mapID, x, y); ok {
-		return gh, true, true
-	}
-	return 0, false, false
+	return nav.GetTerrainHeight(mapID, x, y)
 }
 
 // FloorAware returns the walkable navmesh floor near hintZ when it's a different surface from the terrain (inside a
@@ -903,6 +902,7 @@ func FloorAware(nav navigation.Navigator, mapID uint32, x, y, hintZ, ground floa
 	return FloorAwareContext(context.Background(), nav, mapID, x, y, hintZ, ground)
 }
 
+// FloorAwareContext is FloorAware under ctx; cancelled, it returns ground.
 func FloorAwareContext(ctx context.Context, nav navigation.Navigator, mapID uint32, x, y, hintZ, ground float32) float32 {
 	if ctx.Err() != nil {
 		return ground
@@ -939,7 +939,7 @@ func snapPathToGround(nav navigation.Navigator, mapID uint32, pts []navigation.P
 	}
 	for i := range pts {
 		origZ := pts[i].Z
-		gh, _, ok := movementGroundHeightWithSource(nav, mapID, pts[i].X, pts[i].Y, origZ)
+		gh, ok := movementGroundHeight(nav, mapID, pts[i].X, pts[i].Y, origZ)
 		if !ok || math.IsNaN(float64(gh)) || math.IsInf(float64(gh), 0) {
 			continue
 		}
@@ -1092,12 +1092,10 @@ func abs32(v float32) float32 {
 }
 
 // GroundHeightContext preserves cancellation across terrain and model queries.
-func GroundHeightContext(ctx context.Context, nav navigation.Navigator, m uint32, x, y, z float32) (float32, bool, bool) {
+func GroundHeightContext(ctx context.Context, nav navigation.Navigator, m uint32, x, y, z float32) (h float32, fromTerrain, ok bool) {
 	if ctx.Err() != nil {
 		return 0, false, false
 	}
-	var h float32
-	var ok bool
 	if n, yes := nav.(interface {
 		GetHeightContext(context.Context, uint32, float32, float32, float32) (float32, bool)
 	}); yes {

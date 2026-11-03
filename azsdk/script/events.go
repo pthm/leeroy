@@ -25,6 +25,7 @@ type Event struct {
 
 const busKeep = 50000 // ponytail: in-memory window; the file has everything
 
+// Bus is the event log: a sequence-numbered window in memory, appended to a file, with listeners and waiters.
 type Bus struct {
 	mu        sync.Mutex
 	seq       uint64
@@ -78,7 +79,7 @@ func (b *Bus) Emit(typ string, data any) Event {
 	}
 	if b.file != nil {
 		if line, err := json.Marshal(e); err == nil {
-			b.file.Write(append(line, '\n'))
+			_, _ = b.file.Write(append(line, '\n')) // best effort: the in-memory window still has it
 		}
 	}
 	close(b.changed)
@@ -100,7 +101,7 @@ func (b *Bus) Write(typ string, data any) {
 		return
 	}
 	if line, err := json.Marshal(Event{T: time.Now().UnixMilli(), Type: typ, Data: data}); err == nil {
-		b.file.Write(append(line, '\n'))
+		_, _ = b.file.Write(append(line, '\n')) // best effort, as in Emit
 	}
 }
 
@@ -141,7 +142,7 @@ func (q Query) wants(e Event) bool {
 	return true
 }
 
-// Matches: "chat" matches every chat event; a pattern ending in "*" matches a prefix ("quest_*"); "type:kind"
+// Matches reports whether e matches any of pats: "chat" matches every chat event; a pattern ending in "*" matches a prefix ("quest_*"); "type:kind"
 // also matches the event's kind, for chat ("chat:whisper", "chat:npc_*").
 func Matches(e Event, pats []string) bool {
 	for _, p := range pats {
@@ -180,6 +181,7 @@ func kindOf(e Event) string {
 	return ""
 }
 
+// Query returns the events in the window that q selects.
 func (b *Bus) Query(q Query) []Event {
 	b.mu.Lock()
 	defer b.mu.Unlock()

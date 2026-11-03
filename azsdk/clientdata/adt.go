@@ -27,12 +27,13 @@ type Placement struct {
 	DoodadSet int // a WMO's doodad set, shown with set 0
 }
 
+// Chunk is one of an ADT's 16x16 chunks: its texture layers and their alpha maps.
 type Chunk struct {
 	Layers []uint32  // texture index per layer (into Textures)
 	Alpha  [][]uint8 // per layer above the first: 64x64 coverage, 0-255
 }
 
-// Coverage: how much of texture tex covers point (cx, cy) of a chunk, 0-255 (layer 0 is what the layers above leave).
+// Coverage returns how much of texture tex covers point (cx, cy) of a chunk, 0-255 (layer 0 is what the layers above leave).
 func (c *Chunk) Coverage(tex uint32, cx, cy int) uint8 {
 	// the game blends layers in order: each layer's alpha covers what's below
 	cov := make([]float64, len(c.Layers))
