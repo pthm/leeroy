@@ -25,9 +25,9 @@ host=$(hostname)
 ok=1
 # what systemd and the kernel saw (a unit stopped or started, a process killed, a reboot), for a run that ended oddly
 {
-	log "journal: boots, the leeroy units, kernel warnings"
+	log "journal: boots, the leeroy units and upgrades, kernel warnings"
 	journalctl --list-boots --no-pager
-	journalctl --no-pager -o short-iso -u leeroy-run -u leeroy-view -u leeroy-deadline
+	journalctl --no-pager -o short-iso -u leeroy-run -u leeroy-view -u leeroy-deadline -u apt-daily-upgrade -u unattended-upgrades -t needrestart
 	journalctl --no-pager -o short-iso -k -p warning | tail -n 50
 } 2>&1
 if [ -n "$run" ]; then

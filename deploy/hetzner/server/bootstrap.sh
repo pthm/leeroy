@@ -6,6 +6,9 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq ca-certificates curl git jq rsync zstd >/dev/null
+# no unattended upgrades on the run servers (needrestart would restart a run's unit mid-run; run.sh does it too)
+systemctl disable --now -q apt-daily.timer apt-daily-upgrade.timer unattended-upgrades.service 2>/dev/null || true
+mkdir -p /etc/needrestart/conf.d && echo "\$nrconf{restart} = 'l';" >/etc/needrestart/conf.d/leeroy.conf
 command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh >/dev/null
 [ -x /root/.local/bin/mise ] || curl -fsSL https://mise.run | sh
 . /opt/leeroy/deploy/hetzner/server/lib.sh

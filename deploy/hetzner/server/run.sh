@@ -17,6 +17,10 @@ if [ -e /var/lib/leeroy/started ]; then
 	exec bash /opt/leeroy/deploy/hetzner/server/finish.sh "done"
 fi
 mkdir -p /var/lib/leeroy && date -u +%FT%TZ >/var/lib/leeroy/started
+# no unattended upgrades during a run: after one, needrestart restarts the services using old libraries, this unit
+# among them (a stop and a start mid-run)
+systemctl disable --now -q apt-daily.timer apt-daily-upgrade.timer unattended-upgrades.service 2>/dev/null
+mkdir -p /etc/needrestart/conf.d && echo "\$nrconf{restart} = 'l';" >/etc/needrestart/conf.d/leeroy.conf
 if just up && wait_ready && just build; then
 	# the live viewer beside it, for just remote-view; it outlives a failed start of its own (restarts)
 	systemd-run --unit leeroy-view --property=Restart=on-failure --property=RestartSec=10 \
