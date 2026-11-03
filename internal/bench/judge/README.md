@@ -20,11 +20,11 @@ too. The server saves characters every 15 s (`server/override.yml`), and the jud
 | `diagnostics.go` | saved lifecycle and usage evidence, pause boundaries, compact team diagnostics |
 | `streams.go` | tails the event streams in a run or team dir |
 | `obj.go` | key-ordered JSON objects for samples, the board and the result line |
-| `score.json` | the weights for `score:` goals, and their version (built into the binary: rebuild with `./build.sh`) |
+| `score.json` | the weights for `score:` goals, and their version (built into the binary: rebuild with `just build`) |
 
 ## The judge
 
-Part of `bin/azbench` (built by `./build.sh`); `azbench run` judges every player in-process.
+Part of `bin/azbench` (built by `just build`); `azbench run` judges every player in-process.
 
 ```sh
 bin/azbench judge <Character> <goal> [flags]

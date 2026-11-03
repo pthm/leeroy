@@ -116,8 +116,8 @@ func (r *Runner) manifest(fn func(*runfiles.Manifest)) {
 
 // Build builds the tools into bin/ (the judge, viewer, agent tools and the azsdk daemon).
 func Build(repo string) error {
-	cmd := exec.Command(filepath.Join(repo, "build.sh"))
-	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
+	cmd := exec.Command("go", "build", "-o", "bin/", "./azsdk/cmd/...", "./cmd/...") // as `just build`
+	cmd.Dir, cmd.Stdout, cmd.Stderr = repo, os.Stderr, os.Stderr
 	return cmd.Run()
 }
 

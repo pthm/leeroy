@@ -56,6 +56,7 @@ func TestFindPath_Map1_Durotar(t *testing.T) {
 	dataDir := requireACData(t)
 	done := make(chan bool, 1)
 	go func() {
+		defer func() { done <- true }()
 		svc := NewPathFindingService(dataDir+"/mmaps", dataDir+"/maps")
 
 		start := Point3D{X: 1568.000000, Y: -4405.870117, Z: 8.377480}
@@ -63,7 +64,8 @@ func TestFindPath_Map1_Durotar(t *testing.T) {
 
 		result, err := svc.FindPath(1, start, dest)
 		if err != nil {
-			t.Fatalf("FindPath failed: %v", err)
+			t.Errorf("FindPath failed: %v", err)
+			return
 		}
 
 		t.Logf("map1 produced %d points, firstZ=%.6f lastZ=%.6f last=(%.6f,%.6f,%.6f)", len(result.Points), result.Points[0].Z, result.Points[len(result.Points)-1].Z, result.Points[len(result.Points)-1].X, result.Points[len(result.Points)-1].Y, result.Points[len(result.Points)-1].Z)
@@ -82,7 +84,6 @@ func TestFindPath_Map1_Durotar(t *testing.T) {
 		if math.Abs(float64(lastZ)-23.771362) > 0.01 {
 			t.Logf("last Z note: got %.6f", lastZ)
 		}
-		done <- true
 	}()
 	select {
 	case <-done:
@@ -95,6 +96,7 @@ func TestFindPath_Map571_Northrend(t *testing.T) {
 	dataDir := requireACData(t)
 	done := make(chan bool, 1)
 	go func() {
+		defer func() { done <- true }()
 		svc := NewPathFindingService(dataDir+"/mmaps", dataDir+"/maps")
 
 		start := Point3D{X: 5899.160156, Y: 753.091003, Z: 652.776978}
@@ -102,11 +104,11 @@ func TestFindPath_Map571_Northrend(t *testing.T) {
 
 		result, err := svc.FindPath(571, start, dest)
 		if err != nil {
-			t.Fatalf("FindPath failed: %v", err)
+			t.Errorf("FindPath failed: %v", err)
+			return
 		}
 
 		assertPathValid(t, result, start, dest, 16)
-		done <- true
 	}()
 	select {
 	case <-done:
@@ -119,6 +121,7 @@ func TestFindPath_Map530_Outland(t *testing.T) {
 	dataDir := requireACData(t)
 	done := make(chan bool, 1)
 	go func() {
+		defer func() { done <- true }()
 		svc := NewPathFindingService(dataDir+"/mmaps", dataDir+"/maps")
 
 		start := Point3D{X: -176.419998, Y: 1028.530029, Z: 54.256199}
@@ -126,11 +129,11 @@ func TestFindPath_Map530_Outland(t *testing.T) {
 
 		result, err := svc.FindPath(530, start, dest)
 		if err != nil {
-			t.Fatalf("FindPath failed: %v", err)
+			t.Errorf("FindPath failed: %v", err)
+			return
 		}
 
 		assertPathValid(t, result, start, dest, 20)
-		done <- true
 	}()
 	select {
 	case <-done:
@@ -143,6 +146,7 @@ func TestFindPath_Map0_EasternKingdoms(t *testing.T) {
 	dataDir := requireACData(t)
 	done := make(chan bool, 1)
 	go func() {
+		defer func() { done <- true }()
 		svc := NewPathFindingService(dataDir+"/mmaps", dataDir+"/maps")
 
 		start := Point3D{X: -14437.500000, Y: 462.808990, Z: 3.907810}
@@ -150,11 +154,11 @@ func TestFindPath_Map0_EasternKingdoms(t *testing.T) {
 
 		result, err := svc.FindPath(0, start, dest)
 		if err != nil {
-			t.Fatalf("FindPath failed: %v", err)
+			t.Errorf("FindPath failed: %v", err)
+			return
 		}
 
 		assertPathValid(t, result, start, dest, 13)
-		done <- true
 	}()
 	select {
 	case <-done:
@@ -167,20 +171,24 @@ func TestFindRandomPath(t *testing.T) {
 	dataDir := requireACData(t)
 	done := make(chan bool, 1)
 	go func() {
+		defer func() { done <- true }()
 		svc := NewPathFindingService(dataDir+"/mmaps", dataDir+"/maps")
 
 		center := Point3D{X: 1568.0, Y: -4405.87, Z: 8.377}
 		result, err := svc.FindRandomPath(1, center, 30.0)
 		if err != nil {
-			t.Fatalf("FindRandomPath failed: %v", err)
+			t.Errorf("FindRandomPath failed: %v", err)
+			return
 		}
 
 		if result.Type&PathfindNopath != 0 {
-			t.Fatalf("expected a valid random path, got NOPATH")
+			t.Errorf("expected a valid random path, got NOPATH")
+			return
 		}
 
 		if len(result.Points) < 2 {
-			t.Fatalf("expected at least 2 points, got %d", len(result.Points))
+			t.Errorf("expected at least 2 points, got %d", len(result.Points))
+			return
 		}
 
 		// Verify the starting point is close to center.
@@ -195,7 +203,6 @@ func TestFindRandomPath(t *testing.T) {
 		if dist2D > 60.0 { // generous threshold since the path follows navmesh
 			t.Errorf("end point too far from center: dist2D=%.2f", dist2D)
 		}
-		done <- true
 	}()
 	select {
 	case <-done:
@@ -208,6 +215,7 @@ func TestFindPath_SharedService_ConcurrentAccess(t *testing.T) {
 	dataDir := requireACData(t)
 	done := make(chan bool, 1)
 	go func() {
+		defer func() { done <- true }()
 		svc := NewPathFindingService(dataDir+"/mmaps", dataDir+"/maps")
 
 		start := Point3D{X: 1568.0, Y: -4405.87, Z: 8.377}
@@ -230,7 +238,6 @@ func TestFindPath_SharedService_ConcurrentAccess(t *testing.T) {
 		for i := 0; i < 4; i++ {
 			<-innerDone
 		}
-		done <- true
 	}()
 	select {
 	case <-done:
@@ -243,6 +250,7 @@ func TestPathFindingService_ConcurrentPathRandomHeightAccess(t *testing.T) {
 	dataDir := requireACData(t)
 	done := make(chan bool, 1)
 	go func() {
+		defer func() { done <- true }()
 		svc := NewPathFindingService(dataDir+"/mmaps", dataDir+"/maps")
 
 		start := Point3D{X: 1568.0, Y: -4405.87, Z: 8.377}
@@ -279,7 +287,6 @@ func TestPathFindingService_ConcurrentPathRandomHeightAccess(t *testing.T) {
 		for msg := range errCh {
 			t.Error(msg)
 		}
-		done <- true
 	}()
 	select {
 	case <-done:
@@ -292,6 +299,7 @@ func TestFindPath_InvalidMap(t *testing.T) {
 	dataDir := requireACData(t)
 	done := make(chan bool, 1)
 	go func() {
+		defer func() { done <- true }()
 		svc := NewPathFindingService(dataDir+"/mmaps", dataDir+"/maps")
 
 		start := Point3D{X: 0, Y: 0, Z: 0}
@@ -299,9 +307,9 @@ func TestFindPath_InvalidMap(t *testing.T) {
 
 		_, err := svc.FindPath(9999, start, dest)
 		if err == nil {
-			t.Fatalf("expected error for invalid map, got nil")
+			t.Errorf("expected error for invalid map, got nil")
+			return
 		}
-		done <- true
 	}()
 	select {
 	case <-done:
@@ -361,6 +369,7 @@ func TestGetHeight(t *testing.T) {
 	dataDir := requireACData(t)
 	done := make(chan bool, 1)
 	go func() {
+		defer func() { done <- true }()
 		svc := NewPathFindingService(dataDir+"/mmaps", dataDir+"/maps")
 
 		// For a known point, just ensure it doesn't crash and returns a number (terrain may be low or high).
@@ -369,7 +378,6 @@ func TestGetHeight(t *testing.T) {
 		if math.IsNaN(float64(h)) {
 			t.Error("GetHeight returned NaN")
 		}
-		done <- true
 	}()
 	select {
 	case <-done:
@@ -382,22 +390,23 @@ func TestGetTerrainHeightIgnoresHighZHint(t *testing.T) {
 	dataDir := requireACData(t)
 	done := make(chan bool, 1)
 	go func() {
+		defer func() { done <- true }()
 		svc := NewPathFindingService(dataDir+"/mmaps", dataDir+"/maps")
 
 		x, y := float32(1568), float32(-4405.87)
 		terrainH, ok := svc.GetTerrainHeight(1, x, y)
 		if !ok {
-			t.Fatal("GetTerrainHeight failed")
+			t.Error("GetTerrainHeight failed")
+			return
 		}
 
 		hintedH, ok := svc.GetHeight(1, x, y, terrainH+200)
 		if ok && hintedH == terrainH+200 {
-			t.Fatalf("GetHeight returned the high hint unchanged: got %.3f", hintedH)
+			t.Errorf("GetHeight returned the high hint unchanged: got %.3f", hintedH)
 		}
 		if math.IsNaN(float64(terrainH)) || math.IsInf(float64(terrainH), 0) {
-			t.Fatalf("GetTerrainHeight returned invalid value %.3f", terrainH)
+			t.Errorf("GetTerrainHeight returned invalid value %.3f", terrainH)
 		}
-		done <- true
 	}()
 	select {
 	case <-done:
@@ -410,6 +419,7 @@ func TestGetHeight_DoesNotReturnNavmeshAboveSearchOrigin(t *testing.T) {
 	dataDir := requireACData(t)
 	done := make(chan bool, 1)
 	go func() {
+		defer func() { done <- true }()
 		svc := NewPathFindingService(dataDir+"/mmaps", dataDir+"/maps")
 
 		cases := []struct {
@@ -430,10 +440,9 @@ func TestGetHeight_DoesNotReturnNavmeshAboveSearchOrigin(t *testing.T) {
 			}
 			maxAllowed := c.z + Z_OFFSET_FIND_HEIGHT + GROUND_HEIGHT_TOLERANCE
 			if h > maxAllowed {
-				t.Fatalf("%s returned height %.3f above search origin %.3f", c.name, h, maxAllowed)
+				t.Errorf("%s returned height %.3f above search origin %.3f", c.name, h, maxAllowed)
 			}
 		}
-		done <- true
 	}()
 	select {
 	case <-done:
@@ -447,6 +456,7 @@ func TestFindPath_ZMatchesACReference(t *testing.T) {
 	dataDir := requireACData(t)
 	done := make(chan bool, 1)
 	go func() {
+		defer func() { done <- true }()
 		svc := NewPathFindingService(dataDir+"/mmaps", dataDir+"/maps")
 		logPath := func(label string, res *PathResult, err error) {
 			if err != nil {
@@ -480,7 +490,6 @@ func TestFindPath_ZMatchesACReference(t *testing.T) {
 		dest = Point3D{X: -14418.383789, Y: 439.825226, Z: 10.102631}
 		res, err = svc.FindPath(0, start, dest)
 		logPath("map0 (eastern kingdoms)", res, err)
-		done <- true
 	}()
 	select {
 	case <-done:

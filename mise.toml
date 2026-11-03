@@ -1,0 +1,27 @@
+# mise.toml: the tools LEEROY builds, runs and publishes with. `mise install` installs them; with mise activated in
+# your shell they're on the PATH inside the checkout. Tasks are in the justfile (`just` lists them).
+# See https://mise.jdx.dev/
+[settings]
+auto_install = true
+
+[tools]
+# Toolchain: pinned to a minor version so patch releases flow in and a minor bump is a deliberate change (keep the
+# go directive in go.mod and azsdk/go.mod in step).
+go = "1.27"
+node = "24.22"       # the current LTS (24): the site (Astro)
+python = "3.15"      # site/scripts/check-links.py, docs/acceptance
+just = "1.59"
+
+# The agents' runtimes, pinned exactly: results depend on them, so a bump is a deliberate change, made with a new
+# benchmark version (suite/versions.yaml). Each run records the version it ran (run.json, meta.json, the trajectory).
+# Native binaries where mise has them (Claude Code from its releases, opencode from GitHub): their npm packages fetch
+# the binary in an install script that mise's npm installs skip. Codex's npm package runs as installed.
+claude = "2.1.292"
+"npm:@openai/codex" = "0.165.0"
+"github:sst/opencode" = "1.18.22"
+
+[hooks]
+enter = """
+command -v docker >/dev/null || echo 'leeroy: docker is not installed: the server (just up) needs it'
+[ -d data/mmaps ] || echo 'leeroy: no game data in data/ yet: see "Setup" in README.md (just setup)'
+"""

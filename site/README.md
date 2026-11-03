@@ -6,10 +6,10 @@ Astro, on a trimmed copy of the [Terminal Noir](https://github.com/nandomoreiram
 (MIT, `LICENSE-theme`): its layout, palette, fonts and code colours, without its translations and demo content.
 
 ```sh
-cd site && npm install
-npm run dev        # http://localhost:4321/leeroy/
-npm run build      # into dist/; SITE_BASE=/ builds for the root of a domain
-npm run check:links  # after a build: every internal link and anchor resolves
+just site-install   # npm ci in site/ (Node from mise.toml)
+just site-dev       # http://localhost:4321/leeroy/
+just site-build     # into dist/; SITE_BASE=/ builds for the root of a domain
+just site-check     # build, then check every internal link and anchor
 ```
 
 | | |

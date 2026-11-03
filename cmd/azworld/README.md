@@ -7,7 +7,7 @@ and, when extracted from a game install by `clientdata extract`, the client's mi
 the agent-facing docs are in [`azsdk/docs/sdk.md`](../../azsdk/docs/sdk.md) ("World data").
 
 ```sh
-./build.sh
+just build
 bin/azworld help                     # every query command
 bin/azworld quest 33                 # e.g. Wolves Across the Border
 bin/azworld setup [-schema name]     # (re)build the wowbench schema; another name builds a copy to compare against

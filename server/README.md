@@ -12,9 +12,10 @@ All commands run from the repo root. First-time setup (clone, build, client data
 ## Running the server
 
 ```sh
-docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml up -d
-docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml down
-docker logs -f ac-worldserver
+just up        # docker compose -f server/azerothcore/docker-compose.yml -f server/override.yml up -d
+just down
+just logs      # the worldserver's console
+just restart   # recreate the worldserver (after just server-build)
 ```
 
 Always pass both compose files. `override.yml` sets `name: server`, which pins the
@@ -41,7 +42,7 @@ Ports are upstream's defaults and the override doesn't touch them:
 ## Accounts
 
 ```sh
-./build.sh                          # builds bin/azbench (and the other tools)
+just build                          # builds bin/azbench (and the other tools)
 bin/azbench account <user> <pass> [gmLevel]
 bin/azbench account agent1 agent1   # non-GM
 bin/azbench account dev dev 3       # GM level 3

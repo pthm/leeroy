@@ -3,7 +3,7 @@
 The LEEROY benchmark in one binary: it runs the benchmark's tasks from YAML (`suite/tasks`, `suite/models.yaml`),
 judges and reports them, and is the agents' `standings` (`suite/agent/bin/standings` is a link to it: it acts as the
 one it's called by). The agents' other tools are the game's (`wow`, in `azsdk/cmd/wow`) and the world's
-(`azworld`). Built into `bin/azbench` by `./build.sh`. How to use it:
+(`azworld`). Built into `bin/azbench` by `just build`. How to use it:
 [suite/README.md](../../suite/README.md).
 
 | Package | |

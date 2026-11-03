@@ -40,10 +40,10 @@ worldserver ──> client ─────> session ─────> script ─�
 
 ## Build and run
 
-The root `go.work` includes this module, so build from the repo root (`./build.sh` puts every tool in `bin/`):
+The root `go.work` includes this module, so build from the repo root (`just build` puts every tool in `bin/`):
 
 ```sh
-./build.sh
+just build
 bin/azsdk -config azsdk.json             # several characters from a config file
 bin/azsdk -char Garrick -account agent1  # one character, no config file (as the bench runs it)
 ```

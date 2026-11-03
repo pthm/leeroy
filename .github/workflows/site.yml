@@ -20,6 +20,7 @@ jobs:
       - uses: withastro/action@v5
         with:
           path: site
+          node-version: 24.22 # mise.toml's
   deploy:
     needs: build
     runs-on: ubuntu-latest

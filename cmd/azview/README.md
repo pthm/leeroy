@@ -20,7 +20,7 @@ maps and names, the extracted game data and the world database (via `azworld`'s 
 | `templates/` | the page and the panels (`html/template`) |
 | `static/` | the client (`viewer.js`: the map, seek bar and playback), styles, and vendored htmx 2.0.11, idiomorph 0.7.4 (htmx's morph swap) and Alpine 3.17.5 |
 
-Build everything with `./build.sh` (binaries in `bin/`); all commands run from the repo root.
+Build everything with `just build` (binaries in `bin/`); all commands run from the repo root.
 
 ## Game log
 

@@ -1,28 +1,24 @@
-# The Go modules build on their own, as `go install` and `go get` see them: without go.work (GOWORK=off), so the root
-# module builds against the azsdk version its go.mod requires, not the checkout's azsdk/. A failure here means go.mod
-# needs `go get github.com/pthm/leeroy/azsdk@<tag or commit>` (see the README's "Modules and releases").
+# `just ci`: the Go modules build on their own, as `go install` and `go get` see them: without go.work (GOWORK=off), so
+# the root module builds against the azsdk version its go.mod requires, not the checkout's azsdk/; and both vet clean.
+# A build failure here means go.mod needs `go get github.com/pthm/leeroy/azsdk@<tag or commit>` (README: "Modules and
+# releases").
 name: go
 on:
   push:
     branches: [main]
-    paths: ['**.go', '**/go.mod', '**/go.sum', 'go.work', '.github/workflows/go.yml']
+    paths: ['**.go', '**/go.mod', '**/go.sum', 'go.work', 'mise.toml', 'justfile', '.github/workflows/go.yml']
   pull_request:
-    paths: ['**.go', '**/go.mod', '**/go.sum', 'go.work', '.github/workflows/go.yml']
+    paths: ['**.go', '**/go.mod', '**/go.sum', 'go.work', 'mise.toml', 'justfile', '.github/workflows/go.yml']
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      GOWORK: 'off'
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
+      # Go and just at mise.toml's versions (not the agents' runtimes: CI doesn't run agents)
+      - uses: jdx/mise-action@v2
         with:
-          go-version-file: go.mod
-      - name: azsdk
-        working-directory: azsdk
-        run: go build ./...
-      - name: the benchmark tools
-        run: go build ./...
+          install_args: go just
+      - run: just ci

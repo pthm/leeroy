@@ -2,7 +2,7 @@
 
 The benchmark: headless agents (Claude Code or Codex CLI) each play one character through an `azsdk` session, write
 their own Lua scripts, and are scored by a judge that reads the character database. Everything runs through one
-binary, [`azbench`](../cmd/azbench) (built into `bin/` by `./build.sh`), from YAML configs in this directory. All
+binary, [`azbench`](../cmd/azbench) (built into `bin/` by `just build`), from YAML configs in this directory. All
 commands below run from the repo root; server and client setup is in the [repo README](../README.md).
 
 | Path | |
