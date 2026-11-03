@@ -89,6 +89,14 @@ image)
 run)
 	task=${1:?usage: run <task> [azbench run args]}; shift
 	[ -f "suite/tasks/$task.yaml" ] || die "no suite/tasks/$task.yaml"
+	# the keys its agents' runtimes need, before paying for a server (from the task's plan)
+	plan=$(go run ./cmd/azbench run "suite/tasks/$task.yaml" --dry-run --no-build "$@" 2>&1) || die "the task's plan failed: $plan"
+	if grep -qw claude <<<"$plan" && [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+		die "this task runs Claude Code: no CLAUDE_CODE_OAUTH_TOKEN in .env (just claude-token)"
+	fi
+	if grep -qw codex <<<"$plan" && [ ! -f "$HOME/.codex/auth.json" ]; then
+		die "this task runs Codex: no ~/.codex/auth.json (codex login)"
+	fi
 	setup_project
 	need R2_ACCOUNT_ID; need R2_ACCESS_KEY_ID; need R2_SECRET_ACCESS_KEY
 	img=$(snapshot); [ -n "$img" ] || die "no snapshot yet: just remote-image"

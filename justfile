@@ -215,6 +215,11 @@ remote-image:
 remote-run task *args:
     deploy/hetzner/remote.sh run {{ task }} {{ args }}
 
+[doc("Claude Code's long-lived token for the run servers into .env (claude setup-token: sign in in the browser)")]
+[group('remote')]
+claude-token:
+    deploy/claude-token.sh
+
 [doc("The run servers")]
 [group('remote')]
 remote-ls:

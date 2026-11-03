@@ -16,8 +16,11 @@ runs on a schedule.
 2. **Cloudflare R2.** Make two buckets: `leeroy-runs` (private: whole runs) and `leeroy-assets` (public: what run pages
    link to: give it the custom domain `assets.leeroy.dev`, which `site/.env.production` points run pages at). Make an
    R2 API token with Object Read & Write on both, and note its S3 access key, secret and the account id.
-3. **Keys.** `cp .env.example .env` and fill it in. Claude Code's login on macOS is in the Keychain, so run
-   `claude setup-token` once for a long-lived token; Codex's login (`~/.codex/auth.json`) is copied as it is.
+3. **Keys.** `cp .env.example .env` and fill in the Hetzner and R2 keys. For Claude Code, run `just claude-token`: it
+   runs `claude setup-token` (sign in in the browser), writes the long-lived token it prints into `.env` and checks
+   Claude Code takes it. (This machine's own login can't be copied: on macOS it's in the Keychain, and it refreshes as
+   it's used.) Codex's login (`~/.codex/auth.json`) is copied to each server as it is. `just remote-run` stops before
+   making a server if the task's runtimes need a key that's missing.
 4. **Tools.** `mise install` (hcloud, rclone and jq are in `mise.toml`).
 5. **The snapshot.** `just remote-image`: a builder server in Hillsboro, Oregon (`hil`, US West; `LEEROY_LOCATION`
    for another) gets this checkout, the AzerothCore source and your `data/`
