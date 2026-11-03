@@ -1,4 +1,5 @@
 # Shared by the server-side scripts (sourced): mise's tools on the PATH, the server's readiness, R2 through rclone.
+export HOME=${HOME:-/root} # systemd units start without it: git's and mise's settings are found through it
 export PATH="/root/.local/share/mise/shims:/root/.local/bin:$PATH"
 cd /opt/leeroy || exit 1
 # the checkout arrives owned by the laptop's user, the scripts run as root: git (and Go's VCS stamping) refuse that

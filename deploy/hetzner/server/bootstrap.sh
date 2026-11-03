@@ -21,3 +21,4 @@ just data-schema # the wowbench schema, in the database volume the snapshot keep
 just build       # warms the Go build cache; each run builds its own checkout
 just down
 log "ready to snapshot"
+rm -f /var/log/leeroy-run.log # each run's log starts empty

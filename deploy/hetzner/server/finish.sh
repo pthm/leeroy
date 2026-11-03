@@ -7,6 +7,7 @@ why=${1:-done}
 exec 9>/run/leeroy-finish.lock
 flock -n 9 || exit 0
 . /opt/leeroy/deploy/hetzner/server/lib.sh
+exec >>/var/log/leeroy-run.log 2>&1
 
 run=$(ls -d var/runs/*/ 2>/dev/null | tail -1 | sed 's|/$||')
 if [ "$why" = deadline ] && systemctl is-active -q leeroy-run; then

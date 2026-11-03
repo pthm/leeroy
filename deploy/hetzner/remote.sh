@@ -102,7 +102,7 @@ run)
 	img=$(snapshot); [ -n "$img" ] || die "no snapshot yet: just remote-image"
 	name="leeroy-$task-$(date +%m%d-%H%M%S)"
 	price=$(hcloud server-type describe "$LEEROY_TYPE" -o json |
-		jq -r --arg l "$LEEROY_LOCATION" '.prices[] | select(.location == $l) | .price_hourly.gross')
+		jq -r --arg l "$LEEROY_LOCATION" '.prices[] | select(.location == $l) | .price_hourly.gross | tonumber')
 	echo "creating $name ($LEEROY_TYPE in $LEEROY_LOCATION, €$price an hour) from snapshot $img"
 	hcloud server create --name "$name" --type "$LEEROY_TYPE" --location "$LEEROY_LOCATION" --image "$img" \
 		--ssh-key leeroy --firewall leeroy --label leeroy=run --label task="$task" >/dev/null
@@ -141,7 +141,7 @@ ls)
 	;;
 status)
 	server=${1:?usage: status <server>}
-	"${SSH[@]}" "root@$(ip "$server")" "systemctl is-active leeroy-run; journalctl -u leeroy-run -n 5 --no-pager -o cat; \
+	"${SSH[@]}" "root@$(ip "$server")" "systemctl is-active leeroy-run; tail -n 8 /var/log/leeroy-run.log; \
 		cd /opt/leeroy && r=\$($(newest_run)) && [ -n \"\$r\" ] && /root/.local/bin/mise exec -- bin/azbench status \"\$r\" || true"
 	;;
 ssh)

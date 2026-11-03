@@ -5,12 +5,13 @@ set -uo pipefail
 task=$1
 shift
 . /opt/leeroy/deploy/hetzner/server/lib.sh
+exec >>/var/log/leeroy-run.log 2>&1 # every step's output, in the log that's uploaded with the run
 set -a
 . /etc/leeroy/agents.env # the agents' keys and LEEROY_HOST_*; the ops keys stay out of their environment
 set +a
 log "run $task $*"
 if just up && wait_ready && just build; then
-	bin/azbench run "suite/tasks/$task.yaml" --no-build --monitor 10s "$@" >>/var/log/leeroy-run.log 2>&1
+	bin/azbench run "suite/tasks/$task.yaml" --no-build --monitor 10s "$@"
 	log "azbench exited $?"
 else
 	log "the server or the build failed"
