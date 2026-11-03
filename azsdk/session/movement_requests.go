@@ -251,7 +251,7 @@ func (m *movementRequests) worker() {
 			if m.backend.remaining != nil {
 				d = math.Max(d, m.backend.remaining())
 			}
-			r.deadline = r.started.Add(time.Duration(math.Min(d/5*1.5+10, 600) * float64(time.Second)))
+			r.deadline = r.started.Add(time.Duration(math.Min(d/5*1.5+10, 3600) * float64(time.Second)))
 			r.owner.Phase = "walking"
 		}
 		m.unlock()

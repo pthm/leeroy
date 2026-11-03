@@ -72,9 +72,10 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   Direction/grade changes are sent at checked vertices, even across coarse ticks; collinear samples
   need no additional packet.
   Support sampling is discrete, so sub-sample ground gaps are not a continuous terrain-contact guarantee.
-- Route checks have a 15-second wall deadline including queueing (`route_timeout`). Legs are limited to
-  4096 yards in 3D and a 1024-tile search rectangle (`route_limit`). A long, winding route whose search runs
-  out before reaching the destination is `route_limit` too: walk it in legs of a few hundred yards. A session admits at most 16 pending
+- Route checks have a 30-second wall deadline including queueing (`route_timeout`). Legs are limited to
+  16384 yards in 3D and a 1024-tile search rectangle (`route_limit`): most of a continent in one walk. A search
+  that runs out before reaching the destination (no way through, or an extremely winding route) is `route_limit`
+  too. A session admits at most 16 pending
   checks (`route_busy`) and runs one search at a time, shared with movement and nearby-unit reachability.
   Up to 128 exact map/start/destination searches are cached; partial routes, failures and cancelled searches are not cached. Nearby-unit reachability also requires exact endpoint matches for cache reuse; unknown collision coverage is not cached as unreachable.
   Awaiting with a shorter timeout only stops the wait. Task pause/stop/failure/return or session close
@@ -133,7 +134,7 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   identity: retain its request ID for cancellation.
 - Pause, stop, failure and normal task return cancel that task's active and queued walks. Session close clears
   all ownership. Cancellation never counts as arrival. Start a task and await a walk if it must finish.
-- Planning waits at most 15 seconds (`route_timeout`), and walking at most 600 seconds (`timeout`). There is
+- Planning waits at most 30 seconds (`route_timeout`), and walking at most an hour (`timeout`). There is
   one planning worker per session. Cancellation reaches the underlying search and prevents late publication;
   the next owner can plan after the cancelled computation exits its current bounded step.
 - Movement-producing `act` helpers hold a lease across nested calls, waypoints and callbacks, including

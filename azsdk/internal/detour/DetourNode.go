@@ -30,7 +30,7 @@ const (
 	DT_NODE_PARENT_DETACHED DtNodeFlags = 0x04 // parent of the node is not adjacent. Found using raycast.
 )
 
-type DtNodeIndex uint16
+type DtNodeIndex uint32 // uint16 in Detour: 65535 nodes, too few for a route across a zone; a parent index has 24 bits
 
 const DT_NULL_IDX DtNodeIndex = ^DtNodeIndex(0)
 

@@ -15,9 +15,9 @@ import (
 
 const (
 	queryNodes         = 8192
-	longQueryNodes     = 65535 // the most a detour node index addresses: 8192 runs out between Westfall and Stormwind
-	maxPathLength      = 1024  // was 74 (the server's creature limit): ~300yd, so longer trips fell back to a straight line
-	maxPointPathLength = 16384
+	longQueryNodes     = 1 << 20 // 8192 runs out between Westfall and Stormwind, 65535 (a 16-bit node index) across a zone
+	maxPathLength      = 1 << 16 // polygons on a route; was 74 (the server's creature limit), then 1024 (~a zone)
+	maxPointPathLength = 1 << 18 // a route's points: about four a yard
 	invalidPolyRef     = detour.DtPolyRef(0)
 
 	// GROUND_HEIGHT_TOLERANCE is the slack in yards when comparing a height with the ground.

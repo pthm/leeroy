@@ -95,7 +95,7 @@ func (r *routeRequests) finish(j *routeRequest, out *script.Outcome) {
 		if errors.Is(err, context.DeadlineExceeded) {
 			code = "route_timeout"
 		}
-		out = queryFailure(j.data, code, "route deadline or cancellation reached; use shorter legs (maximum 4096 yards)")
+		out = queryFailure(j.data, code, "route deadline or cancellation reached; use shorter legs (maximum 16384 yards)")
 	}
 	if out == nil {
 		r.mu.Unlock()
@@ -170,7 +170,7 @@ func checkRoute(data types.PathCheck, from, to navigation.Point3D, res *navigati
 		code, message := "not_available", "navmesh query failed: "+err.Error()
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
-			code, message = "route_timeout", "route query exceeded its deadline; use shorter legs (maximum 4096 yards)"
+			code, message = "route_timeout", "route query exceeded its deadline; use shorter legs (maximum 16384 yards)"
 		case errors.Is(err, context.Canceled):
 			code, message = "cancelled", "route query cancelled"
 		case errors.Is(err, pathfinding.ErrQueryLimit):
@@ -289,7 +289,7 @@ func (b *Bot) setupRoutes() {
 		}
 		r.close()
 	}
-	e.Func("world.path", "(x, y, z) → Request<PathCheck>", "await a supported navmesh route with static body clearance from your current 3D position; collision evidence includes state, segment, model and bounded replan outcome. Dynamic doors and lifts are outside this check. Deadline 15s including queueing, max leg 4096 yards / 1024 tiles, at most 16 pending queries and one active search per session. Identical successful searches are cached (128 entries). Task pause/stop/failure/return and session close cancel pending work. Failures include route_blocked, collision_unavailable, route_unreachable, route_timeout, route_limit, route_busy and not_available; partial data never authorizes movement",
+	e.Func("world.path", "(x, y, z) → Request<PathCheck>", "await a supported navmesh route with static body clearance from your current 3D position; collision evidence includes state, segment, model and bounded replan outcome. Dynamic doors and lifts are outside this check. Deadline 30s including queueing, max leg 16384 yards / 1024 tiles, at most 16 pending queries and one active search per session. Identical successful searches are cached (128 entries). Task pause/stop/failure/return and session close cancel pending work. Failures include route_blocked, collision_unavailable, route_unreachable, route_timeout, route_limit, route_busy and not_available; partial data never authorizes movement",
 		func(x, y, z float32) any {
 			px, py, pz, _, m := b.world.Position()
 			task, _, _ := e.CurrentTaskIdentity()

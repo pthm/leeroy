@@ -13,17 +13,17 @@ import (
 
 // Query limits: the longest a query may run, the longest leg and the most tiles one may load.
 const (
-	QueryTimeout  = 15 * time.Second
-	MaxLegYards   = 4096
+	QueryTimeout  = 30 * time.Second
+	MaxLegYards   = 16384 // most of a continent: the long search crosses one in a few seconds
 	MaxQueryTiles = 1024
 	maxTileBytes  = 16 << 20
 )
 
 // ErrQueryLimit is returned for a route over the leg or tile limits.
-var ErrQueryLimit = errors.New("route exceeds query limits: use legs of at most 4096 yards and at most 1024 tiles")
+var ErrQueryLimit = errors.New("route exceeds query limits: use legs of at most 16384 yards and at most 1024 tiles")
 
 // ErrSearchLimit means the navmesh search gave up before it reached the destination (a long, winding route)
-var ErrSearchLimit = fmt.Errorf("%w: the navmesh search ran out before reaching the destination; use shorter legs (a few hundred yards each)", ErrQueryLimit)
+var ErrSearchLimit = fmt.Errorf("%w: the navmesh search ran out before reaching the destination (no way through the navmesh, or a very long winding route): try a waypoint between", ErrQueryLimit)
 
 func validateLeg(start, dest Point3D) error {
 	for _, p := range []Point3D{start, dest} {
