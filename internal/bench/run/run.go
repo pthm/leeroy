@@ -8,11 +8,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/pthm/leeroy/internal/bench/monitor"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -31,6 +34,7 @@ type Runner struct {
 	b       *config.Bench
 	s       *config.Scenario
 	dir     string // runs/<time>-<scenario>
+	monitor time.Duration
 	players []*player
 	ctx     context.Context
 	cancel  context.CancelFunc
@@ -48,6 +52,7 @@ type Options struct {
 	BasePort int  // default 8090
 	DryRun   bool // print the plan and the first prompt, start nothing
 	Dir      string
+	Monitor  time.Duration // sample the machine this often into server/resources.jsonl (0: don't)
 }
 
 // New sets a run up (without starting anything).
@@ -55,7 +60,7 @@ func New(b *config.Bench, s *config.Scenario, o Options) (*Runner, error) {
 	if o.BasePort == 0 {
 		o.BasePort = 8090
 	}
-	r := &Runner{repo: o.Repo, b: b, s: s, dir: o.Dir}
+	r := &Runner{repo: o.Repo, b: b, s: s, dir: o.Dir, monitor: o.Monitor}
 	if r.dir == "" {
 		r.dir = filepath.Join(o.Repo, "var/runs", time.Now().Format("20060102-150405")+"-"+s.Name)
 	}
@@ -190,6 +195,7 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 				m.Version = b.Current().Version
 			}
 			m.SDKRev, _ = sdkRev(r.repo)
+			m.Host = host()
 		})
 		if err := SavePreflight(r.f().Preflight(), CheckScenario(r.repo, r.s)); err != nil {
 			return fmt.Errorf("save scenario preflight: %w", err)
@@ -221,6 +227,15 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 	}
 	r.ctx, r.cancel = context.WithCancel(context.Background())
 	defer r.cancel()
+	if r.monitor > 0 { // for the whole of this supervisor's life: setup, play and the wrap-up
+		mctx, stop := context.WithCancel(context.Background())
+		defer stop()
+		go func() {
+			if err := monitor.Run(mctx, r.f().Resources(), r.monitor); err != nil {
+				r.logf("monitor: %v", err)
+			}
+		}()
+	}
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sig)
@@ -487,4 +502,13 @@ func (r *Runner) Plan() string {
 		fmt.Fprintf(&b, "\n--- prompt for %s ---\n%s", ps[0].a.Name, text)
 	}
 	return b.String()
+}
+
+// host is the machine the run is on: cores and memory, and what the remote run says of the server (LEEROY_HOST_*).
+func host() runfiles.Host {
+	h := runfiles.Host{CPUs: runtime.NumCPU(), MemoryGB: monitor.MemoryGB(), Provider: os.Getenv("LEEROY_HOST_PROVIDER"),
+		Type: os.Getenv("LEEROY_HOST_TYPE"), Location: os.Getenv("LEEROY_HOST_LOCATION")}
+	h.Name, _ = os.Hostname()
+	h.PriceHour, _ = strconv.ParseFloat(os.Getenv("LEEROY_HOST_PRICE_HOUR"), 64)
+	return h
 }

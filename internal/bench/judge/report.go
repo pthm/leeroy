@@ -763,6 +763,7 @@ func Report(dir string) {
 		os.WriteFile(runfiles.Run(dir).Team(), append(j, '\n'), 0o644)
 		fmt.Println(string(j))
 	}
+	report = append(report, kv{"host", hostSummary(dir)})
 	j, _ := json.MarshalIndent(report, "", "  ")
 	os.WriteFile(runfiles.Run(dir).Report(), append(j, '\n'), 0o644)
 

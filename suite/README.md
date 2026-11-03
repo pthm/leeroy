@@ -146,7 +146,7 @@ by agent name, game and judge files by character. Every JSONL line has `t`, unix
 
 | Path | |
 |---|---|
-| `run.json` | the manifest: task, run name, benchmark version, SDK revision, goal, minutes, the players (agent, character, race, class, spec, runtime and its version, model, effort, kit), when the clock started and the run ended, and its status (pauses and outages are the harness's `runtime_state` lines in `diagnostics/`) (`starting`, `running`, `paused`, `finished`) |
+| `run.json` | the manifest: task, run name, benchmark version, SDK revision, goal, minutes, the players (agent, character, race, class, spec, runtime and its version, model, effort, kit), when the clock started and the run ended, the machine (`host`: its cores and memory, and for a remote run its provider, type, location and hourly price), and its status (`starting`, `running`, `paused`, `finished`; pauses and outages are the harness's `runtime_state` lines in `diagnostics/`) |
 | `scenario.yaml` | the run as made from its task (the notice inlined); `resume` reads it |
 | `preflight.json` | what the world looked like for the task before the start ([tasks](tasks/README.md#preflight)) |
 | `supervisor.log` | everything the supervisor printed, dated; `ALERT` lines are agents and sessions that stopped early, outages, give-ups and the Codex quota's alerts |
@@ -164,6 +164,7 @@ by agent name, game and judge files by character. Every JSONL line has `t`, unix
 | `judge/<char>/samples.jsonl` | the judge's sample every 15 s |
 | `judge/<char>/result.json` | the judge's final result |
 | `diagnostics/<agent>.jsonl` | the harness's and the session's diagnostics (`schema`, `seq`, `kind`, `details`), one stream; a session's lines carry its `session` id |
+| `server/resources.jsonl`, `server/remote.log` | remote runs (`azbench run --monitor`): the machine's CPU, memory, load, disk, network and its processes' every 10 s (the report card's `host` sums them up); the remote run's own log |
 | `board/<char>.json` | each judge's latest result (with `minutes_left`), read by `standings` |
 | `codex-quota.json` | the Codex quota at the start and the latest read (runs with a Codex agent) |
 | `.live/` | while the supervisor runs: `control.json` (its control API), `pids` (the process groups of its sessions and agents); removed when the run finishes |

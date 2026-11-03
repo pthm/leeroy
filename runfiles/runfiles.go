@@ -14,6 +14,8 @@
 //	                      second, nearby creatures, transports, API calls: gamelog reads it), session.log
 //	judge/<char>/         samples.jsonl (every 15 s), result.json (the final score)
 //	diagnostics/<agent>.jsonl   harness and session diagnostics, one stream
+//	server/resources.jsonl      the machine's CPU, memory, disk and network, and its processes', every few seconds
+//	                      (azbench run --monitor: remote runs), and remote.log, the remote run's own log
 //	.live/                the running supervisor's files: control.json, pids (gone when the run ends)
 //
 // Every JSONL line has t, unix milliseconds. The trajectory is a JSON document (ATIF), its timestamps ISO 8601.
@@ -38,6 +40,7 @@ func (r Run) Report() string        { return r.join("report.json") }
 func (r Run) Team() string          { return r.join("team.json") }
 func (r Run) Board() string         { return r.join("board") }
 func (r Run) CodexQuota() string    { return r.join("codex-quota.json") }
+func (r Run) Resources() string     { return r.join("server", "resources.jsonl") }
 func (r Run) Live(name string) string {
 	return r.join(".live", name)
 }
@@ -72,9 +75,22 @@ type Manifest struct {
 	Minutes  int      `json:"minutes"`
 	Hardcore bool     `json:"hardcore,omitempty"`
 	Players  []Player `json:"players"`
+	Host     Host     `json:"host"`              // the machine it ran on
 	Started  int64    `json:"started,omitempty"` // unix ms: the clock started (all sessions up)
 	Ended    int64    `json:"ended,omitempty"`   // unix ms: the run finished
 	Status   string   `json:"status"`            // starting, running, paused, finished
+}
+
+// Host is the machine a run ran on: its cores and memory, and for a remote server (azbench run reads LEEROY_HOST_*,
+// which the remote run sets) its provider, type, location and list price.
+type Host struct {
+	Name      string  `json:"name"`
+	CPUs      int     `json:"cpus"`
+	MemoryGB  float64 `json:"memory_gb,omitempty"`
+	Provider  string  `json:"provider,omitempty"`   // hetzner; none for a local machine
+	Type      string  `json:"type,omitempty"`       // e.g. ccx33
+	Location  string  `json:"location,omitempty"`   // e.g. fsn1
+	PriceHour float64 `json:"price_hour,omitempty"` // EUR an hour, list price
 }
 
 // Player is one agent and the character it played, as configured (agents/<agent>/meta.json has what the runtime
