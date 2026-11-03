@@ -2,7 +2,7 @@
 // The party talking and standing together: messages per interval of the run by kind (each once, however many heard
 // it), and the share of each interval in which every player stood within 40 yd of the others. The interval suits the
 // run's length (barInterval): minutes for a short run, hours for a long one.
-import FigureHead from './FigureHead.astro';
+import Figure from './Figure.astro';
 import { barInterval, clock, intervalName, type Run, timeTicks } from '../lib/results';
 
 interface Props {
@@ -43,8 +43,10 @@ const share = tog1.length ? Math.round((tog1.reduce((a, b) => a + b, 0) / tog1.l
 
 {sum > 0 && (
   <div class="grid grid-cols-1 gap-4">
-    <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-      <FigureHead title={`Messages per ${intervalName(per)}`} sub={`${sum.toLocaleString('en')} messages between players, each counted once`} />
+    <Figure title={`Messages per ${intervalName(per)}`} note={`${sum.toLocaleString('en')} messages between players by channel, each counted once however many heard it.`}>
+      <Fragment slot="legend">
+        {kinds.map(k => <span><span style={`color:${k.c}`}>■</span> {k.label}</span>)}
+      </Fragment>
       <div class="flex h-40 items-end gap-[2px]">
         {hours.map((h, i) => (
           <span class="flex h-full flex-1 flex-col-reverse" title={`${clock(i * per)}–${clock((i + 1) * per)}: ${total(h)} messages`}>
@@ -55,13 +57,9 @@ const share = tog1.length ? Math.round((tog1.reduce((a, b) => a + b, 0) / tog1.l
       <div class="mt-1 flex justify-between font-mono text-[11px] text-faint">
         <span>0</span><span>{clock(hours.length * per)}</span>
       </div>
-      <p class="mt-3 flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
-        {kinds.map(k => <span><span style={`color:${k.c}`}>■</span> {k.label}</span>)}
-      </p>
-    </figure>
+    </Figure>
     {tog.length > 0 && (
-      <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-        <FigureHead title="Time together" sub={`Share of each ${intervalName(per)} with all ${run.players.length} players within 40 yards. ${share}% of the run overall.`} />
+      <Figure title="Time together" note={`Share of each ${intervalName(per)} with all ${run.players.length} players within 40 yards of each other; ${share}% of the run overall.`}>
         <svg viewBox={`0 0 ${W} ${H}`} class="w-full" role="img" aria-label="Share of each 5 minutes the whole party stood together">
           {[0, 0.5, 1].map(v => (
             <g>
@@ -74,7 +72,7 @@ const share = tog1.length ? Math.round((tog1.reduce((a, b) => a + b, 0) / tog1.l
             <text x={tx(t.s)} y={H - 4} text-anchor="middle" class="fill-faint font-mono text-[10px]">{t.label}</text>
           ))}
         </svg>
-      </figure>
+      </Figure>
     )}
   </div>
 )}

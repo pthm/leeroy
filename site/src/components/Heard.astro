@@ -1,7 +1,7 @@
 ---
 // Who heard whom: each player's chat lines that reached each other player, from the listeners' game logs (a line is
 // in the log of every player who received it). Rows are speakers, columns listeners.
-import FigureHead from './FigureHead.astro';
+import Figure from './Figure.astro';
 import { colors, type Run } from '../lib/results';
 
 interface Props {
@@ -17,25 +17,22 @@ const max = Math.max(1, ...speakers.flatMap(s => names.map(l => heard(s, l))));
 ---
 
 {speakers.length > 0 && (
-  <figure class="rounded border border-hairline bg-raised p-4">
-    <FigureHead title="Who heard whom" sub="Lines each player said (rows) that reached each other player (columns), from the listeners' game logs." />
-    <div class="overflow-x-auto">
-      <table class="data">
-        <thead>
-          <tr><th>Speaker</th>{names.map(l => <th class:list={['num', color[l]]}>{l}</th>)}</tr>
-        </thead>
-        <tbody>
-          {speakers.map(s => (
-            <tr>
-              <td class:list={['font-medium', color[s]]}>{s}</td>
-              {names.map(l => {
-                const n = heard(s, l);
-                return <td class="num text-muted" style={n ? `background:color-mix(in srgb, var(--color-accent) ${Math.round((n / max) * 35)}%, transparent)` : ''}>{s === l ? '' : n || '·'}</td>;
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  </figure>
+  <Figure title="Who heard whom" pad={false} note="Chat lines each speaker (row) said that reached each listener (column), from the listeners' game logs; darker cells are more lines.">
+    <table class="data">
+      <thead>
+        <tr><th>Speaker</th>{names.map(l => <th class:list={['num', color[l]]}>{l}</th>)}</tr>
+      </thead>
+      <tbody>
+        {speakers.map(s => (
+          <tr>
+            <td class:list={['font-medium', color[s]]}>{s}</td>
+            {names.map(l => {
+              const n = heard(s, l);
+              return <td class="num text-muted" style={n ? `background:color-mix(in srgb, var(--color-accent) ${Math.round((n / max) * 35)}%, transparent)` : ''}>{s === l ? '' : n || '·'}</td>;
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </Figure>
 )}

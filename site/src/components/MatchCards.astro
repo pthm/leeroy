@@ -1,0 +1,74 @@
+---
+// A versus round's matches: each at its spot, its two sides (one player in a duel, a team in a battleground), the games
+// each won, and the games in order: when each was decided, which side won and how (or the score). A card per match,
+// the grid one unit with a shared note below.
+import { colors, playerTip, sideName, type Run } from '../lib/results';
+
+interface Props {
+  run: Run;
+}
+
+const { run } = Astro.props;
+const color = colors(run);
+const byChar = new Map(run.players.map(p => [p.char, p]));
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const how: Record<string, string> = { beaten: 'brought to 1 health or yielded', won: 'brought to 1 health or yielded', fled: 'stayed out of bounds' };
+---
+
+<div>
+  <ul class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+    {(run.matches ?? []).map(m => {
+      const wins = [0, 1].map(i => m.games.filter(g => g.winner === i).length);
+      const names = m.sides.map(s => s.players.join(', '));
+      return (
+        <li class="rounded border border-hairline bg-raised p-5">
+          <p class="eyebrow mb-3">{m.spot ?? 'match'}</p>
+          <div class="mb-4 grid grid-cols-[1fr_auto_1fr] items-baseline gap-3">
+            {m.sides.map((s, i) => (
+              <span class:list={['min-w-0', i === 1 && 'order-3 text-right']}>
+                <span class="block truncate font-medium">
+                  {s.players.map((c, k) => (
+                    <span class={color[c]} title={byChar.get(c) ? playerTip(byChar.get(c)!) : sideName(s)}>{k > 0 && ', '}{c}</span>
+                  ))}
+                </span>
+                <span class="block truncate text-xs text-muted">{sideName(s)}</span>
+              </span>
+            ))}
+            <span class="order-2 font-mono text-2xl font-semibold text-fg tabular-nums">{wins[0]}–{wins[1]}</span>
+          </div>
+          <table class="data">
+            <thead>
+              <tr>
+                <th class="num">#</th>
+                <th class="num">Decided</th>
+                <th>Won by</th>
+                <th>How</th>
+              </tr>
+            </thead>
+            <tbody>
+              {m.games.map((g, i) => (
+                <tr>
+                  <td class="num text-faint">{i + 1}</td>
+                  <td class="num font-mono text-muted">{clock(g.at_s)}</td>
+                  <td class="font-medium" title={sideName(m.sides[g.winner])}>
+                    {m.sides[g.winner].players.map(c => <span class={color[c]}>{c} </span>)}
+                  </td>
+                  <td class="text-muted">{g.score ? `${g.score[g.winner]}–${g.score[1 - g.winner]}` : `${names[1 - g.winner]} ${how[g.how ?? ''] ?? g.how ?? ''}`}</td>
+                </tr>
+              ))}
+              {!m.games.length && (
+                <tr>
+                  <td colspan="4" class="text-faint">No game was decided.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </li>
+      );
+    })}
+  </ul>
+  <p class="mt-2 max-w-3xl font-mono text-[11px] leading-relaxed text-faint">
+    Each match at its own spot. A duel ends at 1 health, a yield, or 10 s over 50 yd from the flag; only the first five
+    per pairing count. Times are on the run’s clock, from the game log.
+  </p>
+</div>

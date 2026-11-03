@@ -1,5 +1,7 @@
 // Interactivity for the results pages' charts and maps, one script for all of them:
-// - tooltips: any <title> or title="" inside a [data-chart] becomes a styled tooltip that follows the pointer;
+// - tooltips: any <title> or title="" inside a [data-chart] or a results table (.data) becomes a styled tooltip that
+//   follows the pointer; [data-tip-html="#id"] shows a <template>'s rich content instead, and clicking it pins the
+//   tooltip in place (its links then work) until a click elsewhere or Escape;
 // - legends: a [data-toggle=key] button hides or shows the [data-key=key] elements of its chart; hovering either
 //   highlights that key and dims the rest;
 // - enlarge: a [data-enlarge] button opens its figure full-screen; maps ([data-zoom]) zoom with the wheel or pinch and
@@ -16,7 +18,7 @@ function adoptTitles(root: ParentNode) {
     t.parentElement?.setAttribute('data-tip', t.textContent ?? '');
     t.remove();
   }
-  for (const e of root.querySelectorAll<HTMLElement>('[data-chart] [title]')) {
+  for (const e of root.querySelectorAll<HTMLElement>('[data-chart] [title], table.data [title]')) {
     e.dataset.tip = e.title;
     e.removeAttribute('title');
   }
@@ -32,10 +34,36 @@ function showTip(html: string, x: number, y: number) {
 
 const esc = (s: string) => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!).replace(/\n/g, '<br>');
 
+let pinned: Element | null = null; // a rich tooltip clicked open: it stays put until a click elsewhere or Escape
+const tipHtml = (el: Element) => {
+  const id = (el as HTMLElement).dataset.tipHtml;
+  if (id) return (document.querySelector(id) as HTMLTemplateElement | null)?.innerHTML ?? '';
+  return esc((el as HTMLElement).dataset.tip!);
+};
 document.addEventListener('pointermove', e => {
-  const el = (e.target as Element).closest?.('[data-tip]');
-  if (el && !(e.target as Element).closest('[data-series]')) showTip(esc((el as HTMLElement).dataset.tip!), e.clientX, e.clientY);
+  if (pinned) return;
+  const el = (e.target as Element).closest?.('[data-tip],[data-tip-html]');
+  if (el && !(e.target as Element).closest('[data-series]')) showTip(tipHtml(el), e.clientX, e.clientY);
   else if (!(e.target as Element).closest?.('[data-series]')) tip.hidden = true;
+});
+document.addEventListener('click', e => {
+  const t = e.target as Element;
+  if (pinned && tip.contains(t)) return; // a link in the pinned tooltip
+  const el = t.closest?.('[data-tip-html]');
+  pinned = null;
+  tip.classList.remove('is-pinned');
+  if (el) {
+    showTip(tipHtml(el), e.clientX, e.clientY);
+    pinned = el;
+    tip.classList.add('is-pinned');
+  } else tip.hidden = true;
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && pinned) {
+    pinned = null;
+    tip.classList.remove('is-pinned');
+    tip.hidden = true;
+  }
 });
 
 // legends and highlight

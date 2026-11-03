@@ -1,8 +1,8 @@
 ---
 // Level over the run, one line per player, and under it a row per player with a tick at each death. Shaded: time
 // inside an instance (amber) and party wipes (red). From the judge's samples and the recordings (azbench publish).
-import FigureHead from './FigureHead.astro';
-import { colors, duration, instanceTime, type Run, timeTicks, wipes } from '../lib/results';
+import Figure from './Figure.astro';
+import { colors, duration, instanceTime, type Run, timeTicks, wipes, playerTip } from '../lib/results';
 
 interface Props {
   run: Run;
@@ -28,6 +28,7 @@ const stripTop = T + CH + GAP;
 const bottom = stripTop + ps.length * ROW;
 const inside = instanceTime(run);
 const wiped = wipes(run);
+const note = `Each player's level from the judge's samples; the rows below mark a tick at each death.${wiped.length ? ' A wipe is three or more players dying within two minutes.' : ''}`;
 // for the crosshair (scripts/interact.ts)
 const seriesData = JSON.stringify({
   x0: L, x1: W - R, t1: end, top: T, bottom: bottom,
@@ -35,13 +36,13 @@ const seriesData = JSON.stringify({
 });
 ---
 
-<figure class="rounded border border-hairline bg-raised p-4" data-chart>
-  <FigureHead title="Level and deaths" sub="Hover for every player's level at that moment. Click a name to hide it.">
+<Figure title="Level over time" note={note}>
+  <Fragment slot="legend">
+    {ps.map(p => <button type="button" class={color[p.char]} data-toggle={p.char} aria-pressed="true">● <span class="text-muted" title={playerTip(p)}>{p.char}</span></button>)}
+    {inside.length > 0 && <span><span class="text-accent">▮</span> in a dungeon</span>}
+    {wiped.length > 0 && <span><span class="text-error">▮</span> {wiped.length} wipes</span>}
     <button type="button" class="enlarge-btn" data-enlarge>Enlarge</button>
-  </FigureHead>
-  <p class="mb-2 flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
-    {ps.map(p => <button type="button" class={color[p.char]} data-toggle={p.char} aria-pressed="true">● <span class="text-muted">{p.char}</span></button>)}
-  </p>
+  </Fragment>
   <div class="overflow-x-auto">
     <svg viewBox={`0 0 ${W} ${H}`} class="w-full min-w-[640px]" role="img" aria-label="Each player's level over the run, and when each died" data-series={seriesData}>
       {inside.map(([a, b]) => (
@@ -71,7 +72,7 @@ const seriesData = JSON.stringify({
         return (
           <g class={color[p.char]} data-key={p.char}>
             <line x1={L} x2={W - R} y1={cy} y2={cy} stroke="var(--color-hairline)" />
-            <text x={L - 8} y={cy + 4} text-anchor="end" class="fill-current font-mono text-[11px]">{p.char}</text>
+            <text x={L - 8} y={cy + 4} text-anchor="end" class="fill-current font-mono text-[11px]"><title>{playerTip(p)}</title>{p.char}</text>
             {(p.deaths_at ?? []).map(s => (
               <line x1={x(s)} x2={x(s)} y1={cy - 6} y2={cy + 6} stroke="currentColor" stroke-width="2">
                 <title>{p.char} died at {duration(s)}</title>
@@ -82,9 +83,4 @@ const seriesData = JSON.stringify({
       })}
     </svg>
   </div>
-  <figcaption class="mt-2 font-mono text-[11px] text-faint">
-    Level over time, with one tick per death below.
-    {inside.length > 0 && <span> <span class="text-accent">▮</span> in a dungeon</span>}
-    {wiped.length > 0 && <span> · <span class="text-error">▮</span> {wiped.length} wipes, counted when three or more players die within two minutes</span>}
-  </figcaption>
-</figure>
+</Figure>

@@ -2,8 +2,8 @@
 // What each agent's tool calls ran, from its trajectory: a bar of shares by kind (Lua evals, waits, other wow
 // commands, world lookups, reading and writing files, standings), with its call count, failure rate and, where the
 // runtime marks its model calls, how many and the output tokens per call.
-import FigureHead from './FigureHead.astro';
-import { colors, type Run } from '../lib/results';
+import Figure from './Figure.astro';
+import { colors, type Run, playerTip } from '../lib/results';
 
 interface Props {
   run: Run;
@@ -45,12 +45,14 @@ const rows = ps.map(p => {
 ---
 
 {rows.length > 0 && (
-  <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-    <FigureHead title="Tool calls" sub="What each agent's tool calls ran, from its trajectory. Hover a segment for the commands in it." />
+  <Figure title="Tool calls" note="Share of each agent's tool calls by kind, from its trajectory, with its call count, failure rate and, where the runtime reports them, model calls and output tokens per call.">
+    <Fragment slot="legend">
+      {kinds.map(k => <span><span style={`color:${k.c}`}>■</span> {k.label}</span>)}
+    </Fragment>
     <ul class="space-y-2">
       {rows.map(({ p, by, note }) => (
         <li class="grid grid-cols-[6rem_1fr_16rem] items-center gap-3 text-xs">
-          <span class:list={['truncate', color[p.char]]}>{p.char}</span>
+          <span class:list={['truncate', color[p.char]]} title={playerTip(p)}>{p.char}</span>
           <span class="flex h-3 overflow-hidden rounded-sm bg-elevated">
             {kinds.map(k => by[k.k] && <span style={`flex:${by[k.k].n};background:${k.c}`} title={`${k.label}: ${by[k.k].names.join(', ')}`} />)}
           </span>
@@ -58,8 +60,5 @@ const rows = ps.map(p => {
         </li>
       ))}
     </ul>
-    <p class="mt-3 flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
-      {kinds.map(k => <span><span style={`color:${k.c}`}>■</span> {k.label}</span>)}
-    </p>
-  </figure>
+  </Figure>
 )}

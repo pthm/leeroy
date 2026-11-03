@@ -3,6 +3,8 @@
 import { getEntry, render } from 'astro:content';
 import FinishChart from '../../../components/FinishChart.astro';
 import Deaths from '../../../components/Deaths.astro';
+import MatchCards from '../../../components/MatchCards.astro';
+import { view } from '../../../lib/kinds';
 import CombatPanel from '../../../components/CombatPanel.astro';
 import Targets from '../../../components/Targets.astro';
 import Milestones from '../../../components/Milestones.astro';
@@ -24,9 +26,7 @@ import {
   allRuns,
   colors,
   dollars,
-  duration,
   harnessName,
-  modelName,
   runDate,
   specLabel,
   TASKS,
@@ -34,20 +34,13 @@ import {
   versionLabel,
   effortOf,
   entryName,
-  isProgress,
-  levelsGained,
+  playerTip,
   outageNote,
-  outcome,
-  bestRate,
-  rate,
-  unit,
-  xpRate,
   taskTitle,
   thousands,
-  totals,
   type Run,
 } from '../../../lib/results';
-import { resultsUrl, url } from '../../../lib/url';
+import { resultsUrl } from '../../../lib/url';
 
 export function getStaticPaths() {
   return allRuns().map(run => ({ params: { task: run.task, run: run.id }, props: { run } }));
@@ -56,14 +49,11 @@ export function getStaticPaths() {
 const { run } = Astro.props as { run: Run };
 const notes = await getEntry('runs', run.id);
 const Story = notes ? (await render(notes)).Content : null;
-const t = totals(run);
 const levelled = run.players.some(p => p.series && p.series.at(-1)![1] - p.series[0][1] > 0.5);
-const progress = isProgress(run.task);
+const kv = view(run.task);
 const title = notes?.data.title ?? `Run of ${runDate(run)}`;
 const lede = notes?.data.lede ?? TASKS[run.task]?.summary ?? run.description;
-const roster = run.players.toSorted((a, b) =>
-  progress ? (xpRate(b) ?? 0) - (xpRate(a) ?? 0) : Number(b.met) - Number(a.met) || (a.time_to_goal_s ?? Infinity) - (b.time_to_goal_s ?? Infinity),
-);
+const roster = run.players.toSorted(kv.playerOrder);
 const color = colors(run);
 const hasChat = (run.chat_per_min ?? []).some(h => Object.values(h).some(Boolean));
 const hasHeard = run.players.some(p => Object.keys(p.heard_from ?? {}).length);
@@ -72,23 +62,7 @@ const hasDeaths = run.players.some(p => p.death_list?.length);
 const hasCombat = run.players.some(p => (p.combat && (p.combat.damage_dealt || p.combat.healing_done || p.combat.damage_taken)) || p.kills_by?.length);
 const clock = run.minutes >= 1440 ? `${run.minutes / 1440} days` : `${run.minutes} min`;
 
-const best = bestRate(run.players);
-const meanLevels = run.players.reduce((n, p) => n + (levelsGained(p) ?? 0), 0) / run.players.length;
-const tiles = [
-  ...(progress
-    ? [
-        { v: rate(best, run.task), k: 'best' },
-        { v: meanLevels.toFixed(1), k: 'levels gained, mean' },
-      ]
-    : [
-        { v: `${t.met}/${run.players.length}`, k: 'reached the goal' },
-        { v: t.last ? duration(t.last) : duration(t.first), k: t.last ? 'until all reached it' : t.first ? 'first to the goal' : 'none in time' },
-      ]),
-  { v: String(t.deaths), k: 'deaths' },
-  ...(levelled ? [{ v: String(t.quests), k: 'quests completed' }] : []),
-  { v: dollars(t.cost), k: 'cost at list prices' },
-  { v: thousands(t.output), k: 'output tokens' },
-];
+const tiles = kv.runTiles(run).filter(tile => levelled || tile.k !== 'quests completed');
 ---
 
 <Layout title={`${title} · ${taskTitle(run.task)}`} description={lede}>
@@ -111,7 +85,7 @@ const tiles = [
 
   {notes && notes.data.glance.length > 0 && (
     <Section>
-      <p class="eyebrow mb-6">At a glance</p>
+      <SectionHeader eyebrow="Summary" title="At a glance" />
       <ul class="grid grid-cols-1 gap-3 md:grid-cols-2">
         {notes.data.glance.map(g => (
           <li class="rounded border border-hairline bg-raised p-5">
@@ -124,7 +98,7 @@ const tiles = [
   )}
 
   <Section>
-    <p class="eyebrow mb-6">Players</p>
+    <SectionHeader eyebrow="Players" title="Outcomes" description="Each player's model, result, cost and tokens." />
     <div class="overflow-x-auto rounded border border-hairline bg-raised">
       <table class="data">
         <thead>
@@ -133,7 +107,7 @@ const tiles = [
             <th>Class</th>
             <th>Model</th>
             <th>Outcome</th>
-            <th class="num">{progress ? unit(run.task) : 'Time'}</th>
+            <th class:list={[kv.player.num && 'num']}>{kv.player.head}</th>
             {levelled && <th class="num">Level</th>}
             <th class="num">Deaths</th>
             {levelled && <th class="num">Quests</th>}
@@ -144,11 +118,11 @@ const tiles = [
         <tbody>
           {roster.map(p => (
             <tr>
-              <td class:list={['font-medium', color[p.char]]}>{p.char}</td>
+              <td class:list={['font-medium', color[p.char]]} title={playerTip(p)}>{p.char}</td>
               <td class="text-muted">{specLabel(p)}{p.role && <span class="text-faint"> · {p.role}</span>}</td>
               <td class="text-fg">{entryName({ model: p.model, effort: effortOf(p) })} <span class="text-faint">{harnessName(p.runtime)}</span></td>
-              <td class:list={[outcome(p, progress).good ? 'text-success' : 'text-warning']} title={outageNote(p) ?? p.gave_up}>{outcome(p, progress).text}{outageNote(p) && <span class="ml-1 text-warning" aria-label={outageNote(p)}>⚠</span>}</td>
-              <td class="num">{progress ? rate(xpRate(p), run.task) : p.met ? duration(p.time_to_goal_s) : '–'}</td>
+              <td class:list={[kv.outcome(p).good ? 'text-success' : 'text-warning']} title={outageNote(p) ?? p.gave_up}>{kv.outcome(p).text}{outageNote(p) && <span class="ml-1 text-warning" aria-label={outageNote(p)}>⚠</span>}</td>
+              <td class:list={[kv.player.num && 'num']}>{kv.player.cell(p)}</td>
               {levelled && <td class="num text-muted">{p.series?.at(-1)?.[1].toFixed(1) ?? p.level ?? '–'}</td>}
               <td class="num text-muted">{p.deaths ?? '–'}</td>
               {levelled && <td class="num text-muted">{p.series?.at(-1)?.[4] ?? '–'}</td>}
@@ -161,17 +135,24 @@ const tiles = [
     </div>
   </Section>
 
-  <Section>
-    <SectionHeader eyebrow="Progress" title={levelled ? 'Level over time' : 'Time to the goal'} description={levelled ? 'Level from the judge\'s samples, with deaths marked below. Shading shows time in a dungeon and party wipes.' : 'Time from the start of the run to the goal, fastest first.'} />
+  {kv.kind === 'versus' && (
+    <Section>
+      <SectionHeader eyebrow="Matches" title="Game by game" description="Each match's games in order: who won, when and how." />
+      <MatchCards run={run} />
+    </Section>
+  )}
+
+  {kv.kind !== 'versus' && <Section>
+    <SectionHeader eyebrow="Progress" title="How the run went" description={levelled ? 'Levels, milestones and zones over the run.' : 'Who reached the goal when, and what each player did on the way.'} />
     <div class="space-y-4">
       {levelled ? <ProgressChart run={run} /> : <FinishChart run={run} />}
       <Milestones run={run} />
     </div>
-  </Section>
+  </Section>}
 
   {(run.maps ?? []).length > 0 && (
     <Section>
-      <SectionHeader eyebrow="Map" title="Routes" description="Each player's path from their recording, drawn over the game map. Crosses mark deaths. Click a map to enlarge it." />
+      <SectionHeader eyebrow="Map" title="Routes" description="Each player's path over the game map." />
       <div class:list={['grid grid-cols-1 gap-4', run.maps!.length > 1 && 'lg:grid-cols-2']}>
         {run.maps!.map(box => (
           <RouteMap
@@ -186,7 +167,7 @@ const tiles = [
 
   {(hasCombat || hasDeaths) && (
     <Section>
-      <SectionHeader eyebrow="Combat" title={hasDeaths ? 'Fighting and deaths' : 'Fighting'} description={`Each player's damage, healing and kills from its game log${hasDeaths ? ', then deaths by killer and by zone' : ''}.`} />
+      <SectionHeader eyebrow="Combat" title={hasDeaths ? 'Fighting and deaths' : 'Fighting'} description={`Damage, healing and kills from each game log${hasDeaths ? ', and who killed whom where' : ''}.`} />
       <div class="space-y-4">
         {hasCombat && <CombatPanel run={run} />}
         {hasCombat && <Targets run={run} />}
@@ -196,13 +177,13 @@ const tiles = [
   )}
 
   <Section>
-    <SectionHeader eyebrow="Time" title="Time use" description="How each character spent its time in the game, and how each agent spent its time." />
+    <SectionHeader eyebrow="Time" title="Time use" description="Where each character's and each agent's time went." />
     <TimeUse run={run} />
   </Section>
 
   {run.players.some(p => p.idle_gaps || p.reliability || p.coop || p.play) && (
     <Section>
-      <SectionHeader eyebrow="Agent" title="How the agents worked" description="What each agent's tool calls ran, its progress by what it was doing, the time it left its character idle, and how often the tooling got in its way." />
+      <SectionHeader eyebrow="Agent" title="How the agents worked" description="What each agent ran, and how often the tooling got in its way." />
       <div class="space-y-4">
         <ToolMix run={run} />
         <AgentPanel run={run} />
@@ -212,14 +193,14 @@ const tiles = [
 
   {run.players.some(p => p.trajectory?.length || p.failures?.length) && (
     <Section>
-      <SectionHeader eyebrow="Trajectory" title="Calls and errors" description="What each agent asked the game to do over the run, where its calls failed, and the errors it hit most often." />
+      <SectionHeader eyebrow="Trajectory" title="Calls and errors" description="What each agent asked the game to do, and where it failed." />
       <TrajectoryPanel run={run} />
     </Section>
   )}
 
   {(hasChat || hasHeard) && run.players.length > 1 && (
     <Section>
-      <SectionHeader eyebrow="Group" title="Chat and proximity" description="Messages between players over the run, who heard whom, and how often the whole party was within 40 yards of each other." />
+      <SectionHeader eyebrow="Group" title="Chat and proximity" description="Chat between players, who heard whom, and time together." />
       <div class="space-y-4">
         {hasChat && <Talk run={run} />}
         {hasHeard && <Heard run={run} />}
@@ -229,26 +210,26 @@ const tiles = [
 
   {run.players.some(p => p.kit || Object.keys(p.casts ?? {}).length) && (
     <Section>
-      <SectionHeader eyebrow="Characters" title="Gear, talents and abilities" description="What each character wore and had learned when the run ended, and how often it cast each ability." />
+      <SectionHeader eyebrow="Characters" title="Gear, talents and abilities" description="What each character wore and knew at the end, and what it cast." />
       <KitPanel run={run} />
     </Section>
   )}
 
   <Section last={!Story && !hasDownloads}>
-    <SectionHeader eyebrow="Spend" title="Cost" description="What each agent cost over the run, and its tokens." />
+    <SectionHeader eyebrow="Spend" title="Cost" description="What each agent cost, and its tokens." />
     <CostPanel run={run} />
   </Section>
 
   {hasDownloads && (
     <Section last={!Story}>
-      <SectionHeader eyebrow="Data" title="Downloads" description="Each agent's trajectory and each character's game log, for your own analysis." />
+      <SectionHeader eyebrow="Data" title="Downloads" description="Each agent's trajectory and each character's game log." />
       <Downloads run={run} />
     </Section>
   )}
 
   {Story && (
     <Section last>
-      <p class="eyebrow mb-2">Account of the run</p>
+      <SectionHeader eyebrow="Write-up" title="Account of the run" />
       <div class="prose run-story max-w-3xl">
         <Story />
       </div>

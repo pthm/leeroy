@@ -1,8 +1,9 @@
 ---
-// A task's models side by side, across every run: each attempt's time to the goal as a dot (the mean as a bar), how
-// the agent spent its time on average, and its most frequent errors.
-import FigureHead from './FigureHead.astro';
-import { metricName, duration, entryKey, entryName, harnessColor, harnessName, isProgress, leaderboard, rate, runsOf, xpRate, type Player } from '../lib/results';
+// A task's models side by side, across every run: each attempt's result as a dot (the mean as a bar; kinds.ts), how
+// the agent spent its time on average, and its most frequent errors: three figures, each titled (Figure).
+import Figure from './Figure.astro';
+import { view } from '../lib/kinds';
+import { entryKey, entryName, harnessColor, harnessName, isProgress, leaderboard, runsOf, type Player } from '../lib/results';
 
 interface Props {
   task: string;
@@ -12,11 +13,12 @@ interface Props {
 const { task, version = 'all' } = Astro.props;
 const rows = leaderboard(task, version);
 const attempts = (key: string): Player[] => runsOf(task, version).flatMap(r => r.players.filter(p => entryKey(p) === key));
+// each attempt's place on the strip, as the task's goal kind reads it (kinds.ts)
+const st = view(task, version).strip;
 const progress = isProgress(task);
-// each attempt's place on the strip: time to the goal (if met), or XP per hour on a progress task
-const valueOf = (p: Player) => (progress ? xpRate(p) : p.met ? p.time_to_goal_s : undefined);
-const label = (v?: number) => (progress ? rate(v, task) : duration(v));
-const maxT = Math.max(...rows.flatMap(r => attempts(r.key).map(p => valueOf(p) ?? 0)), 1) * 1.05;
+const valueOf = st.value;
+const label = st.label;
+const maxT = st.max ?? Math.max(...rows.flatMap(r => attempts(r.key).map(p => valueOf(p) ?? 0)), 1) * 1.05;
 const states = [
   { k: 'thinking', label: 'thinking', c: 'var(--color-accent)' },
   { k: 'waiting', label: 'script running', c: 'var(--color-success)' },
@@ -29,23 +31,20 @@ const topFailures = (ps: Player[]) => {
   for (const p of ps) for (const f of p.failures ?? []) by.set(`${f.op} ${f.code}`, (by.get(`${f.op} ${f.code}`) ?? 0) + f.count);
   return [...by.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
 };
-const tickStep = progress
-  ? [100, 200, 500, 1000, 2000, 5000, 10000, 20000].find(s => maxT / s <= 6) ?? 50000
-  : ([1, 2, 5, 10, 15, 30, 60, 120, 240].find(m => maxT / 60 / m <= 6) ?? 480) * 60;
-const ticks = Array.from({ length: Math.floor(maxT / tickStep) + 1 }, (_, i) => i * tickStep);
-const tickLabel = (t: number) => (progress ? (t >= 1000 ? `${t / 1000}k` : String(t)) : t >= 7200 ? `${t / 3600} h` : `${t / 60} min`);
+const tickStep = st.step(maxT);
+const ticks = Array.from({ length: Math.floor(maxT / tickStep + 1e-9) + 1 }, (_, i) => i * tickStep);
+const tickLabel = st.tick;
 ---
 
 <div class="space-y-4">
-  <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-    <FigureHead title={progress ? `${metricName(task)[0].toUpperCase()}${metricName(task).slice(1)}, every attempt` : 'Time to the goal, every attempt'} sub={progress ? 'Each dot is one attempt. The line is the mean.' : 'Each dot is one attempt. The line is the mean. ✕ marks an attempt that didn’t reach the goal.'} />
+  <Figure title={st.title} note={st.sub}>
     <ul class="space-y-2">
       {rows.map(r => (
         <li class="grid grid-cols-[8rem_1fr] items-center gap-3 font-mono text-xs" data-key={r.key}>
           <span class="truncate text-fg">{entryName(r)}</span>
           <span class="relative h-5 rounded-sm bg-elevated">
             {ticks.map(t => <span class="absolute top-0 h-full w-px bg-hairline" style={`left:${(t / maxT) * 100}%`} />)}
-            {(progress ? r.meanRate : r.meanTime) && <span class="absolute -top-0.5 h-6 w-0.5 bg-fg" style={`left:${((progress ? r.meanRate! : r.meanTime!) / maxT) * 100}%`} title={`mean ${label(progress ? r.meanRate : r.meanTime)}`} />}
+            {st.mean(r) != null && <span class="absolute -top-0.5 h-6 w-0.5 bg-fg" style={`left:${((st.mean(r) ?? 0) / maxT) * 100}%`} title={`mean ${label(st.mean(r))}`} />}
             {attempts(r.key).map(p =>
               valueOf(p) != null ? (
                 <span
@@ -67,11 +66,16 @@ const tickLabel = (t: number) => (progress ? (t >= 1000 ? `${t / 1000}k` : Strin
         {ticks.map(t => <span class="absolute -translate-x-1/2" style={`left:${(t / maxT) * 100}%`}>{tickLabel(t)}</span>)}
       </span>
     </div>
-  </figure>
+  </Figure>
 
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-    <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-      <FigureHead title="Agent time" sub="Mean share of each attempt" />
+    <Figure
+      title="Agent time"
+      note="Mean share of each attempt, from the harness. Script running is the agent waiting while its Lua plays; in a call, a tool command running; nothing running, the character idle."
+    >
+      <Fragment slot="legend">
+        {states.map(s => <span><span style={`color:${s.c}`}>■</span> {s.label}</span>)}
+      </Fragment>
       <ul class="space-y-2">
         {rows.map(r => {
           const ps = attempts(r.key);
@@ -88,12 +92,11 @@ const tickLabel = (t: number) => (progress ? (t >= 1000 ? `${t / 1000}k` : Strin
           );
         })}
       </ul>
-      <p class="mt-3 flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
-        {states.map(s => <span><span style={`color:${s.c}`}>■</span> {s.label}</span>)}
-      </p>
-    </figure>
-    <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-      <FigureHead title="Most frequent errors" sub="SDK error codes, summed over all attempts" />
+    </Figure>
+    <Figure
+      title="Most frequent errors"
+      note="SDK error codes summed over all attempts, leaving out expected ones such as a missed attack or a spell on cooldown."
+    >
       <ul class="space-y-2.5">
         {rows.filter(r => topFailures(attempts(r.key)).length).map(r => (
           <li class="text-xs">
@@ -109,12 +112,6 @@ const tickLabel = (t: number) => (progress ? (t >= 1000 ? `${t / 1000}k` : Strin
           </li>
         ))}
       </ul>
-    </figure>
+    </Figure>
   </div>
-  <p class="font-mono text-[11px] leading-relaxed text-faint">
-    Agent time comes from the harness. Thinking is time the model spends generating. Script running is time the agent
-    waits while its Lua plays. In a call is time a tool command is running. Nothing running means neither, and the
-    character stands idle. Errors are the SDK's error codes summed over all attempts. Expected ones, such as a script
-    replacing its own move, a missed attack or a spell on cooldown, are excluded.
-</p>
 </div>

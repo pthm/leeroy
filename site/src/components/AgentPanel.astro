@@ -2,8 +2,8 @@
 // How each agent worked, from the run's report: for progress tasks, its progress per hour by what it was doing; then
 // its gaps with no script running, stalls, how much of its useful fighting helped a teammate, and how often the
 // tooling got in its way (movement taken over, routes timed out, death recovery attempts), per hour played.
-import FigureHead from './FigureHead.astro';
-import { colors, isProgress, rate, type Run } from '../lib/results';
+import Figure from './Figure.astro';
+import { colors, isProgress, rate, type Run, playerTip } from '../lib/results';
 
 interface Props {
   run: Run;
@@ -25,27 +25,24 @@ const ps = run.players.filter(p => p.idle_gaps || p.reliability || p.coop);
 
 <div class="space-y-4">
   {byState.length > 0 && (
-    <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-      <FigureHead title="Progress by what the agent was doing" sub="Progress per hour while the model was thinking, while a script played on its own, while a tool command ran, and with nothing running." />
-      <div class="overflow-x-auto">
-        <table class="data">
-          <thead>
-            <tr><th>Character</th>{states.map(s => <th class="num">{s.label}</th>)}</tr>
-          </thead>
-          <tbody>
-            {byState.map(p => (
-              <tr>
-                <td class:list={['font-medium', color[p.char]]}>{p.char}</td>
-                {states.map(s => <td class="num text-muted">{p.progress_per_hour_by_state?.[s.k] == null ? '–' : rate(p.progress_per_hour_by_state[s.k]!, run.task)}</td>)}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </figure>
+    <Figure title="Progress by activity" pad={false} note="Progress per hour, counting only the time the agent spent in each state (as in the Agent time bars).">
+      <table class="data">
+        <thead>
+          <tr><th>Character</th>{states.map(s => <th class="num">{s.label}</th>)}</tr>
+        </thead>
+        <tbody>
+          {byState.map(p => (
+            <tr>
+              <td class:list={['font-medium', color[p.char]]} title={playerTip(p)}>{p.char}</td>
+              {states.map(s => <td class="num text-muted">{p.progress_per_hour_by_state?.[s.k] == null ? '–' : rate(p.progress_per_hour_by_state[s.k]!, run.task)}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Figure>
   )}
   {ps.length > 0 && (
-    <div class="overflow-x-auto rounded border border-hairline bg-raised">
+    <Figure title="Idle time and tooling" pad={false} note="Idle gaps are stretches with no script running; stalls are the session's no-XP or slow-XP warnings. The last three are per hour played: times the tooling got in the agent's way.">
       <table class="data">
         <thead>
           <tr>
@@ -63,7 +60,7 @@ const ps = run.players.filter(p => p.idle_gaps || p.reliability || p.coop);
             const g = p.idle_gaps, r = p.reliability;
             return (
               <tr>
-                <td class:list={['font-medium', color[p.char]]}>{p.char}</td>
+                <td class:list={['font-medium', color[p.char]]} title={playerTip(p)}>{p.char}</td>
                 <td class="num text-muted" title={g?.n ? `median ${g.median_s} s, 90th percentile ${g.p90_s} s` : undefined}>{g && g.n ? `${g.total_min} min in ${g.n}` : '–'}</td>
                 <td class="num text-muted">{p.stalls ? (p.stalls.no_xp ?? 0) + p.stalls.slow : '–'}</td>
                 {party && <td class="num text-muted">{p.coop ? `${Math.round(p.coop.assist_share * 100)}%` : '–'}</td>}
@@ -75,6 +72,6 @@ const ps = run.players.filter(p => p.idle_gaps || p.reliability || p.coop);
           })}
         </tbody>
       </table>
-    </div>
+    </Figure>
   )}
 </div>

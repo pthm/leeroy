@@ -1,8 +1,9 @@
 ---
 // Each character's kit as the run left it, a card per player: equipped gear (WoW quality colours, item level),
-// talents, and abilities by how often each was cast in the run (trained abilities never cast faded).
+// talents, and abilities by how often each was cast in the run (trained abilities never cast faded). The cards are
+// one unit with a shared note below.
 import Icon from './GameIcon.astro';
-import { colors, specLabel, type Run } from '../lib/results';
+import { colors, specLabel, type Run, playerTip } from '../lib/results';
 import { url } from '../lib/url';
 
 interface Props {
@@ -30,76 +31,77 @@ const ilvl = (p: (typeof ps)[number]) => {
 ---
 
 {ps.length > 0 && (
-  <div class="space-y-4">
-    {ps.map(p => {
-      const a = abilities(p);
-      return (
-        <article class="rounded border border-hairline bg-raised p-5" data-chart>
-          <header class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-            <h3 class:list={['font-serif text-xl', color[p.char]]}>{p.char}</h3>
-            <p class="font-mono text-xs text-muted">{specLabel(p)} · level {p.series?.at(-1)?.[1].toFixed(1) ?? p.level} · item level {ilvl(p)}</p>
-          </header>
-          <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <section>
-              <h4 class="eyebrow mb-2">Gear</h4>
-              {p.kit?.gear.length ? (
+  <div>
+    <div class="space-y-4">
+      {ps.map(p => {
+        const a = abilities(p);
+        return (
+          <article class="rounded border border-hairline bg-raised p-5" data-chart>
+            <header class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+              <h3 class:list={['font-serif text-xl', color[p.char]]} title={playerTip(p)}>{p.char}</h3>
+              <p class="font-mono text-xs text-muted">{specLabel(p)} · level {p.series?.at(-1)?.[1].toFixed(1) ?? p.level} · item level {ilvl(p)}</p>
+            </header>
+            <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <section>
+                <h4 class="eyebrow mb-2">Gear</h4>
+                {p.kit?.gear.length ? (
+                  <ul class="space-y-1.5 text-xs">
+                    {p.kit.gear.map(i => (
+                      <li class="grid grid-cols-[5.5rem_1fr_2.5rem] items-center gap-2">
+                        <span class="text-faint">{SLOTS[i.slot] ?? i.slot}</span>
+                        <span class="flex min-w-0 items-center gap-2" title={i.name}>
+                          <Icon src={icon(i.icon)} border={QUALITY[i.quality]} />
+                          <span class="truncate" style={`color:${QUALITY[i.quality] ?? 'inherit'}`}>{i.name}</span>
+                        </span>
+                        <span class="text-right font-mono text-faint">{i.level}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p class="text-xs text-faint">Not recorded for this run.</p>
+                )}
+                {p.kit && (
+                  <>
+                    <h4 class="eyebrow mt-5 mb-2">Talents</h4>
+                    {p.kit.talents.length ? (
+                      <ul class="flex flex-wrap gap-1.5 text-xs">
+                        {p.kit.talents.map(t => (
+                          <li class="flex items-center gap-1.5 rounded border border-hairline py-0.5 pr-2 pl-0.5 text-muted"><Icon src={icon(t.icon)} />{t.name}{t.rank && <span class="text-faint"> · {t.rank.replace('Rank ', 'r')}</span>}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p class="text-xs text-faint">None spent.</p>
+                    )}
+                  </>
+                )}
+              </section>
+              <section>
+                <h4 class="eyebrow mb-2">Abilities, by casts</h4>
                 <ul class="space-y-1.5 text-xs">
-                  {p.kit.gear.map(i => (
-                    <li class="grid grid-cols-[5.5rem_1fr_2.5rem] items-center gap-2">
-                      <span class="text-faint">{SLOTS[i.slot] ?? i.slot}</span>
-                      <span class="flex min-w-0 items-center gap-2" title={i.name}>
-                        <Icon src={icon(i.icon)} border={QUALITY[i.quality]} />
-                        <span class="truncate" style={`color:${QUALITY[i.quality] ?? 'inherit'}`}>{i.name}</span>
-                      </span>
-                      <span class="text-right font-mono text-faint">{i.level}</span>
+                  {a.casts.map(([name, n]) => (
+                    <li class="grid grid-cols-[11rem_1fr_3rem] items-center gap-2" title={`${name}: cast ${n.toLocaleString('en')} times`}>
+                      <span class="flex min-w-0 items-center gap-2"><Icon src={icon(a.icons[name])} /><span class="truncate text-fg">{name}</span></span>
+                      <span class="h-1.5 rounded-sm bg-accent/70" style={`width:${(n / a.max) * 100}%`} />
+                      <span class="text-right font-mono text-muted">{n.toLocaleString('en')}</span>
+                    </li>
+                  ))}
+                  {a.unused.map(name => (
+                    <li class="grid grid-cols-[11rem_1fr_3rem] items-center gap-2 opacity-45" title={`${name}: trained, never cast`}>
+                      <span class="flex min-w-0 items-center gap-2"><Icon src={icon(a.icons[name])} /><span class="truncate text-muted">{name}</span></span>
+                      <span />
+                      <span class="text-right font-mono text-faint">0</span>
                     </li>
                   ))}
                 </ul>
-              ) : (
-                <p class="text-xs text-faint">Not recorded for this run.</p>
-              )}
-              {p.kit && (
-                <>
-                  <h4 class="eyebrow mt-5 mb-2">Talents</h4>
-                  {p.kit.talents.length ? (
-                    <ul class="flex flex-wrap gap-1.5 text-xs">
-                      {p.kit.talents.map(t => (
-                        <li class="flex items-center gap-1.5 rounded border border-hairline py-0.5 pr-2 pl-0.5 text-muted"><Icon src={icon(t.icon)} />{t.name}{t.rank && <span class="text-faint"> · {t.rank.replace('Rank ', 'r')}</span>}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p class="text-xs text-faint">None spent.</p>
-                  )}
-                </>
-              )}
-            </section>
-            <section>
-              <h4 class="eyebrow mb-2">Abilities, by casts</h4>
-              <ul class="space-y-1.5 text-xs">
-                {a.casts.map(([name, n]) => (
-                  <li class="grid grid-cols-[11rem_1fr_3rem] items-center gap-2" title={`${name}: cast ${n.toLocaleString('en')} times`}>
-                    <span class="flex min-w-0 items-center gap-2"><Icon src={icon(a.icons[name])} /><span class="truncate text-fg">{name}</span></span>
-                    <span class="h-1.5 rounded-sm bg-accent/70" style={`width:${(n / a.max) * 100}%`} />
-                    <span class="text-right font-mono text-muted">{n.toLocaleString('en')}</span>
-                  </li>
-                ))}
-                {a.unused.map(name => (
-                  <li class="grid grid-cols-[11rem_1fr_3rem] items-center gap-2 opacity-45" title={`${name}: trained, never cast`}>
-                    <span class="flex min-w-0 items-center gap-2"><Icon src={icon(a.icons[name])} /><span class="truncate text-muted">{name}</span></span>
-                    <span />
-                    <span class="text-right font-mono text-faint">0</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          </div>
-        </article>
-      );
-    })}
-    <p class="font-mono text-[11px] leading-relaxed text-faint">
-      Gear, talents and trained abilities are read from the characters database when the run ends. Older runs whose
-      characters were later reused show casts only. Cast counts come from the recording and can include effects
-      triggered on the character, such as Frost Armor's Chilled.
+              </section>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+    <p class="mt-2 max-w-3xl font-mono text-[11px] leading-relaxed text-faint">
+      Gear, talents and trained abilities as the run ended (older runs whose characters were reused show casts only).
+      Cast counts can include effects triggered on the character, such as Chilled.
     </p>
   </div>
 )}

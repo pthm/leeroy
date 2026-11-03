@@ -1,7 +1,7 @@
 ---
 // What the players fought, from their game logs: killing blows and damage dealt by creature, a bar per creature split
 // by player, most first.
-import FigureHead from './FigureHead.astro';
+import Figure from './Figure.astro';
 import { colors, thousands, type Run } from '../lib/results';
 
 interface Props {
@@ -24,18 +24,17 @@ const tally = (get: (p: Run['players'][number]) => [string, number][] | undefine
   return rows.slice(0, top);
 };
 const figures = [
-  { title: 'Killing blows', sub: 'Creatures each player landed the killing blow on, most first', rows: tally(p => p.kills_by, 12), fmt: (n: number) => String(n) },
-  { title: 'Damage dealt', sub: 'Damage each player dealt, by creature', rows: tally(p => p.damage_to, 12), fmt: thousands },
+  { title: 'Killing blows', note: 'Creatures by killing blows landed, most first, each bar split by player; at most 12.', rows: tally(p => p.kills_by, 12), fmt: (n: number) => String(n) },
+  { title: 'Damage dealt', note: 'Damage dealt by creature, most first, each bar split by player; at most 12.', rows: tally(p => p.damage_to, 12), fmt: thousands },
 ].filter(f => f.rows.length);
 ---
 
 {figures.length > 0 && (
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-    {figures.map(({ title, sub, rows, fmt }) => {
+    {figures.map(({ title, note, rows, fmt }) => {
       const max = Math.max(1, ...rows.map(r => r.n));
       return (
-        <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-          <FigureHead title={title} sub={sub} />
+        <Figure title={title} note={note}>
           <ul class="space-y-1.5">
             {rows.map(r => (
               <li class="grid grid-cols-[10rem_1fr_3rem] items-center gap-3 text-xs">
@@ -47,7 +46,7 @@ const figures = [
               </li>
             ))}
           </ul>
-        </figure>
+        </Figure>
       );
     })}
   </div>

@@ -1,8 +1,10 @@
 ---
-// A task's entries (a model at an effort), best first: goals met, then mean time (with checkpoints, mean score); or on
-// a progress task, mean XP per hour. With the formulas under it.
+// A task's entries (a model at an effort), best first, with the columns its goal kind reads by (kinds.ts) and the
+// note on how to read them below it (Figure).
+import Figure from './Figure.astro';
 import FilterBar from './FilterBar.astro';
-import { LABS, dollars, duration, entryName, harnessName, hasCheckpoints, isProgress, isTotal, leaderboard, rate, thousands } from '../lib/results';
+import { view } from '../lib/kinds';
+import { LABS, dollars, entryName, harnessName, leaderboard, thousands } from '../lib/results';
 
 interface Props {
   task: string;
@@ -12,60 +14,36 @@ interface Props {
 
 const { task, version = 'all', compact = false } = Astro.props;
 const rows = leaderboard(task, version);
-const progress = isProgress(task);
-const cps = !progress && hasCheckpoints(task, version);
+const v = view(task, version);
+const cols = v.board.filter(c => !compact || !c.wide);
 ---
 
 <div data-filtered>
 {!compact && <FilterBar rows={rows} />}
-<div class="overflow-x-auto rounded border border-hairline bg-raised">
+<Figure pad={false} note={compact ? undefined : `${v.boardNote}Cost per attempt is at list prices (models.dev); “· high” is the reasoning effort.`}>
   <table class="data">
     <thead>
       <tr>
         <th class="num">#</th>
         <th>Model</th>
         <th>Harness</th>
-        {progress ? <th class="num">Attempts</th> : <th class="num">Met</th>}
-        {cps && <th class="num">Checkpoints</th>}
-        {cps && <th class="num">Score</th>}
-        <th class="num">{progress ? 'Mean' : 'Mean time'}</th>
-        <th class="num">Best</th>
-        {progress && <th class="num">Levels</th>}
+        {cols.map(c => <th class:list={[c.num && 'num']}>{c.head}</th>)}
         <th class="num">Cost / attempt</th>
-        {!progress && !compact && <th class="num">Cost / success</th>}
         {!compact && <th class="num">Output tokens</th>}
       </tr>
     </thead>
     <tbody>
       {rows.map((r, i) => (
-        <tr data-lab={r.lab} data-harness={r.runtime} data-effort={r.effort || 'default'}>
+        <tr data-lab={r.lab}>
           <td class="num text-faint">{i + 1}</td>
           <td class="font-medium text-fg"><span style={`color:${LABS[r.lab]}`} title={r.lab}>●</span> {entryName(r)}</td>
           <td class="text-muted">{harnessName(r.runtime)}</td>
-          {progress ? (
-            <td class="num text-muted">{r.attempts}</td>
-          ) : (
-            <td class:list={['num', r.met === r.attempts ? 'text-success' : 'text-warning']}>{r.met}/{r.attempts}</td>
-          )}
-          {cps && <td class="num text-muted">{r.meanCheckpoints != null ? `${r.meanCheckpoints.toFixed(1)}/${r.checkpoints}` : '–'}</td>}
-          {cps && <td class="num text-fg">{r.meanScore?.toFixed(2) ?? '–'}</td>}
-          <td class="num text-fg">{progress ? rate(r.meanRate, task) : duration(r.meanTime)}</td>
-          <td class="num text-muted">{progress ? rate(r.bestRate, task) : duration(r.bestTime)}</td>
-          {progress && <td class="num text-muted">{r.meanLevels?.toFixed(1) ?? '–'}</td>}
+          {cols.map(c => <td class:list={[c.num && 'num', c.tone?.(r) ?? 'text-muted']} title={c.title?.(r)}>{c.cell(r)}</td>)}
           <td class="num text-muted">{dollars(r.meanCost)}</td>
-          {!progress && !compact && <td class="num text-muted">{dollars(r.costPerSuccess)}</td>}
           {!compact && <td class="num text-muted">{thousands(r.meanOutputTokens)}</td>}
         </tr>
       ))}
     </tbody>
   </table>
+</Figure>
 </div>
-</div>
-{!compact && (
-  <p class="mt-3 font-mono text-[11px] leading-relaxed text-faint">
-    {progress
-      ? (isTotal(task) ? 'XP is the total XP earned before the first death or the end of the clock, from the judge’s samples every 15 seconds. ' : 'XP/h is XP earned divided by hours played, from the judge’s samples every 15 seconds. ') + 'Mean and best are over all attempts. Levels is the mean number of levels gained. '
-      : (cps ? 'Each boss is a checkpoint: Checkpoints is the mean number reached per attempt. Score is 3600 / seconds to the goal when it is met; an attempt that runs out of time scores the share of checkpoints it reached times the score of finishing as the clock ends, so any finish ranks above any unfinished attempt. Entries rank by mean score. ' : '') + 'Met counts attempts that reached the goal before time ran out. Time runs from the start until the judge first records the goal, checked every 15 seconds. Mean and best time cover only attempts that met the goal. Cost per success is the total cost of all attempts divided by goals met, and is left blank if any cost is missing. '}
-    Cost per attempt is the mean token cost at list prices from models.dev. A suffix such as “· high” is the reasoning effort. No suffix means the runtime’s default. Most entries have one to three attempts, so small differences in rank don’t mean much.
-  </p>
-)}

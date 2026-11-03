@@ -1,8 +1,10 @@
 ---
 // Every entry (a model at an effort) across every task: each cell its result there (goals met and mean time, or XP
 // per hour) and n, shaded by where it ranks in that task. Blank: not run. Sortable by any column (scripts/interact.ts).
-import { LABS, unit, latestFor, displayNames, duration, entryName, harnessName, isProgress, leaderboard, percentiles, rate, taskShort, taskTitle, tasks, type ModelRow } from '../lib/results';
+import { view } from '../lib/kinds';
+import { LABS, latestFor, displayNames, entryName, harnessName, leaderboard, percentiles, taskShort, taskTitle, tasks, type ModelRow } from '../lib/results';
 import { resultsUrl } from '../lib/url';
+import Figure from './Figure.astro';
 import FilterBar from './FilterBar.astro';
 
 interface Props {
@@ -26,16 +28,18 @@ const entries = [...by.values()]
   .map(e => ({ ...e, mean: [...e.pct.values()].reduce((a, b) => a + b, 0) / e.pct.size }))
   .sort((a, b) => b.pct.size - a.pct.size || b.mean - a.mean);
 const names = displayNames(entries.map(e => e.row));
-const cellText = (t: string, r: ModelRow) => (isProgress(t) ? rate(r.meanRate, t).replace(/ XP(\/h)?$/, '') : `${r.met}/${r.attempts}`);
-const cellSub = (t: string, r: ModelRow) =>
-  isProgress(t) ? `n=${r.attempts}` : r.meanTime != null ? duration(r.meanTime) : r.checkpoints ? `${r.meanCheckpoints?.toFixed(1) ?? 0}/${r.checkpoints} checkpoints` : 'none met';
-const cellValue = (t: string, r: ModelRow) =>
-  isProgress(t) ? r.meanRate ?? 0 : r.checkpoints ? r.meanScore ?? 0 : r.met / r.attempts - (r.meanTime ?? 1e6) / 1e9;
+// each task's cell as its goal kind reads it (kinds.ts)
+const cellText = (t: string, r: ModelRow) => view(t, version).cell(r);
+const cellSub = (t: string, r: ModelRow) => view(t, version).sub(r);
+const cellValue = (t: string, r: ModelRow) => view(t, version).value(r);
 ---
 
 <div data-filtered>
 <FilterBar rows={entries.map(e => e.row)} />
-<div class="overflow-x-auto rounded border border-hairline bg-raised" data-chart data-cross>
+<Figure
+  pad={false}
+  note="Each cell is the entry's result in that task and its attempts, shaded by its percentile there; bold marks the task's best. Avg pct. is the mean percentile over the tasks run, not an overall score."
+>
   <table class="data cross" data-sortable>
     <thead>
       <tr>
@@ -44,7 +48,7 @@ const cellValue = (t: string, r: ModelRow) =>
         {ts.map(t => (
           <th class="num" data-sort="num" title={taskTitle(t)}>
             <a href={resultsUrl(version, t, latestFor(t))} class="whitespace-nowrap hover:text-accent">{taskShort(t)}</a>
-            <span class="block text-[9px] tracking-normal text-faint normal-case">{isProgress(t) ? unit(t) : 'met · time'}</span>
+            <span class="block text-[9px] tracking-normal text-faint normal-case">{view(t, version).unit}</span>
           </th>
         ))}
         <th class="num" data-sort="num" title="Tasks this entry has run">Tasks</th>
@@ -53,7 +57,7 @@ const cellValue = (t: string, r: ModelRow) =>
     </thead>
     <tbody>
       {entries.map(e => (
-        <tr data-key={e.row.key} data-lab={e.row.lab} data-harness={e.row.runtime} data-effort={e.row.effort || 'default'}>
+        <tr data-key={e.row.key} data-lab={e.row.lab}>
           <td class="whitespace-nowrap text-fg" data-v={names.get(e.row.key)}>
             <span style={`color:${LABS[e.row.lab]}`} title={e.row.lab}>●</span> {entryName(e.row)}
           </td>
@@ -66,7 +70,7 @@ const cellValue = (t: string, r: ModelRow) =>
                 class:list={['num cell', best.get(t) === r.key && 'font-semibold text-fg']}
                 style={`background:color-mix(in oklab, var(--color-accent) ${Math.round(p * 38)}%, transparent)`}
                 data-v={cellValue(t, r)}
-                title={`${entryName(r)} in ${taskTitle(t)}: ${isProgress(t) ? `${rate(r.meanRate, t)} mean over ${r.attempts}` : `${r.met} of ${r.attempts} reached the goal, ${duration(r.meanTime)} mean`}; ranks ${Math.round(p * 100)}th percentile`}
+                title={`${entryName(r)} in ${taskTitle(t)}: ${cellText(t, r)} (${cellSub(t, r)}); ranks ${Math.round(p * 100)}th percentile`}
               >
                 <span class="block">{cellText(t, r)}</span>
                 <span class="block text-[10px] text-faint">{cellSub(t, r)}</span>
@@ -81,12 +85,5 @@ const cellValue = (t: string, r: ModelRow) =>
       ))}
     </tbody>
   </table>
+</Figure>
 </div>
-</div>
-<p class="mt-3 font-mono text-[11px] leading-relaxed text-faint">
-  Goal tasks show goals met out of attempts, with mean time to the goal. Levelling tasks show mean XP per hour (hardcore: total XP), with
-  the number of attempts. Shading shows the entry's percentile within that task, from 100 for the best to 0 for the
-  worst. The task's best entry is in bold. Avg pct. is the mean of those percentiles across the tasks an entry has run.
-  It is not an overall score, since tasks differ and not every model has run every task. Click a column header to
-  sort.
-</p>

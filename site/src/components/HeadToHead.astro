@@ -1,0 +1,81 @@
+---
+// A versus task's head to head, for any match format (duels, battlegrounds): each entry against each other, rows
+// against columns in rating order. A cell is the row's games won–lost against the column over all their matches,
+// tinted from red (lost them all) through neutral to green (won them all); its tooltip lists every match, with a link
+// to its round (click to pin it).
+import { LABS, entryName, harnessName, headToHead, leaderboard, runDate } from '../lib/results';
+import { url } from '../lib/url';
+import Figure from './Figure.astro';
+
+interface Props {
+  task: string;
+  version?: string;
+}
+
+const { task, version = 'all' } = Astro.props;
+const rows = leaderboard(task, version);
+const h2h = headToHead(task, version);
+const name = (r: (typeof rows)[number]) => `${entryName(r)} (${harnessName(r.runtime)})`;
+// the tint: green for a winning share, red for a losing one, stronger the further from even
+const tint = (share: number) => {
+  const c = share >= 0.5 ? 'var(--color-success)' : 'var(--color-error)';
+  return `background:color-mix(in oklab, ${c} ${Math.round(Math.abs(share - 0.5) * 2 * 42) + 6}%, transparent)`;
+};
+const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+const id = (a: number, b: number) => `h2h-${a}-${b}`;
+---
+
+<Figure
+  pad={false}
+  note="Each cell is the row’s games won–lost against the column, green when ahead and red when behind, stronger the more one-sided. Order is by rating (the number after each name); a dot means they haven’t met. Click a cell to pin its matches."
+>
+  <table class="w-full table-fixed border-collapse font-mono text-xs">
+    <thead>
+      <tr class="border-b border-hairline">
+        <th class="sticky left-0 z-10 w-64 bg-raised px-3 py-2 text-left text-[10px] font-normal tracking-wide text-faint uppercase">Row against column</th>
+        {rows.map(c => (
+          <th class="w-32 min-w-24 px-1 py-2 text-center align-bottom font-normal" data-tip={name(c)}>
+            <span class="block leading-tight text-fg"><span style={`color:${LABS[c.lab]}`}>●</span> {entryName(c).replace(/ · .*/, '')}</span>
+            <span class="block text-[10px] text-faint">{harnessName(c.runtime)}</span>
+          </th>
+        ))}
+        <th class="w-20 px-3 py-2 text-right text-[10px] font-normal tracking-wide text-faint uppercase">All</th>
+      </tr>
+    </thead>
+    <tbody>
+      {rows.map((r, i) => (
+        <tr class="border-b border-hairline last:border-0">
+          <th class="sticky left-0 z-10 bg-raised px-3 py-2 text-left font-normal whitespace-nowrap" data-tip={name(r)}>
+            <span class="text-fg"><span style={`color:${LABS[r.lab]}`}>●</span> {entryName(r)}</span>
+            <span class="ml-2 text-faint">{r.rating != null ? Math.round(r.rating) : ''}</span>
+          </th>
+          {rows.map((c, j) => {
+            if (i === j) return <td class="bg-[repeating-linear-gradient(45deg,var(--color-hairline)_0_1px,transparent_1px_6px)]" />;
+            const x = h2h.get(r.key)?.get(c.key);
+            if (!x) return <td class="text-center text-faint" data-tip={`${name(r)} and ${name(c)} haven't met`}>·</td>;
+            const share = x.won / Math.max(1, x.won + x.lost);
+            return (
+              <td class="px-1 py-1.5 text-center" style={tint(share)} data-tip-html={`#${id(i, j)}`}>
+                <span class="block text-sm font-semibold text-fg tabular-nums">{x.won}–{x.lost}</span>
+                <span class="block text-[10px] text-muted">{Math.round(share * 100)}%</span>
+                <template id={id(i, j)}>
+                  <Fragment set:html={
+                    `<div class="chart-tip-head">${esc(name(r))} against ${esc(name(c))}</div>` +
+                    `<div><b>${x.won}–${x.lost}</b> in games, over ${x.matches.length} match${x.matches.length === 1 ? '' : 'es'}</div>` +
+                    x.matches
+                      .map(m => `<div><a href="${url(`/results/${task}/${m.run.id}`)}">${esc(runDate(m.run))}${m.spot ? ` · ${esc(m.spot)}` : ''}</a> · ${m.won}–${m.lost}</div>`)
+                      .join('') +
+                    `<div class="chart-tip-head">Click to pin, then open a match.</div>`
+                  } />
+                </template>
+              </td>
+            );
+          })}
+          <td class="px-3 py-2 text-right whitespace-nowrap text-muted tabular-nums">
+            {r.gamesWon ?? 0}–{(r.gamesPlayed ?? 0) - (r.gamesWon ?? 0)}
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</Figure>

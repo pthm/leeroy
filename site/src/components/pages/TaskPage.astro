@@ -1,5 +1,7 @@
 ---
 import CostChart from '../CostChart.astro';
+import HeadToHead from '../HeadToHead.astro';
+import { view } from '../../lib/kinds';
 import Leaderboard from '../Leaderboard.astro';
 import ModelInsights from '../ModelInsights.astro';
 import RouteMap from '../RouteMap.astro';
@@ -7,7 +9,7 @@ import Section from '../Section.astro';
 import SectionHeader from '../SectionHeader.astro';
 import Layout from '../../layouts/Layout.astro';
 import { Icon } from 'astro-icon/components';
-import { TASKS, metricName, unit, latestFor, outageNote, versionLabel, dollars, duration, harnessName, isProgress, leaderboard, modelName, outcome, bestRate, effortOf, entryKey, entryName, meanRate, rate, runDate, runsOf, specLabel, taskTitle, tasks, totals, xpRate, type MapBox } from '../../lib/results';
+import { TASKS, latestFor, outageNote, versionLabel, dollars, harnessName, leaderboard, effortOf, entryKey, entryName, runDate, runsOf, specLabel, taskTitle, type MapBox, playerTip } from '../../lib/results';
 import { url } from '../../lib/url';
 
 import VersionPicker from '../VersionPicker.astro';
@@ -20,6 +22,7 @@ interface Props {
 
 const { task, version } = Astro.props;
 const info = TASKS[task];
+const kv = view(task, version);
 const runs = runsOf(task, version).toReversed();
 const all = runs.flatMap(r => r.players);
 // one map per map the runs crossed: the widest run's box (its backdrop), every attempt over it in its model's colour
@@ -38,20 +41,18 @@ const tiles = [
   { v: String(runs.length), k: runs.length === 1 ? 'run' : 'runs' },
   { v: String(new Set(all.map(p => p.model)).size), k: 'models' },
   { v: String(all.length), k: 'attempts' },
-  isProgress(task)
-    ? { v: rate(meanRate(all), task), k: `mean ${metricName(task)}` }
-    : { v: `${Math.round((all.filter(p => p.met).length / all.length) * 100)}%`, k: 'reached the goal' },
+  kv.taskTile(all),
   { v: dollars(all.reduce((n, p) => n + (p.cost_usd ?? 0), 0)), k: 'total cost' },
 ];
 ---
 
 <Layout title={`${taskTitle(task)}${version === latestFor(task) ? '' : ` · ${versionLabel(version)}`}`} description={info?.summary}>
   <Section>
-    <SectionHeader eyebrow="Results" title={taskTitle(task)} description={info?.summary} level={1}>
+    <SectionHeader eyebrow="Results" title={taskTitle(task)} description={info?.summary ?? runs[0]?.description} level={1}>
       <VersionPicker version={version} task={task} />
     </SectionHeader>
     {info && <p class="-mt-6 mb-10 max-w-xl font-mono text-xs text-faint">Scoring. {info.scoring}</p>}
-    <ul class="mb-10 grid grid-cols-2 gap-3 sm:grid-cols-5">
+    <ul class="grid grid-cols-2 gap-3 sm:grid-cols-5">
       {tiles.map(tile => (
         <li class="rounded border border-hairline bg-raised px-4 py-3">
           <b class="block font-mono text-xl font-semibold text-fg tabular-nums">{tile.v}</b>
@@ -59,38 +60,28 @@ const tiles = [
         </li>
       ))}
     </ul>
-    <p class="eyebrow mb-3">Run reports</p>
-    <ul class="mb-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {runs.map(r => {
-        const t = totals(r);
-        return (
-          <li>
-            <a href={url(`/results/${task}/${r.id}`)} class="group flex h-full flex-col justify-between gap-3 rounded border border-outline bg-raised p-4 transition-colors hover:border-accent">
-              <span>
-                <span class="block font-mono text-sm text-fg">{runDate(r)}</span>
-                <span class="mt-1 block text-xs text-muted">
-                  {isProgress(task)
-                    ? `${r.players.length} players · best ${rate(bestRate(r.players), task)} · ${dollars(t.cost)}`
-                    : `${t.met}/${r.players.length} reached the goal · ${t.first ? `fastest ${duration(t.first)}` : 'none in time'} · ${dollars(t.cost)}`}
-                </span>
-              </span>
-              <span class="inline-flex items-center gap-1.5 font-mono text-xs text-accent">
-                Open the run report <Icon name="lucide:arrow-right" class="size-3 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
-              </span>
-            </a>
-          </li>
-        );
-      })}
-    </ul>
+  </Section>
+
+  <Section>
+    <SectionHeader eyebrow="Leaderboard" title="By entry" description="Each model at each reasoning effort, best first." />
     <Leaderboard task={task} version={version} />
-    <div class="mt-8">
-      <CostChart task={task} version={version} />
-    </div>
+  </Section>
+
+  {kv.kind === 'versus' && (
+    <Section>
+      <SectionHeader eyebrow="Head to head" title="Every pairing" description="Games won and lost between each two entries." />
+      <HeadToHead task={task} version={version} />
+    </Section>
+  )}
+
+  <Section>
+    <SectionHeader eyebrow="Cost" title="Result against cost" description="What each entry achieved for what it cost per attempt." />
+    <CostChart task={task} version={version} />
   </Section>
 
   {boxes.size > 0 && (
     <Section>
-      <SectionHeader eyebrow="Map" title="Routes" description="Every attempt from every run, coloured by model. Dungeons are drawn from their floor plans. Click a map to enlarge it." />
+      <SectionHeader eyebrow="Map" title="Routes" description="Every attempt from every run, coloured by model." />
       <div class:list={['grid grid-cols-1 gap-4', boxes.size > 1 && 'lg:grid-cols-2']}>
         {[...boxes.values()].map(box => (
           <RouteMap box={box} routes={attempts} legend={entries.map(e => ({ key: e.key, name: entryName(e), cls: modelCls(e.key) }))} thin />
@@ -100,12 +91,12 @@ const tiles = [
   )}
 
   <Section>
-    <SectionHeader eyebrow="Models" title="By model" description="Each attempt's result, how each model's agent spent its time, and its most frequent errors." />
+    <SectionHeader eyebrow="Models" title="By model" description="Each attempt, how the agents spent their time, and their most frequent errors." />
     <ModelInsights task={task} version={version} />
   </Section>
 
   <Section last>
-    <SectionHeader eyebrow="Runs" title="All runs" description="Newest first. Open a run report for charts and details." />
+    <SectionHeader eyebrow="Runs" title="All runs" description="Newest first, each with a link to its full report." />
     <div class="space-y-12">
       {runs.map(r => (
         <article id={r.id}>
@@ -127,7 +118,7 @@ const tiles = [
                   <th>Harness</th>
                   <th>Class</th>
                   <th>Outcome</th>
-                  <th class="num">{isProgress(task) ? unit(task) : 'Time'}</th>
+                  <th class:list={[kv.player.num && 'num']}>{kv.player.head}</th>
                   <th class="num">Level</th>
                   <th class="num">Deaths</th>
                   <th class="num">Cost</th>
@@ -135,15 +126,15 @@ const tiles = [
               </thead>
               <tbody>
                 {r.players
-                  .toSorted((a, b) => isProgress(task) ? (xpRate(b) ?? 0) - (xpRate(a) ?? 0) : Number(b.met) - Number(a.met) || (a.time_to_goal_s ?? Infinity) - (b.time_to_goal_s ?? Infinity))
+                  .toSorted(kv.playerOrder)
                   .map(p => (
                     <tr>
-                      <td class="text-fg">{p.char}</td>
+                      <td class="text-fg" title={playerTip(p)}>{p.char}</td>
                       <td class="text-fg">{entryName({ model: p.model, effort: effortOf(p) })}</td>
                       <td class="text-muted">{harnessName(p.runtime)}</td>
                       <td class="text-muted">{specLabel(p)}</td>
-                      <td class:list={[outcome(p, isProgress(task)).good ? 'text-success' : 'text-warning']} title={outageNote(p) ?? p.gave_up}>{outcome(p, isProgress(task)).text}{outageNote(p) && <span class="ml-1 text-warning" aria-label={outageNote(p)}>⚠</span>}</td>
-                      <td class="num">{isProgress(task) ? rate(xpRate(p), task) : p.met ? duration(p.time_to_goal_s) : '–'}</td>
+                      <td class:list={[kv.outcome(p).good ? 'text-success' : 'text-warning']} title={outageNote(p) ?? p.gave_up}>{kv.outcome(p).text}{outageNote(p) && <span class="ml-1 text-warning" aria-label={outageNote(p)}>⚠</span>}</td>
+                      <td class:list={[kv.player.num && 'num']}>{kv.player.cell(p)}</td>
                       <td class="num text-muted">{p.level ?? '–'}</td>
                       <td class="num text-muted">{p.deaths ?? '–'}</td>
                       <td class="num text-muted">{dollars(p.cost_usd)}</td>

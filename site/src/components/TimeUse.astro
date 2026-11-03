@@ -1,8 +1,8 @@
 ---
 // How each player's time went, twice: the character (fighting, travelling, idle, dead, from the recordings) and the
 // agent (thinking, a script running while it waits, in a call, or nothing running, from the harness).
-import FigureHead from './FigureHead.astro';
-import { colors, type Run } from '../lib/results';
+import Figure from './Figure.astro';
+import { colors, type Run, playerTip } from '../lib/results';
 
 interface Props {
   run: Run;
@@ -36,15 +36,17 @@ const agentNote = (p: (typeof ps)[number]) => (p.think_median_s != null ? `${p.t
 {ps.length > 0 && (
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     {[
-      { title: 'Character', sub: 'Share of time in the game', parts: game, get: (p: (typeof ps)[number], k: string) => (p.time_use as any)?.[k] ?? 0, note: characterNote },
-      { title: 'Agent', sub: 'Share of time in the harness', parts: agent, get: (p: (typeof ps)[number], k: string) => p.time_pct_by_state?.[k] ?? 0, note: agentNote },
-    ].map(({ title, sub, parts, get, note }) => (
-      <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-        <FigureHead title={title} sub={sub} />
+      { title: 'Character', caption: 'From the game log: fighting is in combat, dead is a corpse or ghost. Grouped (within 50 yd of a party member), pet and broken weapon overlap the bar.', parts: game, get: (p: (typeof ps)[number], k: string) => (p.time_use as any)?.[k] ?? 0, note: characterNote },
+      { title: 'Agent', caption: 'From the harness: thinking is the model generating, script running is waiting on its Lua, in a call is a tool command running. Per think: median time before each call.', parts: agent, get: (p: (typeof ps)[number], k: string) => p.time_pct_by_state?.[k] ?? 0, note: agentNote },
+    ].map(({ title, caption, parts, get, note }) => (
+      <Figure title={title} note={caption}>
+        <Fragment slot="legend">
+          {parts.map(part => <span><span style={`color:${part.c}`}>■</span> {part.label}</span>)}
+        </Fragment>
         <ul class="space-y-2">
           {ps.map(p => (
             <li class="grid grid-cols-[6rem_1fr_7.5rem] items-center gap-3 text-xs">
-              <span class:list={['truncate', color[p.char]]}>{p.char}</span>
+              <span class:list={['truncate', color[p.char]]} title={playerTip(p)}>{p.char}</span>
               <span class="flex h-3 overflow-hidden rounded-sm bg-elevated">
                 {parts.map(part => {
                   const v = get(p, part.k);
@@ -55,19 +57,7 @@ const agentNote = (p: (typeof ps)[number]) => (p.think_median_s != null ? `${p.t
             </li>
           ))}
         </ul>
-        <p class="mt-3 flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
-          {parts.map(part => <span><span style={`color:${part.c}`}>■</span> {part.label}</span>)}
-        </p>
-      </figure>
+      </Figure>
     ))}
   </div>
-)}
-{ps.length > 0 && (
-  <p class="mt-3 font-mono text-[11px] leading-relaxed text-faint">
-    Grouped is time within 50 yards of a party member, pet is time with a pet out and alive, and broken is time alive
-    with a broken main-hand weapon; they overlap the bar. Per think is the median time the model spent before each call. Character time comes from the
-    game log. Fighting means in combat, travelling means moving, and dead means a
-    corpse or a ghost. Agent time comes from the harness. Thinking is time the model spends generating, script running
-    is time it waits while its Lua plays, and in a call is time a tool command is running.
-</p>
 )}

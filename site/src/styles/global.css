@@ -261,6 +261,10 @@ table.data th.num {
   box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
 }
 .chart-tip-head { color: var(--color-faint); }
+.chart-tip.is-pinned { pointer-events: auto; }
+.chart-tip a { color: var(--color-accent); }
+.chart-tip a:hover { text-decoration: underline; }
+[data-tip-html] { cursor: pointer; }
 [data-chart] [data-key] { transition: opacity 0.15s; }
 [data-chart].is-hl [data-key]:not(.is-on) { opacity: 0.12; }
 [data-chart] [data-key].is-off { opacity: 0 !important; pointer-events: none; }

@@ -66,6 +66,11 @@ export interface Player {
   cast_icons?: Record<string, string>; // spell name -> icon (public/icons/<icon>.png)
   trajectory?: [number, number, number, string, number][]; // [minute, SDK calls succeeded, failed, top failure "op code", its count]
   cost_series?: [number, number][]; // [s from the start, cumulative USD]
+  duels?: { at_s: number; opponent: string; won: boolean; result: string }[]; // a duel task: each duel decided
+  duels_won?: number;
+  games?: { won: number; played: number }; // a versus task: the games its side won and played (its match's)
+  opponent?: string; // a versus task: the character it played
+  spot?: string; // and where (places.yaml)
   checkpoints?: { name: string; at_s: number | null }[]; // the task's checkpoints (a dungeon's bosses), at_s when reached
   hardcore?: boolean; // set on load: scored on total XP earned before death or the clock, not XP per hour
   // provider outages waited out with the clock held (azbench run outage.go)
@@ -80,6 +85,27 @@ export interface MapBox {
   x_max: number;
   y_min: number;
   y_max: number;
+}
+
+// A versus task's match: two sides (an entry and its players: one in a duel, a team in a battleground), and its games
+// in order, each won by side 0 or 1. Head to head, the ratings and the match cards read these alone, so any versus
+// format (duels, arenas, battlegrounds) shows the same way.
+export interface Side {
+  model: string;
+  runtime: string;
+  effort?: string;
+  players: string[];
+}
+export interface Game {
+  at_s: number;
+  winner: 0 | 1;
+  how?: string; // a duel: beaten or fled
+  score?: [number, number]; // a battleground's, say flags captured
+}
+export interface Match {
+  spot?: string;
+  sides: [Side, Side];
+  games: Game[];
 }
 
 export interface Run {
@@ -98,6 +124,7 @@ export interface Run {
   maps?: MapBox[];
   together?: number[]; // per minute: 1 when all players stood within 40 yd
   chat_per_min?: Record<string, number>[]; // per minute: messages between players by kind
+  matches?: Match[]; // a versus task's
 }
 
 // What each task is, for the pages. A task without an entry here still shows, under its id.
@@ -175,8 +202,18 @@ export const versionLabel = (v: string) => (v === ALL ? 'All versions' : `v${v}`
 export const taskTitle = (task: string) => TASKS[task]?.title ?? task;
 export const taskShort = (task: string) => TASKS[task]?.short ?? task;
 
-// A progress task (goal score:...) ranks by XP per hour; the others by goals met, then time to them.
-export const isProgress = (task: string) => runsOf(task)[0]?.goal.startsWith('score:') ?? false;
+// A task's goal kind decides how its results read (kinds.ts): rate (score:, XP per hour), total (a hardcore score:
+// task, total XP before death or the clock), versus (duels:, players against each other; later battlegrounds) or reach
+// (every other goal: met or not, and how fast).
+export type Kind = 'rate' | 'total' | 'reach' | 'versus';
+export function goalKind(task: string, v = ALL): Kind {
+  const r = runsOf(task, v)[0] ?? runsOf(task)[0];
+  if (r?.goal.startsWith('duels:')) return 'versus';
+  if (r?.goal.startsWith('score:')) return r.hardcore ? 'total' : 'rate';
+  return 'reach';
+}
+// a levelling task (rate or total): XP from the judge's samples
+export const isProgress = (task: string) => ['rate', 'total'].includes(goalKind(task));
 
 // A levelling player's result, from the judge's samples: XP earned per hour of play, or on a hardcore run the total
 // XP earned (hardcore: how far it got before dying or the clock ran out).
@@ -230,6 +267,11 @@ export interface ModelRow {
   bestRate?: number;
   meanLevels?: number;
   meanScore?: number; // the judge's score: goal tasks with checkpoints rank by it
+  gamesWon?: number; // a versus task: the games it won and played, over all its matches
+  gamesPlayed?: number;
+  rating?: number; // a duel task: the Bradley–Terry rating on the Elo scale (duelRatings), ranked by it
+  ratingLo?: number; // its 95% range, from resampling the duels
+  ratingHi?: number;
   meanCheckpoints?: number; // checkpoints reached, over all attempts
   checkpoints?: number; // how many the task has
 }
@@ -238,6 +280,8 @@ const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.l
 
 // A goal task with checkpoints (a dungeon's bosses): an unfinished run scores the share it reached (the judge's
 // checkpointScore), so its entries rank by mean score.
+// A duel task (goal duels:<n>): players are scored on the duels they win.
+export const isDuel = (task: string, v = ALL) => goalKind(task, v) === 'versus';
 export const hasCheckpoints = (task: string, v = ALL) => runsOf(task, v).some(r => r.players.some(p => p.checkpoints?.length));
 const reachedOf = (p: Player) => p.checkpoints?.filter(c => c.at_s != null).length;
 
@@ -269,12 +313,17 @@ export function leaderboard(task: string, v = ALL): ModelRow[] {
         bestRate: bestRate(ps),
         meanLevels: mean(ps.flatMap(p => (levelsGained(p) != null ? [levelsGained(p)!] : []))),
         meanScore: mean(ps.map(p => p.score ?? 0)),
+        gamesWon: isDuel(task) ? ps.reduce((n, p) => n + (p.games?.won ?? 0), 0) : undefined,
+        gamesPlayed: isDuel(task) ? ps.reduce((n, p) => n + (p.games?.played ?? 0), 0) : undefined,
+        ...(isDuel(task) ? ratingOf(task, v, key) : {}),
         meanCheckpoints: mean(ps.flatMap(p => (reachedOf(p) != null ? [reachedOf(p)!] : []))),
         checkpoints: Math.max(0, ...ps.map(p => p.checkpoints?.length ?? 0)) || undefined,
       };
     })
     .sort(
-      isProgress(task)
+      isDuel(task)
+        ? (a, b) => (b.rating ?? 0) - (a.rating ?? 0) || (b.gamesWon ?? 0) - (a.gamesWon ?? 0)
+        : isProgress(task)
         ? (a, b) => (b.meanRate ?? 0) - (a.meanRate ?? 0)
         : hasCheckpoints(task, v)
           ? (a, b) => (b.meanScore ?? 0) - (a.meanScore ?? 0) || (a.meanTime ?? Infinity) - (b.meanTime ?? Infinity)
@@ -389,16 +438,6 @@ export function instanceTime(run: Run): [number, number][] {
   return out;
 }
 
-// A player's outcome in a word: met / not met; a progress task has no goal to meet, so played, died or gave up.
-export function outcome(p: Player, progress: boolean): { text: string; good: boolean } {
-  if (p.died) return { text: 'died', good: false };
-  if (p.gave_up) return { text: 'gave up', good: false };
-  if (progress) return { text: 'played', good: true };
-  if (p.met) return { text: 'met', good: true };
-  const cp = p.checkpoints;
-  if (cp?.length) return { text: `${cp.filter(c => c.at_s != null).length}/${cp.length} checkpoints`, good: false };
-  return { text: 'not met', good: false };
-}
 
 // A harness's colour, as a background and a text class: Claude Code amber, Codex blue, opencode green.
 export const harnessColor = (runtime: string) =>
@@ -420,6 +459,8 @@ export function meanRate(ps: Player[]): number | undefined {
 export const effortOf = (p: Player) => (p.effort && p.effort !== 'default' ? p.effort : undefined);
 export const entryKey = (p: Player) => (effortOf(p) ? `${p.model}|${effortOf(p)}` : p.model);
 export const entryName = (r: { model: string; effort?: string }) => (r.effort ? `${modelName(r.model)} · ${r.effort}` : modelName(r.model));
+// Who played a character, for a tooltip on its name: "GPT-6 Luna · xhigh (Codex CLI)".
+export const playerTip = (p: Player) => `${entryName({ model: p.model, effort: effortOf(p) })} (${harnessName(p.runtime)})`;
 
 // The lab behind a model, and its colour on every chart.
 export const LABS: Record<string, string> = {
@@ -513,4 +554,102 @@ export function outageNote(p: Player): string | undefined {
   if (!os.length) return undefined;
   const held = Math.round(os.reduce((n, o) => n + (o.held_s ?? 0), 0) / 60);
   return `${os.length} provider outage${os.length === 1 ? '' : 's'}, clock held ${held} min (${os.map(o => o.why).join('; ')})`;
+}
+
+// ---------- duels: games, ratings, head to head ----------
+
+export const sideKey = (s: Side) => entryKey(s as unknown as Player); // the entry a side is (its model and effort)
+export const sideName = (s: Side) => `${entryName({ model: s.model, effort: effortOf(s as unknown as Player) })} (${harnessName(s.runtime)})`;
+
+// Every game of a versus task: [winner, loser] entries.
+export function versusGames(task: string, v = ALL): [string, string][] {
+  return runsOf(task, v).flatMap(r =>
+    (r.matches ?? []).flatMap(m => m.games.map(g => [sideKey(m.sides[g.winner]), sideKey(m.sides[1 - g.winner])] as [string, string])),
+  );
+}
+
+// Bradley–Terry strengths for some games, by the MM iteration, each entry with one virtual win and one virtual loss
+// against an average player (strength 1), so an unbeaten or winless entry still has a finite rating. On the Elo scale:
+// 1500 is the average player, 400 points are 10:1 odds.
+function bradleyTerry(games: [string, string][], keys: string[]): Map<string, number> {
+  const p = new Map(keys.map(k => [k, 1]));
+  const wins = new Map(keys.map(k => [k, 1])); // the virtual win
+  const vs = new Map<string, Map<string, number>>(keys.map(k => [k, new Map()]));
+  for (const [w, l] of games) {
+    wins.set(w, wins.get(w)! + 1);
+    vs.get(w)!.set(l, (vs.get(w)!.get(l) ?? 0) + 1);
+    vs.get(l)!.set(w, (vs.get(l)!.get(w) ?? 0) + 1);
+  }
+  for (let it = 0; it < 200; it++)
+    for (const k of keys) {
+      const pk = p.get(k)!;
+      let den = 2 / (pk + 1); // the virtual games against the average player
+      for (const [o, n] of vs.get(k)!) den += n / (pk + p.get(o)!);
+      p.set(k, wins.get(k)! / den);
+    }
+  return new Map(keys.map(k => [k, 1500 + 400 * Math.log10(p.get(k)!)]));
+}
+
+// A seeded random source (mulberry32): the resampled ranges are the same every build.
+function seeded(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// A duel task's ratings: each entry's Bradley–Terry rating over every duel, with a 95% range from 300 resamplings of
+// the duels (with replacement). Computed once per task and version.
+const ratingCache = new Map<string, Map<string, { rating: number; lo: number; hi: number }>>();
+export function duelRatings(task: string, v = ALL) {
+  const id = `${task}\u0000${v}`;
+  if (ratingCache.has(id)) return ratingCache.get(id)!;
+  const games = versusGames(task, v);
+  const keys = [...new Set(runsOf(task, v).flatMap(r => r.players.map(entryKey)))];
+  const fit = bradleyTerry(games, keys);
+  const rand = seeded(1);
+  const draws = new Map(keys.map(k => [k, [] as number[]]));
+  for (let b = 0; b < 300 && games.length; b++) {
+    const sample = games.map(() => games[Math.floor(rand() * games.length)]);
+    for (const [k, r] of bradleyTerry(sample, keys)) draws.get(k)!.push(r);
+  }
+  const at = (xs: number[], q: number) => xs.sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(q * xs.length))];
+  const out = new Map(keys.map(k => {
+    const d = draws.get(k)!;
+    return [k, { rating: fit.get(k)!, lo: d.length ? at(d, 0.025) : fit.get(k)!, hi: d.length ? at(d, 0.975) : fit.get(k)! }];
+  }));
+  ratingCache.set(id, out);
+  return out;
+}
+const ratingOf = (task: string, v: string, key: string) => {
+  const r = duelRatings(task, v).get(key);
+  return r ? { rating: r.rating, ratingLo: r.lo, ratingHi: r.hi } : {};
+};
+
+// Head to head: for each pair of entries, the games the first won and lost against the second over all their matches,
+// and each match ({run, spot, won, lost}) for the detail.
+export interface H2H {
+  won: number;
+  lost: number;
+  matches: { run: Run; spot?: string; won: number; lost: number }[];
+}
+export function headToHead(task: string, v = ALL): Map<string, Map<string, H2H>> {
+  const out = new Map<string, Map<string, H2H>>();
+  const cell = (a: string, b: string) => {
+    if (!out.has(a)) out.set(a, new Map());
+    if (!out.get(a)!.has(b)) out.get(a)!.set(b, { won: 0, lost: 0, matches: [] });
+    return out.get(a)!.get(b)!;
+  };
+  for (const r of runsOf(task, v))
+    for (const m of r.matches ?? []) {
+      const [a, b] = m.sides.map(sideKey);
+      const aw = m.games.filter(g => g.winner === 0).length;
+      const bw = m.games.length - aw;
+      const ab = cell(a, b), ba = cell(b, a);
+      ab.won += aw; ab.lost += bw; ab.matches.push({ run: r, spot: m.spot, won: aw, lost: bw });
+      ba.won += bw; ba.lost += aw; ba.matches.push({ run: r, spot: m.spot, won: bw, lost: aw });
+    }
+  return out;
 }

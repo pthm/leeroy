@@ -1,7 +1,7 @@
 ---
 // Who killed the players and where, from the recordings: a bar per killer and per place, split by player.
-import FigureHead from './FigureHead.astro';
-import { colors, type Run } from '../lib/results';
+import Figure from './Figure.astro';
+import { colors, type Run, playerTip } from '../lib/results';
 
 interface Props {
   run: Run;
@@ -30,14 +30,13 @@ const max = Math.max(...killers.rows.map(r => r.n), ...places.rows.map(r => r.n)
 {deaths.length > 0 && (
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     {[
-      { title: 'Killers', sub: 'Who killed the players, most deaths first', t: killers },
-      { title: 'Zones', sub: 'Where the players died', t: places },
-    ].map(({ title, sub, t }) => (
-      <figure class="rounded border border-hairline bg-raised p-4" data-chart>
-        <FigureHead title={title} sub={sub} />
-        <p class="mb-4 flex flex-wrap gap-x-3 font-mono text-[11px] text-muted">
-          {run.players.map(p => <button type="button" class={color[p.char]} data-toggle={p.char} aria-pressed="true">● <span class="text-muted">{p.char}</span></button>)}
-        </p>
+      { title: 'Deaths by killer', note: 'Deaths by what killed the player, most first, each bar split by player.', t: killers },
+      { title: 'Deaths by zone', note: 'Deaths by the zone the player died in, most first, each bar split by player.', t: places },
+    ].map(({ title, note, t }) => (
+      <Figure title={title} note={t.more > 0 ? `${note} The top 12; ${t.more} more not shown.` : note}>
+        <Fragment slot="legend">
+          {run.players.map(p => <button type="button" class={color[p.char]} data-toggle={p.char} aria-pressed="true">● <span class="text-muted" title={playerTip(p)}>{p.char}</span></button>)}
+        </Fragment>
         <ul class="space-y-1.5">
           {t.rows.map(r => (
             <li class="grid grid-cols-[10rem_1fr_2rem] items-center gap-3 text-xs">
@@ -51,8 +50,7 @@ const max = Math.max(...killers.rows.map(r => r.n), ...places.rows.map(r => r.n)
             </li>
           ))}
         </ul>
-        {t.more > 0 && <p class="mt-3 font-mono text-[11px] text-faint">and {t.more} more</p>}
-      </figure>
+      </Figure>
     ))}
   </div>
 )}

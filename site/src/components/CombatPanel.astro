@@ -1,7 +1,8 @@
 ---
 // Each player's fighting over the run, from the game log (the report's combat totals): damage dealt and taken, healing
 // done, killing blows and kills its party made, each with a bar against the run's highest.
-import { colors, thousands, type Run } from '../lib/results';
+import Figure from './Figure.astro';
+import { colors, thousands, type Run, playerTip } from '../lib/results';
 
 interface Props {
   run: Run;
@@ -21,7 +22,7 @@ const max = Object.fromEntries(cols.map(c => [c.k, Math.max(1, ...ps.map(p => (p
 ---
 
 {ps.length > 0 && (
-  <div class="overflow-x-auto rounded border border-hairline bg-raised">
+  <Figure title="Damage and healing" pad={false} note="Totals over the run from each player's game log; bars compare each value with the run's highest. Party kills count kills by anyone in the player's party.">
     <table class="data">
       <thead>
         <tr>
@@ -32,7 +33,7 @@ const max = Object.fromEntries(cols.map(c => [c.k, Math.max(1, ...ps.map(p => (p
       <tbody>
         {ps.map(p => (
           <tr>
-            <td class:list={['font-medium', color[p.char]]}>{p.char}</td>
+            <td class:list={['font-medium', color[p.char]]} title={playerTip(p)}>{p.char}</td>
             {cols.map(c => {
               const v = (p.combat as any)[c.k] ?? 0;
               return (
@@ -48,5 +49,5 @@ const max = Object.fromEntries(cols.map(c => [c.k, Math.max(1, ...ps.map(p => (p
         ))}
       </tbody>
     </table>
-  </div>
+  </Figure>
 )}

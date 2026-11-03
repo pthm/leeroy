@@ -1,9 +1,10 @@
 ---
 // Each entry's result against its mean cost per attempt, cost on a log scale (prices span 100x), coloured by lab, with
-// the frontier: the entries nothing beats on both. Goal tasks plot mean minutes to the goal (lower is better);
-// progress tasks mean XP per hour (higher is better). Hover a point for the detail.
-import FigureHead from './FigureHead.astro';
-import { LABS, metricName, dollars, duration, entryName, frontier, harnessName, isProgress, leaderboard, placeLabels, rate, thousands } from '../lib/results';
+// the frontier: the entries nothing beats on both. The result is what the task's goal kind reads by (kinds.ts): XP
+// per hour, minutes to the goal (lower is better), a rating. Hover a point for the detail.
+import Figure from './Figure.astro';
+import { view } from '../lib/kinds';
+import { LABS, dollars, entryName, frontier, harnessName, leaderboard, placeLabels, thousands } from '../lib/results';
 
 interface Props {
   task: string;
@@ -11,19 +12,22 @@ interface Props {
 }
 
 const { task, version = 'all' } = Astro.props;
-const progress = isProgress(task);
+const kv = view(task, version);
+const progress = kv.cost.higher; // higher is better
 const rows = leaderboard(task, version);
 const pts = rows
-  .map(r => ({ r, cost: r.meanCost ?? NaN, y: progress ? r.meanRate ?? NaN : r.meanTime != null ? r.meanTime / 60 : NaN }))
+  .map(r => ({ r, cost: r.meanCost ?? NaN, y: kv.cost.value(r) ?? NaN }))
   .filter(p => p.cost > 0 && Number.isFinite(p.y));
 const W = 900, H = 420, L = 64, R = 16, T = 34, B = 50;
 const lo = Math.min(...pts.map(p => p.cost)) / 1.6, hi = Math.max(...pts.map(p => p.cost)) * 1.6;
 const x = (v: number) => L + ((Math.log(v) - Math.log(lo)) / (Math.log(hi) - Math.log(lo))) * (W - L - R);
-const maxY = Math.max(...pts.map(p => p.y)) * 1.15;
-const y = (v: number) => H - B - (v / maxY) * (H - T - B);
+// from 0, but a rating from just below the lowest (they sit around 1500)
+const minY = kv.kind === 'versus' ? Math.floor((Math.min(...pts.map(p => p.y)) - 60) / 50) * 50 : 0;
+const maxY = kv.kind === 'versus' ? Math.max(...pts.map(p => p.y)) + 60 : Math.max(...pts.map(p => p.y)) * 1.15;
+const y = (v: number) => H - B - ((v - minY) / (maxY - minY)) * (H - T - B);
 const xTicks = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500].filter(v => v >= lo && v <= hi);
-const step = [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000].find(s => maxY / s <= 6) ?? 20000;
-const yTicks = Array.from({ length: Math.floor(maxY / step) + 1 }, (_, i) => i * step);
+const step = [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000].find(s => (maxY - minY) / s <= 6) ?? 20000;
+const yTicks = Array.from({ length: Math.floor((maxY - minY) / step) + 1 }, (_, i) => Math.ceil(minY / step) * step + i * step).filter(v => v <= maxY);
 const front = frontier(pts, progress);
 const labs = [...new Set(pts.map(p => p.r.lab))];
 // every label when there are few points; otherwise the frontier and the best five, the rest on hover
@@ -39,9 +43,7 @@ const labelAt = new Map(order.map((i, k) => [i, spots[k]]));
 const tip = (p: (typeof pts)[number]) =>
   [
     `${entryName(p.r)} (${p.r.lab}, ${harnessName(p.r.runtime)})`,
-    progress
-      ? `${rate(p.r.meanRate, task)} mean, ${rate(p.r.bestRate, task)} best, ${p.r.attempts} attempt${p.r.attempts === 1 ? '' : 's'}`
-      : `${p.r.met}/${p.r.attempts} reached the goal; ${duration(p.r.meanTime)} mean, ${duration(p.r.bestTime)} best`,
+    `${kv.cell(p.r)} (${kv.sub(p.r)})`,
     `${dollars(p.r.meanCost)} per attempt${p.r.costPerSuccess != null ? `, ${dollars(p.r.costPerSuccess)} per success` : ''}`,
     `${thousands(p.r.meanOutputTokens)} output tokens per attempt`,
     front.includes(p) ? 'On the cost frontier' : '',
@@ -51,16 +53,15 @@ const tip = (p: (typeof pts)[number]) =>
 ---
 
 {pts.length > 1 && (
-  <figure class="rounded border border-hairline bg-raised p-5" data-chart>
-    <FigureHead title="Result against cost" sub="Each point is one model at one reasoning effort. Cost is per attempt, on a log scale. Hover a point for details." />
-    <p class="mb-1 flex flex-wrap gap-x-4 font-mono text-[11px] text-muted">
+  <Figure note={`Each point is one model at one reasoning effort; cost is at list prices. ${progress ? 'Higher' : 'Lower'} and further left is better; the dashed line is the cost frontier, where no entry is both cheaper and better.`}>
+    <Fragment slot="legend">
       {labs.map(l => <span><span style={`color:${LABS[l]}`}>●</span> {l}</span>)}
-    </p>
+    </Fragment>
     <svg viewBox={`0 0 ${W} ${H}`} class="w-full" role="img" aria-label="Each model's result against its mean cost per attempt">
       {yTicks.map(v => (
         <g>
           <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="var(--color-hairline)" />
-          <text x={L - 8} y={y(v) + 4} text-anchor="end" class="fill-faint font-mono text-[11px]">{v >= 1000 ? `${v / 1000}k` : v}</text>
+          <text x={L - 8} y={y(v) + 4} text-anchor="end" class="fill-faint font-mono text-[11px]">{v >= 1000 && kv.kind !== 'versus' ? `${v / 1000}k` : v}</text>
         </g>
       ))}
       {xTicks.map(v => (
@@ -71,7 +72,7 @@ const tip = (p: (typeof pts)[number]) =>
       ))}
       <text x={(L + W - R) / 2} y={H - 8} text-anchor="middle" class="fill-muted font-mono text-[11px]">mean cost per attempt (USD, log scale)</text>
       <text x={14} y={(T + H - B) / 2} text-anchor="middle" transform={`rotate(-90 14 ${(T + H - B) / 2})`} class="fill-muted font-mono text-[11px]">
-        {progress ? `mean ${metricName(task)}` : 'mean minutes to the goal'}
+        {kv.cost.axis}
       </text>
       {front.length > 1 && (
         <path d={front.map((p, i) => `${i ? 'L' : 'M'}${x(p.cost).toFixed(1)},${y(p.y).toFixed(1)}`).join('')} fill="none" stroke="var(--color-muted)" stroke-width="1.2" stroke-dasharray="5 4" />
@@ -90,6 +91,5 @@ const tip = (p: (typeof pts)[number]) =>
         </g>
       ))}
     </svg>
-    <p class="mt-2 font-mono text-[11px] text-faint">{progress ? 'Higher and further left is better.' : 'Lower and further left is better.'} The dashed line is the cost frontier, where no other entry is both cheaper and better.</p>
-  </figure>
+  </Figure>
 )}

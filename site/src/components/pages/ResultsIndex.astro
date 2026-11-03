@@ -5,7 +5,8 @@ import CrossTask from '../CrossTask.astro';
 import Section from '../Section.astro';
 import SectionHeader from '../SectionHeader.astro';
 import Layout from '../../layouts/Layout.astro';
-import { TASKS, metricName, VERSIONS, latestFor, versionLabel, allRuns, dollars, duration, entryKey, entryName, isProgress, leaderboard, rate, runDate, runsOf, taskTitle, tasks } from '../../lib/results';
+import { view } from '../../lib/kinds';
+import { TASKS, VERSIONS, latestFor, versionLabel, allRuns, dollars, entryKey, entryName, leaderboard, runDate, runsOf, taskTitle, tasks } from '../../lib/results';
 import { resultsUrl, url } from '../../lib/url';
 import VersionPicker from '../VersionPicker.astro';
 
@@ -32,9 +33,9 @@ const summary = [
 <Layout title={version === VERSIONS.at(-1)?.version ? 'Results' : `Results · ${versionLabel(version)}`} description="LEEROY benchmark results by model and task.">
   <Section>
     <SectionHeader
-      eyebrow="Results"
+      eyebrow="Benchmark"
       title="Results"
-      description="Each task starts new characters in the same place with the same goal. Goal tasks are ranked by goals met and time (dungeons by a score that credits each boss killed), levelling tasks by XP per hour, and hardcore by total XP."
+      description="Every task starts new characters in the same place with the same goal, and ranks entries by what that goal measures: XP for levelling, goals met and time for a goal, a rating for head to head."
       level={1}
     >
       <VersionPicker version={version} />
@@ -57,22 +58,22 @@ const summary = [
   </Section>
   {all.length > 0 && <>
   <Section>
-    <SectionHeader eyebrow="Leaderboard" title="Every model on every task" description="One row per model and reasoning effort. Shading shows where an entry ranks within each task. Click a column to sort." />
+    <SectionHeader eyebrow="Leaderboard" title="Every model on every task" description="One row per model and reasoning effort, shaded by its rank in each task." />
     <CrossTask version={version} />
   </Section>
   <Section>
-    <SectionHeader eyebrow="Cost" title="Result against cost" description="Tasks cost very different amounts, so each entry's cost is measured against the other entries in the same tasks." />
+    <SectionHeader eyebrow="Cost" title="Result against cost" description="How well each entry did for what it cost, across the tasks it ran." />
     <CrossCostChart version={version} />
   </Section>
   <Section last>
-    <SectionHeader eyebrow="Tasks" title="Tasks" description="Each task page has its own leaderboard, cost chart, route maps and run reports." />
+    <SectionHeader eyebrow="Tasks" title="Task by task" description="Each task's top entries, with a link to its full results." />
     <ul class="grid grid-cols-1 gap-4 md:grid-cols-2">
       {tasks(version).map(task => {
         const rows = leaderboard(task, version);
         const runs = runsOf(task, version);
         return (
           <li class="flex flex-col rounded border border-hairline bg-raised p-6">
-            <p class="eyebrow mb-2">{isProgress(task) ? metricName(task)[0].toUpperCase() + metricName(task).slice(1) : 'Goal'} · {runs.length} run{runs.length === 1 ? '' : 's'} · {rows.length} entr{rows.length === 1 ? 'y' : 'ies'}</p>
+            <p class="eyebrow mb-2">{view(task, version).label} · {runs.length} run{runs.length === 1 ? '' : 's'} · {rows.length} entr{rows.length === 1 ? 'y' : 'ies'}</p>
             <h2 class="font-serif text-2xl text-fg">{taskTitle(task)}</h2>
             {TASKS[task] && <p class="mt-2 text-sm text-muted">{TASKS[task].summary}</p>}
             <ol class="mt-5 space-y-1.5 border-t border-hairline pt-4 font-mono text-xs">
@@ -82,7 +83,7 @@ const summary = [
                     <span class="text-faint">{i + 1}.</span> {entryName(r)}
                   </span>
                   <span class="text-muted">
-                    {isProgress(task) ? rate(r.meanRate, task) : `${r.met}/${r.attempts} · ${duration(r.meanTime)}`}
+                    {view(task, version).cell(r)} · {view(task, version).sub(r)}
                   </span>
                 </li>
               ))}
