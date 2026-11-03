@@ -168,7 +168,7 @@ func ID(m map[string]int, s string) (int, error) {
 
 var (
 	nameRe  = regexp.MustCompile(`^[A-Za-z]{2,12}$`)
-	goalRe  = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|zone|score):\d+|skill:\d+:\d+)$`)
+	goalRe  = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|zone|kills|score):\d+|skill:\d+:\d+)$`)
 	agentRe = regexp.MustCompile(`^[a-z0-9-]{1,16}$`)
 )
 

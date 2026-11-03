@@ -193,10 +193,11 @@ Goals are the judge's (see [judge](../internal/bench/judge/README.md)), and the 
 | `item:<entry>` | own that item |
 | `quality:<n>` | own any item of quality n or better (3 = rare) |
 | `achievement:<id>` | earn that achievement (name and description looked up in `wowbench.achievement`; e.g. 628 = the Deadmines cleared) |
+| `kills:<n>` | kill n creatures (the game's own count, from the start of the run) |
 | `achpoints:<n>` | earn as many achievement points as possible in the time |
 | `score:<n>` | progress as much as possible; scored on XP per hour (the n is a large number nobody reaches) |
 
-`achievement`, `quest`, `item` and `quality` are met or not, and scored by time:
+`achievement`, `quest`, `item`, `quality` and `kills` are met or not, and scored by time:
 
 ```
 score = 3600 / time_to_goal_s      (1 = met in an hour); 0 while unmet

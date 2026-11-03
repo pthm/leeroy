@@ -7,6 +7,7 @@
 //	| skill:<id>:<n> (that skill line at n or more, e.g. skill:164:75 = Blacksmithing 75)
 //	| achievement:<id> (that achievement earned, e.g. 628 = Deadmines: Edwin VanCleef killed)
 //	| zone:<id> (the character is in that zone, an AreaTable id: e.g. 1657 = Darnassus)
+//	| kills:<n> (n creatures killed since the judge started: the game's own statistic)
 //	| achpoints:<n> (achievement points earned since the judge started; needs bin/azworld setup.
 //	  Use a large n to score "as many as possible" by the value at timeout)
 //	| score:<n> (composite: weighted change in every signal since the judge started; weights in score.json,
@@ -53,7 +54,7 @@ import (
 // binaryGoal: a goal that is met or not (an achievement, a quest, an item, an item quality). Its score is by time.
 func binaryGoal(goal string) bool {
 	kind, _, _ := strings.Cut(goal, ":")
-	return kind == "achievement" || kind == "quest" || kind == "item" || kind == "quality" || kind == "zone"
+	return kind == "achievement" || kind == "quest" || kind == "item" || kind == "quality" || kind == "zone" || kind == "kills"
 }
 
 // timeScore is a binary goal's score: 3600 / time_to_goal_s (1 = met in an hour), 0 while unmet.
@@ -69,9 +70,9 @@ type failure string
 
 func fail(f string, a ...any) { panic(failure(fmt.Sprintf(f, a...))) }
 
-const usage = "usage: judge <character> <level|item|quality|money|quests|quest|achievement|achpoints|zone|score>:<n> | skill:<id>:<n> [--timeout 4h] [--every 15s] [--samples f] [--resume f] [--board dir] [--events f] [--role r] [--runtime r] [--hardcore]\n       judge signals <character>"
+const usage = "usage: judge <character> <level|item|quality|money|quests|quest|achievement|achpoints|zone|kills|score>:<n> | skill:<id>:<n> [--timeout 4h] [--every 15s] [--samples f] [--resume f] [--board dir] [--events f] [--role r] [--runtime r] [--hardcore]\n       judge signals <character>"
 
-var goalRe = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|zone|score):\d+|skill:\d+:\d+)$`)
+var goalRe = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|zone|kills|score):\d+|skill:\d+:\d+)$`)
 
 func dur(s string) time.Duration {
 	m := regexp.MustCompile(`^(\d+)(s|m|h)$`).FindStringSubmatch(s)
@@ -277,6 +278,8 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		var value float64
 		if kind == "score" {
 			value = composite(sig, base, w)
+		} else if kind == "kills" {
+			value = sig.get("creatures_killed") - base["creatures_killed"]
 		} else {
 			value = num(sql(query)) - baseline
 		}

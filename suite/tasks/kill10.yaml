@@ -1,0 +1,9 @@
+description: >
+  One fresh level-1 character and one agent: log in and kill 10 creatures. A short check that an agent's whole run
+  works end to end (its runtime, the SDK, the judge, the report), e.g. on a remote server, for little model time.
+goal: kills:10
+minutes: 30
+start: northshire
+party:
+  - {class: warrior}
+models: [luna]

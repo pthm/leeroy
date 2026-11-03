@@ -42,6 +42,7 @@ bin/azbench judge Agentone level:10 --timeout 4h
 | `quality:<0-5>` | 1 once it owns any item of that quality or better (3 = rare) |
 | `achievement:<id>` | 1 once the character has earned that achievement (e.g. 628 Deadmines: Edwin VanCleef killed) |
 | `zone:<id>` | 1 once the character is in that zone (an AreaTable id, e.g. 1657 Darnassus; the `wowbench.area` table) |
+| `kills:<n>` | n creatures killed since the judge started (the game's own statistic); met or not, scored by time |
 | `achpoints:<n>` | achievement points earned since the judge started (needs the `wowbench` schema from `bin/azworld setup`) |
 | `score:<n>` | weighted change in the signals since the judge started (weights in `score.json`) |
 
