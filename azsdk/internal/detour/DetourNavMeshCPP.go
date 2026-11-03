@@ -273,14 +273,31 @@ func (this *DtNavMesh) findConnectingPolys(va, vb []float32, tile *DtMeshTile, s
 
 	base := this.GetPolyRefBase(tile)
 
-	for i := 0; i < int(tile.Header.PolyCount); i++ {
-		poly := &tile.Polys[i]
-		nv := int(poly.VertCount)
-		for j := 0; j < nv; j++ {
-			// Skip edges which do not point to the right side.
-			if poly.Neis[j] != m {
-				continue
+	if tile.sideEdges == nil { // the tile's edges facing each side, once (see DtMeshTile.sideEdges)
+		var se [8][]uint32
+		for i := 0; i < int(tile.Header.PolyCount); i++ {
+			poly := &tile.Polys[i]
+			for j := 0; j < int(poly.VertCount); j++ {
+				if poly.Neis[j]&DT_EXT_LINK != 0 {
+					sd := int(poly.Neis[j] & 0xff)
+					if sd < 8 {
+						se[sd] = append(se[sd], uint32(i)<<8|uint32(j))
+					}
+				}
 			}
+		}
+		tile.sideEdges = &se
+	}
+	_ = m
+	last := -1 // the poly a connection was found on: its other edges are skipped, as Detour breaks out of the poly
+	for _, e := range tile.sideEdges[side] {
+		i, j := int(e>>8), int(e&0xff)
+		if i == last {
+			continue
+		}
+		{
+			poly := &tile.Polys[i]
+			nv := int(poly.VertCount)
 
 			vc := tile.Verts[int(poly.Verts[j])*3:]
 			vd := tile.Verts[int(poly.Verts[(j+1)%nv])*3:]
@@ -304,7 +321,7 @@ func (this *DtNavMesh) findConnectingPolys(va, vb []float32, tile *DtMeshTile, s
 				con[n] = base | (DtPolyRef)(i)
 				n++
 			}
-			break
+			last = i
 		}
 	}
 	return n
@@ -1292,6 +1309,7 @@ func (this *DtNavMesh) RemoveTile(ref DtTileRef, data *[]byte, dataSize *int) Dt
 	}
 
 	tile.Header = nil
+	tile.sideEdges = nil
 	tile.Flags = 0
 	tile.LinksFreeList = 0
 	tile.Polys = nil

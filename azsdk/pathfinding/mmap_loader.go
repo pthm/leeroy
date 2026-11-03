@@ -214,79 +214,147 @@ func (m *MMapManager) loadTile(md *mapData, mapID uint32, x, y int32) error {
 }
 
 func (m *MMapManager) loadTileContext(ctx context.Context, md *mapData, mapID uint32, x, y int32) error {
-	packed := packTileID(x, y)
-
-	if err := lockContext(ctx, md.mu.TryLock); err != nil {
+	if err := lockContext(ctx, md.mu.TryRLock); err != nil { // a wait the caller's deadline can end
 		return err
 	}
-	defer md.mu.Unlock()
-
-	if md.loadedTiles[packed] {
+	loaded := md.loadedTiles[packTileID(x, y)]
+	md.mu.RUnlock()
+	if loaded {
 		return nil
 	}
+	data, err := m.readTile(ctx, mapID, x, y)
+	if err != nil {
+		return err
+	}
+	return m.addTile(ctx, md, mapID, x, y, data)
+}
 
+// readTile reads a tile's navmesh data from its file, no lock held (the slow part of loading one: several can read at
+// once); nil, no error: it has no file (the sea).
+func (m *MMapManager) readTile(ctx context.Context, mapID uint32, x, y int32) ([]byte, error) {
 	fileName := fmt.Sprintf("%s/%03d%02d%02d.mmtile", m.mmapsDir, mapID, x, y)
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 	info, statErr := os.Stat(fileName)
 	if statErr == nil && !info.Mode().IsRegular() {
-		return fmt.Errorf("tile is not a regular file: %s", fileName)
+		return nil, fmt.Errorf("tile is not a regular file: %s", fileName)
 	}
 	if statErr != nil && !os.IsNotExist(statErr) {
-		return statErr
+		return nil, statErr
 	}
 	file, err := os.Open(fileName)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return err
+			return nil, err
 		}
-		// Tile file doesn't exist; mark as loaded so we don't retry the expensive os.Open on every GetHeight/FindPath.
-		md.loadedTiles[packed] = true
-		return nil
+		return nil, nil
 	}
 	defer file.Close()
 
 	// Read the MmapTileHeader.
 	headerBuf := make([]byte, mmapTileHeaderSize)
 	if _, err := io.ReadFull(contextReader{ctx, file}, headerBuf); err != nil {
-		return fmt.Errorf("could not read header from '%s': %w", fileName, err)
+		return nil, fmt.Errorf("could not read header from '%s': %w", fileName, err)
 	}
-
 	magic := binary.LittleEndian.Uint32(headerBuf[0:4])
 	if magic != mmapMagic {
-		return fmt.Errorf("bad magic in '%s': 0x%08x", fileName, magic)
+		return nil, fmt.Errorf("bad magic in '%s': 0x%08x", fileName, magic)
 	}
-
 	version := binary.LittleEndian.Uint32(headerBuf[8:12])
 	if version != mmapVersion {
-		return fmt.Errorf("version mismatch in '%s': got %d, expected %d", fileName, version, mmapVersion)
+		return nil, fmt.Errorf("version mismatch in '%s': got %d, expected %d", fileName, version, mmapVersion)
 	}
-
 	dataSize := binary.LittleEndian.Uint32(headerBuf[12:16])
-
 	if dataSize > maxTileBytes {
-		return fmt.Errorf("tile exceeds %d bytes: %s", maxTileBytes, fileName)
+		return nil, fmt.Errorf("tile exceeds %d bytes: %s", maxTileBytes, fileName)
 	}
 	data := make([]byte, dataSize)
 	if _, err := io.ReadFull(contextReader{ctx, file}, data); err != nil {
-		return fmt.Errorf("could not read tile data from '%s': %w", fileName, err)
+		return nil, fmt.Errorf("could not read tile data from '%s': %w", fileName, err)
 	}
-
 	// Verify dtNavMesh header magic.
-	dtMeshHeaderSize := int(unsafe.Sizeof(detour.DtMeshHeader{}))
-	if int(dataSize) < dtMeshHeaderSize {
-		return fmt.Errorf("tile data too small in '%s'", fileName)
+	if int(dataSize) < int(unsafe.Sizeof(detour.DtMeshHeader{})) {
+		return nil, fmt.Errorf("tile data too small in '%s'", fileName)
 	}
+	return data, nil
+}
 
-	if err := ctx.Err(); err != nil {
+// addTile links a tile's data into the map's navmesh (Detour's AddTile, under the map's write lock: it changes the
+// mesh searches read); nil data: a tile with no file, remembered so it isn't looked for again.
+func (m *MMapManager) addTile(ctx context.Context, md *mapData, mapID uint32, x, y int32, data []byte) error {
+	packed := packTileID(x, y)
+	if err := lockContext(ctx, md.mu.TryLock); err != nil {
 		return err
 	}
-	var tileRef detour.DtTileRef
-	if status := md.navMesh.AddTile(data, int(dataSize), detour.DT_TILE_FREE_DATA, 0, &tileRef); detour.DtStatusFailed(status) {
-		return fmt.Errorf("could not add tile %03d[%02d,%02d] to navmesh, status: %d", mapID, x, y, status)
+	defer md.mu.Unlock()
+	if md.loadedTiles[packed] {
+		return nil // another search loaded it meanwhile
 	}
-
+	if data != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		var tileRef detour.DtTileRef
+		if status := md.navMesh.AddTile(data, len(data), detour.DT_TILE_FREE_DATA, 0, &tileRef); detour.DtStatusFailed(status) {
+			return fmt.Errorf("could not add tile %03d[%02d,%02d] to navmesh, status: %d", mapID, x, y, status)
+		}
+	}
 	md.loadedTiles[packed] = true
+	return nil
+}
+
+// tileReaders: how many tiles a batch reads at once
+const tileReaders = 8
+
+// EnsureTilesLoadedContext loads the tiles not loaded yet of those given: their files read in parallel, then linked
+// into the navmesh one at a time (a long route's first search reads hundreds).
+func (m *MMapManager) EnsureTilesLoadedContext(ctx context.Context, mapID uint32, tiles [][2]int32) error {
+	md, err := m.getOrLoadMapDataContext(ctx, mapID)
+	if err != nil {
+		return err
+	}
+	var todo [][2]int32
+	if err := lockContext(ctx, md.mu.TryRLock); err != nil {
+		return err
+	}
+	for _, t := range tiles {
+		if !md.loadedTiles[packTileID(t[0], t[1])] {
+			todo = append(todo, t)
+		}
+	}
+	md.mu.RUnlock()
+	if len(todo) == 0 {
+		return nil
+	}
+	type read struct {
+		data []byte
+		err  error
+	}
+	out := make([]read, len(todo))
+	next := make(chan int)
+	var wg sync.WaitGroup
+	for w := 0; w < min(tileReaders, len(todo)); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range next {
+				out[i].data, out[i].err = m.readTile(ctx, mapID, todo[i][0], todo[i][1])
+			}
+		}()
+	}
+	for i := range todo {
+		next <- i
+	}
+	close(next)
+	wg.Wait()
+	for i, t := range todo {
+		if out[i].err != nil {
+			return out[i].err
+		}
+		if err := m.addTile(ctx, md, mapID, t[0], t[1], out[i].data); err != nil {
+			return err
+		}
+	}
 	return nil
 }

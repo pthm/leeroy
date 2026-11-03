@@ -270,6 +270,11 @@ type DtMeshTile struct {
 
 	OffMeshCons []DtOffMeshConnection ///< The tile off-mesh connections. [Size: dtMeshHeader::offMeshConCount]
 
+	// sideEdges: by side, the edges that face the neighbouring tile across it (poly<<8 | edge, polys ascending),
+	// built when another tile first links to this one: linking scanned every edge of every poly for each portal,
+	// most of loading a large tile (findConnectingPolys). Not in Detour; reset with the tile.
+	sideEdges *[8][]uint32
+
 	Data     []byte      ///< The tile data. (Not directly accessed under normal situations.)
 	DataSize int32       ///< Size of the tile data.
 	Flags    DtTileFlags ///< Tile flags. (See: #dtTileFlags)

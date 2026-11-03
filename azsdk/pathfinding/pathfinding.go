@@ -254,15 +254,16 @@ func (pf *PathFinder) ensureTilesForPath(ctx context.Context, start, dest Point3
 	if (maxGX-minGX+1)*(maxGY-minGY+1) > MaxQueryTiles {
 		return ErrQueryLimit
 	}
+	var tiles [][2]int32
 	for gx := minGX; gx <= maxGX; gx++ {
 		for gy := minGY; gy <= maxGY; gy++ {
-			if gx < 0 || gy < 0 || gx > 63 || gy > 63 {
-				continue
-			}
-			if err := pf.mmapMgr.EnsureTileLoadedContext(ctx, pf.mapID, int32(gx), int32(gy)); err != nil {
-				return err
+			if gx >= 0 && gy >= 0 && gx <= 63 && gy <= 63 {
+				tiles = append(tiles, [2]int32{int32(gx), int32(gy)})
 			}
 		}
+	}
+	if err := pf.mmapMgr.EnsureTilesLoadedContext(ctx, pf.mapID, tiles); err != nil {
+		return err
 	}
 	return nil
 }
