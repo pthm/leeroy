@@ -10,4 +10,13 @@ party:
   - {class: paladin, spec: protpaladin}
   - {class: priest, spec: holy}
   - {class: mage, spec: frost}
-models: [haiku, sonnet, opus, luna, terra, sol, or-opus, or-sonnet, or-haiku, or-sol, or-terra, or-luna, or-argon, or-flash, or-flash-lite, or-deepseek]
+models: [haiku, sonnet, opus, opus-xhigh, luna, terra, sol, sol-xhigh, or-argon, or-argon-high, or-flash, or-flash-lite, or-deepseek, or-grok, or-mistral, or-muse]
+page:
+  title: Hogger from level 1
+  short: Hogger
+  summary: >-
+    Three new level-1 characters start in Northshire: a Protection Paladin, a Holy Priest and a Frost Mage. The goal
+    is the quest "Wanted: Hogger", whose target is an elite level-11 gnoll. The clock is three hours.
+  scoring: >-
+    Whether the quest is completed, then how long it takes.
+  order: 2

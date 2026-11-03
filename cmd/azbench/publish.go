@@ -231,6 +231,14 @@ func publish(root, runDir, task, out string) (string, error) {
 	if err := os.WriteFile(filepath.Join(out, "..", "versions.json"), append(vs, '\n'), 0o644); err != nil {
 		return "", err
 	}
+	pages, err := b.Pages() // the tasks' titles and summaries, for the site's pages
+	if err != nil {
+		return "", err
+	}
+	ps, _ := json.MarshalIndent(pages, "", "  ")
+	if err := os.WriteFile(filepath.Join(out, "..", "tasks.json"), append(ps, '\n'), 0o644); err != nil {
+		return "", err
+	}
 	doc := map[string]any{
 		"id": id, "task": task, "version": ver.Version, "sdk_rev": ver.SDKRev, "scenario": name, "description": strings.TrimSpace(s.Description), "goal": s.Goal,
 		"minutes": s.Minutes, "hardcore": s.Hardcore, "level": s.Level, "started": started.Format(time.RFC3339),

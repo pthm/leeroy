@@ -9,5 +9,5 @@ spread: 8 # face to face, inside the Duel spell's 10 yd
 require_fresh: true
 party:
   - {class: mage, spec: frost, kit: frost-60-pvp}
-models: [luna, haiku, or-flash-lite, or-deepseek-flash]
+models: [luna, haiku, or-flash-lite, or-mistral]
 versus: true

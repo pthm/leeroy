@@ -1,3 +1,4 @@
+import taskPages from '../data/tasks.json';
 import versionList from '../data/versions.json';
 // Benchmark results: the runs `azbench publish` wrote into src/data/runs, grouped by task and by model.
 
@@ -130,49 +131,10 @@ export interface Run {
   matches?: Match[]; // a versus task's
 }
 
-// What each task is, for the pages. A task without an entry here still shows, under its id.
-export const TASKS: Record<string, { title: string; short: string; summary: string; scoring: string; order: number }> = {
-  travel: {
-    title: 'Travel from Northshire to Darnassus',
-    short: 'Travel',
-    summary:
-      'A new level-30 Human warrior starts in Northshire and has to reach Darnassus on the other continent. The route needs two boats and a portal. Each model plays one character, all at the same time, with 90 minutes.',
-    scoring: 'Whether the character arrives, then how long it takes. Cost is at list prices.',
-    order: 1,
-  },
-  hogger: {
-    title: 'Hogger from level 1',
-    short: 'Hogger',
-    summary:
-      'Three new level-1 characters start in Northshire: a Protection Paladin, a Holy Priest and a Frost Mage. The goal is the quest "Wanted: Hogger", whose target is an elite level-11 gnoll. The clock is three hours.',
-    scoring: 'Whether the quest is completed, then how long it takes.',
-    order: 2,
-  },
-  hardcore: {
-    title: 'Hardcore levelling',
-    short: 'Hardcore',
-    summary:
-      'A new level-1 Human Arms warrior starts in Northshire with four hours. The first death ends the run.',
-    scoring: 'Total XP earned before the first death or the end of the four hours. Level reached is shown alongside.',
-    order: 3,
-  },
-  'deadmines-geared': {
-    title: 'The Deadmines at level 20',
-    short: 'Deadmines',
-    summary:
-      'Five level-20 characters start in Northshire with green gear and their class spells trained: a tank, a healer and three damage dealers. The goal is to clear the Deadmines and kill Edwin VanCleef. The clock is two hours.',
-    scoring: 'Whether the party earns the Deadmines achievement, then how long it takes. Each boss killed is a checkpoint, so an unfinished run shows how far it got.',
-    order: 4,
-  },
-  ubrs: {
-    title: 'Upper Blackrock Spire at level 60',
-    short: 'UBRS',
-    summary:
-      'Ten level-60 characters, every Alliance class but the death knight, start at Morgan\'s Vigil in pre-raid dungeon gear: two tanks, three healers and five damage dealers. The goal is to clear Upper Blackrock Spire and kill General Drakkisath. The clock is two hours.',
-    scoring: 'Whether the party earns the Upper Blackrock Spire achievement, then how long it takes. Each boss killed is a checkpoint, so an unfinished run shows how far it got.',
-    order: 5,
-  },
-};
+// What each task is, for the pages (each task file's page:, copied by azbench publish). A task without one still
+// shows, under its id.
+export const TASKS: Record<string, { title: string; short: string; summary: string; scoring: string; order: number }> =
+  taskPages;
 
 const runs: Run[] = Object.values(
   import.meta.glob<Run>('../data/runs/*.json', { eager: true, import: 'default' }),

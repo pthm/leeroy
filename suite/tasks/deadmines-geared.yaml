@@ -20,4 +20,14 @@ party:
   - {class: rogue, spec: combat, kit: combat-20}
   - {class: mage, spec: frost, kit: frost-20}
   - {class: paladin, spec: ret, kit: ret-20}
-models: [haiku, sonnet, opus, luna, terra, sol, or-opus, or-sonnet, or-haiku, or-sol, or-terra, or-luna, or-argon, or-flash, or-flash-lite, or-deepseek]
+models: [haiku, sonnet, opus, opus-xhigh, luna, terra, sol, sol-xhigh, or-argon, or-argon-high, or-flash, or-flash-lite, or-deepseek, or-grok, or-mistral, or-muse]
+page:
+  title: The Deadmines at level 20
+  short: Deadmines
+  summary: >-
+    Five level-20 characters start in Northshire with green gear and their class spells trained: a tank, a healer
+    and three damage dealers. The goal is to clear the Deadmines and kill Edwin VanCleef. The clock is two hours.
+  scoring: >-
+    Whether the party earns the Deadmines achievement, then how long it takes. Each boss killed is a checkpoint, so
+    an unfinished run shows how far it got.
+  order: 4

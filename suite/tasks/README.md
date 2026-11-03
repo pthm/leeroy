@@ -28,13 +28,15 @@ opencode through OpenRouter), so a model's results line up across them.
 
 | Task | Minutes | Models | What it sets up |
 |---|---|---|---|
-| `travel.yaml` | 90 | together | a new level-30 Human warrior in Northshire per model, goal: reach Darnassus (`zone:1657`) on the other continent |
+| `travel.yaml` | 120 | together | a new level-30 Human warrior in Northshire per model, goal: visit Stormwind, Ironforge, Darnassus and the Exodar in any order (`checkpoints`, each a zone checkpoint) |
 | `hardcore.yaml` | 240 | apart | a new level-1 Human Arms warrior in Northshire, levelling with `hardcore`: the first death ends the run |
 | `hogger.yaml` | 180 | apart | three new level-1 Humans in Northshire (Protection Paladin, Holy Priest, Frost Mage), goal: "Wanted: Hogger" (quest 176) |
 | `deadmines-geared.yaml` | 120 | apart | a dungeon party of five at level 20 with [kits](#kits) (green gear, bags, the class spells trained), goal: clear the Deadmines (`achievement:628`), each boss a checkpoint |
 | `ubrs.yaml` | 120 | apart | ten level-60s, every Alliance class but the death knight (two tanks, three healers), with pre-raid dungeon gear (kits: blues up to item level 63, none from Blackrock Spire), from Morgan's Vigil, goal: clear Upper Blackrock Spire (`achievement:1307`), each boss a checkpoint |
+| `duelling.yaml` | 20 a round | versus | a level-60 Frost Mage per model (kit `frost-60-pvp`), every pair of models once, 5 duels a pairing (`duels:5`): 15 rounds of 8 pairs at once at `duel-1` to `duel-8` |
 
-All set `require_fresh`.
+All set `require_fresh`. Each has a `page:` block, how the site presents it: `title`, `short` (for tight places), `summary` and
+`scoring` (for readers) and `order`; `azbench publish` copies them into the site (`site/src/data/tasks.json`).
 
 ## Checks
 
@@ -56,7 +58,7 @@ Unknown fields are errors, so a typo doesn't silently change a run.
 |---|---|
 | `name` | default the file name; the website groups runs by it. A run directory is `runs/<time>-<task>-<model>/` (together: `runs/<time>-<task>/`) |
 | `description` | for people |
-| `goal` | a judge goal: `score:100000` (XP per hour; "as much as possible"), `level:10`, `quest:176`, `achievement:628`, `quests:5`, `skill:164:75`, `money:<copper>`, `item:<entry>`, `quality:<0-5>`, `achpoints:<n>`, `zone:<id>` (in that zone, an AreaTable id) ([judge](../../internal/bench/judge/README.md)) |
+| `goal` | a judge goal: `score:100000` (XP per hour; "as much as possible"), `level:10`, `quest:176`, `achievement:628`, `quests:5`, `skill:164:75`, `money:<copper>`, `item:<entry>`, `quality:<0-5>`, `achpoints:<n>`, `zone:<id>` (in that zone, an AreaTable id), `checkpoints` (every checkpoint, in any order: listed in the prompt) ([judge](../../internal/bench/judge/README.md)) |
 | `minutes` | the run's length; default 60 |
 | `wrap_up_minutes` | how long an agent keeps going after its judge records the goal, to look back and write its notes: a `goal_met` event tells it its score is final and its run is over, its scripts stop and game actions fail `run_over` (reads still answer); the other players play on. Default 5 |
 | `start` | where every character starts: a name from [`places.yaml`](../places.yaml), `"x y z map zone"`, or `{x, y, z, map, zone}`. Omitted: where they are (new characters: their race's start) |
@@ -66,7 +68,7 @@ Unknown fields are errors, so a typo doesn't silently change a run.
 | `channel` | the zone channel joined at login; default `General - Elwynn Forest` |
 | `hint` | appended to the goal in the prompt |
 | `hardcore` | a character's first death ends its run; the score is then the total value earned before it ends (binary goals: unmet, 0), and the prompt states the rule |
-| `checkpoints` | progress on the way to the goal: `{name, kill}`, reached when the character or its party kills that creature (an entry), e.g. a dungeon's bosses. The judge records when each was first reached (`checkpoints` in the samples, the result and the report, `at_s` null until then), so a run that doesn't finish shows how far it got. An unmet goal then scores the share reached times the score of meeting it as the clock ends (3600 / the clock in seconds), so any finish outranks any unfinished run. Not in the prompt or the standings |
+| `checkpoints` | progress on the way to the goal: `{name, kill}`, reached when the character or its party kills that creature (an entry), e.g. a dungeon's bosses, or `{name, zone}`, reached when the character enters that zone (an AreaTable id). The judge records when each was first reached (`checkpoints` in the samples, the result and the report, `at_s` null until then), so a run that doesn't finish shows how far it got. An unmet goal then scores the share reached times the score of meeting it as the clock ends (3600 / the clock in seconds), so any finish outranks any unfinished run. Not in the prompt (unless the goal is `checkpoints`) or the standings |
 | `notice` | added to the prompt: text, or a `.md` file next to the task (e.g. what changed since the agents' last run) |
 | `require_fresh` | refuse to start if any agent's workspace exists |
 | `party` | the characters each model plays: `class`, `spec` (a key from [`specs.yaml`](../specs.yaml): the prompt states class, spec, role, what to optimise and key stats, lists the other players' specs, and the judge puts the role on the board), `race` (default human), `kit` (a starting kit from [`kits/`](../kits), below; none: a new character as the task's other conditions leave it) |

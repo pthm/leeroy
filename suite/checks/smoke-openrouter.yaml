@@ -7,5 +7,5 @@ minutes: 5
 start: goldshire
 party:
   - {class: warrior}
-models: [or-haiku-4, or-deepseek-flash]
+models: [or-flash-lite, or-deepseek]
 together: true

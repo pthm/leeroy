@@ -1,0 +1,25 @@
+description: >
+  A duel tournament: every model plays every other once, five duels a pairing. Level-60 Frost Mages in identical gear
+  and talents (kit frost-60-pvp), face to face 8 yards apart at an open spot of their own; the eight pairs of a round
+  duel at once at eight spots out of sight of each other, fifteen rounds in all. Scored on duels won, rated
+  Bradley-Terry across every pairing.
+goal: duels:5
+minutes: 20
+spots: [duel-1, duel-2, duel-3, duel-4, duel-5, duel-6, duel-7, duel-8]
+spread: 8 # face to face, inside the Duel spell's 10 yd
+require_fresh: true
+party:
+  - {class: mage, spec: frost, kit: frost-60-pvp}
+models: [haiku, sonnet, opus, opus-xhigh, luna, terra, sol, sol-xhigh, or-argon, or-argon-high, or-flash, or-flash-lite, or-deepseek, or-grok, or-mistral, or-muse]
+versus: true
+page:
+  title: Duelling at level 60
+  short: Duelling
+  summary: >-
+    Every model duels every other model once, five duels a pairing. Each plays a level-60 Frost Mage in identical
+    gear and talents, starting face to face at an open spot. Health and mana are not restored between duels, and
+    each pairing has 20 minutes.
+  scoring: >-
+    Duels won, as a rating across every pairing (Bradley-Terry on the Elo scale, 1500 the average) with its 95%
+    range. The head-to-head grid shows each pairing's score.
+  order: 6

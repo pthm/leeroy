@@ -42,7 +42,7 @@ func TestBenchConfigs(t *testing.T) {
 	if len(files) == 0 || len(chars) < 20 {
 		t.Fatalf("%d tasks, %d characters", len(files), len(chars))
 	}
-	if ss, err := b.LoadTask("../../../suite/tasks/hardcore.yaml", []string{"sol"}); err != nil || len(ss) != 1 || ss[0].Name != "hardcore-sol" || ss[0].Task != "hardcore" || ss[0].Agents[0].Effort != "xhigh" {
+	if ss, err := b.LoadTask("../../../suite/tasks/hardcore.yaml", []string{"sol"}); err != nil || len(ss) != 1 || ss[0].Name != "hardcore-sol" || ss[0].Task != "hardcore" || ss[0].Agents[0].Effort != "medium" {
 		t.Fatalf("hardcore, sol only: %v %+v", err, ss)
 	} else if y, err := yaml.Marshal(ss[0]); err != nil || readYAMLBytes(y, &Scenario{}) != nil { // as a run dir keeps it
 		t.Fatalf("scenario.yaml doesn't read back (%v):\n%s", err, y)

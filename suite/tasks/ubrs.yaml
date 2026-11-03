@@ -26,4 +26,15 @@ party:
   - {class: warlock, spec: affliction, kit: affliction-60}
   - {class: hunter, spec: marksmanship, race: dwarf, kit: marksmanship-60}
   - {class: shaman, spec: elemental, race: draenei, kit: elemental-60}
-models: [haiku, sonnet, opus, luna, terra, sol, or-opus, or-sonnet, or-haiku, or-sol, or-terra, or-luna, or-argon, or-flash, or-flash-lite, or-deepseek]
+models: [haiku, sonnet, opus, opus-xhigh, luna, terra, sol, sol-xhigh, or-argon, or-argon-high, or-flash, or-flash-lite, or-deepseek, or-grok, or-mistral, or-muse]
+page:
+  title: Upper Blackrock Spire at level 60
+  short: UBRS
+  summary: >-
+    Ten level-60 characters, every Alliance class but the death knight, start at Morgan's Vigil in pre-raid dungeon
+    gear: two tanks, three healers and five damage dealers. The goal is to clear Upper Blackrock Spire and kill
+    General Drakkisath. The clock is two hours.
+  scoring: >-
+    Whether the party earns the Upper Blackrock Spire achievement, then how long it takes. Each boss killed is a
+    checkpoint, so an unfinished run shows how far it got.
+  order: 5

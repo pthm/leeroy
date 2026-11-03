@@ -22,6 +22,36 @@ type Task struct {
 	// character; each pairing gets fresh ones.
 	Versus bool     `yaml:"versus"`
 	Spots  []string `yaml:"spots"` // places.yaml names, one for each pair in a round
+	Page   *Page    `yaml:"page"`  // how the site presents it (azbench publish writes tasks.json); none: under its name
+}
+
+// Page is a task as the site presents it: its title, a short name for tight places, what it sets up and how it's
+// scored for readers, and where it sorts among the tasks.
+type Page struct {
+	Title   string `yaml:"title" json:"title"`
+	Short   string `yaml:"short" json:"short"`
+	Summary string `yaml:"summary" json:"summary"`
+	Scoring string `yaml:"scoring" json:"scoring"`
+	Order   int    `yaml:"order" json:"order"`
+}
+
+// Pages are the published tasks' (suite/tasks) pages, by task name.
+func (b *Bench) Pages() (map[string]*Page, error) {
+	fs, err := filepath.Glob(filepath.Join(b.Dir, "tasks", "*.yaml"))
+	if err != nil {
+		return nil, err
+	}
+	pages := map[string]*Page{}
+	for _, f := range fs {
+		t, err := readTask(f)
+		if err != nil {
+			return nil, err
+		}
+		if t.Page != nil {
+			pages[t.Name] = t.Page
+		}
+	}
+	return pages, nil
 }
 
 // Member is one of a task's party: each model plays a character like it.
@@ -105,8 +135,8 @@ func readTask(f string) (*Task, error) {
 		return nil, fmt.Errorf("%s: a task needs a party and models", t.Name)
 	}
 	for _, c := range t.Checkpoints {
-		if c.Name == "" || c.Kill == 0 {
-			return nil, fmt.Errorf("%s: a checkpoint needs a name and a kill (a creature entry)", t.Name)
+		if c.Name == "" || (c.Kill == 0) == (c.Zone == 0) {
+			return nil, fmt.Errorf("%s: a checkpoint needs a name and one of kill (a creature entry) or zone (a zone id)", t.Name)
 		}
 	}
 	return &t, nil
