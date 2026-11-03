@@ -22,3 +22,4 @@ just build       # warms the Go build cache; each run builds its own checkout
 just down
 log "ready to snapshot"
 rm -f /var/log/leeroy-run.log # each run's log starts empty
+rm -rf /var/lib/leeroy # and its once-a-server mark (run.sh) isn't set

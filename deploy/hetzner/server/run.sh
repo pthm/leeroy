@@ -10,6 +10,13 @@ set -a
 . /etc/leeroy/agents.env # the agents' keys and LEEROY_HOST_*; the ops keys stay out of their environment
 set +a
 log "run $task $*"
+# once a server: a second start (the unit started again: by what, the journal in the log says) would make a new run over
+# the remains of the first; finish what's there instead
+if [ -e /var/lib/leeroy/started ]; then
+	log "started again (first at $(cat /var/lib/leeroy/started)): not running twice; finishing"
+	exec bash /opt/leeroy/deploy/hetzner/server/finish.sh "done"
+fi
+mkdir -p /var/lib/leeroy && date -u +%FT%TZ >/var/lib/leeroy/started
 if just up && wait_ready && just build; then
 	# the live viewer beside it, for just remote-view; it outlives a failed start of its own (restarts)
 	systemd-run --unit leeroy-view --property=Restart=on-failure --property=RestartSec=10 \

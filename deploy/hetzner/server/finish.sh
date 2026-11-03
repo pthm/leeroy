@@ -23,6 +23,13 @@ set -a
 set +a
 host=$(hostname)
 ok=1
+# what systemd and the kernel saw (a unit stopped or started, a process killed, a reboot), for a run that ended oddly
+{
+	log "journal: boots, the leeroy units, kernel warnings"
+	journalctl --list-boots --no-pager
+	journalctl --no-pager -o short-iso -u leeroy-run -u leeroy-view -u leeroy-deadline
+	journalctl --no-pager -o short-iso -k -p warning | tail -n 50
+} 2>&1
 if [ -n "$run" ]; then
 	name=$(basename "$run")
 	mkdir -p "$run/server" && cp /var/log/leeroy-run.log "$run/server/remote.log"
