@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -32,7 +33,7 @@ func testRun(t *testing.T, players ...[2]string) runfiles.Run {
 func TestReportCard(t *testing.T) {
 	f := testRun(t, [2]string{"a1", "Tester"})
 	t0 := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC).UnixMilli()
-	const min = int64(60_000)
+	const minute = int64(60_000)
 	lines := func(path string, xs []any) {
 		var b []byte
 		for _, x := range xs {
@@ -43,11 +44,11 @@ func TestReportCard(t *testing.T) {
 	}
 	iso := func(t int64) string { return time.UnixMilli(t).UTC().Format(time.RFC3339Nano) }
 	os.WriteFile(f.Meta("a1"), []byte(`{"agent":"a1","char":"Tester","runtime":"claude"}`), 0o644)
-	// 10 min of samples, 100 XP per 15 s while the script runs (0-8 min), nothing after it stops
+	// 10 minute of samples, 100 XP per 15 s while the script runs (0-8 minute), nothing after it stops
 	var rec []any
 	for i := int64(0); i <= 40; i++ {
 		deaths := 0
-		if i >= 16 { // the death at 4 min
+		if i >= 16 { // the death at 4 minute
 			deaths = 1
 		}
 		rec = append(rec, map[string]any{
@@ -58,9 +59,9 @@ func TestReportCard(t *testing.T) {
 	lines(f.Samples("Tester"), rec)
 	lines(f.Events("Tester"), []any{
 		map[string]any{"t": t0, "type": "task_started", "data": map[string]any{"task": 1}},
-		map[string]any{"t": t0 + 3*min, "type": "chat", "data": map[string]any{"kind": "npc_say", "text": "You no take candle!"}},
-		map[string]any{"t": t0 + 4*min, "type": "death", "data": map[string]any{}},
-		map[string]any{"t": t0 + 8*min, "type": "task_finished", "data": map[string]any{"task": 1, "state": "failed"}},
+		map[string]any{"t": t0 + 3*minute, "type": "chat", "data": map[string]any{"kind": "npc_say", "text": "You no take candle!"}},
+		map[string]any{"t": t0 + 4*minute, "type": "death", "data": map[string]any{}},
+		map[string]any{"t": t0 + 8*minute, "type": "task_finished", "data": map[string]any{"task": 1, "state": "failed"}},
 	})
 	call := func(id, cmd string, a, b int64) []any {
 		return []any{
@@ -73,10 +74,11 @@ func TestReportCard(t *testing.T) {
 			}},
 		}
 	}
-	var tr []any
-	tr = append(tr, call("1", "wow wait 300 >/dev/null", t0+1*min, t0+3*min)...)        // woken early by the NPC line
-	tr = append(tr, call("2", "wow -f grind.lua", t0+3*min+12_000, t0+3*min+18_000)...) // and restarts
-	tr = append(tr, call("3", "wow wait 120", t0+4*min, t0+6*min)...)                   // times out
+	tr := slices.Concat(
+		call("1", "wow wait 300 >/dev/null", t0+1*minute, t0+3*minute),        // woken early by the NPC line
+		call("2", "wow -f grind.lua", t0+3*minute+12_000, t0+3*minute+18_000), // and restarts
+		call("3", "wow wait 120", t0+4*minute, t0+6*minute),                   // times out
+	)
 	lines(f.Transcript("a1"), tr)
 
 	Report(string(f))
@@ -91,7 +93,7 @@ func TestReportCard(t *testing.T) {
 	}
 	check("duty_cycle_pct", c["duty_cycle_pct"], "80") // 8 of 10 minutes
 	ig := c["idle_gaps"].(map[string]any)
-	check("idle_gaps.n", ig["n"], "1") // idle from 8 min to the end
+	check("idle_gaps.n", ig["n"], "1") // idle from 8 minute to the end
 	check("idle_gaps.median_s", ig["median_s"], "120")
 	check("no_script", c["progress_per_hour_by_state"].(map[string]any)["no_script"], "0")
 	w := c["wakes"].(map[string]any)

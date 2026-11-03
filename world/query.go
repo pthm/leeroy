@@ -621,8 +621,9 @@ var commands = []command{
 		sy, oky := arg(a, 1)
 		cx, cy := num(sx, "x", okx), num(sy, "y", oky)
 		r, m := jsNum(orMap(f, "radius", "500")), jsNum(orMap(f, "map", "0"))
-		out := [][][2]float64{}
-		for _, p := range roadPaths(m, cx-r, cx+r, cy-r, cy+r) {
+		paths := roadPaths(m, cx-r, cx+r, cy-r, cy+r)
+		out := make([][][2]float64, 0, len(paths))
+		for _, p := range paths {
 			var thin [][2]float64
 			for i, v := range p {
 				if i%3 == 0 || i == len(p)-1 {
@@ -755,7 +756,7 @@ func Run(argv []string, w io.Writer) (code int) {
 			if !ok {
 				e = qerr{fmt.Errorf("%v", r)}
 			}
-			w.Write(toJSON(newObj("error", e.Error())))
+			_, _ = w.Write(toJSON(newObj("error", e.Error()))) // the exit code tells
 			fmt.Fprintln(w)
 			code = 1
 		}
@@ -770,7 +771,9 @@ func Run(argv []string, w io.Writer) (code int) {
 		fmt.Fprintln(w, "undefined")
 		return 0
 	}
-	w.Write(toJSON(v))
+	if _, err := w.Write(toJSON(v)); err != nil {
+		return 1
+	}
 	fmt.Fprintln(w)
 	return code
 }

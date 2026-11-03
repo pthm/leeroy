@@ -640,7 +640,7 @@ func (s *Store) resolve(evs []Ev) {
 // ---------- live subscribers ----------
 
 // Subscribe returns a channel of new data as server-sent events; unsubscribe closes it.
-func (s *Store) Subscribe() (chan liveMsg, func()) {
+func (s *Store) Subscribe() (msgs chan liveMsg, unsubscribe func()) {
 	c := make(chan liveMsg, 4096)
 	s.mu.Lock()
 	s.subs[c] = true

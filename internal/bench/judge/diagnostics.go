@@ -101,11 +101,11 @@ func savedRunState(dir string, cards []map[string]any) string {
 }
 
 func teamDiagnostics(cards []map[string]any) map[string]any {
-	agents := []map[string]any{}
+	agents := make([]map[string]any, 0, len(cards))
 	for _, c := range cards {
 		var d diagnostics.Summary
 		b, _ := json.Marshal(c["diagnostics"])
-		json.Unmarshal(b, &d)
+		_ = json.Unmarshal(b, &d) // a card without diagnostics sums to zero
 		actions, failed := 0, map[string]int{}
 		for _, a := range d.ByOperation { // top-level calls
 			actions += a.Count
@@ -221,12 +221,12 @@ func writeAtomic(path string, b []byte) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
-	if _, err = tmp.Write(b); err != nil {
-		tmp.Close()
+	defer func() { _ = os.Remove(tmp.Name()) }() // gone already after the rename
+	if _, err := tmp.Write(b); err != nil {
+		_ = tmp.Close()
 		return err
 	}
-	if err = tmp.Close(); err != nil {
+	if err := tmp.Close(); err != nil {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)

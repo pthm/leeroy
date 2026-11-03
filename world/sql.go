@@ -33,13 +33,13 @@ func SQL(args []string) int {
 		q = strings.TrimRight(string(b), "\n")
 	}
 	w := &capped{w: bufio.NewWriter(os.Stdout), left: 301}
-	defer w.w.Flush()
+	defer func() { _ = w.w.Flush() }() // stdout gone: nobody to tell
 	rs, err := DB(Reader, "acore_world").Query(q)
 	if err != nil {
 		w.line(mysqlErr(err))
 		return 0
 	}
-	defer rs.Close()
+	defer func() { _ = rs.Close() }() // read-only
 	for {
 		cols, _ := rs.Columns()
 		if rs.Next() {
@@ -100,7 +100,7 @@ type capped struct {
 
 func (c *capped) line(s string) {
 	if c.left > 0 {
-		c.w.WriteString(s + "\n")
+		_, _ = c.w.WriteString(s + "\n") // a bufio.Writer's error waits for Flush
 		c.left--
 	}
 }

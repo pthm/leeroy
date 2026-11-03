@@ -40,10 +40,7 @@ const (
 	dead
 )
 
-var (
-	stateName  = map[int][2]string{idle: {"idle", "#4a4a47"}, moving: {"moving", "#3f8f5a"}, combat: {"in combat", "#e04848"}, ghost: {"ghost", "#8fb8ff"}, dead: {"dead", "#8a8985"}}
-	stateOrder = []int{combat, moving, idle, ghost, dead}
-)
+var stateName = map[int][2]string{idle: {"idle", "#4a4a47"}, moving: {"moving", "#3f8f5a"}, combat: {"in combat", "#e04848"}, ghost: {"ghost", "#8fb8ff"}, dead: {"dead", "#8a8985"}}
 
 func stateOf(a Sample, b *Sample) int {
 	if !a.Alive {
@@ -290,7 +287,7 @@ func periodName(p float64) string {
 // ---------- counting ----------
 
 // statRange is the window ending at t: a fight runs back from the last damage or heal to a quiet gap of 10 s.
-func (s *Store) statRange(rng string, t float64) (float64, float64) {
+func (s *Store) statRange(rng string, t float64) (t0, t1 float64) {
 	switch rng {
 	case "all":
 		return s.Start, t
@@ -461,20 +458,6 @@ func activity(p *Player, t0, t1 float64, g grid) (cells [][6]float64, all [6]flo
 	return cells, all
 }
 
-func split(v [6]float64) [][2]float64 {
-	tot := 0.0
-	for _, x := range v {
-		tot += x
-	}
-	var out [][2]float64
-	for _, k := range stateOrder {
-		if v[k] > 0 {
-			out = append(out, [2]float64{float64(k), v[k] / math.Max(1e-9, tot)})
-		}
-	}
-	return out
-}
-
 // ---------- the panel ----------
 
 // StatRow is a player's line in the ranked list, or a part of the selected player's breakdown.
@@ -545,7 +528,7 @@ func (s *Store) Stats(q Query) map[string]any {
 	}
 	// party tiles: the window's totals, each a shortcut to its metric
 	type tile struct{ Key, Value, Label, Title string }
-	var tiles []tile
+	tiles := make([]tile, 0, 6)
 	for _, k := range []string{"dmg", "heal", "kills", "deaths", "xp", "quests"} {
 		tot := 0.0
 		for _, v := range s.compute(defs[k], t0, t1, nil, false, "", only).tot {
@@ -559,7 +542,7 @@ func (s *Store) Stats(q Query) map[string]any {
 		n string
 		v float64
 	}
-	var ranked []kv
+	ranked := make([]kv, 0, len(r.tot))
 	sum, top := 0.0, 1e-9
 	for n, v := range r.tot {
 		ranked = append(ranked, kv{n, v})
@@ -591,7 +574,7 @@ func (s *Store) Stats(q Query) map[string]any {
 		}
 		return ""
 	}
-	var rows []StatRow
+	rows := make([]StatRow, 0, len(ranked))
 	for _, x := range ranked {
 		row := StatRow{Name: x.n, Color: s.color(x.n), Value: fmtStat(m, x.v), Extra: extra(x.v, x.n), Width: 100 * math.Abs(x.v) / top, Sel: q.Sel == x.n}
 		if m.gauge == nil && !m.share && sum > 0 {

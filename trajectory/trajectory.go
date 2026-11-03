@@ -147,7 +147,7 @@ func claudeText(c json.RawMessage) string {
 		return s
 	}
 	var blocks []claudeBlock
-	json.Unmarshal(c, &blocks)
+	_ = json.Unmarshal(c, &blocks) // neither a string nor blocks: no text
 	var b strings.Builder
 	for _, x := range blocks {
 		b.WriteString(x.Text)
@@ -303,7 +303,7 @@ func Read(transcript string, info Info) (*atif.Trajectory, error) {
 				b.steps[b.open].ModelName = l.Message.Model
 			}
 			var blocks []claudeBlock
-			json.Unmarshal(l.Message.Content, &blocks)
+			_ = json.Unmarshal(l.Message.Content, &blocks) // content that isn't blocks has none of these
 			for _, x := range blocks {
 				switch x.Type {
 				case "text":

@@ -67,7 +67,7 @@ func runMovecheck(args []string) {
 	if v, ok := Flag(args, "from"); ok {
 		from, _ = strconv.ParseFloat(v, 64)
 	}
-	var evs []Ev
+	evs := make([]Ev, 0, len(files))
 	for _, file := range files {
 		b, err := os.ReadFile(file)
 		if err != nil {

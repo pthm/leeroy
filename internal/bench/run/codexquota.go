@@ -16,7 +16,7 @@ import (
 // <run>/codex-quota.json (start: once, end: the latest), alerts at 80% and 90%, and pauses the run at 97% or when
 // Codex says a limit is reached.
 var (
-	codexSessions   = func() string { h, _ := os.UserHomeDir(); return filepath.Join(h, ".codex/sessions") } // for the test
+	codexSessions   = func() string { h, _ := os.UserHomeDir(); return filepath.Join(h, ".codex", "sessions") } // for the test
 	codexQuotaEvery = 5 * time.Minute
 )
 
@@ -32,7 +32,7 @@ type codexQuota struct {
 }
 
 func readCodexQuota() (*codexQuota, error) {
-	files, _ := filepath.Glob(filepath.Join(codexSessions(), "*/*/*/*.jsonl"))
+	files, _ := filepath.Glob(filepath.Join(codexSessions(), "*", "*", "*", "*.jsonl"))
 	var newest string
 	var mod time.Time
 	for _, f := range files {
@@ -49,7 +49,9 @@ func readCodexQuota() (*codexQuota, error) {
 	}
 	defer fh.Close()
 	if st, _ := fh.Stat(); st.Size() > 1<<20 { // ponytail: the last MiB has many token_counts
-		fh.Seek(-1<<20, io.SeekEnd)
+		if _, err := fh.Seek(-1<<20, io.SeekEnd); err != nil {
+			return nil, err
+		}
 	}
 	var q *codexQuota
 	sc := bufio.NewScanner(fh)
@@ -94,14 +96,16 @@ func (r *Runner) noteCodexQuota() *codexQuota {
 	f := r.f().CodexQuota()
 	rec := map[string]*codexQuota{}
 	if b, err := os.ReadFile(f); err == nil {
-		json.Unmarshal(b, &rec)
+		_ = json.Unmarshal(b, &rec) // a damaged file starts afresh
 	}
 	if rec["start"] == nil {
 		rec["start"] = q
 	}
 	rec["end"] = q
 	b, _ := json.MarshalIndent(rec, "", "  ")
-	os.WriteFile(f, append(b, '\n'), 0o644)
+	if err := os.WriteFile(f, append(b, '\n'), 0o644); err != nil {
+		r.logf("codex-quota.json: %v", err)
+	}
 	return q
 }
 

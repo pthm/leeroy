@@ -45,7 +45,7 @@ func TestEpisodesRequireThreeFailuresWithinWindow(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "record.jsonl")
-			var events []types.Diagnostic
+			events := make([]types.Diagnostic, 0, len(tc.times))
 			for i, at := range tc.times {
 				events = append(events, failure(uint64(i+1), at))
 			}
@@ -255,7 +255,7 @@ func TestTaskShutdownClosesEpisodesWithoutCallingCleanupARetryLoop(t *testing.T)
 // Spec J3: nested calls aren't counted twice, and failed codes are bucketed.
 func TestFailuresCountTopLevelCallsByClass(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "record.jsonl")
-	var events []types.Diagnostic
+	events := make([]types.Diagnostic, 0, 7)
 	for i, code := range []string{"unreachable", "miss", "parry", "replaced_by_owner", "task_stopped", "session_closed"} {
 		e := failure(uint64(i+1), int64(1000+i*60_000))
 		e.Code = code
@@ -281,9 +281,9 @@ func TestFailuresCountTopLevelCallsByClass(t *testing.T) {
 // sight_refused: counted, with the refusals the SDK predicted clear, and kept as evidence
 func TestSightRefusedCounts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "diagnostics.jsonl")
-	clear, blocked := true, false
-	var events []types.Diagnostic
-	for i, p := range []*bool{&clear, &blocked, nil} {
+	open, blocked := true, false
+	events := make([]types.Diagnostic, 0, 3)
+	for i, p := range []*bool{&open, &blocked, nil} {
 		events = append(events, types.Diagnostic{
 			Schema: 1, Seq: uint64(i + 1), T: int64(1000 * (i + 1)), Agent: "a1", Session: "s1", Kind: "sight_refused",
 			Details: types.DiagnosticDetails{SpellID: 2050, Sight: &types.DiagnosticSight{Map: 36, Predicted: p}},

@@ -150,7 +150,7 @@ func publish(root, runDir, task, out string) (string, error) {
 			}
 			p["cost_series"] = cs
 			if k := kitOf(adir); k != nil {
-				kitIcons(k, filepath.Join(out, "../../../public/icons"))
+				kitIcons(k, filepath.Join(out, "..", "..", "..", "public", "icons"))
 				p["kit"] = k
 			}
 			if outs := outages(f.Diagnostics(a.Name)); len(outs) > 0 { // provider outages waited out
@@ -189,10 +189,10 @@ func publish(root, runDir, task, out string) (string, error) {
 		for k, v := range gameExtras(rec) {
 			p[k] = v
 		}
-		p["cast_icons"] = castIcons(p["casts"].(map[string]int), rec.spells, filepath.Join(out, "../../../public/icons"))
+		p["cast_icons"] = castIcons(p["casts"].(map[string]int), rec.spells, filepath.Join(out, "..", "..", "..", "public", "icons"))
 		tracks, thin = append(tracks, rec.track), append(thin, t)
 	}
-	maps, err := mapImages(id, thin, filepath.Join(out, "../../assets/runs"))
+	maps, err := mapImages(id, thin, filepath.Join(out, "..", "..", "assets", "runs"))
 	if err != nil {
 		return "", err
 	}
@@ -212,7 +212,7 @@ func publish(root, runDir, task, out string) (string, error) {
 		ver.Version = b.VersionAt(started).Version
 	}
 	vs, _ := json.MarshalIndent(b.Versions, "", "  ") // the list, for the site's version selector
-	if err := os.WriteFile(filepath.Join(out, "../versions.json"), append(vs, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(out, "..", "versions.json"), append(vs, '\n'), 0o644); err != nil {
 		return "", err
 	}
 	doc := map[string]any{
@@ -312,13 +312,13 @@ const seriesPoints = 240
 // series: a player's progress from the judge's samples (every 15 s), thinned to about seriesPoints points of
 // [elapsed s, level (fractional), XP earned, deaths, quests, kills], the last always kept; and the elapsed seconds of
 // every death, from each sample where the count rose.
-func series(f string) ([][6]float64, []float64) {
+func series(f string) (points [][6]float64, deaths []float64) {
 	data, err := os.ReadFile(f)
 	if err != nil {
 		return nil, nil
 	}
 	var all [][6]float64
-	deaths := []float64{}
+	deaths = []float64{}
 	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
 		var s struct {
 			Elapsed float64 `json:"elapsed_s"`

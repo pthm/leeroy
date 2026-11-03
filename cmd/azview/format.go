@@ -180,7 +180,7 @@ func (s *Store) Line(e Ev, sel string) template.HTML {
 		out = fmt.Sprintf("%s +%s xp", w, num("amount"))
 	case "api":
 		var p map[string]any
-		json.Unmarshal([]byte(or(S(e, "params"), "{}")), &p)
+		_ = json.Unmarshal([]byte(or(S(e, "params"), "{}")), &p) // bad params show as null
 		code, _ := p["code"].(string)
 		if code == "" {
 			delete(p, "char")
@@ -198,7 +198,7 @@ func (s *Store) Line(e Ev, sel string) template.HTML {
 			break
 		}
 		members, _ := e["members"].([]any)
-		var ms []string
+		ms := make([]string, 0, len(members))
 		for _, m := range members {
 			ms = append(ms, s.Who(fmt.Sprint(m)))
 		}

@@ -348,7 +348,7 @@ func DetailTileLeaves(m uint32, gx, gy, level, sx, sy int, leaves bool) []byte {
 	})
 	drawModels(out, p, xN, yW, res, leaves)
 	var buf bytes.Buffer
-	jpeg.Encode(&buf, out, &jpeg.Options{Quality: 85})
+	_ = jpeg.Encode(&buf, out, &jpeg.Options{Quality: 85}) // into memory: it doesn't fail
 	return buf.Bytes()
 }
 
@@ -526,10 +526,10 @@ func drawModels(out *image.RGBA, p *paint, xN, yW, res float64, leaves bool) {
 					px[k] = uint8(math.Min(255, float64(px[k])*f))
 				}
 			}
-			if wi := r*n + c; waterZ != nil && waterZ[wi] > surface(i)+0.02 { // under water: the water over it
+			if wi := r*n + c; len(waterZ) > 0 && waterZ[wi] > surface(i)+0.02 { // under water: the water over it
 				blendWater(px, waterT[wi], float64(waterZ[wi]-surface(i)))
 			}
-			if leafTop[i] > surface(i) && (waterZ == nil || leafTop[i] > waterZ[r*n+c]) { // foliage over it, at most 60% opaque
+			if leafTop[i] > surface(i) && (len(waterZ) == 0 || leafTop[i] > waterZ[r*n+c]) { // foliage over it, at most 60% opaque
 				a := float64(leafCol[i][3]) / 255 * leafOpacity
 				for k := 0; k < 3; k++ {
 					px[k] = uint8(float64(px[k])*(1-a) + float64(leafCol[i][k])*a)
@@ -558,43 +558,43 @@ func bands(n int, fn func(r0, r1 int)) {
 	wg.Wait()
 }
 
-// terrainHeights is the terrain's height at each pixel of a Z x Z buffer from (x0, y0) going south and east, sampled
+// terrainHeights is the terrain's height at each pixel of a size x size buffer from (x0, y0) going south and east, sampled
 // every yard or so and interpolated (the terrain's own grid is ~2 yd: corners and middles of 4-yd squares).
-func terrainHeights(m uint32, x0, y0, res float64, Z int) []float32 {
+func terrainHeights(m uint32, x0, y0, res float64, size int) []float32 {
 	step := max(1, int(math.Round(1/res)))
-	G := Z/step + 2
+	G := size/step + 2
 	coarse := make([]float64, G*G)
 	for r := 0; r < G; r++ {
 		for c := 0; c < G; c++ {
 			coarse[r*G+c], _, _ = Sample(m, x0-float64(r*step)*res, y0-float64(c*step)*res)
 		}
 	}
-	h := make([]float32, Z*Z)
-	for r := 0; r < Z; r++ {
+	h := make([]float32, size*size)
+	for r := 0; r < size; r++ {
 		fr := (float64(r) + 0.5) / float64(step)
 		r0, wr := int(fr), fr-math.Floor(fr)
-		for c := 0; c < Z; c++ {
+		for c := 0; c < size; c++ {
 			fc := (float64(c) + 0.5) / float64(step)
 			c0, wc := int(fc), fc-math.Floor(fc)
-			h[r*Z+c] = float32((1-wr)*((1-wc)*coarse[r0*G+c0]+wc*coarse[r0*G+c0+1]) + wr*((1-wc)*coarse[(r0+1)*G+c0]+wc*coarse[(r0+1)*G+c0+1]))
+			h[r*size+c] = float32((1-wr)*((1-wc)*coarse[r0*G+c0]+wc*coarse[r0*G+c0+1]) + wr*((1-wc)*coarse[(r0+1)*G+c0]+wc*coarse[(r0+1)*G+c0+1]))
 		}
 	}
 	return h
 }
 
-// terrainShade is how lit the terrain is at each pixel of a W x W buffer: its slope against the sun (the north-west,
+// terrainShade is how lit the terrain is at each pixel of a size x size buffer: its slope against the sun (the north-west,
 // 45 degrees up), 1 on flat ground. sharp is per pixel; blurred, over a minimap pixel (rad), as the minimap has it.
-func terrainShade(m uint32, x0, y0, res float64, W, rad int) (sharp, blurred []float64) {
-	h := terrainHeights(m, x0, y0, res, W)
+func terrainShade(m uint32, x0, y0, res float64, size, rad int) (sharp, blurred []float64) {
+	h := terrainHeights(m, x0, y0, res, size)
 	sun := [3]float64{1 / math.Sqrt(3.96), 1 / math.Sqrt(3.96), 1.4 / math.Sqrt(3.96)}
 	flat := sun[2]
-	px := make([][3]float64, W*W)
-	sharp = make([]float64, W*W)
+	px := make([][3]float64, size*size)
+	sharp = make([]float64, size*size)
 	d := max(1, int(math.Round(1/res))) // differences over a yard or two either side
-	for r := 0; r < W; r++ {
-		for c := 0; c < W; c++ {
-			hn, hs := h[max(0, r-d)*W+c], h[min(W-1, r+d)*W+c]
-			hw, he := h[r*W+max(0, c-d)], h[r*W+min(W-1, c+d)]
+	for r := 0; r < size; r++ {
+		for c := 0; c < size; c++ {
+			hn, hs := h[max(0, r-d)*size+c], h[min(size-1, r+d)*size+c]
+			hw, he := h[r*size+max(0, c-d)], h[r*size+min(size-1, c+d)]
 			span := 2 * float64(d) * res
 			dx, dy := float64(hn-hs)/span, float64(hw-he)/span // rise towards the north, towards the west
 			l := (-dx*sun[0] - dy*sun[1] + sun[2]) / math.Sqrt(dx*dx+dy*dy+1)
@@ -602,12 +602,12 @@ func terrainShade(m uint32, x0, y0, res float64, W, rad int) (sharp, blurred []f
 				l = flat
 			}
 			v := math.Max(0.2, l) / flat
-			sharp[r*W+c] = v
-			px[r*W+c] = [3]float64{v, v, v}
+			sharp[r*size+c] = v
+			px[r*size+c] = [3]float64{v, v, v}
 		}
 	}
-	bl := boxBlur(px, W, rad)
-	blurred = make([]float64, W*W)
+	bl := boxBlur(px, size, rad)
+	blurred = make([]float64, size*size)
 	for i, v := range bl {
 		blurred[i] = v[0]
 	}
@@ -622,13 +622,13 @@ type waterTri struct {
 // waterLayer is the liquid surface's height at each pixel of an n x n tile (-inf: none) and its type: the terrain's
 // water (lakes, rivers, the sea: the server's map files, every yard or so) and the WMOs' (Stormwind's canals). nil if
 // there's none.
-func waterLayer(m uint32, wmo []waterTri, xN, yW, res float64, n int) ([]float32, []int8) {
-	z := make([]float32, n*n)
-	ty := make([]int8, n*n)
+func waterLayer(m uint32, wmo []waterTri, xN, yW, res float64, n int) (z []float32, ty []int8) {
+	z = make([]float32, n*n)
+	ty = make([]int8, n*n)
 	for i := range z {
 		z[i] = float32(math.Inf(-1))
 	}
-	any := false
+	found := false
 	step := max(1, int(math.Round(1/res)))
 	for r := 0; r < n; r += step {
 		for c := 0; c < n; c += step {
@@ -636,7 +636,7 @@ func waterLayer(m uint32, wmo []waterTri, xN, yW, res float64, n int) ([]float32
 			if math.IsNaN(w) {
 				continue
 			}
-			any = true
+			found = true
 			for rr := r; rr < min(n, r+step); rr++ {
 				for cc := c; cc < min(n, c+step); cc++ {
 					z[rr*n+cc] = float32(w)
@@ -666,12 +666,12 @@ func waterLayer(m uint32, wmo []waterTri, xN, yW, res float64, n int) ([]float32
 				}
 				if h := float32(l1*H[0] + l2*H[1] + l3*H[2]); h > z[r*n+c] {
 					z[r*n+c], ty[r*n+c] = h, t.ty
-					any = true
+					found = true
 				}
 			}
 		}
 	}
-	if !any {
+	if !found {
 		return nil, nil
 	}
 	return z, ty
@@ -700,15 +700,15 @@ func blendWater(px []uint8, ty int8, depth float64) {
 
 func lum(c [3]float64) float64 { return 0.3*c[0] + 0.59*c[1] + 0.11*c[2] }
 
-// boxBlur is a W x W image blurred by a (2r+1)-wide box, horizontally then vertically (running sums).
-func boxBlur(a [][3]float64, W, r int) [][3]float64 {
+// boxBlur is a size x size image blurred by a (2r+1)-wide box, horizontally then vertically (running sums).
+func boxBlur(a [][3]float64, size, r int) [][3]float64 {
 	pass := func(src [][3]float64, at func(i, k int) int) [][3]float64 {
 		dst := make([][3]float64, len(src))
-		for i := 0; i < W; i++ {
+		for i := 0; i < size; i++ {
 			var s [3]float64
 			n := 0
-			for k := -r; k < W+r; k++ {
-				if k+r < W { // entering
+			for k := -r; k < size+r; k++ {
+				if k+r < size { // entering
 					v := src[at(i, k+r)]
 					s[0], s[1], s[2], n = s[0]+v[0], s[1]+v[1], s[2]+v[2], n+1
 				}
@@ -716,7 +716,7 @@ func boxBlur(a [][3]float64, W, r int) [][3]float64 {
 					v := src[at(i, k-r-1)]
 					s[0], s[1], s[2], n = s[0]-v[0], s[1]-v[1], s[2]-v[2], n-1
 				}
-				if k >= 0 && k < W {
+				if k >= 0 && k < size {
 					f := 1 / float64(n)
 					dst[at(i, k)] = [3]float64{s[0] * f, s[1] * f, s[2] * f}
 				}
@@ -724,6 +724,6 @@ func boxBlur(a [][3]float64, W, r int) [][3]float64 {
 		}
 		return dst
 	}
-	h := pass(a, func(row, k int) int { return row*W + k })
-	return pass(h, func(col, k int) int { return k*W + col })
+	h := pass(a, func(row, k int) int { return row*size + k })
+	return pass(h, func(col, k int) int { return k*size + col })
 }

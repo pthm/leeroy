@@ -33,7 +33,7 @@ func Sample(mapID uint32, x, y float64) (height, water float64, area uint16) {
 
 // sampleRouteTerrain propagates cancellation while retaining Sample's unknown
 // terrain convention for unavailable files.
-func sampleRouteTerrain(ctx context.Context, mapID uint32, x, y float64) (float64, float64, uint16) {
+func sampleRouteTerrain(ctx context.Context, mapID uint32, x, y float64) (height, water float64, area uint16) {
 	h, w, a, err := terrain().GetGridSampleContext(ctx, mapID, float32(x), float32(y))
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		panic(err)

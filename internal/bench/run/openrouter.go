@@ -48,7 +48,7 @@ func (r *Runner) noteOpenrouter(end bool) {
 	f := filepath.Join(r.dir, "openrouter.json")
 	rec := map[string]float64{}
 	if b, err := os.ReadFile(f); err == nil {
-		json.Unmarshal(b, &rec)
+		_ = json.Unmarshal(b, &rec) // a damaged file starts afresh
 	}
 	if end {
 		rec["end"] = usage
@@ -56,5 +56,7 @@ func (r *Runner) noteOpenrouter(end bool) {
 		rec["start"] = usage
 	}
 	b, _ := json.Marshal(rec)
-	os.WriteFile(f, b, 0o644)
+	if err := os.WriteFile(f, b, 0o644); err != nil {
+		r.logf("openrouter.json: %v", err)
+	}
 }

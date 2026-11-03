@@ -20,7 +20,7 @@ import (
 func hostSummary(dir string) obj {
 	f := runfiles.Run(dir)
 	m, _ := f.ReadManifest()
-	out := obj{{"machine", m.Host}}
+	out := append(make(obj, 0, 2), kv{"machine", m.Host})
 	fh, err := os.Open(f.Resources())
 	if err != nil {
 		return out

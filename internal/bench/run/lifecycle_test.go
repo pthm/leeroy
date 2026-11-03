@@ -1,6 +1,7 @@
 package run
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -156,7 +157,7 @@ func TestStopAgentKeepsToolOutput(t *testing.T) {
 		t.Fatalf("stop took %v", took)
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "transcript.jsonl"))
-	completed, interrupted := strings.Index(string(b), `"item.completed"`), strings.Index(string(b), `"turn.interrupted"`)
+	completed, interrupted := bytes.Index(b, []byte(`"item.completed"`)), bytes.Index(b, []byte(`"turn.interrupted"`))
 	if completed < 0 || interrupted < completed {
 		t.Fatalf("transcript:\n%s", b)
 	}

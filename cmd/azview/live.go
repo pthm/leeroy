@@ -137,7 +137,7 @@ func (v *server) page(w http.ResponseWriter, r *http.Request) {
 		Name  string `json:"name"`
 		Class string `json:"class"`
 	}
-	var players []pl
+	players := make([]pl, 0, len(s.players))
 	for _, p := range s.players {
 		players = append(players, pl{p.Name, p.Cls})
 	}
@@ -197,7 +197,7 @@ func (v *server) tile(w http.ResponseWriter, r *http.Request) {
 	v.tileMu.Unlock()
 	w.Header().Set("content-type", "image/png")
 	w.Header().Set("cache-control", "max-age=86400")
-	w.Write(t)
+	_, _ = w.Write(t) // the client gone
 }
 
 // detailMaps are the maps with detail tiles (the continents, given the game client).
@@ -238,7 +238,7 @@ func (v *server) detail(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("content-type", "image/jpeg")
 	w.Header().Set("cache-control", "max-age=86400")
-	w.Write(t)
+	_, _ = w.Write(t) // the client gone
 }
 
 func num(r *http.Request, k string) float64 {
@@ -251,7 +251,7 @@ func num(r *http.Request, k string) float64 {
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("content-type", "application/json")
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v) // the client gone
 }
 
 // samples is every player's samples and units samples in [from, to] (unix ms), as the map draws them.

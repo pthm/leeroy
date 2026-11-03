@@ -120,7 +120,7 @@ func renderMap(m uint32, xMin, xMax, yMin, yMax, res float64, heightRange *[2]fl
 		})
 	}
 	var b bytes.Buffer
-	(&png.Encoder{CompressionLevel: png.DefaultCompression}).Encode(&b, img)
+	_ = (&png.Encoder{CompressionLevel: png.DefaultCompression}).Encode(&b, img) // into memory: it doesn't fail
 	return Map{PNG: b.Bytes(), W: W, H: H}
 }
 

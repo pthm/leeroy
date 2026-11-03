@@ -38,7 +38,7 @@ func (p *player) charState() (charState, error) {
 	if err == nil {
 		err = json.Unmarshal(b, &st)
 	}
-	json.Unmarshal(st.Tasks, &st.charState.Tasks)
+	_ = json.Unmarshal(st.Tasks, &st.charState.Tasks) // {} for no tasks
 	return st.charState, err
 }
 
@@ -46,7 +46,7 @@ func (p *player) charState() (charState, error) {
 // the agent, since tasks don't survive the session)
 func (p *player) saveTasks() {
 	path := filepath.Join(p.dir, "tasks.json")
-	os.Remove(path)
+	_ = os.Remove(path) // there may be none
 	p.mu.Lock()
 	up := alive(p.session)
 	p.mu.Unlock()
@@ -55,7 +55,9 @@ func (p *player) saveTasks() {
 	}
 	if st, err := p.charState(); err == nil {
 		b, _ := json.Marshal(st.Tasks)
-		os.WriteFile(path, b, 0o644)
+		if err := os.WriteFile(path, b, 0o644); err != nil {
+			p.logf("tasks.json: %v", err)
+		}
 	}
 }
 

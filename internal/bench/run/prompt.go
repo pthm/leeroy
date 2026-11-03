@@ -101,7 +101,7 @@ the goal met; if time runs out, your progress toward it is the score.`,
 
 // hardcoreText: a hardcore run's scoring. The first death ends the run, so a binary goal is scored as before but a
 // death before it is a 0, and anything else is scored on the total earned by then.
-func hardcoreText(goal, score, stop string) (string, string) {
+func hardcoreText(goal, score, stop string) (scoreText, stopText string) {
 	const rule = "HARDCORE: your run ends the first time your character dies; nothing after that counts.\n"
 	if kind, _, _ := strings.Cut(goal, ":"); slices.Contains([]string{"achievement", "quest", "item", "quality", "zone"}, kind) {
 		return rule + score + " Dying before the goal is a score of 0.", stop

@@ -26,9 +26,10 @@ func charOnline(name string) bool {
 	return len(r) > 0 && r[0][0] != "0"
 }
 
-// waitOffline waits for the server to log a character out (it finishes a logout or a dropped connection on its own).
-func waitOffline(name string, limit time.Duration) bool {
-	for end := time.Now().Add(limit); time.Now().Before(end); time.Sleep(time.Second) {
+// waitOffline waits up to 2 minutes for the server to log a character out (it finishes a logout or a dropped
+// connection on its own).
+func waitOffline(name string) bool {
+	for end := time.Now().Add(2 * time.Minute); time.Now().Before(end); time.Sleep(time.Second) {
 		if !charOnline(name) {
 			return true
 		}
@@ -111,7 +112,7 @@ func Reset(names []string) error {
 // worldserver restarted (Reset), and its agents' workspaces moved aside to var/workspaces/.old/<agent>-<time>, as
 // require_fresh wants (kept, not deleted: they hold the last run's notes and scripts).
 func Fresh(repo string, s *config.Scenario) error {
-	var names []string
+	names := make([]string, 0, len(s.Agents))
 	for _, a := range s.Agents {
 		names = append(names, a.Char)
 	}

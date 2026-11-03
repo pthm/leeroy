@@ -133,7 +133,7 @@ func FloorBox(m uint32, xMin, xMax, yMin, yMax, res float64) []byte {
 		img = image.NewNRGBA(image.Rect(0, 0, 1, 1)) // nothing here: a transparent pixel, scaled up by the viewer
 	}
 	var buf bytes.Buffer
-	png.Encode(&buf, img)
+	_ = png.Encode(&buf, img) // into memory: it doesn't fail
 	return buf.Bytes()
 }
 

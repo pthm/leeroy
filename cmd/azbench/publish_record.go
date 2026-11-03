@@ -373,13 +373,13 @@ func together(tracks [][][5]float64, end float64) []int {
 				ps = append(ps, p)
 			}
 		}
-		close := len(ps) == len(tracks)
-		for i := 0; close && i < len(ps); i++ {
-			for j := i + 1; close && j < len(ps); j++ {
-				close = ps[i][1] == ps[j][1] && math.Hypot(ps[i][2]-ps[j][2], ps[i][3]-ps[j][3]) <= 40
+		together := len(ps) == len(tracks)
+		for i := 0; together && i < len(ps); i++ {
+			for j := i + 1; together && j < len(ps); j++ {
+				together = ps[i][1] == ps[j][1] && math.Hypot(ps[i][2]-ps[j][2], ps[i][3]-ps[j][3]) <= 40
 			}
 		}
-		if close {
+		if together {
 			out = append(out, 1)
 		} else {
 			out = append(out, 0)
@@ -451,7 +451,7 @@ func fileExists(f string) bool {
 // it went through, its top killing blows and damage by creature ([name, n], most first), whose chat it heard, and the
 // share of its time with a pet out and alive (hunters, warlocks; none without a pet).
 func gameExtras(rec *recording) map[string]any {
-	var ids []int
+	ids := make([]int, 0, len(rec.kills)+len(rec.damage))
 	for id := range rec.kills {
 		ids = append(ids, id)
 	}
@@ -460,7 +460,7 @@ func gameExtras(rec *recording) map[string]any {
 	}
 	names := world.CreatureNames(ids)
 	top := func(m map[int]float64) [][2]any {
-		var out [][2]any
+		out := make([][2]any, 0, len(m))
 		for id, v := range m {
 			out = append(out, [2]any{cmp.Or(names[id], fmt.Sprint("creature ", id)), math.Round(v)})
 		}

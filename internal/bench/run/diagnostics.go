@@ -21,7 +21,9 @@ func (p *player) harnessEvent(ev types.Diagnostic) {
 	defer p.diagMu.Unlock()
 	path := p.r.f().Diagnostics(p.a.Name)
 	if !p.diagInit {
-		os.MkdirAll(filepath.Dir(path), 0o755)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			p.logf("diagnostics: %v", err)
+		}
 		if f, err := os.Open(path); err == nil {
 			sc := bufio.NewScanner(f)
 			sc.Buffer(make([]byte, 4096), 1024*1024)

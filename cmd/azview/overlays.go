@@ -138,7 +138,7 @@ func (s *Store) HeatAt(m int, t float64, only map[string]bool, kind string) Heat
 		img.SetNRGBA(i%w, i/w, c)
 	}
 	var buf bytes.Buffer
-	png.Encode(&buf, img)
+	_ = png.Encode(&buf, img) // into memory: it doesn't fail
 	return Heat{X0: x0, Y0: y0, Res: heatCell, W: w, H: h, PNG: "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())}
 }
 
@@ -226,7 +226,7 @@ func (v *server) roadTile(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("content-type", "image/png")
 	w.Header().Set("cache-control", "max-age=86400")
-	png.Encode(w, img)
+	_ = png.Encode(w, img) // the client gone
 }
 
 var (
@@ -310,5 +310,5 @@ func (v *server) nav(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("content-type", "image/png")
 	w.Header().Set("cache-control", "max-age=86400")
-	w.Write(t)
+	_, _ = w.Write(t) // the client gone
 }

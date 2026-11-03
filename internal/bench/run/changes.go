@@ -103,9 +103,11 @@ func (p *player) updateMeta(fn func(map[string]any)) {
 	path := filepath.Join(p.dir, "meta.json")
 	m := map[string]any{}
 	if b, err := os.ReadFile(path); err == nil {
-		json.Unmarshal(b, &m)
+		_ = json.Unmarshal(b, &m) // a damaged file starts afresh
 	}
 	fn(m)
 	b, _ := json.Marshal(m)
-	os.WriteFile(path, b, 0o644)
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		p.logf("meta.json: %v", err)
+	}
 }

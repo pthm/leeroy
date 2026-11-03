@@ -21,7 +21,7 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "setup" {
 		fs := flag.NewFlagSet("setup", flag.ExitOnError)
 		schema := fs.String("schema", "wowbench", "schema to (re)build; another name builds a copy to compare against")
-		fs.Parse(os.Args[2:])
+		_ = fs.Parse(os.Args[2:]) // ExitOnError: it exits on a bad flag
 		// the repo root: above data/ (it has the server checkout, for DBCEnums.h)
 		repo, _ := filepath.Abs(filepath.Dir(world.DataDir()))
 		s, err := world.Setup(*schema, repo)

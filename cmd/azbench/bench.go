@@ -31,7 +31,7 @@ func repoRoot() string {
 	}
 	for _, d := range starts {
 		for ; ; d = filepath.Dir(d) {
-			if _, err := os.Stat(filepath.Join(d, "suite/specs.yaml")); err == nil {
+			if _, err := os.Stat(filepath.Join(d, "suite", "specs.yaml")); err == nil {
 				return d
 			}
 			if filepath.Dir(d) == d {
@@ -93,7 +93,7 @@ func benchCommand(cmd string, args []string) bool {
 	parse := func(n int, usage string) []string {
 		var pos []string // positional arguments, flags anywhere
 		for len(args) > 0 {
-			fs.Parse(args)
+			_ = fs.Parse(args) // ExitOnError: it exits on a bad flag
 			if fs.NArg() == 0 {
 				break
 			}
@@ -112,7 +112,7 @@ func benchCommand(cmd string, args []string) bool {
 		check(err)
 		ss, err := b.LoadTask(pos[0], models(*model))
 		check(err)
-		var reports []any
+		reports := make([]any, 0, len(ss))
 		for _, s := range ss {
 			reports = append(reports, run.CheckScenario(repo, s))
 		}
@@ -210,7 +210,7 @@ func benchCommand(cmd string, args []string) bool {
 		pos := parse(1, "<run dir>... [--task name] [--out dir]")
 		root := repoRoot()
 		if *out == "" {
-			*out = filepath.Join(root, "site/src/data/runs")
+			*out = filepath.Join(root, "site", "src", "data", "runs")
 		}
 		for _, d := range pos {
 			f, err := publish(root, d, *task, *out)
@@ -252,7 +252,7 @@ func benchCommand(cmd string, args []string) bool {
 			die("usage: azbench kit gen <class> <level> [--spec s] [--race r] | save <Char> | apply <Char> <kit>")
 		}
 	case "prices":
-		check(judge.Prices(filepath.Join(repoRoot(), "internal/bench/judge/prices.json")))
+		check(judge.Prices(filepath.Join(repoRoot(), "internal", "bench", "judge", "prices.json")))
 	default:
 		return false
 	}

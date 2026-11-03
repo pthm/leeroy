@@ -178,7 +178,7 @@ func downloads(f runfiles.Run, id, agent, char string, t *atif.Trajectory) map[s
 	out := map[string]string{}
 	if _, err := os.Stat(f.Trajectory(agent)); err != nil && t != nil {
 		if b, err := json.MarshalIndent(t, "", "  "); err == nil {
-			os.WriteFile(f.Trajectory(agent), append(b, '\n'), 0o644)
+			_ = os.WriteFile(f.Trajectory(agent), append(b, '\n'), 0o644) // not written: the page goes without it (below)
 		}
 	}
 	if _, err := os.Stat(f.Trajectory(agent)); err == nil {

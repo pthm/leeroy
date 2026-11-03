@@ -35,7 +35,7 @@ func queryOf(r *http.Request) Query {
 }
 
 // Panel is the template and data for a panel; the caller holds the read lock.
-func (s *Store) Panel(name string, q Query) (string, any) {
+func (s *Store) Panel(name string, q Query) (tmpl string, data any) {
 	switch name {
 	case "roster":
 		return "roster.html", s.Roster(q)

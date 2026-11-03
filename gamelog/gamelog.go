@@ -26,10 +26,10 @@ func Line(b []byte, char string) Ev {
 	}
 	e := Ev{}
 	if len(l.Data) > 0 && l.Data[0] == '{' {
-		json.Unmarshal(l.Data, &e)
+		_ = json.Unmarshal(l.Data, &e) // bad data: the line without it
 	} else if len(l.Data) > 0 && string(l.Data) != "null" {
 		var d any
-		json.Unmarshal(l.Data, &d)
+		_ = json.Unmarshal(l.Data, &d)
 		e["data"] = d
 	}
 	e["t"], e["type"], e["char"] = l.T, l.Type, char

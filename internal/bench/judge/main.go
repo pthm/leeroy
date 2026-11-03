@@ -76,7 +76,7 @@ const usage = "usage: judge <character> <level|item|quality|money|quests|quest|a
 var goalRe = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|zone|kills|score):\d+|skill:\d+:\d+)$`)
 
 func dur(s string) time.Duration {
-	m := regexp.MustCompile(`^(\d+)(s|m|h)$`).FindStringSubmatch(s)
+	m := regexp.MustCompile(`^(\d+)([smh])$`).FindStringSubmatch(s)
 	if m == nil {
 		fail("bad duration %q", s)
 	}
@@ -91,7 +91,9 @@ func appendLine(file string, v any) {
 	}
 	defer f.Close()
 	b, _ := json.Marshal(v)
-	f.Write(append(b, '\n'))
+	if _, err := f.Write(append(b, '\n')); err != nil {
+		fail("%v", err)
+	}
 }
 
 // Main is the judge's command line (azbench judge|report|signals): it returns the exit code.
@@ -193,7 +195,9 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		team = newStreams(filepath.Dir(filepath.Dir(filepath.Dir(eventsFile))))
 	}
 	if board != "" {
-		os.MkdirAll(board, 0o755)
+		if err := os.MkdirAll(board, 0o755); err != nil {
+			fmt.Fprintf(os.Stderr, "judge %s: %v\n", char, err)
+		}
 	}
 
 	parts := strings.Split(goal, ":") // skill:<id>:<n>: n is the skill id, the third part the level
@@ -303,7 +307,7 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		if board != "" {
 			if b, err := os.ReadFile(tools.GiveUpFile(board, char)); err == nil {
 				gaveUp = map[string]any{}
-				json.Unmarshal(b, &gaveUp)
+				_ = json.Unmarshal(b, &gaveUp) // a damaged file still gives up
 			}
 		}
 		if o.Hardcore && !binaryGoal(goal) {
@@ -345,7 +349,9 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 					kv{"contested_hits", co.Contested})
 			}
 			j, _ := json.Marshal(b)
-			os.WriteFile(board+"/"+char+".json", j, 0o644)
+			if err := os.WriteFile(board+"/"+char+".json", j, 0o644); err != nil {
+				fmt.Fprintf(os.Stderr, "judge %s: %v\n", char, err)
+			}
 		}
 		if value >= need || died || gaveUp != nil || nowMs()-start > timeout.Milliseconds() {
 			res := obj{{"char", char}, {"goal", goal}, {"met", value >= need}}

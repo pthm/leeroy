@@ -85,7 +85,6 @@ func threatsContext(ctx context.Context, m, x0, x1, y0, y1 float64, horde bool) 
 	if horde {
 		side = "to_horde"
 	}
-	var out []threat
 	rows := qContext(ctx, fmt.Sprintf("SELECT s.id entry, t.name, t.minlevel lo, t.maxlevel hi, t.`rank` rk, ROUND(s.x) x, ROUND(s.y) y FROM wowbench.creature_spawn s\n"+
 		"    JOIN creature_template t ON t.entry = s.id JOIN wowbench.reaction r ON r.faction_template = t.faction\n"+
 		"    WHERE s.map = %s AND r.%s = 'hostile'\n"+
@@ -95,6 +94,7 @@ func threatsContext(ctx context.Context, m, x0, x1, y0, y1 float64, horde bool) 
 	if len(rows) > maxRouteRows {
 		panic(routeError{"route_limit", "too many hostile spawns; use a smaller planning area"})
 	}
+	out := make([]threat, 0, len(rows))
 	for _, r := range rows {
 		checkRouteContext(ctx)
 		out = append(out, threat{

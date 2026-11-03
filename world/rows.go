@@ -131,7 +131,7 @@ func qContext(ctx context.Context, query string) []*obj {
 	if err != nil {
 		panic(qerr{err})
 	}
-	defer rs.Close()
+	defer func() { _ = rs.Close() }() // read-only
 	cols, _ := rs.Columns()
 	out := []*obj{}
 	for rs.Next() {

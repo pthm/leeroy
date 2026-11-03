@@ -33,7 +33,6 @@ var (
 	restartRe = regexp.MustCompile(`task\.(spawn|keep|stop|kill)|wow -f|\.stop\(|dofile`)
 	waitRe    = regexp.MustCompile(`wow wait|(^|[;&| ])sleep \d|wow -w`)
 	waitArgs  = regexp.MustCompile(`wow wait([^;|&]*)`)
-	stampRe   = regexp.MustCompile(`^(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)(\d\d)`)
 )
 
 // what woke a wait with no --types: the default subscription, plus the old default (level_up, error, any chat)
@@ -86,15 +85,6 @@ func isoMs(s string) int64 {
 	if err != nil {
 		return 0
 	}
-	return t.UnixMilli()
-}
-
-func stampMs(name string) int64 {
-	m := stampRe.FindStringSubmatch(name)
-	if m == nil {
-		return 0
-	}
-	t, _ := time.ParseInLocation("20060102-150405", strings.Join(m[1:4], "")+"-"+strings.Join(m[4:7], ""), time.Local)
 	return t.UnixMilli()
 }
 
@@ -265,7 +255,7 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 		t int64
 		n int
 	}
-	var changes []change
+	changes := make([]change, 0, len(events))
 	var starts []int64
 	for _, e := range events {
 		t := int64(fnum(e["t"]))
@@ -409,7 +399,7 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 			case strings.HasPrefix(tok[i], "--"):
 				i++
 			case regexp.MustCompile(`^\d+$`).MatchString(tok[i]):
-				fmt.Sscan(tok[i], &limit)
+				_, _ = fmt.Sscan(tok[i], &limit) // digits, matched just above
 			}
 		}
 		if float64(c.e-c.s)/1000 > limit-3 {
@@ -453,7 +443,7 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 		trig = append(trig, k)
 	}
 	sort.SliceStable(trig, func(i, j int) bool { return wakes[trig[i]].n > wakes[trig[j]].n })
-	byTrigger := obj{}
+	byTrigger := make(obj, 0, len(trig))
 	for _, k := range trig {
 		byTrigger = append(byTrigger, kv{k, obj{{"n", wakes[k].n}, {"restart", wakes[k].restart}}})
 	}
@@ -807,12 +797,12 @@ func Report(dir string) {
 	teamEvents := evs.since(0)
 	coop := metrics.Team(teamEvents)
 	pos := readPositions(dir)
-	var cards []any
-	var rows []obj
 	ars := reportAgents(dir)
 	if len(ars) == 0 {
 		fail("judge report: %s has no run.json (not a run, or one from before the layout in runfiles)", dir)
 	}
+	cards := make([]any, 0, len(ars))
+	rows := make([]obj, 0, len(ars))
 	for _, ar := range ars {
 		c := card(ar, teamEvents, coop, pos)
 		cards = append(cards, c)
@@ -822,16 +812,20 @@ func Report(dir string) {
 	{
 		var cardMaps []map[string]any // the cards as JSON reads them, as compare does
 		cj, _ := json.Marshal(cards)
-		json.Unmarshal(cj, &cardMaps)
+		_ = json.Unmarshal(cj, &cardMaps) // marshalled just above
 		team := teamResults(dir, len(cards), cardMaps)
 		report = append(report, kv{"team", team})
 		j, _ := json.MarshalIndent(team, "", "  ")
-		os.WriteFile(runfiles.Run(dir).Team(), append(j, '\n'), 0o644)
+		if err := os.WriteFile(runfiles.Run(dir).Team(), append(j, '\n'), 0o644); err != nil {
+			fail("%v", err)
+		}
 		fmt.Println(string(j))
 	}
 	report = append(report, kv{"host", hostSummary(dir)})
 	j, _ := json.MarshalIndent(report, "", "  ")
-	os.WriteFile(runfiles.Run(dir).Report(), append(j, '\n'), 0o644)
+	if err := os.WriteFile(runfiles.Run(dir).Report(), append(j, '\n'), 0o644); err != nil {
+		fail("%v", err)
+	}
 
 	pad := func(v any, n int) string {
 		s := "-"
@@ -874,7 +868,7 @@ func Report(dir string) {
 // message counted once with its final usage. ok is false when there's no log.
 func claudeLogUsage(session string) (in, out, cr, cw float64, ok bool) {
 	home, _ := os.UserHomeDir()
-	files, _ := filepath.Glob(filepath.Join(home, ".claude/projects/*", session+".jsonl"))
+	files, _ := filepath.Glob(filepath.Join(home, ".claude", "projects", "*", session+".jsonl"))
 	if session == "" || len(files) == 0 {
 		return 0, 0, 0, 0, false
 	}
@@ -910,7 +904,7 @@ func codexLogUsage(thread string) (in, out, cr float64, ok bool) {
 // codexRollout: a Codex thread's rollout log, or "" when there's none.
 func codexRollout(thread string) string {
 	home, _ := os.UserHomeDir()
-	files, _ := filepath.Glob(filepath.Join(home, ".codex/sessions/*/*/*", "*"+thread+".jsonl"))
+	files, _ := filepath.Glob(filepath.Join(home, ".codex", "sessions", "*", "*", "*", "*"+thread+".jsonl"))
 	if thread == "" || len(files) == 0 {
 		return ""
 	}

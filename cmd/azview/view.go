@@ -41,7 +41,7 @@ func Unit(e Ev, k string) map[string]any { u, _ := e[k].(map[string]any); return
 func IsPlayer(u map[string]any) bool { return u != nil && Truthy(u["player"]) }
 
 // Res is a types.Resource field (health, power): current and max.
-func Res(e Ev, k string) (cur, max float64) {
+func Res(e Ev, k string) (cur, total float64) {
 	r, _ := e[k].(map[string]any)
 	return N(r, "current"), N(r, "max")
 }

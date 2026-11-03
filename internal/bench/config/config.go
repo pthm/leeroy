@@ -289,7 +289,7 @@ func (b *Bench) Check(s *Scenario) error {
 		s.Race = "human"
 	}
 	if !goalRe.MatchString(s.Goal) {
-		return fmt.Errorf("%s: goal %q: want level:<n>, score:<n>, quest:<id>, skill:<id>:<n>, ...", s.Name, s.Goal)
+		return fmt.Errorf("%s: goal %q: want level:<n>, score:<n>, quest:<id>, skill:<id>:<n> or the like", s.Name, s.Goal)
 	}
 	if s.Start != nil && s.Start.Name != "" {
 		p, ok := b.Places[s.Start.Name]

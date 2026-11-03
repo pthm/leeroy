@@ -32,36 +32,85 @@ type Run string
 
 func (r Run) join(p ...string) string { return filepath.Join(append([]string{string(r)}, p...)...) }
 
-func (r Run) Manifest() string      { return r.join("run.json") }
-func (r Run) Scenario() string      { return r.join("scenario.yaml") }
-func (r Run) Preflight() string     { return r.join("preflight.json") }
+// Manifest is run.json's path.
+func (r Run) Manifest() string { return r.join("run.json") }
+
+// Scenario is scenario.yaml's path.
+func (r Run) Scenario() string { return r.join("scenario.yaml") }
+
+// Preflight is preflight.json's path.
+func (r Run) Preflight() string { return r.join("preflight.json") }
+
+// SupervisorLog is supervisor.log's path.
 func (r Run) SupervisorLog() string { return r.join("supervisor.log") }
-func (r Run) Report() string        { return r.join("report.json") }
-func (r Run) Team() string          { return r.join("team.json") }
-func (r Run) Board() string         { return r.join("board") }
-func (r Run) CodexQuota() string    { return r.join("codex-quota.json") }
-func (r Run) Resources() string     { return r.join("server", "resources.jsonl") }
+
+// Report is report.json's path.
+func (r Run) Report() string { return r.join("report.json") }
+
+// Team is team.json's path.
+func (r Run) Team() string { return r.join("team.json") }
+
+// Board is the judges' standings directory.
+func (r Run) Board() string { return r.join("board") }
+
+// CodexQuota is codex-quota.json's path.
+func (r Run) CodexQuota() string { return r.join("codex-quota.json") }
+
+// Resources is server/resources.jsonl's path.
+func (r Run) Resources() string { return r.join("server", "resources.jsonl") }
+
+// Live is a file in .live/ ("" for the directory).
 func (r Run) Live(name string) string {
 	return r.join(".live", name)
 }
 
-// Agent is an agent's directory; AgentFile one of its files.
-func (r Run) Agent(agent string) string           { return r.join("agents", agent) }
+// Agent is an agent's directory.
+func (r Run) Agent(agent string) string { return r.join("agents", agent) }
+
+// AgentFile is one of an agent's files.
 func (r Run) AgentFile(agent, name string) string { return r.join("agents", agent, name) }
-func (r Run) Transcript(agent string) string      { return r.AgentFile(agent, "transcript.jsonl") }
-func (r Run) Trajectory(agent string) string      { return r.AgentFile(agent, "trajectory.json") }
-func (r Run) Meta(agent string) string            { return r.AgentFile(agent, "meta.json") }
-func (r Run) Diagnostics(agent string) string     { return r.join("diagnostics", agent+".jsonl") }
-func (r Run) Game(char string) string             { return r.join("game", char) }
-func (r Run) Events(char string) string           { return r.join("game", char, "events.jsonl") }
-func (r Run) SessionLog(char string) string       { return r.join("game", char, "session.log") }
-func (r Run) Judge(char string) string            { return r.join("judge", char) }
-func (r Run) Samples(char string) string          { return r.join("judge", char, "samples.jsonl") }
-func (r Run) Result(char string) string           { return r.join("judge", char, "result.json") }
-func (r Run) EventsGlob() string                  { return r.join("game", "*", "events.jsonl") }
-func (r Run) CharOfEvents(path string) string     { return filepath.Base(filepath.Dir(path)) }
-func (r Run) AgentsGlob() string                  { return r.join("agents", "*") }
-func (r Run) IsRun() bool                         { return exists(r.Manifest()) }
+
+// Transcript is an agent's transcript.jsonl.
+func (r Run) Transcript(agent string) string { return r.AgentFile(agent, "transcript.jsonl") }
+
+// Trajectory is an agent's trajectory.json.
+func (r Run) Trajectory(agent string) string { return r.AgentFile(agent, "trajectory.json") }
+
+// Meta is an agent's meta.json.
+func (r Run) Meta(agent string) string { return r.AgentFile(agent, "meta.json") }
+
+// Diagnostics is an agent's diagnostics/<agent>.jsonl.
+func (r Run) Diagnostics(agent string) string { return r.join("diagnostics", agent+".jsonl") }
+
+// Game is a character's game/ directory.
+func (r Run) Game(char string) string { return r.join("game", char) }
+
+// Events is a character's events.jsonl.
+func (r Run) Events(char string) string { return r.join("game", char, "events.jsonl") }
+
+// SessionLog is a character's session.log.
+func (r Run) SessionLog(char string) string { return r.join("game", char, "session.log") }
+
+// Judge is a character's judge/ directory.
+func (r Run) Judge(char string) string { return r.join("judge", char) }
+
+// Samples is a character's samples.jsonl.
+func (r Run) Samples(char string) string { return r.join("judge", char, "samples.jsonl") }
+
+// Result is a character's result.json.
+func (r Run) Result(char string) string { return r.join("judge", char, "result.json") }
+
+// EventsGlob matches every character's events.jsonl.
+func (r Run) EventsGlob() string { return r.join("game", "*", "events.jsonl") }
+
+// CharOfEvents is the character an events.jsonl path belongs to.
+func (r Run) CharOfEvents(path string) string { return filepath.Base(filepath.Dir(path)) }
+
+// AgentsGlob matches every agent's directory.
+func (r Run) AgentsGlob() string { return r.join("agents", "*") }
+
+// IsRun says whether the directory has a run.json.
+func (r Run) IsRun() bool { return exists(r.Manifest()) }
 
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 

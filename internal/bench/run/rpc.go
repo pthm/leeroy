@@ -18,7 +18,7 @@ func eval(ctx context.Context, port int, code string) (json.RawMessage, error) {
 	var r struct {
 		Result json.RawMessage `json:"result"`
 	}
-	json.Unmarshal(res, &r)
+	_ = json.Unmarshal(res, &r) // call decoded it already; anything but an object has no result field
 	return r.Result, nil
 }
 
@@ -71,14 +71,14 @@ func calm(port int) {
 			return
 		}
 		if !fighting {
-			eval(ctx, port, stop)
+			_, _ = eval(ctx, port, stop) // best effort: it's stopping anyway
 			return
 		}
 		if time.Now().After(end) {
 			break
 		}
 	}
-	eval(ctx, port, stop+`; task.spawn("calm", function()
+	_, _ = eval(ctx, port, stop+`; task.spawn("calm", function()
 		while me.in_combat() do
 			local a = units.attackers(40)[1]
 			if a then combat.attack(a.guid) end
@@ -90,7 +90,7 @@ func calm(port int) {
 			break
 		}
 	}
-	eval(ctx, port, stop)
+	_, _ = eval(ctx, port, stop)
 }
 
 // calm's timing (variables for the test)

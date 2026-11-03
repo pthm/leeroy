@@ -33,20 +33,20 @@ func GM(repo, class string, at []string) error {
 	if err := acct.Ensure(account, account, 3); err != nil {
 		return fmt.Errorf("account: %v", err)
 	}
-	exec.Command("pkill", "-f", "--", "-char "+char+" ").Run()
+	_ = exec.Command("pkill", "-f", "--", "-char "+char+" ").Run() // fails when there's none
 	time.Sleep(time.Second)
 	logf := "/tmp/" + strings.ToLower(char) + ".log"
 	log, err := os.Create(logf)
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(filepath.Join(repo, "bin/azsdk"), "-char", char, "-account", account, "-race", "1", "-class", fmt.Sprint(id),
+	cmd := exec.Command(filepath.Join(repo, "bin", "azsdk"), "-char", char, "-account", account, "-race", "1", "-class", fmt.Sprint(id),
 		"-listen", fmt.Sprintf("127.0.0.1:%d", port), "-data", filepath.Join(repo, "data"), "-events", "/tmp/"+strings.ToLower(char)+"-events")
 	cmd.Stdout, cmd.Stderr = log, log
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	cmd.Process.Release() // it outlives this command
+	_ = cmd.Process.Release() // it outlives this command
 	ctx := context.Background()
 	for i := 0; ; i++ {
 		if _, err := eval(ctx, port, "return 1"); err == nil {
@@ -57,13 +57,17 @@ func GM(repo, class string, at []string) error {
 		}
 		time.Sleep(time.Second)
 	}
-	eval(ctx, port, `chat.command(".gm on") chat.command(".cheat god on") return 1`)
+	if _, err := eval(ctx, port, `chat.command(".gm on") chat.command(".cheat god on") return 1`); err != nil {
+		return err
+	}
 	if len(at) >= 3 {
 		m := "0"
 		if len(at) > 3 {
 			m = at[3]
 		}
-		eval(ctx, port, fmt.Sprintf(`chat.command(".go xyz %s %s %s %s") return 1`, at[0], at[1], at[2], m))
+		if _, err := eval(ctx, port, fmt.Sprintf(`chat.command(".go xyz %s %s %s %s") return 1`, at[0], at[1], at[2], m)); err != nil {
+			return err
+		}
 	}
 	fmt.Printf("%s up on %d (log %s)\n", char, port, logf)
 	return nil

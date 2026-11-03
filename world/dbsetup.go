@@ -55,13 +55,18 @@ func (d *DBC) Rows() int { return d.n }
 
 func (d *DBC) off(r, i int) int { return 20 + r*d.size + i*4 }
 
-// U, I, F and S read field i of record r as uint32, int32, float32 or a string (from the string block).
+// U reads field i of record r as a uint32.
 func (d *DBC) U(r, i int) uint32 { return binary.LittleEndian.Uint32(d.b[d.off(r, i):]) }
-func (d *DBC) I(r, i int) int32  { return int32(d.U(r, i)) }
+
+// I reads field i of record r as an int32.
+func (d *DBC) I(r, i int) int32 { return int32(d.U(r, i)) }
+
+// F reads field i of record r as a float32.
 func (d *DBC) F(r, i int) float32 {
 	return math.Float32frombits(d.U(r, i))
 }
 
+// S reads field i of record r as a string from the string block.
 func (d *DBC) S(r, i int) string {
 	p := d.strs + int(d.U(r, i))
 	if p >= len(d.b) {
@@ -338,13 +343,21 @@ func Setup(schema, repo string) (summary string, err error) {
 		loc = append(loc, sqlRow{a.id, a.m, r(best[0]), r(best[1]), r(lx), r(hx), r(ly), r(hy), int64(len(a.pts))})
 	}
 
-	src, err := os.ReadFile(filepath.Join(repo, "server/azerothcore/src/server/shared/DataStores/DBCEnums.h"))
+	src, err := os.ReadFile(filepath.Join(repo, "server", "azerothcore", "src", "server", "shared", "DataStores", "DBCEnums.h"))
 	if err != nil {
 		return "", err
 	}
 	body := string(src)
-	body = body[strings.Index(body, "enum AchievementCriteriaTypes"):]
-	body = body[:strings.Index(body, "};")]
+	start := strings.Index(body, "enum AchievementCriteriaTypes")
+	if start < 0 {
+		return "", fmt.Errorf("DBCEnums.h: no enum AchievementCriteriaTypes")
+	}
+	body = body[start:]
+	end := strings.Index(body, "};")
+	if end < 0 {
+		return "", fmt.Errorf("DBCEnums.h: enum AchievementCriteriaTypes not closed")
+	}
+	body = body[:end]
 	var types []sqlRow
 	for _, m := range regexp.MustCompile(`ACHIEVEMENT_CRITERIA_TYPE_(\w+)\s*=\s*(\d+)`).FindAllStringSubmatch(body, -1) {
 		n, _ := strconv.ParseInt(m[2], 10, 64)
@@ -413,7 +426,7 @@ func Setup(schema, repo string) (summary string, err error) {
 	if err != nil {
 		return "", err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }() // the statements' errors are what count
 	for _, s := range stmts {
 		if _, err := conn.ExecContext(ctx, s); err != nil {
 			return "", fmt.Errorf("%v\n%.300s", err, s)

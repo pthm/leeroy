@@ -66,7 +66,9 @@ func Run(ctx context.Context, path string, every time.Duration) error {
 		case now := <-t.C:
 			cur := read("/proc", now)
 			b, _ := json.Marshal(diff(prev, cur))
-			f.Write(append(b, '\n'))
+			if _, err := f.Write(append(b, '\n')); err != nil {
+				return err
+			}
 			prev = cur
 		}
 	}
@@ -112,7 +114,7 @@ func read(root string, at time.Time) snapshot {
 		m := parseMeminfo(string(b))
 		s.memTotal, s.memAvail = m["MemTotal"], m["MemAvailable"]
 	}
-	if b, err := os.ReadFile(filepath.Join(root, "net/dev")); err == nil {
+	if b, err := os.ReadFile(filepath.Join(root, "net", "dev")); err == nil {
 		s.rx, s.tx = parseNetDev(string(b))
 	}
 	var fs syscall.Statfs_t
@@ -218,11 +220,11 @@ func parseNetDev(s string) (rx, tx uint64) {
 
 // parsePidStat: a process's group (its comm, if one of Groups), CPU ticks and resident memory, from /proc/<pid>/stat.
 func parsePidStat(s string) (proc, bool) {
-	open, close := strings.IndexByte(s, '('), strings.LastIndexByte(s, ')')
-	if open < 0 || close < open {
+	lp, rp := strings.IndexByte(s, '('), strings.LastIndexByte(s, ')')
+	if lp < 0 || rp < lp {
 		return proc{}, false
 	}
-	comm := s[open+1 : close]
+	comm := s[lp+1 : rp]
 	group := ""
 	for _, g := range Groups {
 		if comm == g || strings.HasPrefix(comm, g) && g == "mysqld" {
@@ -232,7 +234,7 @@ func parsePidStat(s string) (proc, bool) {
 	if group == "" {
 		return proc{}, false
 	}
-	f := strings.Fields(s[close+1:]) // f[0] is the state, field 3 of the full line
+	f := strings.Fields(s[rp+1:]) // f[0] is the state, field 3 of the full line
 	if len(f) < 22 {
 		return proc{}, false
 	}

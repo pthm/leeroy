@@ -119,7 +119,9 @@ func (p *player) outage(why string) {
 			outcome = "gave_up"
 			// the judge ends the player's run unmet at its next poll
 			b, _ := json.Marshal(map[string]any{"reason": "provider outage: " + why, "at": time.Now().UTC().Format(time.RFC3339)})
-			os.WriteFile(tools.GiveUpFile(r.f().Board(), p.a.Char), b, 0o644)
+			if err := os.WriteFile(tools.GiveUpFile(r.f().Board(), p.a.Char), b, 0o644); err != nil {
+				r.alert(p, "give-up not written: "+err.Error())
+			}
 			r.alert(p, fmt.Sprintf("provider outage lasted over %s: the run ends for this player", outageLimit))
 			return
 		}
@@ -139,7 +141,7 @@ func (p *player) outage(why string) {
 	}
 
 	// back: log in, release the clock, resume the agent with what happened and where it is
-	if !waitOffline(p.a.Char, 2*time.Minute) {
+	if !waitOffline(p.a.Char) {
 		r.alert(p, "outage: character still online; resuming anyway")
 	}
 	if err := p.login(r.ctx); err != nil {

@@ -159,18 +159,19 @@ func GenKit(class, race int, spec string, level, quality, maxIlvl, notFrom int) 
 			entry: atoi(r[0]), name: r[1], class: atoi(r[2]), sub: atoi(r[3]), inv: atoi(r[4]), ilvl: atoi(r[5]),
 			req: atoi(r[6]), quality: atoi(r[7]), slots: atoi(r[12]), ammo: atoi(r[13]), maxcount: atoi(r[14]), how: r[16], stats: map[int]float64{},
 		}
-		fmt.Sscan(r[8], &it.armor)
+		// a column that doesn't parse reads as 0
+		_, _ = fmt.Sscan(r[8], &it.armor)
 		var lo, hi, delay float64
-		fmt.Sscan(r[9], &lo)
-		fmt.Sscan(r[10], &hi)
-		fmt.Sscan(r[11], &delay)
+		_, _ = fmt.Sscan(r[9], &lo)
+		_, _ = fmt.Sscan(r[10], &hi)
+		_, _ = fmt.Sscan(r[11], &delay)
 		if delay > 0 {
 			it.dps = (lo + hi) / 2 / (delay / 1000)
 		}
 		f := strings.Fields(r[15])
 		for i := 0; i+1 < len(f); i += 2 {
 			var v float64
-			fmt.Sscan(f[i+1], &v)
+			_, _ = fmt.Sscan(f[i+1], &v)
 			it.stats[atoi(f[i])] += v
 		}
 		items = append(items, it)

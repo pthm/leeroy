@@ -160,7 +160,7 @@ func sortCards(cs []Card, by string) {
 func (s *Store) Roster(q Query) map[string]any {
 	t := q.T
 	if !q.ByGroup {
-		var cs []Card
+		cs := make([]Card, 0, len(s.players))
 		for _, p := range s.players {
 			cs = append(cs, s.card(p, t, q, false))
 		}

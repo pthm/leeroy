@@ -42,7 +42,10 @@ func (s *streams) read() {
 		if st.Size() < s.at[f] { // rewritten
 			s.at[f], s.tail[f], s.evs[char] = 0, "", nil
 		}
-		fh.Seek(s.at[f], io.SeekStart)
+		if _, err := fh.Seek(s.at[f], io.SeekStart); err != nil {
+			fh.Close()
+			continue
+		}
 		buf, _ := io.ReadAll(io.LimitReader(fh, st.Size()-s.at[f]))
 		fh.Close()
 		s.at[f] += int64(len(buf))

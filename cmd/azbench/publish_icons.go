@@ -75,7 +75,9 @@ func useIcon(name, dir string) string {
 	if err != nil {
 		return ""
 	}
-	os.MkdirAll(dir, 0o755)
+	if os.MkdirAll(dir, 0o755) != nil {
+		return ""
+	}
 	if os.WriteFile(dst, b, 0o644) != nil {
 		return ""
 	}

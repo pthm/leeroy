@@ -135,7 +135,9 @@ func (p *player) saveKit() {
 		return
 	}
 	b, _ := json.Marshal(k)
-	os.WriteFile(filepath.Join(p.dir, "kit.json"), b, 0o644)
+	if err := os.WriteFile(filepath.Join(p.dir, "kit.json"), b, 0o644); err != nil {
+		p.logf("kit: %v", err)
+	}
 }
 
 func atoi(s string) int { n, _ := strconv.Atoi(s); return n }
@@ -222,7 +224,7 @@ func applyKit(k *config.Kit, char string, class int) error {
 			}
 		}
 	}
-	cap := 5 * k.Level
+	skillCap := 5 * k.Level
 	if r := ridingSkill(spells); r > 0 {
 		exec("INSERT INTO character_skills (guid, skill, value, max) VALUES (?, 762, ?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value), max = VALUES(max)", g, r, r)
 	}
@@ -236,7 +238,7 @@ func applyKit(k *config.Kit, char string, class int) error {
 	// the skills that rise with level, 5 a level (weapons, Defense, the class's own lines), at the cap for the new
 	// one, as playing there would leave them: the server grants the spells they unlock when it loads them (a druid's
 	// Teleport: Moonglade at 50 Balance)
-	exec("UPDATE character_skills SET value = ?, max = ? WHERE guid = ? AND max = ?", cap, cap, g, 5*atoi(old[0][0]))
+	exec("UPDATE character_skills SET value = ?, max = ? WHERE guid = ? AND max = ?", skillCap, skillCap, g, 5*atoi(old[0][0]))
 	if err != nil {
 		return fmt.Errorf("kit: %v", err)
 	}
@@ -290,14 +292,14 @@ func applyKit(k *config.Kit, char string, class int) error {
 		exec("INSERT INTO character_inventory (guid, bag, slot, item) VALUES (?, ?, ?, ?)", g, bag, slot, next)
 		return next, slots, err
 	}
-	clear := map[int]bool{}
+	freed := map[int]bool{}
 	for _, p := range equip { // what's in the slot now goes; both hands go together (a two-hander and an off-hand don't fit)
-		clear[p.slot] = true
+		freed[p.slot] = true
 		if p.slot == 15 || p.slot == 16 {
-			clear[15], clear[16] = true, true
+			freed[15], freed[16] = true, true
 		}
 	}
-	for slot := range clear {
+	for slot := range freed {
 		exec(`DELETE ii, ci FROM character_inventory ci JOIN item_instance ii ON ii.guid = ci.item
   WHERE ci.guid = ? AND ci.bag = 0 AND ci.slot = ?`, g, slot)
 	}

@@ -47,7 +47,7 @@ func TestSavedUsageIndependentOfRuntimeHome(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	dir := t.TempDir()
-	logs := filepath.Join(home, ".codex/sessions/2026/10/30")
+	logs := filepath.Join(home, ".codex", "sessions", "2026", "10", "30")
 	os.MkdirAll(logs, 0o755)
 	os.WriteFile(filepath.Join(dir, "transcript.jsonl"), []byte(`{"type":"thread.started","thread_id":"abc-123"}`+"\n"), 0o600)
 	os.WriteFile(filepath.Join(logs, "rollout-test-abc-123.jsonl"), []byte(`{"payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":30}}}}`+"\n"), 0o600)
@@ -134,7 +134,7 @@ func TestCodexUsageFile(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	dir := t.TempDir()
-	logs := filepath.Join(home, ".codex/sessions/2026/10/30")
+	logs := filepath.Join(home, ".codex", "sessions", "2026", "10", "30")
 	os.MkdirAll(logs, 0o755)
 	os.WriteFile(filepath.Join(dir, "transcript.jsonl"), []byte(`{"type":"thread.started","thread_id":"abc-123"}`+"\n"), 0o600)
 	tc := func(ts string, used float64) string {

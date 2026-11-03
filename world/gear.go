@@ -113,7 +113,7 @@ func upgrades(o upgradeOpts) any {
 	armor, ok1 := armorOf[cls]
 	weapons, ok2 := weaponsOf[cls]
 	if !ok1 || !ok2 {
-		panic(qerr{fmt.Errorf("Cannot read properties of undefined (reading 'join')")})
+		panic(qerr{fmt.Errorf("Cannot read properties of undefined (reading 'join')")}) //nolint:staticcheck // the JS tool's message, kept word for word
 	}
 	level := jsStr(o.level)
 	usable := fmt.Sprintf(`it.InventoryType IN (%s) AND it.RequiredLevel <= %s
@@ -164,11 +164,11 @@ func upgrades(o upgradeOpts) any {
 			return nil
 		}
 		p := s.get("points").([]*obj)[0]
-		if o.near != nil && (p.n("map") != o.mapID || math.Hypot(p.n("x")-o.near[0], p.n("y")-at(o.near, 1)) > o.radius.or(3000)) {
+		if len(o.near) > 0 && (p.n("map") != o.mapID || math.Hypot(p.n("x")-o.near[0], p.n("y")-at(o.near, 1)) > o.radius.or(3000)) {
 			return nil
 		}
 		r := newObj("x", p.get("x"), "y", p.get("y"), "z", p.get("z"), "area", p.get("area"))
-		if o.near != nil {
+		if len(o.near) > 0 {
 			r.set("distance", jsRound(math.Hypot(p.n("x")-o.near[0], p.n("y")-at(o.near, 1))))
 		}
 		return r

@@ -21,7 +21,7 @@ func idList(ids []int) string {
 	return strings.Join(s, ",")
 }
 
-// Area names and the zone each area belongs to (an area with no parent is its own zone), from the wowbench schema.
+// AreaTable is the area names and the zone each area belongs to (an area with no parent is its own zone), from the wowbench schema.
 type AreaTable struct {
 	ZoneOf map[int]int
 	Names  map[int]string
@@ -70,8 +70,9 @@ func Labels(m uint32, box *[4]float64) []Label {
 		q += " AND l.x BETWEEN ? AND ? AND l.y BETWEEN ? AND ?"
 		args = append(args, box[0], box[1], box[2], box[3])
 	}
-	out := []Label{}
-	for _, r := range MustRows(Bench(), q, args...) {
+	rows := MustRows(Bench(), q, args...)
+	out := make([]Label, 0, len(rows))
+	for _, r := range rows {
 		out = append(out, Label{ID: atoi(r[0]), Name: r[1], Zone: r[2] == "1", X: atof(r[3]), Y: atof(r[4]), Map: m})
 	}
 	return out

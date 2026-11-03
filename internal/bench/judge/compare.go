@@ -44,7 +44,7 @@ func byModel(cards []map[string]any) []obj {
 		groups[k] = append(groups[k], c)
 	}
 	sort.Slice(keys, func(i, j int) bool { return keys[i][0]+keys[i][1] < keys[j][0]+keys[j][1] })
-	var out []obj
+	out := make([]obj, 0, len(keys))
 	for _, k := range keys {
 		var scores []float64
 		best, total, usd, hours, costKnown := 0.0, 0.0, 0.0, 0.0, true
@@ -82,7 +82,7 @@ func byModel(cards []map[string]any) []obj {
 // Compare pools the players of several runs (their report.json) by runtime and model: a table, then the groups as
 // JSON.
 func Compare(dirs []string) {
-	var cards []map[string]any
+	cards := make([]map[string]any, 0, len(dirs))
 	for _, d := range dirs {
 		b, err := os.ReadFile(filepath.Join(d, "report.json"))
 		if err != nil {

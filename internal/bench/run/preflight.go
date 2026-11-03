@@ -45,7 +45,7 @@ func preflightRows(db *sql.DB) func(context.Context, string, ...any) ([]map[stri
 		if err != nil {
 			return nil, err
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }() // read to the end, or the error is returned
 		cols, err := rows.Columns()
 		if err != nil {
 			return nil, err
@@ -78,7 +78,9 @@ func CheckScenario(repo string, s *config.Scenario) Preflight {
 	defer cancel()
 	nav := navigation.NewEmbeddedNavigator(filepath.Join(repo, "data"))
 	defer nav.Close()
-	return checkScenario(ctx, s, preflightSource{query: preflightRows(world.DB(world.Admin, "acore_world")), skill: func(id int) (string, bool) { return preflightSkill(filepath.Join(repo, "data/dbc/SkillLine.dbc"), id) }, path: nav.FindPathContext})
+	return checkScenario(ctx, s, preflightSource{query: preflightRows(world.DB(world.Admin, "acore_world")), skill: func(id int) (string, bool) {
+		return preflightSkill(filepath.Join(repo, "data", "dbc", "SkillLine.dbc"), id)
+	}, path: nav.FindPathContext})
 }
 
 func checkScenario(ctx context.Context, s *config.Scenario, src preflightSource) Preflight {
@@ -159,18 +161,19 @@ func checkScenario(ctx context.Context, s *config.Scenario, src preflightSource)
 		for _, r := range targets {
 			add("combat_target", "verified", "", "template level/rank and estimated base health; server scaling and live stats may differ", r)
 			for _, a := range s.Agents {
-				if s.Level > 0 && number(r, "maxlevel") > s.Level {
-					diff := number(r, "maxlevel") - s.Level
-					spellMiss := 4 + diff
-					if diff >= 3 {
-						spellMiss = 6 + (diff-2)*11
-					}
-					meleePenalty := float64(diff) * 0.5
-					if diff > 2 {
-						meleePenalty = 1 + float64(diff*5-10)*0.4
-					}
-					add("level_difference", "warning", a.Name, "estimated PvE hit penalties at full weapon skill and default server rates, before hit bonuses; actual weapon skill, spell attributes, defense and configured miss multiplier may differ", map[string]any{"target": r["entry"], "level_difference": diff, "estimated_spell_miss_pct": min(100, spellMiss), "estimated_melee_level_penalty_pct": meleePenalty, "minutes_available": s.Minutes, "source": "WorldObject::MagicSpellHitResult; Unit::MeleeSpellMissChance"})
+				if s.Level <= 0 || number(r, "maxlevel") <= s.Level {
+					continue
 				}
+				diff := number(r, "maxlevel") - s.Level
+				spellMiss := 4 + diff
+				if diff >= 3 {
+					spellMiss = 6 + (diff-2)*11
+				}
+				meleePenalty := float64(diff) * 0.5
+				if diff > 2 {
+					meleePenalty = 1 + float64(diff*5-10)*0.4
+				}
+				add("level_difference", "warning", a.Name, "estimated PvE hit penalties at full weapon skill and default server rates, before hit bonuses; actual weapon skill, spell attributes, defense and configured miss multiplier may differ", map[string]any{"target": r["entry"], "level_difference": diff, "estimated_spell_miss_pct": min(100, spellMiss), "estimated_melee_level_penalty_pct": meleePenalty, "minutes_available": s.Minutes, "source": "WorldObject::MagicSpellHitResult; Unit::MeleeSpellMissChance"})
 			}
 		}
 		triggers := query("exploration", `SELECT t.entry,t.map,t.x,t.y,t.z,t.radius FROM areatrigger_involvedrelation r JOIN areatrigger t ON t.entry=r.id WHERE r.quest=?`, id)

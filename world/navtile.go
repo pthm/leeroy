@@ -86,7 +86,7 @@ func NavTile(m uint32, gx, gy, level, sx, sy int) []byte {
 	for i := range z {
 		z[i], zh[i] = float32(math.Inf(1)), float32(math.Inf(-1))
 	}
-	any := false
+	found := false
 	for _, t := range squareTris(m, gx, gy) {
 		// pixel space: column from y (west left), row from x (north up)
 		var c, r [3]float64
@@ -109,12 +109,12 @@ func NavTile(m uint32, gx, gy, level, sx, sy int) []byte {
 				}
 				h := float32(a)*t[0].Z + float32(b)*t[1].Z + float32(1-a-b)*t[2].Z
 				z[y*n+x], zh[y*n+x] = min(z[y*n+x], h), max(zh[y*n+x], h)
-				any = true
+				found = true
 			}
 		}
 	}
 	img := image.NewNRGBA(image.Rect(0, 0, n, n))
-	if any {
+	if found {
 		ground := terrainHeights(m, xN, yW, res, n)
 		edge := max(1.0, res) // a yard's step, or a pixel's at coarse levels
 		for y := 0; y < n; y++ {
@@ -160,6 +160,6 @@ func NavTile(m uint32, gx, gy, level, sx, sy int) []byte {
 		}
 	}
 	var buf bytes.Buffer
-	png.Encode(&buf, img)
+	_ = png.Encode(&buf, img) // into memory: it doesn't fail
 	return buf.Bytes()
 }

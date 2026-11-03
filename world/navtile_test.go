@@ -37,7 +37,7 @@ func TestNavTile(t *testing.T) {
 	if NavTile(0, 49, 31, 5, 0, 0) != nil {
 		t.Fatal("no level past 4")
 	}
-	if len(os.Getenv("NAV_SHOT")) > 0 {
+	if os.Getenv("NAV_SHOT") != "" {
 		os.WriteFile(os.Getenv("NAV_SHOT"), b, 0o644)
 	}
 }

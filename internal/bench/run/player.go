@@ -112,7 +112,9 @@ func (p *player) workspace() error {
 	}
 	notes := filepath.Join(p.ws, "NOTES.md")
 	if _, err := os.Stat(notes); err != nil {
-		os.WriteFile(notes, []byte("# Notes\n\nYour notebook, kept with your workspace (AGENTS.md, \"NOTES.md\").\n"), 0o644)
+		if err := os.WriteFile(notes, []byte("# Notes\n\nYour notebook, kept with your workspace (AGENTS.md, \"NOTES.md\").\n"), 0o644); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -147,7 +149,12 @@ func (p *player) daemon(extra ...string) (*exec.Cmd, error) {
 		runLog.Close()
 		return nil, err
 	}
-	go func() { cmd.Wait(); log.Close(); runLog.Close(); p.sessionExited(cmd) }()
+	go func() {
+		_ = cmd.Wait() // sessionExited looks at how it ended
+		_ = log.Close()
+		_ = runLog.Close()
+		p.sessionExited(cmd)
+	}()
 	return cmd, nil
 }
 
@@ -189,7 +196,7 @@ func (p *player) login(ctx context.Context) error {
 			}
 			select {
 			case <-ctx.Done():
-				syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) // gone already is fine
 				return ctx.Err()
 			case <-time.After(time.Second):
 			}
@@ -211,7 +218,9 @@ func (p *player) prepare(ctx context.Context) error {
 	if err := acct.Ensure(p.account(), p.account(), 0); err != nil {
 		return fmt.Errorf("account: %v", err)
 	}
-	os.WriteFile(filepath.Join(p.ws, "session.log"), nil, 0o644) // the workspace (and old log) persists
+	if err := os.WriteFile(filepath.Join(p.ws, "session.log"), nil, 0o644); err != nil { // the workspace (and old log) persists
+		return err
+	}
 	s := p.r.s
 	if s.Level > 0 || s.Money > 0 || s.Start != nil || len(s.Setup) > 0 || p.a.Kit != nil {
 		for try := 1; !charExists(p.a.Char) && try <= 3; try++ { // concurrent logins can time out on the auth server
@@ -227,7 +236,7 @@ func (p *player) prepare(ctx context.Context) error {
 		if !charExists(p.a.Char) {
 			return fmt.Errorf("character not created, see %s", p.r.f().SessionLog(p.a.Char))
 		}
-		if !waitOffline(p.a.Char, 2*time.Minute) {
+		if !waitOffline(p.a.Char) {
 			return fmt.Errorf("still online")
 		}
 		if err := applyStart(s, p.a.Char); err != nil {
@@ -238,7 +247,7 @@ func (p *player) prepare(ctx context.Context) error {
 				return err
 			}
 		}
-	} else if !waitOffline(p.a.Char, 2*time.Minute) {
+	} else if !waitOffline(p.a.Char) {
 		return fmt.Errorf("still online from an earlier session")
 	}
 	return p.login(ctx)
@@ -270,6 +279,15 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 			}
 			cmd = exec.Command("codex", append(args, "-C", p.ws, text)...)
 		}
+	case "opencode":
+		args := []string{"run", "--pure", "--format", "json", "--print-logs", "--log-level", "ERROR", "-m", a.Model, "--dir", p.ws}
+		if resume != "" {
+			args = append(args, "--session", resume)
+		}
+		if a.Effort != "" {
+			args = append(args, "--variant", a.Effort)
+		}
+		cmd = exec.Command("opencode", append(args, text)...)
 	default:
 		// no auto-memory: it's keyed by the git root, so agents would share notes with each other (and with us). The
 		// env var turns it off, but Claude Code still lets sessions write the memory folder, so ~/.claude is denied
@@ -291,15 +309,6 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 		}
 		args = append(args, "Edit(./**)", "--disallowedTools", "Edit(~/.claude/**)", "Read(~/.claude/**)")
 		cmd = exec.Command("claude", args...)
-	case "opencode":
-		args := []string{"run", "--pure", "--format", "json", "--print-logs", "--log-level", "ERROR", "-m", a.Model, "--dir", p.ws}
-		if resume != "" {
-			args = append(args, "--session", resume)
-		}
-		if a.Effort != "" {
-			args = append(args, "--variant", a.Effort)
-		}
-		cmd = exec.Command("opencode", append(args, text)...)
 	}
 	cmd.Dir = p.ws
 	env := os.Environ()
@@ -315,12 +324,15 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 	if a.Runtime == "opencode" {
 		// its own empty config dir, so the user's opencode config (plugins, providers, AGENTS.md) stays out of the run
 		cfg := filepath.Join(p.dir, "opencode")
-		os.MkdirAll(cfg, 0o755)
+		if err := os.MkdirAll(cfg, 0o755); err != nil {
+			p.logf("opencode config: %v", err)
+		}
 		env = append(env, "XDG_CONFIG_HOME="+cfg, "OPENCODE_CONFIG_CONTENT="+opencodeConfig(repo, p.ws))
 	}
-	cmd.Env = append(env, "PATH="+filepath.Join(repo, "suite/agent/bin")+":"+os.Getenv("PATH"),
+	env = append(env, "PATH="+filepath.Join(repo, "suite", "agent", "bin")+":"+os.Getenv("PATH"),
 		"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "WOWBENCH_BOARD="+p.r.f().Board(),
 		"WOWBENCH_CHAR="+a.Char, fmt.Sprintf("WOW_MAX_WAIT=%d", agentMaxWaitSeconds), fmt.Sprintf("WOW_PORT=%d", p.port))
+	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // so stopping it stops its tools too
 	return cmd
 }
@@ -389,14 +401,14 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 	observer := newToolDiagnostics(p.a.Runtime, p.harnessEvent)
 	go func() {
 		defer close(drained)
-		defer pr.Close()
+		defer func() { _ = pr.Close() }() // a pipe's Close returns nil
 		if err := stampLinesObserved(pr, out, observer.observe); err != nil {
 			p.harnessEvent(types.Diagnostic{Kind: "runtime_state", Code: "transcript_io", Details: types.DiagnosticDetails{Component: "agent", State: "coverage_gap", Runtime: p.a.Runtime}})
 			p.logf("recording agent transcript: %v", err)
 		}
 	}()
 	if err := cmd.Start(); err != nil {
-		stamp.Close()
+		_ = stamp.Close() // a pipe's Close returns nil
 		<-drained
 		p.runtimeState("agent", "failed")
 		return err
@@ -426,9 +438,9 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 	p.mu.Unlock()
 	go func() {
 		defer close(done)
-		cmd.Wait()
+		_ = cmd.Wait() // the exit code is read below
 		stop.Stop()
-		stamp.Close()
+		_ = stamp.Close()
 		<-drained
 		observer.finish(time.Now().UnixMilli())
 		if err := judge.SaveUsage(p.dir); err != nil {
@@ -448,12 +460,12 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 	return nil
 }
 
-func stampLines(r io.Reader, w io.WriteCloser) {
-	stampLinesObserved(r, w, nil)
-}
-
-func stampLinesObserved(r io.Reader, w io.WriteCloser, observe func(map[string]any)) error {
-	defer w.Close()
+func stampLinesObserved(r io.Reader, w io.WriteCloser, observe func(map[string]any)) (err error) {
+	defer func() {
+		if cerr := w.Close(); err == nil {
+			err = cerr
+		}
+	}()
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 1<<20), 1<<26)
 	for sc.Scan() {
@@ -466,7 +478,7 @@ func stampLinesObserved(r io.Reader, w io.WriteCloser, observe func(map[string]a
 				line, _ = json.Marshal(obj)
 			} else {
 				var stamp string
-				json.Unmarshal(obj["timestamp"], &stamp)
+				_ = json.Unmarshal(obj["timestamp"], &stamp) // not a string: replaced below
 				if _, err := time.Parse(time.RFC3339Nano, stamp); err != nil {
 					obj["timestamp"], _ = json.Marshal(time.Now().UTC().Format(time.RFC3339Nano))
 				}
@@ -764,7 +776,9 @@ func (p *player) copyNotes() {
 			continue
 		}
 		if b, err := os.ReadFile(f); err == nil {
-			os.WriteFile(filepath.Join(p.dir, name), b, 0o644)
+			if err := os.WriteFile(filepath.Join(p.dir, name), b, 0o644); err != nil {
+				p.logf("%s: %v", name, err)
+			}
 		}
 	}
 }
@@ -784,13 +798,13 @@ func (p *player) stopAgent() {
 	if alive(cmd) {
 		if procs := toolProcs(cmd.Process.Pid); len(procs) > 0 {
 			for _, pid := range procs {
-				syscall.Kill(pid, syscall.SIGTERM)
+				_ = syscall.Kill(pid, syscall.SIGTERM) // gone already is fine
 			}
 			for end := time.Now().Add(toolGrace); alive(cmd) && tools.busy() && time.Now().Before(end); {
 				time.Sleep(50 * time.Millisecond)
 			}
 		}
-		cmd.Process.Signal(os.Interrupt) // the leader only: Codex's launcher passes it on to its binary
+		_ = cmd.Process.Signal(os.Interrupt) // the leader only: Codex's launcher passes it on to its binary
 		for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGKILL} {
 			for i := 0; i < 50 && alive(cmd); i++ {
 				time.Sleep(100 * time.Millisecond)
@@ -798,7 +812,7 @@ func (p *player) stopAgent() {
 			if !alive(cmd) {
 				break
 			}
-			syscall.Kill(-cmd.Process.Pid, sig)
+			_ = syscall.Kill(-cmd.Process.Pid, sig)
 		}
 	}
 	if done != nil {
@@ -864,12 +878,12 @@ func (p *player) stopSession() {
 	defer p.r.savePids()
 	if alive(cmd) {
 		calm(p.port)
-		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
-		for i := 0; i < 400 && alive(cmd); i++ { // the logout takes ~20 s out of combat
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) // gone already is fine
+		for i := 0; i < 400 && alive(cmd); i++ {            // the logout takes ~20 s out of combat
 			time.Sleep(100 * time.Millisecond)
 		}
 		if alive(cmd) {
-			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		}
 	}
 }

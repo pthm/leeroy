@@ -63,14 +63,14 @@ func New(b *config.Bench, s *config.Scenario, o Options) (*Runner, error) {
 	}
 	r := &Runner{repo: o.Repo, b: b, s: s, dir: o.Dir, monitor: o.Monitor}
 	if r.dir == "" {
-		r.dir = filepath.Join(o.Repo, "var/runs", time.Now().Format("20060102-150405")+"-"+s.Name)
+		r.dir = filepath.Join(o.Repo, "var", "runs", time.Now().Format("20060102-150405")+"-"+s.Name)
 	}
 	for i, a := range s.Agents {
 		race, _ := config.ID(config.Races, a.Race)
 		class, _ := config.ID(config.Classes, a.Class)
 		r.players = append(r.players, &player{
 			r: r, a: a, race: race, class: class, port: o.BasePort + i,
-			ws: filepath.Join(o.Repo, "var/workspaces", a.Name), dir: runfiles.Run(r.dir).Agent(a.Name), state: "starting",
+			ws: filepath.Join(o.Repo, "var", "workspaces", a.Name), dir: runfiles.Run(r.dir).Agent(a.Name), state: "starting",
 		})
 	}
 	return r, nil
@@ -85,10 +85,10 @@ func (r *Runner) Dir() string { return r.dir }
 // logf: a line in supervisor.log, and on stderr.
 func (r *Runner) logf(f string, a ...any) {
 	line := fmt.Sprintf("%s %s\n", time.Now().Format("2006-01-02 15:04:05"), fmt.Sprintf(f, a...))
-	os.Stderr.WriteString(line[11:]) // the terminal: the time of day
+	_, _ = os.Stderr.WriteString(line[11:]) // the terminal: the time of day
 	if fh, err := os.OpenFile(r.f().SupervisorLog(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
-		fh.WriteString(line)
-		fh.Close()
+		_, _ = fh.WriteString(line) // nowhere left to report a failure
+		_ = fh.Close()
 	}
 }
 
@@ -121,7 +121,9 @@ func (r *Runner) manifest(fn func(*runfiles.Manifest)) {
 	}
 	m.Minutes = r.s.Minutes
 	fn(&m)
-	r.f().WriteManifest(m)
+	if err := r.f().WriteManifest(m); err != nil {
+		r.logf("run.json: %v", err)
+	}
 }
 
 // Build builds the tools into bin/ (the judge, viewer, agent tools and the azsdk daemon).
@@ -182,16 +184,20 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 		}
 	}
 	for _, p := range r.players {
-		os.MkdirAll(p.dir, 0o755)
-		os.MkdirAll(r.f().Game(p.a.Char), 0o755)
-		os.MkdirAll(r.f().Judge(p.a.Char), 0o755)
+		for _, d := range []string{p.dir, r.f().Game(p.a.Char), r.f().Judge(p.a.Char)} {
+			if err := os.MkdirAll(d, 0o755); err != nil {
+				return err
+			}
+		}
 	}
 	// the scenario as run (the notice inlined), for resume and the record; again on a resume, which may have
 	// changed its length (resume --minutes)
 	saved := *r.s
 	if saved.Notice, _ = r.s.NoticeText(); true {
 		y, _ := yaml.Marshal(saved)
-		os.WriteFile(r.f().Scenario(), y, 0o644)
+		if err := os.WriteFile(r.f().Scenario(), y, 0o644); err != nil {
+			return err
+		}
 	}
 	if !resume {
 		// the benchmark version (suite/versions.yaml) and the SDK revision the run starts on, for the results
@@ -266,7 +272,7 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 			var err error
 			if resume {
 				if err = p.workspace(); err == nil { // the docs as of this build
-					if !waitOffline(p.a.Char, 2*time.Minute) {
+					if !waitOffline(p.a.Char) {
 						err = fmt.Errorf("still online")
 					} else {
 						err = p.login(r.ctx)
@@ -334,7 +340,9 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 		return nil
 	}
 	r.manifest(func(m *runfiles.Manifest) { m.Status, m.Ended = "finished", time.Now().UnixMilli() })
-	os.RemoveAll(r.f().Live(""))
+	if err := os.RemoveAll(r.f().Live("")); err != nil {
+		r.logf("live/: %v", err)
+	}
 	if !quiet {
 		r.finish()
 	}
@@ -379,7 +387,9 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 		p.autorun()
 		var text string
 		if text, err = prompt(r.s, r.b, p.a, r.repo); err == nil {
-			os.WriteFile(filepath.Join(p.dir, "prompt.md"), []byte(text), 0o644)
+			if err := os.WriteFile(filepath.Join(p.dir, "prompt.md"), []byte(text), 0o644); err != nil {
+				p.logf("prompt.md: %v", err)
+			}
 			err = p.startAgent(text, "", end)
 		}
 		go p.meta(spec)
@@ -400,7 +410,9 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 	p.mu.Lock()
 	p.result = j.line
 	p.mu.Unlock()
-	os.WriteFile(r.f().Result(p.a.Char), append(j.line, '\n'), 0o644)
+	if err := os.WriteFile(r.f().Result(p.a.Char), append(j.line, '\n'), 0o644); err != nil {
+		r.alert(p, "result not written: "+err.Error())
+	}
 	p.setState(types.JudgeDone)
 	p.logf("done: %s", j.line)
 	var out struct {

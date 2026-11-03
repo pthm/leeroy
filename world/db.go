@@ -51,7 +51,7 @@ func Rows(d *sql.DB, q string, args ...any) ([][]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rs.Close()
+	defer func() { _ = rs.Close() }() // read-only
 	cols, _ := rs.Columns()
 	var out [][]string
 	for rs.Next() {
@@ -82,6 +82,8 @@ func MustRows(d *sql.DB, q string, args ...any) [][]string {
 	return r
 }
 
-// World is the read-only world database, Bench the wowbench schema.
+// World is the read-only world database.
 func World() *sql.DB { return DB(Reader, "acore_world") }
+
+// Bench is the read-only wowbench schema.
 func Bench() *sql.DB { return DB(Reader, "wowbench") }

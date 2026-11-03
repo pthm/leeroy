@@ -14,7 +14,7 @@ import (
 func TestCodexQuota(t *testing.T) {
 	home := t.TempDir()
 	codexSessions = func() string { return home }
-	day := filepath.Join(home, "2026/10/31")
+	day := filepath.Join(home, "2026", "10", "31")
 	os.MkdirAll(day, 0o755)
 	future := time.Now().Add(time.Hour).Unix()
 	write := func(name string, mod time.Time, lines ...string) {

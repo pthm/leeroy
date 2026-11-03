@@ -24,7 +24,7 @@ import (
 // function.
 func (r *Runner) serveControl() func() {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) { json.NewEncoder(w).Encode(r.status()) })
+	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(r.status()) }) // the client gone
 	mux.HandleFunc("POST /pause", func(w http.ResponseWriter, _ *http.Request) {
 		r.logf("pausing (azbench pause)")
 		go r.pause()
@@ -32,10 +32,10 @@ func (r *Runner) serveControl() func() {
 	})
 	mux.HandleFunc("POST /restart", func(w http.ResponseWriter, req *http.Request) {
 		var q struct{ Agent, Message string }
-		json.NewDecoder(req.Body).Decode(&q)
+		_ = json.NewDecoder(req.Body).Decode(&q) // a bad body is an empty request, which restart refuses
 		if err := r.restart(q.Agent, q.Message); err != nil {
 			w.WriteHeader(400)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
 		fmt.Fprintln(w, `{"ok":true}`)
@@ -45,14 +45,14 @@ func (r *Runner) serveControl() func() {
 			Minutes float64
 			Message string
 		}
-		json.NewDecoder(req.Body).Decode(&q)
+		_ = json.NewDecoder(req.Body).Decode(&q) // a bad body is an empty request, which maintenance refuses
 		n, err := r.maintenance(time.Now().Add(time.Duration(q.Minutes*float64(time.Minute))), q.Message)
 		if err != nil {
 			w.WriteHeader(400)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "sent": n})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "sent": n})
 	})
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -60,15 +60,16 @@ func (r *Runner) serveControl() func() {
 		return func() {}
 	}
 	b, _ := json.Marshal(map[string]any{"addr": ln.Addr().String(), "pid": os.Getpid()})
-	os.MkdirAll(r.f().Live(""), 0o755)
-	os.WriteFile(r.f().Live("control.json"), b, 0o644)
+	if err := writeLive(r.f().Live("control.json"), b); err != nil {
+		r.logf("control.json: %v", err)
+	}
 	srv := &http.Server{Handler: mux}
-	go srv.Serve(ln)
-	return func() { srv.Close(); os.Remove(r.f().Live("control.json")) }
+	go func() { _ = srv.Serve(ln) }() // ErrServerClosed once stopped
+	return func() { _ = srv.Close(); _ = os.Remove(r.f().Live("control.json")) }
 }
 
 func (r *Runner) status() map[string]any {
-	var ps []map[string]any
+	ps := make([]map[string]any, 0, len(r.players))
 	for _, p := range r.players {
 		p.mu.Lock()
 		st := map[string]any{
@@ -118,7 +119,7 @@ func (r *Runner) restart(name, message string) error {
 			r.alert(p, "restart: "+err.Error())
 			return
 		}
-		if !waitOffline(p.a.Char, 2*time.Minute) {
+		if !waitOffline(p.a.Char) {
 			r.alert(p, "restart: still online")
 			return
 		}
@@ -175,7 +176,9 @@ func Control(dir, method, path string, body any) ([]byte, error) {
 		Addr string
 		Pid  int
 	}
-	json.Unmarshal(b, &c)
+	if err := json.Unmarshal(b, &c); err != nil {
+		return nil, fmt.Errorf("%s: control.json: %v", dir, err)
+	}
 	if !pidAlive(c.Pid) {
 		return nil, fmt.Errorf("%s: supervisor crashed (pid %d is gone); %d of its processes still run; azbench resume stops them", dir, c.Pid, len(leftovers(dir)))
 	}
@@ -187,7 +190,9 @@ func Control(dir, method, path string, body any) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 	var out bytes.Buffer
-	out.ReadFrom(resp.Body)
+	if _, err := out.ReadFrom(resp.Body); err != nil {
+		return nil, fmt.Errorf("%s: supervisor's answer: %v", dir, err)
+	}
 	if resp.StatusCode != 200 {
 		return out.Bytes(), fmt.Errorf("%s", bytes.TrimSpace(out.Bytes()))
 	}
@@ -240,8 +245,17 @@ func (r *Runner) savePids() {
 		}
 		p.mu.Unlock()
 	}
-	os.MkdirAll(r.f().Live(""), 0o755)
-	os.WriteFile(r.f().Live("pids"), []byte(b.String()), 0o644)
+	if err := writeLive(r.f().Live("pids"), []byte(b.String())); err != nil {
+		r.logf("pids: %v", err)
+	}
+}
+
+// writeLive writes a file in live/, making the folder.
+func writeLive(path string, b []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, b, 0o644)
 }
 
 // leftovers: the process groups in <run>/pids that still run, each only if its leader's command line still names
@@ -268,7 +282,7 @@ func leftovers(dir string) []int {
 func stopLeftovers(dir string) int {
 	pids := leftovers(dir)
 	for _, pid := range pids {
-		syscall.Kill(-pid, syscall.SIGTERM)
+		_ = syscall.Kill(-pid, syscall.SIGTERM) // gone already is fine
 	}
 	for end := time.Now().Add(30 * time.Second); time.Now().Before(end); time.Sleep(200 * time.Millisecond) {
 		if !slices.ContainsFunc(pids, pidAlive) {
@@ -277,7 +291,7 @@ func stopLeftovers(dir string) int {
 	}
 	for _, pid := range pids {
 		if pidAlive(pid) {
-			syscall.Kill(-pid, syscall.SIGKILL)
+			_ = syscall.Kill(-pid, syscall.SIGKILL)
 		}
 	}
 	return len(pids)

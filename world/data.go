@@ -39,7 +39,7 @@ func DataDir() string { return dataDir() }
 func DataFlag(args []string) []string {
 	for i, a := range args {
 		if a == "--data" && i+1 < len(args) {
-			os.Setenv("LEEROY_DATA", args[i+1])
+			_ = os.Setenv("LEEROY_DATA", args[i+1]) // fails only for a bad name
 			return append(append([]string{}, args[:i]...), args[i+2:]...)
 		}
 	}
