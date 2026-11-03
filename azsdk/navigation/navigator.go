@@ -144,6 +144,19 @@ func (n *embeddedNavigator) FindPathContext(ctx context.Context, mapID uint32, s
 	return prepared, nil
 }
 
+// RoutePathContext is the navmesh's path alone, without the collision checks a walk needs (PreparePathContext): what a
+// planner weighing routes by their length wants, several times faster.
+func (n *embeddedNavigator) RoutePathContext(ctx context.Context, mapID uint32, start, dest Point3D) (*PathResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, pathfinding.QueryTimeout)
+	defer cancel()
+	result, err := n.svc.FindPathContext(ctx, mapID, pathfinding.Point3D{X: start.X, Y: start.Y, Z: start.Z},
+		pathfinding.Point3D{X: dest.X, Y: dest.Y, Z: dest.Z})
+	if err != nil {
+		return nil, err
+	}
+	return convertResult(result), nil
+}
+
 func (n *embeddedNavigator) FindRandomPath(mapID uint32, center Point3D, radius float32) (*PathResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), pathfinding.QueryTimeout)
 	defer cancel()

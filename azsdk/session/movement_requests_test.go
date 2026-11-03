@@ -343,12 +343,12 @@ func TestMovementWalkingDeadlineFollowsTheRoute(t *testing.T) {
 	f.control.mu.Unlock()
 	id := f.start(1, 16)
 	f.walking(t, id)
-	f.clock.Add(int64(30 * time.Second)) // the straight line's deadline (16/5*1.5+10 = 14.8 s) is long gone
+	f.clock.Add(int64(40 * time.Second)) // the straight line's deadline (16/7*2+30 = 34.6 s) is gone
 	f.control.poll()
 	if r := f.control.reqs.Result(id); r["pending"] != true {
 		t.Fatalf("timed out on the straight line: %v", r)
 	}
-	f.clock.Add(int64(18 * time.Second)) // the route's: 120/5*1.5+10 = 46 s
+	f.clock.Add(int64(30 * time.Second)) // the route's: 120/7*2+30 = 64.3 s at run speed
 	f.control.poll()
 	f.resultCode(t, id, "timeout")
 }

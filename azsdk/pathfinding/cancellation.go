@@ -15,12 +15,12 @@ import (
 const (
 	QueryTimeout  = 30 * time.Second
 	MaxLegYards   = 16384 // most of a continent: the long search crosses one in a few seconds
-	MaxQueryTiles = 1024
+	MaxQueryTiles = 4096  // the whole 64x64 grid: a continent has 400-800 tiles, the rest is sea with no file (a cell checked once)
 	maxTileBytes  = 16 << 20
 )
 
 // ErrQueryLimit is returned for a route over the leg or tile limits.
-var ErrQueryLimit = errors.New("route exceeds query limits: use legs of at most 16384 yards and at most 1024 tiles")
+var ErrQueryLimit = errors.New("route exceeds query limits: use legs of at most 16384 yards and at most 4096 tiles")
 
 // ErrSearchLimit means the navmesh search gave up before it reached the destination (a long, winding route)
 var ErrSearchLimit = fmt.Errorf("%w: the navmesh search ran out before reaching the destination (no way through the navmesh, or a very long winding route): try a waypoint between", ErrQueryLimit)

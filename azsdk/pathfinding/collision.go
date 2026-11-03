@@ -67,12 +67,12 @@ func (b AABox) overlaps(o AABox) bool {
 	return b.Low.X <= o.High.X && b.High.X >= o.Low.X && b.Low.Y <= o.High.Y && b.High.Y >= o.Low.Y && b.Low.Z <= o.High.Z && b.High.Z >= o.Low.Z
 }
 
-func modelPoint(mi ModelInstance, p Vector3) Vector3 {
+func modelPoint(mi *ModelInstance, p Vector3) Vector3 {
 	d := p.Sub(mi.iPos)
 	return mat3MulVec(mi.iInvRot, Vector3{-d.X, -d.Y, d.Z}).Mul(mi.iInvScale)
 }
 
-func worldNormal(mi ModelInstance, n Vector3) Vector3 {
+func worldNormal(mi *ModelInstance, n Vector3) Vector3 {
 	// Inverse of inverse rotation (transpose); reflection matches VMAP coordinates.
 	r := mi.iInvRot
 	v := Vector3{r[0][0]*n.X + r[1][0]*n.Y + r[2][0]*n.Z, r[0][1]*n.X + r[1][1]*n.Y + r[2][1]*n.Z, r[0][2]*n.X + r[1][2]*n.Y + r[2][2]*n.Z}
@@ -146,7 +146,7 @@ func (b *BIH) overlap(ctx context.Context, q AABox, visit func(uint32) error) er
 // collisionModels loads the complete query footprint. The global map BIH is
 // also the coverage authority: an indexed object absent from loaded tiles is
 // unknown, while an empty indexed region really is empty (even without a tile).
-func (vm *VMapManager) collisionModels(ctx context.Context, m uint32, box AABox) (*StaticMapTree, []ModelInstance, error) {
+func (vm *VMapManager) collisionModels(ctx context.Context, m uint32, box AABox) (*StaticMapTree, []*ModelInstance, error) {
 	tree, models, err := vm.collisionModelsMargin(ctx, m, box, 1)
 	if err != nil && strings.HasPrefix(err.Error(), "collision instance") {
 		// a building spawned from a tile further off than its neighbours (Ulduar's): load a wider ring
@@ -155,7 +155,7 @@ func (vm *VMapManager) collisionModels(ctx context.Context, m uint32, box AABox)
 	return tree, models, err
 }
 
-func (vm *VMapManager) collisionModelsMargin(ctx context.Context, m uint32, box AABox, margin int) (*StaticMapTree, []ModelInstance, error) {
+func (vm *VMapManager) collisionModelsMargin(ctx context.Context, m uint32, box AABox, margin int) (*StaticMapTree, []*ModelInstance, error) {
 	tree, err := vm.getTreeContext(ctx, m)
 	if err != nil {
 		return nil, nil, err
@@ -178,13 +178,13 @@ func (vm *VMapManager) collisionModelsMargin(ctx context.Context, m uint32, box 
 		return nil, nil, err
 	}
 	defer tree.dataMu.RUnlock()
-	models := []ModelInstance{}
+	models := []*ModelInstance{} // the tree's own instances: they don't change once loaded, and copying them was most of a route's garbage
 	if !tree.isTiled {
 		for _, mi := range tree.treeValues {
 			if mi == nil {
 				return nil, nil, fmt.Errorf("missing global model")
 			}
-			models = append(models, *mi)
+			models = append(models, mi)
 		}
 		if len(models) == 0 {
 			return nil, nil, fmt.Errorf("missing global model")
@@ -197,7 +197,7 @@ func (vm *VMapManager) collisionModelsMargin(ctx context.Context, m uint32, box 
 		if mi == nil || mi.spawn.name == "" {
 			return fmt.Errorf("collision instance %d unavailable", id)
 		}
-		models = append(models, *mi)
+		models = append(models, mi)
 		return nil
 	})
 	return tree, models, err
@@ -222,7 +222,7 @@ func (vm *VMapManager) SweepBodyContext(ctx context.Context, m uint32, a, b Poin
 	}
 	result := CollisionCheck{State: "clear", Fraction: 1}
 	for _, mi := range models {
-		model, ok := tree.modelForInstanceContext(ctx, &mi)
+		model, ok := tree.modelForInstanceContext(ctx, mi)
 		if !ok {
 			return unknownCollision("collision model unavailable: " + mi.spawn.name)
 		}
@@ -287,7 +287,7 @@ func (vm *VMapManager) TraceMovementContext(ctx context.Context, m uint32, a, b 
 	}
 	result := CollisionCheck{State: "clear", Fraction: 1}
 	for _, mi := range models {
-		model, ok := tree.modelForInstanceContext(ctx, &mi)
+		model, ok := tree.modelForInstanceContext(ctx, mi)
 		if !ok {
 			return unknownCollision("collision model unavailable: " + mi.spawn.name)
 		}

@@ -1034,11 +1034,8 @@ func (s *StaticMapTree) modelForInstanceContext(ctx context.Context, mi *ModelIn
 		s.dataMu.RUnlock()
 		return nil, false
 	}
-	modelFile := s.basePath + mi.spawn.name + ".vmo" // the server reads <name>.vmo (WorldModelStore)
+	name := mi.spawn.name // the cache's key: the file, <name>.vmo, is only built to load it (a lookup per collision test)
 	s.dataMu.RUnlock()
-	if modelFile == s.basePath {
-		return nil, false
-	}
 
 	// Serialize lazy model loads and cache mutation. Without this, hundreds of
 	// bots can notice the same absent model and simultaneously read the same
@@ -1055,14 +1052,15 @@ func (s *StaticMapTree) modelForInstanceContext(ctx context.Context, mi *ModelIn
 		s.dataMu.RUnlock()
 		return nil, false
 	}
-	modelFile = s.basePath + mi.spawn.name + ".vmo"
+	name = mi.spawn.name
 	s.dataMu.RUnlock()
 
-	if entry := s.modelCache[modelFile]; entry != nil {
+	if entry := s.modelCache[name]; entry != nil {
 		s.modelLRU.MoveToFront(entry.elem)
 		return entry.model, true
 	}
 
+	modelFile := s.basePath + name + ".vmo" // the server reads <name>.vmo (WorldModelStore)
 	model := &WorldModel{}
 	if err := model.readFileContext(ctx, modelFile); err != nil {
 		// Some extracted datasets retain an assembled VMAP under the spawn's
@@ -1072,11 +1070,11 @@ func (s *StaticMapTree) modelForInstanceContext(ctx context.Context, mi *ModelIn
 		}
 	}
 
-	s.addModelToCacheLocked(modelFile, model)
+	s.addModelToCacheLocked(name, model)
 	return model, true
 }
 
-func (s *StaticMapTree) addModelToCacheLocked(modelFile string, model *WorldModel) {
+func (s *StaticMapTree) addModelToCacheLocked(name string, model *WorldModel) {
 	if s.modelCache == nil {
 		s.modelCache = make(map[string]*modelCacheEntry)
 	}
@@ -1086,12 +1084,12 @@ func (s *StaticMapTree) addModelToCacheLocked(modelFile string, model *WorldMode
 
 	bytes := model.estimatedBytes()
 	entry := &modelCacheEntry{
-		filename: modelFile,
+		filename: name,
 		model:    model,
 		bytes:    bytes,
 	}
 	entry.elem = s.modelLRU.PushFront(entry)
-	s.modelCache[modelFile] = entry
+	s.modelCache[name] = entry
 	s.modelCacheBytes += bytes
 	s.evictModelCacheLocked()
 }

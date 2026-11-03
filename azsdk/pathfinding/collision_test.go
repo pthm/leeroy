@@ -26,7 +26,7 @@ func collisionFixture(t *testing.T, vertices []Vector3, mesh []MeshTriangle) (*V
 	mi := &ModelInstance{spawn: ModelSpawn{name: "fixture", Flags: 1, iScale: 1}}
 	mi.initTransform()
 	tree := &StaticMapTree{basePath: vm.basePath, treeValues: map[uint32]*ModelInstance{0: mi}, loadedTiles: map[uint32]bool{}}
-	tree.addModelToCacheLocked(vm.basePath+"fixture.vmo", model)
+	tree.addModelToCacheLocked("fixture", model)
 	vm.trees[0] = tree
 	return vm, tree
 }
@@ -77,7 +77,7 @@ func TestMovementCapsuleCeilingOverlapAndScale(t *testing.T) {
 
 func TestMovementCollisionUnavailableIsUnknown(t *testing.T) {
 	vm, tree := wallFixture(t)
-	delete(tree.modelCache, vm.basePath+"fixture.vmo")
+	delete(tree.modelCache, "fixture")
 	if r := vm.SweepBodyContext(context.Background(), 0, Point3D{}, Point3D{X: 10}, WalkingBody()); r.State != "unknown" {
 		t.Fatal(r)
 	}

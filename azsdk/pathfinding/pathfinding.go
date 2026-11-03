@@ -13,6 +13,13 @@ import (
 	"github.com/pthm/leeroy/azsdk/internal/detour"
 )
 
+// The default speeds, yards a second, and the navmesh's water area (NAV_WATER).
+const (
+	RunSpeed  = 7.0
+	SwimSpeed = 4.722
+	navWater  = 0x08
+)
+
 const (
 	queryNodes         = 8192
 	longQueryNodes     = 1 << 20 // 8192 runs out between Westfall and Stormwind, 65535 (a 16-bit node index) across a zone
@@ -137,6 +144,9 @@ func newPathFinderContext(ctx context.Context, mmapMgr *MMapManager, terrainMgr 
 	// preparation refuses anyway (hazardous_surface: the Obsidian Sanctum's lava lakes)
 	filter.SetIncludeFlags(0x01 | 0x08)
 	filter.SetExcludeFlags(0)
+	// swimming is slower than running (4.72 yd/s to 7): a route through water costs that much more, so it swims only
+	// where the way round is longer still (the mmaps generator makes a poly's area its terrain: NAV_WATER 0x08)
+	filter.SetAreaCost(navWater, RunSpeed/SwimSpeed)
 
 	return &PathFinder{
 		mmapMgr:    mmapMgr,

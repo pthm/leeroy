@@ -27,6 +27,7 @@ type movementBackend struct {
 	position  func() types.Position
 	moving    func() bool
 	remaining func() float64 // yards of the route left to walk; 0 if unknown
+	speed     func() float64 // yards a second the character runs now; 0 if unknown
 	lock      func() string
 	inactive  func(int, string)
 	observe   func(types.Diagnostic)
@@ -251,7 +252,13 @@ func (m *movementRequests) worker() {
 			if m.backend.remaining != nil {
 				d = math.Max(d, m.backend.remaining())
 			}
-			r.deadline = r.started.Add(time.Duration(math.Min(d/5*1.5+10, 3600) * float64(time.Second)))
+			// its deadline: the route at the character's own speed, twice over (swimming is half again slower, and it
+			// stops for doors, corners and lifts), and half a minute
+			speed := pathfinding.RunSpeed
+			if m.backend.speed != nil && m.backend.speed() > 0 {
+				speed = m.backend.speed()
+			}
+			r.deadline = r.started.Add(time.Duration(math.Min(d/speed*2+30, 7200) * float64(time.Second)))
 			r.owner.Phase = "walking"
 		}
 		m.unlock()
@@ -413,6 +420,7 @@ func (b *Bot) setupMovementRequests() {
 			return types.Position{X: float64(x), Y: float64(y), Z: float64(z)}
 		},
 		moving: b.IsMoving, lock: b.world.MovementLock, remaining: b.routeRemaining,
+		speed:   func() float64 { return float64(b.world.MoveSpeed()) },
 		observe: e.RecordObservationEvent,
 		inactive: func(task int, reason string) {
 			if b.routes != nil {
