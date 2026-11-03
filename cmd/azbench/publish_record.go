@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
+	_ "image/png" // mapImages reads a floor plan's size
 	"math"
 	"os"
 	"path/filepath"
@@ -289,15 +290,18 @@ func simplify(raw [][5]float64) [][5]float64 {
 type mapImage struct {
 	Map  int     `json:"map"`
 	Name string  `json:"name"`
-	File string  `json:"file,omitempty"` // under site/src/assets/runs: the detail map in grey (continents) or the navmesh floor plan (instances)
+	File string  `json:"file,omitempty"` // in the assets bucket: the detail map in grey (continents) or the navmesh floor plan (instances)
+	Full string  `json:"full,omitempty"` // a continent's map at twice the size, for the enlarged view
+	W    int     `json:"w,omitempty"`    // its size in pixels
+	H    int     `json:"h,omitempty"`
 	XMin float64 `json:"x_min"`
 	XMax float64 `json:"x_max"`
 	YMin float64 `json:"y_min"`
 	YMax float64 `json:"y_max"`
 }
 
-// mapImages: one box per map the players spent time on, around every point of every route; continents get a relief
-// image written to assetDir.
+// mapImages: one box per map the players spent time on, around every point of every route, with its image written
+// under assetDir (runs/<id>/maps/): a continent's relief, an instance's floor plan.
 func mapImages(id string, tracks [][][5]float64, assetDir string) ([]mapImage, error) {
 	box := map[int]*[4]float64{}
 	n := map[int]int{}
@@ -327,23 +331,36 @@ func mapImages(id string, tracks [][][5]float64, assetDir string) ([]mapImage, e
 		w = math.Max(w, h*1.6)
 		h = w / 1.6
 		mi := mapImage{Map: m, Name: mapName(m), XMin: cx - h/2, XMax: cx + h/2, YMin: cy - w/2, YMax: cy + w/2}
-		if f := mapFile(id, m); fileExists(filepath.Join(assetDir, f)) { // already drawn: delete the file to redraw
+		if f := mapFile(id, m); fileExists(filepath.Join(assetDir, f)) { // already drawn: delete the files to redraw
 			mi.File = f
+			if _, ok := continents[m]; ok {
+				mi.Full = strings.TrimSuffix(f, ".jpg") + "-full.jpg"
+			}
 		} else if _, ok := continents[m]; ok {
-			// the viewer's full-detail map (ground, buildings, trees), in greyscale so the routes' colours stand out
-			mi.File = fmt.Sprintf("%s-%d.jpg", id, m)
-			img := world.DetailBox(uint32(m), mi.XMin, mi.XMax, mi.YMin, mi.YMax, 2400) // sharp enough to zoom into
-			if err := writeJPEG(filepath.Join(assetDir, mi.File), img); err != nil {
-				return nil, err
+			// the viewer's full-detail map (ground, buildings, trees), in greyscale so the routes' colours stand out: on
+			// the page at 1200 px, and at 2400 for the enlarged view, sharp enough to zoom into
+			mi.File, mi.Full = mapFile(id, m), strings.TrimSuffix(mapFile(id, m), ".jpg")+"-full.jpg"
+			for f, w := range map[string]int{mi.File: 1200, mi.Full: 2400} {
+				if err := writeJPEG(filepath.Join(assetDir, f), world.DetailBox(uint32(m), mi.XMin, mi.XMax, mi.YMin, mi.YMax, w)); err != nil {
+					return nil, err
+				}
 			}
 		} else if plan := world.FloorBox(uint32(m), mi.XMin, mi.XMax, mi.YMin, mi.YMax, math.Max(0.5, w/1400)); plan != nil {
 			// an instance: its navmesh floor plan, transparent around it
-			mi.File = fmt.Sprintf("%s-%d.png", id, m)
-			if err := os.MkdirAll(assetDir, 0o755); err != nil {
+			mi.File = mapFile(id, m)
+			if err := os.MkdirAll(filepath.Dir(filepath.Join(assetDir, mi.File)), 0o755); err != nil {
 				return nil, err
 			}
 			if err := os.WriteFile(filepath.Join(assetDir, mi.File), plan, 0o644); err != nil {
 				return nil, err
+			}
+		}
+		if mi.File != "" { // its size, so the page holds its place while it loads
+			if fh, err := os.Open(filepath.Join(assetDir, mi.File)); err == nil {
+				if c, _, err := image.DecodeConfig(fh); err == nil {
+					mi.W, mi.H = c.Width, c.Height
+				}
+				fh.Close()
 			}
 		}
 		out = append(out, mi)
@@ -434,12 +451,12 @@ func writeJPEG(f string, img image.Image) error {
 	return os.WriteFile(f, b.Bytes(), 0o644)
 }
 
-// mapFile is the file a run's map is drawn to: a JPEG for a continent, a PNG floor plan for an instance.
+// mapFile is where a run's map is drawn, in the assets bucket: a JPEG for a continent, a PNG floor plan for an instance.
 func mapFile(id string, m int) string {
 	if _, ok := continents[m]; ok {
-		return fmt.Sprintf("%s-%d.jpg", id, m)
+		return fmt.Sprintf("runs/%s/maps/%d.jpg", id, m)
 	}
-	return fmt.Sprintf("%s-%d.png", id, m)
+	return fmt.Sprintf("runs/%s/maps/%d.png", id, m)
 }
 
 func fileExists(f string) bool {

@@ -179,7 +179,7 @@ view run=latest *args: build
 report run=latest:
     bin/azbench report "{{ run }}"
 
-[doc("Publish runs to the site (site/src/data/runs)")]
+[doc("Publish runs to the site: their JSON into site/src/data/runs, their assets into var/assets (just upload sends those)")]
 [group('bench')]
 publish +runs: build
     bin/azbench publish {{ runs }}
@@ -199,6 +199,7 @@ site-install:
 [doc("The site with live reload on http://localhost:4321/")]
 [group('site')]
 site-dev:
+    mkdir -p var/assets && ln -sfn ../../var/assets site/public/assets  # published runs' assets, before just upload
     cd site && npm run dev
 
 [doc("Build the site into site/dist")]
@@ -280,10 +281,10 @@ remote-runs:
 remote-fetch *runs:
     deploy/hetzner/remote.sh fetch {{ runs }}
 
-[doc("Upload what a published run's page links to (trajectories, game logs) to the assets bucket (default: the newest run)")]
+[doc("Upload published runs' assets (icons, maps, trajectories, game logs) from var/assets to the public assets bucket (default: the newest run)")]
 [group('bench')]
-upload run=latest:
-    deploy/upload.sh "{{ run }}"
+upload *runs:
+    deploy/upload.sh {{ runs }}
 
 # ---------- release ----------
 

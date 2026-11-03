@@ -41,7 +41,7 @@ export interface Player {
   damage_to?: [string, number][];
   heard_from?: Record<string, number>;
   pet_pct?: number;
-  downloads?: { trajectory?: string; game_log?: string }; // paths in the assets bucket (PUBLIC_ASSETS_URL), from just upload
+  downloads?: { trajectory?: string; game_log?: string }; // paths in the assets bucket (asset()), from just upload
   // from the agent's trajectory (ATIF): tool calls by what they ran, failures, and model calls where the runtime marks them
   play?: {
     tools: { name: string; calls: number; failed: number; median_s?: number }[];
@@ -63,7 +63,7 @@ export interface Player {
     abilities: { id: number; name: string; rank?: string; icon?: string }[];
   };
   casts?: Record<string, number>; // spell name -> times cast in the run
-  cast_icons?: Record<string, string>; // spell name -> icon (public/icons/<icon>.png)
+  cast_icons?: Record<string, string>; // spell name -> icon (icons/<icon>.png in the assets bucket)
   trajectory?: [number, number, number, string, number][]; // [minute, SDK calls succeeded, failed, top failure "op code", its count]
   cost_series?: [number, number][]; // [s from the start, cumulative USD]
   duels?: { at_s: number; opponent: string; won: boolean; result: string }[]; // a duel task: each duel decided
@@ -80,7 +80,10 @@ export interface Player {
 export interface MapBox {
   map: number;
   name: string;
-  file?: string; // src/assets/runs/<file>: a relief image of the box (continents)
+  file?: string; // in the assets bucket (asset()): the map's image, a continent's relief or an instance's floor plan
+  full?: string; // a continent's relief at twice the size, for the enlarged view
+  w?: number; // the image's size in pixels
+  h?: number;
   x_min: number;
   x_max: number;
   y_min: number;

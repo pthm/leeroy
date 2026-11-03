@@ -26,6 +26,9 @@ import (
 // model, outcome, time, cost and tokens, from the run's scenario.yaml, report.json and team.json. Small and committed:
 // the site builds from these, never from var/runs.
 func publish(root, runDir, task, out string) (string, error) {
+	// what the run's page loads besides its JSON (icons, map images, downloads), laid out as the assets bucket keeps
+	// it: just upload copies it there, and the site's dev server serves it from here meanwhile
+	assets := filepath.Join(root, "var", "assets")
 	id := filepath.Base(filepath.Clean(runDir))
 	f := runfiles.Run(runDir)
 	man, err := f.ReadManifest()
@@ -149,7 +152,7 @@ func publish(root, runDir, task, out string) (string, error) {
 			if pl := playOf(traj); pl != nil && pl.Calls > 0 {
 				p["play"] = pl
 			}
-			p["downloads"] = downloads(f, id, a.Name, char, traj)
+			p["downloads"] = downloads(f, id, a.Name, char, traj, assets)
 			cs := trajectoryCost(traj, started) // Claude Code, opencode: their steps price each model call
 			if cs == nil {                      // Codex: its session files' running totals
 				cs = costSeries(fmt.Sprint(p["runtime"]), fmt.Sprint(r["provider"]), fmt.Sprint(p["model"]), adir, started)
@@ -163,7 +166,7 @@ func publish(root, runDir, task, out string) (string, error) {
 			}
 			p["cost_series"] = cs
 			if k := kitOf(adir); k != nil {
-				kitIcons(k, filepath.Join(out, "..", "..", "..", "public", "icons"))
+				kitIcons(k, filepath.Join(assets, "icons"))
 				p["kit"] = k
 			}
 			if outs := outages(f.Diagnostics(a.Name)); len(outs) > 0 { // provider outages waited out
@@ -202,10 +205,10 @@ func publish(root, runDir, task, out string) (string, error) {
 		for k, v := range gameExtras(rec) {
 			p[k] = v
 		}
-		p["cast_icons"] = castIcons(p["casts"].(map[string]int), rec.spells, filepath.Join(out, "..", "..", "..", "public", "icons"))
+		p["cast_icons"] = castIcons(p["casts"].(map[string]int), rec.spells, filepath.Join(assets, "icons"))
 		tracks, thin = append(tracks, rec.track), append(thin, t)
 	}
-	maps, err := mapImages(id, thin, filepath.Join(out, "..", "..", "assets", "runs"))
+	maps, err := mapImages(id, thin, assets)
 	if err != nil {
 		return "", err
 	}

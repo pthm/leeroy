@@ -5,6 +5,8 @@ package main
 // per call, and its cost over the run where the steps price their model calls.
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"math"
 	"os"
@@ -172,20 +174,39 @@ func trajectoryCost(t *atif.Trajectory, start time.Time) [][2]float64 {
 	return out
 }
 
-// downloads: where a player's files are in the assets bucket (just upload puts them there), for the run page: its
-// trajectory (written into the run first when the run kept none, as publish rebuilt it) and its game log, gzipped.
-func downloads(f runfiles.Run, id, agent, char string, t *atif.Trajectory) map[string]string {
+// downloads: a player's files for the run page's downloads, put in the assets dir as the bucket keeps them (just
+// upload copies them there): its trajectory (written into the run first when the run kept none, as publish rebuilt
+// it) and its game log, gzipped. Their paths in the bucket; a file that couldn't be put there isn't listed.
+func downloads(f runfiles.Run, id, agent, char string, t *atif.Trajectory, assets string) map[string]string {
 	out := map[string]string{}
 	if _, err := os.Stat(f.Trajectory(agent)); err != nil && t != nil {
 		if b, err := json.MarshalIndent(t, "", "  "); err == nil {
 			_ = os.WriteFile(f.Trajectory(agent), append(b, '\n'), 0o644) // not written: the page goes without it (below)
 		}
 	}
-	if _, err := os.Stat(f.Trajectory(agent)); err == nil {
-		out["trajectory"] = "runs/" + id + "/trajectories/" + agent + ".json"
+	if b, err := os.ReadFile(f.Trajectory(agent)); err == nil {
+		path := "runs/" + id + "/trajectories/" + agent + ".json"
+		if put(assets, path, b) == nil {
+			out["trajectory"] = path
+		}
 	}
-	if _, err := os.Stat(f.Events(char)); err == nil {
-		out["game_log"] = "runs/" + id + "/game/" + char + ".jsonl.gz"
+	if b, err := os.ReadFile(f.Events(char)); err == nil {
+		var z bytes.Buffer
+		w, _ := gzip.NewWriterLevel(&z, gzip.BestCompression)
+		_, _ = w.Write(b)
+		path := "runs/" + id + "/game/" + char + ".jsonl.gz"
+		if w.Close() == nil && put(assets, path, z.Bytes()) == nil {
+			out["game_log"] = path
+		}
 	}
 	return out
+}
+
+// put writes b to path under the assets dir.
+func put(assets, path string, b []byte) error {
+	f := filepath.Join(assets, filepath.FromSlash(path))
+	if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(f, b, 0o644)
 }

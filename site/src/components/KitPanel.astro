@@ -4,7 +4,7 @@
 // one unit with a shared note below.
 import Icon from './GameIcon.astro';
 import { colors, specLabel, type Run, playerTip } from '../lib/results';
-import { url } from '../lib/url';
+import { asset } from '../lib/url';
 
 interface Props {
   run: Run;
@@ -14,7 +14,7 @@ const { run } = Astro.props;
 const color = colors(run);
 const SLOTS = ['Head', 'Neck', 'Shoulders', 'Shirt', 'Chest', 'Waist', 'Legs', 'Feet', 'Wrists', 'Hands', 'Finger', 'Finger', 'Trinket', 'Trinket', 'Back', 'Main hand', 'Off hand', 'Ranged', 'Tabard'];
 const QUALITY = ['#9d9d9d', '#ffffff', '#1eff00', '#0070dd', '#a335ee', '#ff8000'];
-const icon = (name?: string) => (name ? url(`/icons/${name}.png`) : undefined);
+const icon = (name?: string) => (name ? asset(`icons/${name}.png`) : undefined);
 const ps = run.players.filter(p => p.kit || Object.keys(p.casts ?? {}).length);
 const abilities = (p: (typeof ps)[number]) => {
   const casts = Object.entries(p.casts ?? {}).sort((a, b) => b[1] - a[1]);

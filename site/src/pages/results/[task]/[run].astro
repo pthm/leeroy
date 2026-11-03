@@ -40,7 +40,7 @@ import {
   thousands,
   type Run,
 } from '../../../lib/results';
-import { resultsUrl } from '../../../lib/url';
+import { asset, hasAssets, resultsUrl } from '../../../lib/url';
 
 export function getStaticPaths() {
   return allRuns().map(run => ({ params: { task: run.task, run: run.id }, props: { run } }));
@@ -57,7 +57,7 @@ const roster = run.players.toSorted(kv.playerOrder);
 const color = colors(run);
 const hasChat = (run.chat_per_min ?? []).some(h => Object.values(h).some(Boolean));
 const hasHeard = run.players.some(p => Object.keys(p.heard_from ?? {}).length);
-const hasDownloads = !!import.meta.env.PUBLIC_ASSETS_URL && run.players.some(p => p.downloads && Object.keys(p.downloads).length);
+const hasDownloads = hasAssets && run.players.some(p => p.downloads && Object.keys(p.downloads).length);
 const hasDeaths = run.players.some(p => p.death_list?.length);
 const hasCombat = run.players.some(p => (p.combat && (p.combat.damage_dealt || p.combat.healing_done || p.combat.damage_taken)) || p.kills_by?.length);
 const clock = run.minutes >= 1440 ? `${run.minutes / 1440} days` : `${run.minutes} min`;
@@ -113,6 +113,7 @@ const tiles = kv.runTiles(run).filter(tile => levelled || tile.k !== 'quests com
             {levelled && <th class="num">Quests</th>}
             <th class="num">Cost</th>
             <th class="num">Output</th>
+            {hasDownloads && <th>Downloads</th>}
           </tr>
         </thead>
         <tbody>
@@ -128,6 +129,13 @@ const tiles = kv.runTiles(run).filter(tile => levelled || tile.k !== 'quests com
               {levelled && <td class="num text-muted">{p.series?.at(-1)?.[4] ?? '–'}</td>}
               <td class="num text-muted">{dollars(p.cost_usd)}</td>
               <td class="num text-muted">{thousands(p.tokens?.output)}</td>
+              {hasDownloads && (
+                <td class="whitespace-nowrap text-muted">
+                  {p.downloads?.trajectory && <a class="underline hover:text-fg" href={asset(p.downloads.trajectory)} download title="The agent's trajectory (ATIF JSON)">trajectory</a>}
+                  {p.downloads?.trajectory && p.downloads?.game_log && ' · '}
+                  {p.downloads?.game_log && <a class="underline hover:text-fg" href={asset(p.downloads.game_log)} download title="The character's game log (JSON lines, gzipped)">game log</a>}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

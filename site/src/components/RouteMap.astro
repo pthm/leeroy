@@ -3,8 +3,8 @@
 // colour, a cross at each death (hover for who killed them) and a dot where each one ended. Titled with the map's
 // name (Figure), the legend's toggles and key at the top of the box.
 import Figure from './Figure.astro';
-import { getImage } from 'astro:assets';
 import { duration, type MapBox, type Player } from '../lib/results';
+import { asset, hasAssets } from '../lib/url';
 
 export interface Route {
   key: string; // for the legend: hide, show, highlight (a player, or a model on task pages)
@@ -22,13 +22,11 @@ interface Props {
 }
 
 const { box, routes, legend, thin = false } = Astro.props;
-const images = import.meta.glob<{ default: ImageMetadata }>('../assets/runs/*.{jpg,png}', { eager: true });
-const img = box.file ? images[`../assets/runs/${box.file}`]?.default : undefined;
-// WebP at build time: half size on the page, full size only when enlarged (scripts/interact.ts swaps it in)
-const small = img && (await getImage({ src: img, format: 'webp', width: Math.round(img.width / 2), quality: 72 }));
-const full = img && (await getImage({ src: img, format: 'webp', width: img.width, quality: 72 }));
-const W = img?.width ?? 1000;
-const H = img?.height ?? Math.round((W * (box.x_max - box.x_min)) / (box.y_max - box.y_min));
+// the map's image from the assets bucket: the page's size, and a continent's twice as big for the enlarged view
+// (scripts/interact.ts swaps it in); publish draws both
+const img = box.file && hasAssets ? { src: asset(box.file), full: asset(box.full ?? box.file) } : undefined;
+const W = box.w ?? 1000;
+const H = box.h ?? Math.round((W * (box.x_max - box.x_min)) / (box.y_max - box.y_min));
 // north (+x) up, west (+y) left, as in the game
 const px = (x: number, y: number) => [((box.y_max - y) / (box.y_max - box.y_min)) * W, ((box.x_max - x) / (box.x_max - box.x_min)) * H];
 const drawn = routes.map(r => {
@@ -74,7 +72,7 @@ const anyRide = drawn.some(x => x.rides);
   <div class="map-click overflow-hidden rounded border border-hairline" data-enlarge role="button" tabindex="0" aria-label={`Enlarge the map of ${box.name}`}>
     <svg viewBox={`0 0 ${W} ${H}`} class="block w-full" role="img" aria-label={`Routes in ${box.name}`} data-zoom>
       <rect width={W} height={H} fill="var(--color-base)" />
-      {img && <image href={small!.src} data-full={full!.src} width={W} height={H} opacity={floor ? 0.8 : 0.7} style={floor ? 'filter:grayscale(1)' : undefined} />}
+      {img && <image href={img.src} data-full={img.full} width={W} height={H} opacity={floor ? 0.8 : 0.7} style={floor ? 'filter:grayscale(1)' : undefined} />}
       {drawn.map(x => (
         <g class={x.r.cls} data-key={x.r.key}>
           <path d={x.d} fill="none" stroke="currentColor" stroke-width={line} vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round" opacity={thin ? 0.8 : 0.9}>
