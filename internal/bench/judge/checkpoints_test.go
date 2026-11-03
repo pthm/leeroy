@@ -37,3 +37,25 @@ func TestCheckpoints(t *testing.T) {
 		t.Fatalf("resumed: %s", got)
 	}
 }
+
+func TestCheckpointScore(t *testing.T) {
+	// two bosses of five on a two-hour clock: 2/5 of finishing as it runs out (0.5)
+	if s := checkpointScore(2, 5, 7200); s != 0.2 {
+		t.Fatalf("2/5: %v", s)
+	}
+	// all but the last still scores below any finish
+	if checkpointScore(4, 5, 7200) >= timeScore(true, 7199) || checkpointScore(0, 5, 7200) != 0 || checkpointScore(1, 0, 7200) != 0 {
+		t.Fatal("checkpointScore bounds")
+	}
+	// the report keeps an unmet result's checkpoint score, and scores a met one by time
+	res := map[string]any{"met": false, "elapsed_s": 7200.0, "score": 0.2, "checkpoints": []any{}}
+	timeScored(res)
+	if res["score"] != 0.2 {
+		t.Fatalf("unmet with checkpoints: %v", res["score"])
+	}
+	res = map[string]any{"met": true, "elapsed_s": 3600.0, "score": 0.2, "checkpoints": []any{}}
+	timeScored(res)
+	if res["score"] != 1.0 {
+		t.Fatalf("met: %v", res["score"])
+	}
+}

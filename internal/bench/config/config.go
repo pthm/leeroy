@@ -51,7 +51,7 @@ type Conditions struct {
 	// Hardcore: a character's first death ends its run (judge.Options.Hardcore), and the prompt says so
 	Hardcore bool `yaml:"hardcore"`
 	// Checkpoints: progress on the way to the goal (a dungeon's bosses), recorded with when each was first reached, so
-	// a run that doesn't finish still shows how far it got. Not in the prompt, and not scored.
+	// a run that doesn't finish still shows how far it got, and scores for it (judge checkpointScore). Not in the prompt.
 	Checkpoints []Checkpoint `yaml:"checkpoints,omitempty"`
 	// RequireFresh refuses to start if any agent's workspace exists (a run for new agents)
 	RequireFresh bool `yaml:"require_fresh"`

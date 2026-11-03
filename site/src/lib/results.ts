@@ -229,11 +229,20 @@ export interface ModelRow {
   meanRate?: number; // XP per hour (progress tasks)
   bestRate?: number;
   meanLevels?: number;
+  meanScore?: number; // the judge's score: goal tasks with checkpoints rank by it
+  meanCheckpoints?: number; // checkpoints reached, over all attempts
+  checkpoints?: number; // how many the task has
 }
 
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : undefined);
 
-// One row per model across a task's runs, best first: most goals met, then the fastest mean time.
+// A goal task with checkpoints (a dungeon's bosses): an unfinished run scores the share it reached (the judge's
+// checkpointScore), so its entries rank by mean score.
+export const hasCheckpoints = (task: string, v = ALL) => runsOf(task, v).some(r => r.players.some(p => p.checkpoints?.length));
+const reachedOf = (p: Player) => p.checkpoints?.filter(c => c.at_s != null).length;
+
+// One row per model across a task's runs, best first: most goals met, then the fastest mean time (with checkpoints,
+// the highest mean score).
 export function leaderboard(task: string, v = ALL): ModelRow[] {
   const by = new Map<string, Player[]>();
   for (const r of runsOf(task, v)) for (const p of r.players) by.set(entryKey(p), [...(by.get(entryKey(p)) ?? []), p]);
@@ -259,12 +268,17 @@ export function leaderboard(task: string, v = ALL): ModelRow[] {
         meanRate: mean(ps.flatMap(p => (xpRate(p) != null ? [xpRate(p)!] : []))),
         bestRate: bestRate(ps),
         meanLevels: mean(ps.flatMap(p => (levelsGained(p) != null ? [levelsGained(p)!] : []))),
+        meanScore: mean(ps.map(p => p.score ?? 0)),
+        meanCheckpoints: mean(ps.flatMap(p => (reachedOf(p) != null ? [reachedOf(p)!] : []))),
+        checkpoints: Math.max(0, ...ps.map(p => p.checkpoints?.length ?? 0)) || undefined,
       };
     })
     .sort(
       isProgress(task)
         ? (a, b) => (b.meanRate ?? 0) - (a.meanRate ?? 0)
-        : (a, b) => b.met / b.attempts - a.met / a.attempts || (a.meanTime ?? Infinity) - (b.meanTime ?? Infinity),
+        : hasCheckpoints(task, v)
+          ? (a, b) => (b.meanScore ?? 0) - (a.meanScore ?? 0) || (a.meanTime ?? Infinity) - (b.meanTime ?? Infinity)
+          : (a, b) => b.met / b.attempts - a.met / a.attempts || (a.meanTime ?? Infinity) - (b.meanTime ?? Infinity),
     );
 }
 

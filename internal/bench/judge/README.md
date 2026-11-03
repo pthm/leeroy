@@ -77,7 +77,10 @@ Computed for every goal from the value curve, in value per hour (`metrics.Curve`
 | `score` | `(rate + best_window) / 2`; for binary goals, `3600 / time_to_goal_s` (0 until met) |
 
 Binary goals (`achievement`, `quest`, `item`, `quality`, `zone`) are met or not, so their score is by time:
-`3600 / time_to_goal_s`, 1 for a goal met in an hour, 0 while unmet. `score` is the headline for `score:` goals. Time spent trying a new strategy lowers `rate` but not `best_window`;
+`3600 / time_to_goal_s`, 1 for a goal met in an hour, 0 while unmet. A task's checkpoints (a dungeon's bosses, each
+a creature the character or its party kills) give an unmet goal partial credit: the share reached times
+`3600 / timeout_s`, the score of meeting it as the clock ends, so any finish outranks any unfinished run. The
+samples, result and report list them in order as `checkpoints: [{name, at_s}]` (`at_s` null until reached). `score` is the headline for `score:` goals. Time spent trying a new strategy lowers `rate` but not `best_window`;
 deaths and stalls cost through the time they lose.
 
 ## score.json

@@ -27,8 +27,10 @@ const entries = [...by.values()]
   .sort((a, b) => b.pct.size - a.pct.size || b.mean - a.mean);
 const names = displayNames(entries.map(e => e.row));
 const cellText = (t: string, r: ModelRow) => (isProgress(t) ? rate(r.meanRate, t).replace(/ XP(\/h)?$/, '') : `${r.met}/${r.attempts}`);
-const cellSub = (t: string, r: ModelRow) => (isProgress(t) ? `n=${r.attempts}` : r.meanTime != null ? duration(r.meanTime) : 'none met');
-const cellValue = (t: string, r: ModelRow) => (isProgress(t) ? r.meanRate ?? 0 : r.met / r.attempts - (r.meanTime ?? 1e6) / 1e9);
+const cellSub = (t: string, r: ModelRow) =>
+  isProgress(t) ? `n=${r.attempts}` : r.meanTime != null ? duration(r.meanTime) : r.checkpoints ? `${r.meanCheckpoints?.toFixed(1) ?? 0}/${r.checkpoints} checkpoints` : 'none met';
+const cellValue = (t: string, r: ModelRow) =>
+  isProgress(t) ? r.meanRate ?? 0 : r.checkpoints ? r.meanScore ?? 0 : r.met / r.attempts - (r.meanTime ?? 1e6) / 1e9;
 ---
 
 <div data-filtered>

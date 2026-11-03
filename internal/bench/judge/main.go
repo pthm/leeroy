@@ -23,7 +23,8 @@
 //	recent_rate  value per hour over the last 10 minutes
 //	pace         the time-average of value so far (area under the curve / time)
 //	best_window  the best rate over any 15-minute window
-//	score        binary goals (achievement, quest, item, quality): 3600 / time_to_goal_s, 0 until met.
+//	score        binary goals (achievement, quest, item, quality): 3600 / time_to_goal_s, 0 until met; with
+//	             checkpoints (Options.Checkpoints), unmet scores the share reached times 3600 / the timeout.
 //	             Other goals: (rate + best_window) / 2, the headline for score goals. Sustained progress counts, and so does
 //	             finding a better strategy: time spent trying one lowers the rate but not the best window. Deaths
 //	             and stalls cost through the time they lose. For score goals, progress is the game's own rewards:
@@ -66,6 +67,16 @@ func timeScore(met bool, elapsedS float64) float64 {
 		return 0
 	}
 	return round3(3600 / math.Max(elapsedS, 1))
+}
+
+// checkpointScore is an unmet binary goal's partial credit: the share of its checkpoints reached, times the score of
+// meeting the goal as the clock runs out (3600 / timeout_s). Meeting the goal scores at least that, so any finish
+// outranks any unfinished run, and among those, more checkpoints rank higher.
+func checkpointScore(reached, total int, timeoutS float64) float64 {
+	if total == 0 || timeoutS <= 0 {
+		return 0
+	}
+	return round3(float64(reached) / float64(total) * 3600 / timeoutS)
 }
 
 // failure is a judge error: a bad argument, or the database. Main prints it and exits 2; Run skips a failed poll.
@@ -325,6 +336,15 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		score := round1(r.Score)
 		if binaryGoal(goal) {
 			score = timeScore(value >= need, elapsedS)
+			if value < need && len(o.Checkpoints) > 0 {
+				n := 0
+				for _, c := range o.Checkpoints {
+					if _, ok := reached[c.Name]; ok {
+						n++
+					}
+				}
+				score = checkpointScore(n, len(o.Checkpoints), timeout.Seconds())
+			}
 		}
 		died := o.Hardcore && sig.get("deaths") > base["deaths"]
 		var gaveUp map[string]any // standings give-up: the agent's reason, and when

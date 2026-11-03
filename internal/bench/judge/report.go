@@ -558,6 +558,12 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 			f = append(f, kv{"checkpoints", c})
 		}
 		res := readJSON(ar.result)
+		if len(res) == 0 { // no final result yet (running or paused): the last sample, unmet so far
+			res = map[string]any{"elapsed_s": l["elapsed_s"], "score": l["score"]}
+			if c, ok := l["checkpoints"]; ok {
+				res["checkpoints"] = c
+			}
+		}
 		goal := str(meta["goal"])
 		if goal == "" {
 			goal = str(res["goal"])
@@ -660,10 +666,13 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 }
 
 // timeScored sets a binary goal's judge result's score and time_to_goal_s from met and elapsed_s, so results saved
-// before binary goals were scored by time read the same.
+// before binary goals were scored by time read the same. An unmet goal with checkpoints keeps the judge's score (its
+// checkpoint credit, checkpointScore).
 func timeScored(res map[string]any) {
 	met := res["met"] == true
-	res["score"] = timeScore(met, fnum(res["elapsed_s"]))
+	if _, cps := res["checkpoints"]; met || !cps {
+		res["score"] = timeScore(met, fnum(res["elapsed_s"]))
+	}
 	res["time_to_goal_s"] = nil
 	if met {
 		res["time_to_goal_s"] = res["elapsed_s"]
