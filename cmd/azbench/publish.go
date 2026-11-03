@@ -133,6 +133,7 @@ func publish(root, runDir, task, out string) (string, error) {
 			if pl := playOf(traj); pl != nil && pl.Calls > 0 {
 				p["play"] = pl
 			}
+			p["downloads"] = downloads(f, id, a.Name, char, traj)
 			cs := trajectoryCost(traj, started) // Claude Code, opencode: their steps price each model call
 			if cs == nil {                      // Codex: its session files' running totals
 				cs = costSeries(fmt.Sprint(p["runtime"]), fmt.Sprint(r["provider"]), fmt.Sprint(p["model"]), adir, started)

@@ -203,6 +203,63 @@ gm class="warrior" *where: build
 apidoc: build
     bin/azbench apidoc
 
+# ---------- remote runs (Hetzner Cloud; settings and keys in .env, see .env.example) ----------
+
+[doc("Build the run servers' snapshot from this checkout's data/, server and tools (~1 h; again after those change)")]
+[group('remote')]
+remote-image:
+    deploy/hetzner/remote.sh image
+
+[doc("Run a task on a new server (LEEROY_TYPE=ccx43 for another size): uploads the run to R2, then deletes itself")]
+[group('remote')]
+remote-run task *args:
+    deploy/hetzner/remote.sh run {{ task }} {{ args }}
+
+[doc("The run servers")]
+[group('remote')]
+remote-ls:
+    deploy/hetzner/remote.sh ls
+
+[doc("A run server's run: the unit, its last lines, azbench status")]
+[group('remote')]
+remote-status server:
+    deploy/hetzner/remote.sh status {{ server }}
+
+[doc("Watch a run server's run in the viewer, through SSH (http://localhost:8801/)")]
+[group('remote')]
+remote-view server port="8801":
+    deploy/hetzner/remote.sh view {{ server }} {{ port }}
+
+[doc("A shell (or a command) on a run server")]
+[group('remote')]
+remote-ssh server *cmd:
+    deploy/hetzner/remote.sh ssh {{ server }} {{ cmd }}
+
+[doc("End a run server's run early: it pauses, uploads and the server goes")]
+[group('remote')]
+remote-stop server:
+    deploy/hetzner/remote.sh stop {{ server }}
+
+[doc("Delete a server now, without uploading")]
+[group('remote')]
+remote-kill server:
+    deploy/hetzner/remote.sh kill {{ server }}
+
+[doc("The runs in R2")]
+[group('remote')]
+remote-runs:
+    deploy/hetzner/remote.sh runs
+
+[doc("Download runs from R2 into var/runs (default: every one not here yet)")]
+[group('remote')]
+remote-fetch *runs:
+    deploy/hetzner/remote.sh fetch {{ runs }}
+
+[doc("Upload what a published run's page links to (trajectories, game logs) to the assets bucket (default: the newest run)")]
+[group('bench')]
+upload run=latest:
+    deploy/upload.sh "{{ run }}"
+
 # ---------- release ----------
 
 [doc("Release both modules at a version: tag azsdk, require it in the root, tag the root, push (main must be pushed)")]

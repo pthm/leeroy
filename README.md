@@ -101,6 +101,7 @@ sandboxed: they can write only in their workspace, read the docs and source, and
 | `world/`, `runfiles/`, `gamelog/`, `trajectory/` | Libraries the tools share and others can import: the world database and game data, a run directory's layout, reading game logs, transcripts as ATIF trajectories |
 | `internal/` | The harness behind `azbench` (`internal/bench`: the supervisor, judge, configs, diagnostics, accounts) |
 | [`suite/`](suite/README.md) | The benchmark's definition: tasks and models (YAML), specs, places, versions, starting kits, and what agents get (`agent/`: their instructions and tools) |
+| [`deploy/`](deploy/README.md) | Remote runs on Hetzner Cloud (`just remote-*`) and publishing run downloads to Cloudflare R2 (`just upload`) |
 | [`docs/`](docs) | Planning notes and specs, acceptance evidence, the e2e prompt, reference guides (not for agents) |
 | [`server/`](server/README.md) | The AzerothCore server: upstream checkout (`azerothcore/`, gitignored) and config overrides (`override.yml`) |
 | [`site/`](site/README.md) | The website (Astro): results from `azbench publish`, write-ups and setup docs, deployed to GitHub Pages |

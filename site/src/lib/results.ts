@@ -41,6 +41,7 @@ export interface Player {
   damage_to?: [string, number][];
   heard_from?: Record<string, number>;
   pet_pct?: number;
+  downloads?: { trajectory?: string; game_log?: string }; // paths in the assets bucket (PUBLIC_ASSETS_URL), from just upload
   // from the agent's trajectory (ATIF): tool calls by what they ran, failures, and model calls where the runtime marks them
   play?: {
     tools: { name: string; calls: number; failed: number; median_s?: number }[];

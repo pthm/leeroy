@@ -1,0 +1,42 @@
+---
+// A run's files to download, from the assets bucket (just upload puts them there): each agent's trajectory and each
+// character's game log. Drawn only when the site is built with PUBLIC_ASSETS_URL set.
+import { colors, type Run } from '../lib/results';
+
+interface Props {
+  run: Run;
+}
+
+const { run } = Astro.props;
+const base = (import.meta.env.PUBLIC_ASSETS_URL ?? '').replace(/\/$/, '');
+const color = colors(run);
+const ps = base ? run.players.filter(p => p.downloads && Object.keys(p.downloads).length) : [];
+const repo = 'https://github.com/pthm/leeroy/blob/main';
+---
+
+{ps.length > 0 && (
+  <div class="space-y-3">
+    <div class="overflow-x-auto rounded border border-hairline bg-raised">
+      <table class="data">
+        <thead>
+          <tr><th>Character</th><th>Trajectory</th><th>Game log</th></tr>
+        </thead>
+        <tbody>
+          {ps.map(p => (
+            <tr>
+              <td class:list={['font-medium', color[p.char]]}>{p.char}</td>
+              <td>{p.downloads!.trajectory ? <a class="underline" href={`${base}/${p.downloads!.trajectory}`} download>trajectory.json</a> : '–'}</td>
+              <td>{p.downloads!.game_log ? <a class="underline" href={`${base}/${p.downloads!.game_log}`} download>events.jsonl.gz</a> : '–'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p class="font-mono text-[11px] leading-relaxed text-faint">
+      Trajectories are <a class="underline" href="https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md">ATIF</a> v1.7:
+      every model turn, its reasoning, tool calls and their results, tokens and cost. A game log is one JSON line per event the
+      agent saw (<a class="underline" href={`${repo}/azsdk/types/events.go`}>types</a>) and per record its session kept: its state
+      each second, nearby creatures, group changes and API calls (<a class="underline" href={`${repo}/azsdk/types/gamelog.go`}>types</a>).
+    </p>
+  </div>
+)}

@@ -7,6 +7,7 @@ import CombatPanel from '../../../components/CombatPanel.astro';
 import Targets from '../../../components/Targets.astro';
 import Milestones from '../../../components/Milestones.astro';
 import Heard from '../../../components/Heard.astro';
+import Downloads from '../../../components/Downloads.astro';
 import ProgressChart from '../../../components/ProgressChart.astro';
 import RouteMap from '../../../components/RouteMap.astro';
 import SectionHeader from '../../../components/SectionHeader.astro';
@@ -66,6 +67,7 @@ const roster = run.players.toSorted((a, b) =>
 const color = colors(run);
 const hasChat = (run.chat_per_min ?? []).some(h => Object.values(h).some(Boolean));
 const hasHeard = run.players.some(p => Object.keys(p.heard_from ?? {}).length);
+const hasDownloads = !!import.meta.env.PUBLIC_ASSETS_URL && run.players.some(p => p.downloads && Object.keys(p.downloads).length);
 const hasDeaths = run.players.some(p => p.death_list?.length);
 const hasCombat = run.players.some(p => (p.combat && (p.combat.damage_dealt || p.combat.healing_done || p.combat.damage_taken)) || p.kills_by?.length);
 const clock = run.minutes >= 1440 ? `${run.minutes / 1440} days` : `${run.minutes} min`;
@@ -232,10 +234,17 @@ const tiles = [
     </Section>
   )}
 
-  <Section last={!Story}>
+  <Section last={!Story && !hasDownloads}>
     <SectionHeader eyebrow="Spend" title="Cost" description="What each agent cost over the run, and its tokens." />
     <CostPanel run={run} />
   </Section>
+
+  {hasDownloads && (
+    <Section last={!Story}>
+      <SectionHeader eyebrow="Data" title="Downloads" description="Each agent's trajectory and each character's game log, for your own analysis." />
+      <Downloads run={run} />
+    </Section>
+  )}
 
   {Story && (
     <Section last>

@@ -15,6 +15,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      PUBLIC_ASSETS_URL: ${{ vars.PUBLIC_ASSETS_URL }} # the R2 assets bucket's address (a repo variable); none: no downloads
     steps:
       - uses: actions/checkout@v5
       - uses: withastro/action@v5
