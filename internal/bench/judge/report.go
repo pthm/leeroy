@@ -22,7 +22,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/goccy/go-yaml"
+
 	"github.com/pthm/leeroy/azsdk/types"
+	"github.com/pthm/leeroy/internal/bench/config"
 	"github.com/pthm/leeroy/runfiles"
 
 	"github.com/pthm/leeroy/azsdk/metrics"
@@ -116,12 +119,13 @@ func r1(v float64) any {
 // agentRun: one player of a run, and where its files are
 type agentRun struct {
 	agent, char string
-	run         string // the agent's directory (agents/<agent>/)
-	events      string // game/<char>/events.jsonl: its game log
-	samples     string // judge/<char>/samples.jsonl
-	result      string // judge/<char>/result.json
-	diag        string // diagnostics/<agent>.jsonl
-	paused      bool   // run.json's status: the run is paused
+	run         string          // the agent's directory (agents/<agent>/)
+	events      string          // game/<char>/events.jsonl: its game log
+	samples     string          // judge/<char>/samples.jsonl
+	result      string          // judge/<char>/result.json
+	diag        string          // diagnostics/<agent>.jsonl
+	paused      bool            // run.json's status: the run is paused
+	scenario    config.Scenario // scenario.yaml: the goal, clock and checkpoints its score is computed from
 }
 
 // the players of a run, from its run.json
@@ -131,12 +135,16 @@ func reportAgents(dir string) []agentRun {
 	if err != nil {
 		return nil
 	}
+	var sc config.Scenario
+	if b, err := os.ReadFile(f.Scenario()); err == nil {
+		_ = yaml.Unmarshal(b, &sc) // a run without one scores from the samples alone
+	}
 	var out []agentRun
 	for _, p := range m.Players {
 		out = append(out, agentRun{
 			agent: p.Agent, char: p.Char, run: f.Agent(p.Agent),
 			events: f.Events(p.Char), samples: f.Samples(p.Char), result: f.Result(p.Char), diag: f.Diagnostics(p.Agent),
-			paused: m.Status == "paused",
+			paused: m.Status == "paused", scenario: sc,
 		})
 	}
 	return out
@@ -542,37 +550,13 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 		progress = by["all"][0]
 	}
 
-	// the shared measures: the judge's last result, combat totals, cooperation and time use
+	// the shared measures: the score (from the samples and events: finalScore), combat totals, cooperation and time use
+	goal := ar.scenario.Goal
+	if goal == "" {
+		goal = str(meta["goal"])
+	}
 	var final any
-	if len(score) > 0 {
-		l := score[len(score)-1]
-		f := obj{
-			{"value", l["value"]},
-			{"rate", l["rate"]},
-			{"recent_rate", l["recent_rate"]},
-			{"best_window", l["best_window"]},
-			{"pace", l["pace"]},
-			{"score", l["score"]},
-		}
-		if c, ok := l["checkpoints"]; ok {
-			f = append(f, kv{"checkpoints", c})
-		}
-		res := readJSON(ar.result)
-		if len(res) == 0 { // no final result yet (running or paused): the last sample, unmet so far
-			res = map[string]any{"elapsed_s": l["elapsed_s"], "score": l["score"]}
-			if c, ok := l["checkpoints"]; ok {
-				res["checkpoints"] = c
-			}
-		}
-		goal := str(meta["goal"])
-		if goal == "" {
-			goal = str(res["goal"])
-		}
-		if binaryGoal(goal) { // scored by time, from the judge's result (none yet: unmet so far)
-			timeScored(res)
-			f[len(f)-1].v = res["score"]
-			f = append(f, kv{"time_to_goal_s", res["time_to_goal_s"]})
-		}
+	if f := finalScore(goal, float64(ar.scenario.Minutes), ar.scenario.Checkpoints, score, teamEvents[char]); f != nil {
 		final = f
 	}
 	var combat metrics.Combat
@@ -665,20 +649,6 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 	}
 }
 
-// timeScored sets a binary goal's judge result's score and time_to_goal_s from met and elapsed_s, so results saved
-// before binary goals were scored by time read the same. An unmet goal with checkpoints keeps the judge's score (its
-// checkpoint credit, checkpointScore).
-func timeScored(res map[string]any) {
-	met := res["met"] == true
-	if _, cps := res["checkpoints"]; met || !cps {
-		res["score"] = timeScore(met, fnum(res["elapsed_s"]))
-	}
-	res["time_to_goal_s"] = nil
-	if met {
-		res["time_to_goal_s"] = res["elapsed_s"]
-	}
-}
-
 func round3(v float64) float64 { return math.Round(v*1000) / 1000 }
 func round2(v float64) float64 { return math.Round(v*100) / 100 }
 
@@ -736,8 +706,15 @@ func teamResults(dir string, n int, cards []map[string]any) obj {
 			}
 		}
 		if last != nil {
-			if binaryGoal(str(last["goal"])) {
-				timeScored(last)
+			// the outcome as finalScore computes it from the samples and events (its card), not as the judge saved it
+			for _, c := range cards {
+				if sc, ok := c["score"].(map[string]any); ok && c["char"] == last["char"] {
+					for _, k := range []string{"met", "time_to_goal_s", "score", "value", "duels", "duels_won", "checkpoints"} {
+						if v, ok := sc[k]; ok {
+							last[k] = v
+						}
+					}
+				}
 			}
 			res = append(res, last)
 		}

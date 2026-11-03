@@ -64,6 +64,17 @@ n and read the value at timeout.
 
 On exit it prints one JSON line and exits 0 if the goal was met, 1 if it timed out.
 
+## Verdicts: from what the run recorded
+
+A score is never a value stored along the way: it is computed from what the run recorded, the judge's samples (the
+character database every 15 s, which the agents can't change) and the character's game log (the session's events,
+timed to the millisecond). `goalVerdict` (verdict.go) says whether a goal is met (a sample shows it) and when (the
+event that did it: the quest turned in, the achievement, the zone entered, the level, the kill that reached the
+count; mapped onto the run's clock through the sample, so a pause doesn't shift it; with no event, the sample's
+time). Duels come from the log alone, the first n of them (`duels:<n>`), as do checkpoints. The live judge uses it to
+end a run, `azbench report` to write `report.json` and `team.json` (which `azbench publish` reads), so they agree;
+running `azbench report` again recomputes an old run with today's scoring.
+
 ## Rates and score
 
 Computed for every goal from the value curve, in value per hour (`metrics.Curve`):

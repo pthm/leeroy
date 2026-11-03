@@ -200,17 +200,19 @@ func TestTeamOpenrouterBilled(t *testing.T) {
 	}
 }
 
-// Spec J1: a binary goal scores 3600 / time_to_goal_s on the card and in team.json, recomputed from a result saved
-// with the old rate score; an unmet one scores 0.
+// Spec J1: a binary goal scores 3600 / time_to_goal_s on the card and in team.json, computed from the samples (the
+// database confirming it) whatever the judge's saved result says; an unmet one scores 0.
 func TestBinaryGoalScoredByTime(t *testing.T) {
 	f := testRun(t, [2]string{"a1", "Met"}, [2]string{"a2", "Unmet"})
-	for _, a := range []struct{ agent, char, res string }{
-		{"a1", "Met", `{"char":"Met","goal":"achievement:628","met":true,"elapsed_s":7200,"score":2.1}`},
-		{"a2", "Unmet", `{"char":"Unmet","goal":"achievement:628","met":false,"elapsed_s":7200,"score":2.1}`},
+	for _, a := range []struct{ agent, char, res, last string }{
+		{"a1", "Met", `{"char":"Met","goal":"achievement:628","met":true,"elapsed_s":7200,"score":2.1}`, "1"},
+		// a saved result that's wrong (met, while no sample ever showed the achievement): the samples decide
+		{"a2", "Unmet", `{"char":"Unmet","goal":"achievement:628","met":true,"elapsed_s":7200,"score":2.1}`, "0"},
 	} {
 		os.WriteFile(f.Meta(a.agent), []byte(`{"agent":"`+a.agent+`","char":"`+a.char+`","goal":"achievement:628"}`), 0o600)
 		os.WriteFile(f.Result(a.char), []byte(a.res+"\n"), 0o600)
-		os.WriteFile(f.Samples(a.char), []byte(`{"t":1000,"elapsed_s":0,"value":1,"score":2.1}`+"\n"), 0o600)
+		os.WriteFile(f.Samples(a.char), []byte(`{"t":1000,"elapsed_s":0,"value":0,"score":0}`+"\n"+
+			`{"t":7201000,"elapsed_s":7200,"value":`+a.last+`,"score":0}`+"\n"), 0o600)
 	}
 	Report(string(f))
 	agents := readJSON(f.Report())["agents"].([]any)

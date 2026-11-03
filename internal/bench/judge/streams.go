@@ -27,7 +27,8 @@ func newStreams(dir string) *streams {
 // keep: the event types the metrics read (the files are mostly state, casts, results and logs).
 var keep = map[string]bool{
 	"damage": true, "heal": true, "xp": true, "kill": true, "party_kill": true, "death": true,
-	"task_started": true, "task_finished": true, "stall": true, "party_changed": true,
+	"task_started": true, "task_finished": true, "stall": true, "party_changed": true, "duel_ended": true,
+	"quest_turned_in": true, "achievement": true, "area_changed": true, "level_up": true, // goal times (goalVerdict)
 }
 
 func (s *streams) read() {

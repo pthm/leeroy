@@ -26,14 +26,15 @@ func TestCheckpoints(t *testing.T) {
 		evs = append(evs, e)
 	}
 	reached := map[string]float64{}
-	got, _ := json.Marshal(checkpoints(cps, evs, 1000, reached))
-	want := `[{"name":"Rhahk'Zor","at_s":119},{"name":"Sneed","at_s":959},{"name":"Edwin VanCleef","at_s":null}]`
+	clock := []record{{T: 1000, ElapsedS: 0}, {T: 1_000_000, ElapsedS: 999}} // the run's clock started at t 1000
+	got, _ := json.Marshal(checkpoints(cps, evs, clock, reached))
+	want := `[{"name":"Rhahk'Zor","at_s":119.4},{"name":"Sneed","at_s":959},{"name":"Edwin VanCleef","at_s":null}]`
 	if string(got) != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
 	// a resumed judge keeps what it had: an earlier time isn't overwritten by events read again
 	reached = map[string]float64{"Rhahk'Zor": 50}
-	if got, _ := json.Marshal(checkpoints(cps[:1], evs, 1000, reached)); string(got) != `[{"name":"Rhahk'Zor","at_s":50}]` {
+	if got, _ := json.Marshal(checkpoints(cps[:1], evs, clock, reached)); string(got) != `[{"name":"Rhahk'Zor","at_s":50}]` {
 		t.Fatalf("resumed: %s", got)
 	}
 }
@@ -47,15 +48,29 @@ func TestCheckpointScore(t *testing.T) {
 	if checkpointScore(4, 5, 7200) >= timeScore(true, 7199) || checkpointScore(0, 5, 7200) != 0 || checkpointScore(1, 0, 7200) != 0 {
 		t.Fatal("checkpointScore bounds")
 	}
-	// the report keeps an unmet result's checkpoint score, and scores a met one by time
-	res := map[string]any{"met": false, "elapsed_s": 7200.0, "score": 0.2, "checkpoints": []any{}}
-	timeScored(res)
-	if res["score"] != 0.2 {
-		t.Fatalf("unmet with checkpoints: %v", res["score"])
+}
+
+func TestDuelsOf(t *testing.T) {
+	lines := []string{
+		`{"t":11000,"type":"duel_ended","data":{"state":"ended","opponent":"B","result":"beaten","winner":"A","loser":"B","won":true}}`,
+		`{"t":20000,"type":"duel_ended","data":{"state":"ended","opponent":"B","result":"cancelled"}}`, // declined: not counted
+		`{"t":61000,"type":"duel_ended","data":{"state":"ended","opponent":"B","result":"fled","winner":"B","loser":"A"}}`,
 	}
-	res = map[string]any{"met": true, "elapsed_s": 3600.0, "score": 0.2, "checkpoints": []any{}}
-	timeScored(res)
-	if res["score"] != 1.0 {
-		t.Fatalf("met: %v", res["score"])
+	evs := make([]metrics.Event, 0, len(lines))
+	for _, l := range lines {
+		e, ok := metrics.Decode([]byte(l))
+		if !ok {
+			t.Fatalf("decode %s", l)
+		}
+		evs = append(evs, e)
+	}
+	clock := []record{{T: 1000, ElapsedS: 0}, {T: 1_000_000, ElapsedS: 999}}
+	out, won := duelsOf(evs, clock, 5)
+	got, _ := json.Marshal(out)
+	if want := `[{"at_s":10,"opponent":"B","won":true,"result":"beaten"},{"at_s":60,"opponent":"B","won":false,"result":"fled"}]`; string(got) != want || won != 1 {
+		t.Fatalf("got %s (won %d)\nwant %s", got, won, want)
+	}
+	if out, won := duelsOf(evs, clock, 1); len(out) != 1 || won != 1 { // a goal of 1: the second duel doesn't count
+		t.Fatalf("capped at 1: %d duels, %d won", len(out), won)
 	}
 }
