@@ -210,7 +210,7 @@ apidoc: build
 remote-image:
     deploy/hetzner/remote.sh image
 
-[doc("Run a task on a new server (LEEROY_TYPE=ccx43 for another size): uploads the run to R2, then deletes itself")]
+[doc("Run a task on a new server (a ccx23; LEEROY_TYPE=ccx33 or bigger for another size): uploads the run to R2, then deletes itself")]
 [group('remote')]
 remote-run task *args:
     deploy/hetzner/remote.sh run {{ task }} {{ args }}

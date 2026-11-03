@@ -31,7 +31,7 @@ runs on a schedule.
 ## A run
 
 ```sh
-just remote-run ubrs --model terra          # LEEROY_TYPE=ccx43 just remote-run ... for a bigger server
+just remote-run ubrs --model terra          # a ccx23 (4 cores, 16 GB); LEEROY_TYPE=ccx33 just remote-run ... for more
 just remote-ls                              # the run servers
 just remote-status                          # the newest run server's run (or name one)
 just remote-view                            # its live viewer in your browser, through an SSH tunnel (or name one)
