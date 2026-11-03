@@ -49,7 +49,7 @@ func TestParseGroupList_TwoPlayerParty(t *testing.T) {
 	_ = binary.Write(buf, binary.LittleEndian, uint8(0))
 	_ = binary.Write(buf, binary.LittleEndian, uint8(0))
 	_ = binary.Write(buf, binary.LittleEndian, leader)
-	_ = binary.Write(buf, binary.LittleEndian, uint8(LootMethodGroupLoot))
+	_ = binary.Write(buf, binary.LittleEndian, LootMethodGroupLoot)
 	_ = binary.Write(buf, binary.LittleEndian, uint64(0))
 	_ = binary.Write(buf, binary.LittleEndian, uint8(2))
 	_ = binary.Write(buf, binary.LittleEndian, uint8(0)) // dungeon diff

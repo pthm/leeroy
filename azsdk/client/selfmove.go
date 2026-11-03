@@ -26,8 +26,10 @@ const (
 	moveFlag2AlwaysPitch  uint16 = 0x0020
 	moveFlag2Interpolated uint16 = 0x0400
 
+	// CmsgMoveKnockBackAck acknowledges SMSG_MOVE_KNOCK_BACK.
 	CmsgMoveKnockBackAck uint16 = 0x00F0
-	MsgMoveStartSwim     uint16 = 0x00CA
+	// MsgMoveStartSwim tells the server we have entered water.
+	MsgMoveStartSwim uint16 = 0x00CA
 )
 
 // UnitMoveType: the index of each speed (Unit.h).
@@ -229,7 +231,7 @@ func (w *WorldClient) SetGroundFunc(f func(mapID uint32, x, y, z float32) (float
 	w.moveMu.Unlock()
 }
 
-// Falling: we're in the air (a jump, a knockback, a drop) and the client moves us until we land.
+// Falling reports whether we're in the air (a jump, a knockback, a drop) and the client moves us until we land.
 func (w *WorldClient) Falling() bool {
 	w.moveMu.Lock()
 	defer w.moveMu.Unlock()
@@ -293,18 +295,21 @@ func (w *WorldClient) stepFall(now time.Time) bool {
 	if f.vz+gravity*t > 0 && z <= floor {
 		w.fall = nil
 		w.setPositionLocked(x, y, floor, w.orientation)
-		w.sendMovementLockedAt(MsgMoveFallLand, f.held, getMSTime())
+		if err := w.sendMovementLockedAt(MsgMoveFallLand, f.held, getMSTime()); err != nil {
+			w.logAt(LogDebug, "MSG_MOVE_FALL_LAND send: %v", err)
+		}
 		return false
 	}
 	w.setPositionLocked(x, y, z, w.orientation)
 	if now.Sub(f.lastSent) >= fallBeat {
 		f.lastSent = now
-		w.sendMovementLockedAt(MsgMoveHeartbeat, f.held, getMSTime())
+		if err := w.sendMovementLockedAt(MsgMoveHeartbeat, f.held, getMSTime()); err != nil {
+			w.logAt(LogDebug, "fall heartbeat send: %v", err)
+		}
 	}
 	return true
 }
 
-// maybeFall starts a fall when the ground is well below us (a teleport into the air).
 // Settle falls to the ground if we're hanging over it, as after a teleport: a flight leaves you at its path's last
 // point, yards over the floor at some flight masters (Stormwind 2.3, Sentinel Hill 3.7), where a client drops.
 func (w *WorldClient) Settle() { w.maybeFall() }
@@ -331,7 +336,9 @@ func (w *WorldClient) maybeFall() {
 		return
 	}
 	w.startFallLocked(time.Now(), 0, float32(math.Sin(float64(w.orientation))), float32(math.Cos(float64(w.orientation))), 0, 0)
-	w.sendMovementLockedAt(MsgMoveHeartbeat, 0, getMSTime())
+	if err := w.sendMovementLockedAt(MsgMoveHeartbeat, 0, getMSTime()); err != nil {
+		w.logAt(LogDebug, "fall start heartbeat send: %v", err)
+	}
 }
 
 // SendJump sends MSG_MOVE_JUMP with the movement keys still held; the fall then runs until we land
@@ -395,7 +402,9 @@ func (w *WorldClient) handleMoveKnockBack(data []byte) {
 	writePackedGUID(buf, w.charGUID)
 	binary.Write(buf, binary.LittleEndian, kb.Counter)
 	w.writeSelfMovement(buf, 0, getMSTime())
-	w.sendPacket(CmsgMoveKnockBackAck, buf.Bytes())
+	if err := w.sendPacket(CmsgMoveKnockBackAck, buf.Bytes()); err != nil {
+		w.logAt(LogWarn, "CMSG_MOVE_KNOCK_BACK_ACK send: %v", err)
+	}
 }
 
 // handleMoveStateOpcode handles the speed changes and movement flag toggles the server sends; false if opcode isn't one.
@@ -437,7 +446,9 @@ func (w *WorldClient) handleMoveStateOpcode(opcode uint16, data []byte) bool {
 		binary.Write(buf, binary.LittleEndian, counter)
 		w.writeSelfMovement(buf, w.currentMoveFlags, getMSTime())
 		binary.Write(buf, binary.LittleEndian, applied)
-		w.sendPacket(t.ack, buf.Bytes())
+		if err := w.sendPacket(t.ack, buf.Bytes()); err != nil {
+			w.logAt(LogWarn, "%s send: %v", OpcodeName(t.ack), err)
+		}
 		return true
 	}
 	return false

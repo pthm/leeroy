@@ -65,8 +65,7 @@ func (w *WorldClient) SendPetitionBuy(npcGUID uint64, guildName string) error {
 		buf = append(buf, 0)
 	}
 	// clientIndex + trailing uint32
-	buf = append(buf, 0, 0, 0, 0)
-	buf = append(buf, 0, 0, 0, 0)
+	buf = append(buf, 0, 0, 0, 0, 0, 0, 0, 0)
 	return w.sendPacket(CmsgPetitionBuy, buf)
 }
 

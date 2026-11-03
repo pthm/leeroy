@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// ErrServerDriven: a movement packet wasn't sent because the server is moving the character.
+// ErrServerDriven means a movement packet wasn't sent because the server is moving the character.
 var ErrServerDriven = errors.New("the server is moving you (flight, teleport, fear...): movement is locked")
 
 // 3.3.5 movement opcodes the client originates (MSG_MOVE_START_* .. HEARTBEAT); acks and teleport/worldport acks are
@@ -130,7 +130,7 @@ func (s *selfSpline) at() (p [3]float32, done, ok bool) {
 	return s.pts[len(s.pts)-1], true, true
 }
 
-// SelfSplineDestination: where the server is taking us and how long until we're there (ok=false if it isn't).
+// SelfSplineDestination returns where the server is taking us and how long until we're there (ok=false if it isn't).
 func (w *WorldClient) SelfSplineDestination() (dest [3]float32, left time.Duration, ok bool) {
 	s := &w.spline
 	s.mu.Lock()
@@ -205,10 +205,10 @@ type AuraInfo struct {
 	At            time.Time
 }
 
-// Harmful: a debuff.
+// Harmful reports whether the aura is a debuff.
 func (a AuraInfo) Harmful() bool { return a.Flags&0x80 != 0 }
 
-// Left: time remaining now (0 for permanent auras).
+// Left returns the time remaining now (0 for permanent auras).
 func (a AuraInfo) Left() time.Duration {
 	if a.Flags&auraFlagDuration == 0 || a.MaxDurationMS == 0 {
 		return 0
@@ -282,11 +282,11 @@ func (t *auraTable) replace(unit uint64, all []AuraInfo, hooks []func(uint64, *A
 	}
 }
 
-// Auras: a unit's auras, by slot order.
+// Auras returns a unit's auras, in slot order.
 func (w *WorldClient) Auras(unit uint64) []AuraInfo {
 	w.auras.mu.Lock()
 	defer w.auras.mu.Unlock()
-	out := []AuraInfo{}
+	out := make([]AuraInfo, 0, len(w.auras.m[unit]))
 	for _, a := range w.auras.m[unit] {
 		out = append(out, a)
 	}
@@ -294,7 +294,7 @@ func (w *WorldClient) Auras(unit uint64) []AuraInfo {
 	return out
 }
 
-// AddAuraHook: fn(unit, prev, cur) for every aura gained (prev nil), lost (cur nil) or changed (stacks, refresh).
+// AddAuraHook registers fn(unit, prev, cur), called for every aura gained (prev nil), lost (cur nil) or changed (stacks, refresh).
 func (w *WorldClient) AddAuraHook(fn func(unit uint64, prev, cur *AuraInfo)) {
 	w.auraHookMu.Lock()
 	defer w.auraHookMu.Unlock()
@@ -307,7 +307,7 @@ func (w *WorldClient) auraHooks() []func(uint64, *AuraInfo, *AuraInfo) {
 	return append([]func(uint64, *AuraInfo, *AuraInfo){}, w.auraHookList...)
 }
 
-// Jump: MSG_MOVE_JUMP, then MSG_MOVE_FALL_LAND when we land, as the real client does.
+// Jump sends MSG_MOVE_JUMP, then MSG_MOVE_FALL_LAND when we land, as the real client does.
 func (w *WorldClient) Jump() error {
 	if w.serverDriven() {
 		return ErrServerDriven

@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// SMSG_ITEM_PUSH_RESULT (3.3.5a).
+// SmsgItemPushResult is the SMSG_ITEM_PUSH_RESULT opcode (3.3.5a): an item went into our bags.
 const SmsgItemPushResult uint16 = 0x0166
 
 // ItemPushResult is a parsed SMSG_ITEM_PUSH_RESULT payload.

@@ -15,7 +15,7 @@ func TestSplinePath(t *testing.T) {
 	pack := func(x, y, z float32) uint32 {
 		return uint32(int32(x/0.25))&0x7FF | (uint32(int32(y/0.25))&0x7FF)<<11 | (uint32(int32(z/0.25))&0x3FF)<<22
 	}
-	binary.Write(&b, binary.LittleEndian, pack(5-5, 0-4, 0-(-2)))
+	binary.Write(&b, binary.LittleEndian, pack(0, -4, 2)) // (5-5, 0-4, 0-(-2))
 	pts := readSplinePath(bytes.NewReader(b.Bytes()), 0, 2, [3]float32{0, 0, 0})
 	if len(pts) != 3 || pts[1] != [3]float32{5, 4, -2} || pts[2] != [3]float32{10, 0, 0} {
 		t.Fatalf("linear: %v", pts)

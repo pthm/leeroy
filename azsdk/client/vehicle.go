@@ -120,11 +120,9 @@ func (w *WorldClient) handleClientControlUpdate(data []byte) {
 	w.vehicleMu.Lock()
 	if allow != 0 && guid != 0 && guid != w.charGUID {
 		w.controlGUID = guid
-	} else {
+	} else if guid == 0 || guid == w.charGUID || allow == 0 {
 		// Control returned to self (or denied).
-		if guid == 0 || guid == w.charGUID || allow == 0 {
-			w.controlGUID = 0
-		}
+		w.controlGUID = 0
 	}
 	w.vehicleMu.Unlock()
 	w.log("SMSG_CLIENT_CONTROL_UPDATE guid=0x%X allow=%d", guid, allow)

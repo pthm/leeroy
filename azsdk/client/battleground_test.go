@@ -8,36 +8,31 @@ import (
 
 // buildStatus writes the fixed head of SMSG_BATTLEFIELD_STATUS exactly as
 // BattlegroundMgr::BuildBattlegroundStatusPacket does.
-func buildStatus(queueSlot uint32, arenaType ArenaTeamType, isArena bool, bgTypeID uint32,
-	minLevel, maxLevel uint8, clientInstance uint32, isRated bool, status uint32,
-) *bytes.Buffer {
+// Every case is a rated level 80 arena in queue slot 0, client instance 0.
+func buildStatus(arenaType ArenaTeamType, bgTypeID, status uint32) *bytes.Buffer {
 	buf := new(bytes.Buffer)
-	_ = binary.Write(buf, binary.LittleEndian, queueSlot)
+	_ = binary.Write(buf, binary.LittleEndian, uint32(0)) // queue slot
 	buf.WriteByte(uint8(arenaType))
-	if isArena {
-		buf.WriteByte(0xE)
-	} else {
-		buf.WriteByte(0)
-	}
+	buf.WriteByte(0xE) // arena
 	_ = binary.Write(buf, binary.LittleEndian, bgTypeID)
 	_ = binary.Write(buf, binary.LittleEndian, battlefieldPortMagic)
-	buf.WriteByte(minLevel)
-	buf.WriteByte(maxLevel)
-	_ = binary.Write(buf, binary.LittleEndian, clientInstance)
-	buf.WriteByte(boolByte(isRated))
+	buf.WriteByte(80)                                     // min level
+	buf.WriteByte(80)                                     // max level
+	_ = binary.Write(buf, binary.LittleEndian, uint32(0)) // client instance
+	buf.WriteByte(1)                                      // rated
 	_ = binary.Write(buf, binary.LittleEndian, status)
 	return buf
 }
 
 func buildWaitQueue(bgTypeID uint32) []byte {
-	buf := buildStatus(0, ArenaTeam2v2, true, bgTypeID, 80, 80, 0, true, BattlegroundStatusWaitQueue)
+	buf := buildStatus(ArenaTeam2v2, bgTypeID, BattlegroundStatusWaitQueue)
 	_ = binary.Write(buf, binary.LittleEndian, uint32(0))
 	_ = binary.Write(buf, binary.LittleEndian, uint32(0))
 	return buf.Bytes()
 }
 
 func buildWaitJoin(bgTypeID, mapID uint32) []byte {
-	buf := buildStatus(0, ArenaTeam2v2, true, bgTypeID, 80, 80, 0, true, BattlegroundStatusWaitJoin)
+	buf := buildStatus(ArenaTeam2v2, bgTypeID, BattlegroundStatusWaitJoin)
 	_ = binary.Write(buf, binary.LittleEndian, mapID)
 	_ = binary.Write(buf, binary.LittleEndian, uint64(0))
 	_ = binary.Write(buf, binary.LittleEndian, uint32(60000))
@@ -65,7 +60,7 @@ func TestParseBattlefieldStatus_ShortFormHasNoBattleground(t *testing.T) {
 }
 
 func TestParseBattlefieldStatus_WaitQueue(t *testing.T) {
-	buf := buildStatus(0, ArenaTeam2v2, true, 6, 80, 80, 0, true, BattlegroundStatusWaitQueue)
+	buf := buildStatus(ArenaTeam2v2, 6, BattlegroundStatusWaitQueue)
 	_ = binary.Write(buf, binary.LittleEndian, uint32(4200)) // average wait
 	_ = binary.Write(buf, binary.LittleEndian, uint32(1100)) // time in queue
 
@@ -104,7 +99,7 @@ func TestParseBattlefieldStatus_WaitJoinCarriesMap(t *testing.T) {
 }
 
 func TestParseBattlefieldStatus_InProgressCarriesSide(t *testing.T) {
-	buf := buildStatus(0, ArenaTeam3v3, true, 6, 80, 80, 0, true, BattlegroundStatusInProgress)
+	buf := buildStatus(ArenaTeam3v3, 6, BattlegroundStatusInProgress)
 	_ = binary.Write(buf, binary.LittleEndian, uint32(559))
 	_ = binary.Write(buf, binary.LittleEndian, uint64(0))
 	_ = binary.Write(buf, binary.LittleEndian, uint32(0))    // auto leave

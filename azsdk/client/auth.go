@@ -8,6 +8,7 @@ import (
 	"io"
 	"math/big"
 	"net"
+	"slices"
 	"strings"
 	"time"
 )
@@ -17,17 +18,6 @@ const (
 	AuthLogonChallenge byte = 0x00
 	AuthLogonProof     byte = 0x01
 	AuthRealmList      byte = 0x10
-)
-
-// SRP6 parameters
-var (
-	srpN = bigIntFromBytes([]byte{
-		0xB7, 0x9B, 0x3E, 0x2A, 0x87, 0x82, 0x3C, 0xAB,
-		0x8F, 0x5E, 0xBF, 0xBF, 0x8E, 0xB1, 0x01, 0x08,
-		0x53, 0x50, 0x06, 0x29, 0x8B, 0x5B, 0xAD, 0xBD,
-		0x5B, 0x53, 0xE1, 0x89, 0x5E, 0x64, 0x4B, 0x89,
-	})
-	srpG = big.NewInt(7)
 )
 
 // RealmInfo holds info about a realm
@@ -60,14 +50,14 @@ func (a *AuthClient) Authenticate(authAddr string) ([]RealmInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connect to authserver: %w", err)
 	}
-	defer a.conn.Close()
+	defer func() { _ = a.conn.Close() }() // the realm list is already read; nothing to report
 
-	// Apply TCP optimizations for auth connection
+	// Apply TCP optimizations for auth connection; best-effort, defaults work too
 	if tcp, ok := a.conn.(*net.TCPConn); ok {
-		tcp.SetNoDelay(true)
-		tcp.SetLinger(0) // Fast port reclamation
-		tcp.SetReadBuffer(65536)
-		tcp.SetWriteBuffer(65536)
+		_ = tcp.SetNoDelay(true)
+		_ = tcp.SetLinger(0) // Fast port reclamation
+		_ = tcp.SetReadBuffer(65536)
+		_ = tcp.SetWriteBuffer(65536)
 	}
 
 	if err := a.conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
@@ -80,13 +70,13 @@ func (a *AuthClient) Authenticate(authAddr string) ([]RealmInfo, error) {
 	}
 
 	// Read logon challenge response
-	B, g, N, s, err := a.readLogonChallengeResponse()
+	serverB, g, n, s, err := a.readLogonChallengeResponse()
 	if err != nil {
 		return nil, fmt.Errorf("read logon challenge response: %w", err)
 	}
 
 	// Compute SRP6 proof
-	if err := a.sendLogonProof(B, g, N, s); err != nil {
+	if err := a.sendLogonProof(serverB, g, n, s); err != nil {
 		return nil, fmt.Errorf("send logon proof: %w", err)
 	}
 
@@ -135,7 +125,7 @@ func (a *AuthClient) sendLogonChallenge() error {
 	return err
 }
 
-func (a *AuthClient) readLogonChallengeResponse() (B, g, N, s []byte, err error) {
+func (a *AuthClient) readLogonChallengeResponse() (serverB, g, n, s []byte, err error) {
 	// Read: cmd(1) + unk(1) + error(1) = 3 bytes
 	header := make([]byte, 3)
 	if _, err = io.ReadFull(a.conn, header); err != nil {
@@ -147,8 +137,8 @@ func (a *AuthClient) readLogonChallengeResponse() (B, g, N, s []byte, err error)
 	}
 
 	// B (32 bytes)
-	B = make([]byte, 32)
-	if _, err = io.ReadFull(a.conn, B); err != nil {
+	serverB = make([]byte, 32)
+	if _, err = io.ReadFull(a.conn, serverB); err != nil {
 		return
 	}
 
@@ -167,8 +157,8 @@ func (a *AuthClient) readLogonChallengeResponse() (B, g, N, s []byte, err error)
 	if _, err = io.ReadFull(a.conn, nLen); err != nil {
 		return
 	}
-	N = make([]byte, nLen[0])
-	if _, err = io.ReadFull(a.conn, N); err != nil {
+	n = make([]byte, nLen[0])
+	if _, err = io.ReadFull(a.conn, n); err != nil {
 		return
 	}
 
@@ -187,28 +177,27 @@ func (a *AuthClient) readLogonChallengeResponse() (B, g, N, s []byte, err error)
 	return
 }
 
-func (a *AuthClient) sendLogonProof(serverB, g, N, s []byte) error {
+func (a *AuthClient) sendLogonProof(serverB, g, n, s []byte) error {
 	_B := bigIntFromBytes(serverB)
 	_g := bigIntFromBytes(g)
-	_N := bigIntFromBytes(N)
+	_N := bigIntFromBytes(n)
 
 	// Generate random a (private key)
 	aBytes := make([]byte, 32)
 	randBytes(aBytes)
 	_a := bigIntFromBytes(aBytes)
 
-	// A = g^a mod N
+	// A is g^a mod N
 	_A := new(big.Int).Exp(_g, _a, _N)
 	A := bigIntToBytes(_A)
 
-	// u = SHA1(A | B)
-	uHash := sha1.Sum(append(A, serverB...))
+	// u is SHA1(A | B)
+	uHash := sha1.Sum(slices.Concat(A, serverB))
 	_u := bigIntFromBytes(uHash[:])
 
-	// x = SHA1(s | SHA1(username:password))
+	// x is SHA1(s | SHA1(username:password))
 	credHash := sha1.Sum([]byte(a.username + ":" + a.password))
-	xInput := append(s, credHash[:]...)
-	xHash := sha1.Sum(xInput)
+	xHash := sha1.Sum(slices.Concat(s, credHash[:]))
 	_x := bigIntFromBytes(xHash[:])
 
 	// S = (B - 3*g^x mod N)^(a + u*x) mod N
@@ -385,22 +374,22 @@ func bigIntToBytes(i *big.Int) []byte {
 	return reversed
 }
 
-func sha1Interleave(S []byte) []byte {
+func sha1Interleave(sKey []byte) []byte {
 	// Ensure S is 32 bytes
-	for len(S) < 32 {
-		S = append(S, 0)
+	for len(sKey) < 32 {
+		sKey = append(sKey, 0)
 	}
 
-	buf0 := make([]byte, len(S)/2)
-	buf1 := make([]byte, len(S)/2)
-	for i := 0; i < len(S)/2; i++ {
-		buf0[i] = S[2*i]
-		buf1[i] = S[2*i+1]
+	buf0 := make([]byte, len(sKey)/2)
+	buf1 := make([]byte, len(sKey)/2)
+	for i := 0; i < len(sKey)/2; i++ {
+		buf0[i] = sKey[2*i]
+		buf1[i] = sKey[2*i+1]
 	}
 
 	// Find first nonzero byte position
 	p := 0
-	for p < len(S) && S[p] == 0 {
+	for p < len(sKey) && sKey[p] == 0 {
 		p++
 	}
 	if p&1 > 0 {

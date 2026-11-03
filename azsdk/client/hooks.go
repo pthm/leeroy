@@ -106,6 +106,7 @@ func (w *WorldClient) invokePacketHooks(opcode uint16, data []byte) {
 
 // --- Trade status ---
 
+// AddTradeStatusHook registers fn for every SMSG_TRADE_STATUS. Returns cancel (safe to call once).
 func (w *WorldClient) AddTradeStatusHook(fn func(TradeStatusInfo)) (cancel func()) {
 	if fn == nil {
 		return func() {}
@@ -152,6 +153,7 @@ func (w *WorldClient) SetOnTradeStatus(fn func(TradeStatusInfo)) {
 
 // --- Battlefield status ---
 
+// AddBattlefieldStatusHook registers fn for every SMSG_BATTLEFIELD_STATUS. Returns cancel (safe to call once).
 func (w *WorldClient) AddBattlefieldStatusHook(fn func(BattlefieldStatus)) (cancel func()) {
 	if fn == nil {
 		return func() {}
@@ -187,6 +189,7 @@ func (w *WorldClient) invokeBattlefieldStatusHooks(st BattlefieldStatus) {
 
 // --- Loot opened ---
 
+// AddLootOpenedHook registers fn for every loot window opened (SMSG_LOOT_RESPONSE). Returns cancel (safe to call once).
 func (w *WorldClient) AddLootOpenedHook(fn func(lootGUID uint64, items []LootItem)) (cancel func()) {
 	if fn == nil {
 		return func() {}
@@ -226,6 +229,7 @@ func (w *WorldClient) invokeLootOpenedHooks(lootGUID uint64, items []LootItem) {
 
 // --- Loot start roll ---
 
+// AddLootStartRollHook registers fn for every SMSG_LOOT_START_ROLL. Returns cancel (safe to call once).
 func (w *WorldClient) AddLootStartRollHook(fn func(LootStartRoll)) (cancel func()) {
 	if fn == nil {
 		return func() {}
@@ -265,6 +269,7 @@ func (w *WorldClient) invokeLootStartRollHooks(r LootStartRoll) {
 
 // --- Loot roll / won / all passed ---
 
+// AddLootRollHook registers fn for every roll a group member makes (SMSG_LOOT_ROLL). Returns cancel (safe to call once).
 func (w *WorldClient) AddLootRollHook(fn func(LootRollEvent)) (cancel func()) {
 	if fn == nil {
 		return func() {}
@@ -302,6 +307,7 @@ func (w *WorldClient) invokeLootRollHooks(r LootRollEvent) {
 	}
 }
 
+// AddLootRollWonHook registers fn for every SMSG_LOOT_ROLL_WON. Returns cancel (safe to call once).
 func (w *WorldClient) AddLootRollWonHook(fn func(LootRollWon)) (cancel func()) {
 	if fn == nil {
 		return func() {}
@@ -339,6 +345,7 @@ func (w *WorldClient) invokeLootRollWonHooks(r LootRollWon) {
 	}
 }
 
+// AddLootAllPassedHook registers fn for every SMSG_LOOT_ALL_PASSED. Returns cancel (safe to call once).
 func (w *WorldClient) AddLootAllPassedHook(fn func(LootAllPassed)) (cancel func()) {
 	if fn == nil {
 		return func() {}
@@ -378,6 +385,8 @@ func (w *WorldClient) invokeLootAllPassedHooks(r LootAllPassed) {
 
 // --- Spell cast result ---
 
+// AddSpellCastResultHook registers fn for the outcome of our own casts: success on SMSG_SPELL_GO, failure on
+// SMSG_CAST_FAILED or SMSG_SPELL_FAILURE. Returns cancel (safe to call once).
 func (w *WorldClient) AddSpellCastResultHook(fn func(spellID uint32, success bool, failReason uint8)) (cancel func()) {
 	if fn == nil {
 		return func() {}
@@ -417,6 +426,7 @@ func (w *WorldClient) invokeSpellCastResultHooks(spellID uint32, success bool, f
 
 // --- Group invite / list ---
 
+// AddGroupInviteHook registers fn for every group invite we receive (SMSG_GROUP_INVITE). Returns cancel (safe to call once).
 func (w *WorldClient) AddGroupInviteHook(fn func(inviterName string, alreadyInGroup bool)) (cancel func()) {
 	if fn == nil {
 		return func() {}
@@ -488,6 +498,8 @@ func (w *WorldClient) invokeGroupDeclineHooks(name string) {
 	}
 }
 
+// AddGroupListHook registers fn for every group roster update (SMSG_GROUP_LIST, or an empty state when the group
+// is gone). Returns cancel (safe to call once).
 func (w *WorldClient) AddGroupListHook(fn func(GroupState)) (cancel func()) {
 	if fn == nil {
 		return func() {}

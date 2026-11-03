@@ -122,7 +122,7 @@ func (w *WorldClient) SendGuildBankDepositItem(bankerGUID uint64, tab, slot, bag
 	off++
 	buf[off] = bagSlot
 	off++
-	buf[off] = 0 // toChar = deposit
+	buf[off] = 0 // toChar: deposit
 	off++
 	binary.LittleEndian.PutUint32(buf[off:], stackCount)
 	return w.sendPacket(CmsgGuildBankSwapItems, buf)
@@ -154,7 +154,7 @@ func (w *WorldClient) SendGuildBankWithdrawItem(bankerGUID uint64, tab, slot uin
 	off++
 	buf[off] = nullSlot
 	off++
-	buf[off] = 1 // toChar = withdraw
+	buf[off] = 1 // toChar: withdraw
 	off++
 	binary.LittleEndian.PutUint32(buf[off:], stackCount)
 	return w.sendPacket(CmsgGuildBankSwapItems, buf)
@@ -255,7 +255,7 @@ func ParseGuildBankMoneyWithdrawn(data []byte) (int32, error) {
 	return int32(binary.LittleEndian.Uint32(data[0:4])), nil
 }
 
-func readCStringBytes(data []byte) (string, int, error) {
+func readCStringBytes(data []byte) (s string, n int, err error) {
 	for i, b := range data {
 		if b == 0 {
 			return string(data[:i]), i + 1, nil

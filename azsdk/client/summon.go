@@ -30,10 +30,12 @@ const SpellCreateMeetingStonePortal uint32 = 59782
 // GameObjectMeetingStoneSummonPortal is created by SpellCreateMeetingStonePortal.
 const GameObjectMeetingStoneSummonPortal uint32 = 179944
 
-// SpellRitualOfSummoning is the warlock channel that creates GO 194108 (needs 2 helper clicks).
+// SpellWarlockRitualOfSummoning is the warlock channel that creates GO 194108 (needs 2 helper clicks).
 const SpellWarlockRitualOfSummoning uint32 = 698
 
-// Deprecated alias — prefer SpellSummonPlayer for the EffectSummonPlayer spell.
+// SpellRitualOfSummoning is an old name for SpellSummonPlayer.
+//
+// Deprecated: use SpellSummonPlayer for the EffectSummonPlayer spell.
 const SpellRitualOfSummoning = SpellSummonPlayer
 
 // GameObjectUse sends CMSG_GAMEOBJ_USE for guid (uint64).

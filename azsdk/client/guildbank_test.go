@@ -23,19 +23,24 @@ func TestParseGuildBankListFullTab0(t *testing.T) {
 	putU64(100)
 	buf = append(buf, 0) // tab
 	putI32(-1)
-	buf = append(buf, 1) // full
-	buf = append(buf, 1) // n tabs
-	buf = append(buf, append([]byte("Vault"), 0)...)
-	buf = append(buf, append([]byte("INV_Misc"), 0)...)
-	buf = append(buf, 1) // n items
-	buf = append(buf, 0) // slot
+	buf = append(buf,
+		1, // full
+		1, // n tabs
+	)
+	buf = append(buf, "Vault\x00INV_Misc\x00"...)
+	buf = append(buf,
+		1, // n items
+		0, // slot
+	)
 	putU32(2589)
-	putI32(0)            // flags
-	putI32(0)            // random prop
-	putI32(5)            // count
-	putI32(0)            // enchant
-	buf = append(buf, 0) // charges
-	buf = append(buf, 0) // gems
+	putI32(0) // flags
+	putI32(0) // random prop
+	putI32(5) // count
+	putI32(0) // enchant
+	buf = append(buf,
+		0, // charges
+		0, // gems
+	)
 
 	got, err := ParseGuildBankList(buf)
 	if err != nil {
@@ -58,9 +63,11 @@ func TestParseGuildBankListEmptySlotPartial(t *testing.T) {
 	var b4 [4]byte
 	binary.LittleEndian.PutUint32(b4[:], 0)
 	buf = append(buf, b4[:]...)
-	buf = append(buf, 0) // partial
-	buf = append(buf, 1) // 1 item
-	buf = append(buf, 3) // slot 3
+	buf = append(buf,
+		0, // partial
+		1, // 1 item
+		3, // slot 3
+	)
 	binary.LittleEndian.PutUint32(b4[:], 0)
 	buf = append(buf, b4[:]...) // entry 0
 

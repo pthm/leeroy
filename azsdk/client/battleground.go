@@ -32,6 +32,7 @@ const (
 // what SMSG_BATTLEFIELD_STATUS reports as the arena type.
 type ArenaTeamType uint8
 
+// Arena team sizes.
 const (
 	ArenaTeam2v2 ArenaTeamType = 2
 	ArenaTeam3v3 ArenaTeamType = 3
@@ -44,6 +45,7 @@ const (
 // dropping the packet without a reply.
 type ArenaSlot uint8
 
+// Arena slots, one per bracket.
 const (
 	ArenaSlot2v2 ArenaSlot = 0
 	ArenaSlot3v3 ArenaSlot = 1

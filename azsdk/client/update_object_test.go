@@ -135,7 +135,7 @@ func TestMovementPacketIsMoving(t *testing.T) {
 		if c.flags&MoveFlagFalling != 0 {
 			pkt = append(pkt, le([4]float32{})...)
 		}
-		w.handleMovementPacket(MsgMoveHeartbeat, pkt)
+		w.handleMovementPacket(pkt)
 		if o.IsMoving != c.moving || o.MoveDuration != 0 {
 			t.Errorf("flags %#x: moving=%v dur=%v", c.flags, o.IsMoving, o.MoveDuration)
 		}

@@ -8,6 +8,7 @@ package client
 // Unknown: ambiguous (e.g. SMSG_ATTACK_STOP); clear swing state but do not invent death.
 type RejectClass int
 
+// Reject classes, as described on RejectClass.
 const (
 	RejectUnknown RejectClass = iota
 	RejectTransient

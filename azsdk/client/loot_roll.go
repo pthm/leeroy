@@ -74,7 +74,7 @@ type LootAllPassed struct {
 // ParseLootStartRoll decodes SMSG_LOOT_START_ROLL.
 func ParseLootStartRoll(data []byte) (LootStartRoll, error) {
 	var r LootStartRoll
-	// 8+4+4+4+4+4+4+4+1 = 37
+	// 37 bytes: 8+4+4+4+4+4+4+4+1
 	if len(data) < 37 {
 		return r, fmt.Errorf("SMSG_LOOT_START_ROLL too short: %d", len(data))
 	}
@@ -94,7 +94,7 @@ func ParseLootStartRoll(data []byte) (LootStartRoll, error) {
 // ParseLootRoll decodes SMSG_LOOT_ROLL.
 func ParseLootRoll(data []byte) (LootRollEvent, error) {
 	var r LootRollEvent
-	// 8+4+8+4+4+4+1+1+1 = 35
+	// 35 bytes: 8+4+8+4+4+4+1+1+1
 	if len(data) < 35 {
 		return r, fmt.Errorf("SMSG_LOOT_ROLL too short: %d", len(data))
 	}
@@ -114,7 +114,7 @@ func ParseLootRoll(data []byte) (LootRollEvent, error) {
 // ParseLootRollWon decodes SMSG_LOOT_ROLL_WON.
 func ParseLootRollWon(data []byte) (LootRollWon, error) {
 	var r LootRollWon
-	// 8+4+4+4+4+8+1+1 = 34
+	// 34 bytes: 8+4+4+4+4+8+1+1
 	if len(data) < 34 {
 		return r, fmt.Errorf("SMSG_LOOT_ROLL_WON too short: %d", len(data))
 	}

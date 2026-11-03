@@ -10,6 +10,7 @@ import (
 // temporarily require WORLDPORT_ACK before movement is accepted again.
 type SessionPhase int
 
+// Session phases, in the order a login walks through them.
 const (
 	PhaseNone         SessionPhase = iota
 	PhaseConnected                 // TCP + crypto ready, waiting AUTH_RESPONSE
