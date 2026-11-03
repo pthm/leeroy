@@ -64,6 +64,7 @@ bin/azview live [events.jsonl ...] [--run <run or team dir>] [--port 8800] [--ch
 | `events.jsonl ...` | | Game logs to read |
 | `--run <dir>` | | A bench run dir or team dir, running or finished: its game logs, the judge's samples and each agent's transcript, from the run's start |
 | `--port` | 8800 | HTTP port |
+| `--host` | every interface | The address to listen on: `127.0.0.1` for this machine alone (remote runs, reached through SSH) |
 | `--chars A,B` | everyone | Only these characters |
 | `--since` | `60m` | Without `--run`: how far back to read, in minutes (`m` suffix optional) |
 | `--data <dir>` | `$LEEROY_DATA`, else the nearest `data/` | The extracted game data (maps, minimap, roads, `client/`) |

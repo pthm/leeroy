@@ -33,8 +33,8 @@ runs on a schedule.
 ```sh
 just remote-run ubrs --model terra          # LEEROY_TYPE=ccx43 just remote-run ... for a bigger server
 just remote-ls                              # the run servers
-just remote-status leeroy-ubrs-1102-1530    # its run
-just remote-view leeroy-ubrs-1102-1530      # the viewer on http://localhost:8801/, through SSH
+just remote-status                          # the newest run server's run (or name one)
+just remote-view                            # its live viewer in your browser, through an SSH tunnel (or name one)
 just remote-stop leeroy-ubrs-1102-1530      # end it early: it pauses, uploads, and the server goes
 just remote-runs                            # finished runs in R2
 just remote-fetch                           # download them into var/runs
@@ -43,7 +43,9 @@ just publish var/runs/<run> && just upload var/runs/<run>   # then as for any ru
 
 `remote-run` makes a server from the newest snapshot, copies this checkout as it is (uncommitted changes and git
 history included, so the SDK revision is the same as here; not `data/`, `var/` or the server source, which the snapshot
-has), copies the keys, and starts `azbench run suite/tasks/<task>.yaml --monitor 10s` as a systemd unit. When the run
+has), copies the keys, and starts `azbench run suite/tasks/<task>.yaml --monitor 10s` as a systemd unit, with the
+live viewer beside it (`azview` on the server's localhost:8800 from the start; `just remote-view` tunnels to it on the
+first free port from 8801 and opens it). When the run
 ends the server uploads it to `leeroy-runs/runs/<run>.tar.zst` (its log to `logs/<server>.log`) and deletes itself.
 Several runs at once are several servers: each has its own game server, so ports and characters never collide.
 

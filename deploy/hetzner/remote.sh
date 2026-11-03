@@ -5,9 +5,10 @@
 #   run <task> [args]     a server from the snapshot runs `azbench run suite/tasks/<task>.yaml [args]` on this checkout's
 #                         code as it is now, uploads the run to R2 and deletes itself
 #   ls                    the run servers
-#   status <server>       its run's status
+#   status [server]       its run's status (default: the newest run server)
 #   ssh <server> [cmd]    a shell (or a command) on it
-#   view <server> [port]  its run in the viewer, through an SSH tunnel (http://localhost:<port>, default 8801)
+#   view [server] [port]  its live viewer, which it runs from the start, through an SSH tunnel, in your browser
+#                         (default: the newest run server; the first free port from 8801)
 #   stop <server>         end its run early: the run pauses, is uploaded, and the server goes
 #   kill <server>         delete the server now, run and all
 #   runs                  the runs in R2
@@ -51,6 +52,9 @@ setup_project() { # the SSH key and the firewall every server gets, once per pro
 }
 snapshot() { # the newest leeroy snapshot's id
 	hcloud image list --type snapshot --selector leeroy=image -o noheader -o columns=id,created --sort created:desc | head -1 | awk '{print $1}'
+}
+newest_server() { # the run server made last
+	hcloud server list --selector leeroy=run -o noheader -o columns=name --sort created:desc | head -1
 }
 newest_run() { echo 'ls -d /opt/leeroy/var/runs/*/ 2>/dev/null | tail -1 | sed "s|/$||"'; }
 # code to the server: this checkout as it is (git history included, for the SDK revision), not its data, output or server
@@ -140,7 +144,8 @@ ls)
 	hcloud server list --selector leeroy -o columns=name,status,server_type,datacenter,ipv4,created,labels
 	;;
 status)
-	server=${1:?usage: status <server>}
+	server=${1:-$(newest_server)}
+	[ -n "$server" ] || die "no run servers (just remote-ls)"
 	"${SSH[@]}" "root@$(ip "$server")" "systemctl is-active leeroy-run; tail -n 8 /var/log/leeroy-run.log; \
 		cd /opt/leeroy && r=\$($(newest_run)) && [ -n \"\$r\" ] && /root/.local/bin/mise exec -- bin/azbench status \"\$r\" || true"
 	;;
@@ -149,10 +154,18 @@ ssh)
 	exec "${SSH[@]}" -t "root@$(ip "$server")" "$@"
 	;;
 view)
-	server=${1:?usage: view <server> [port]}; port=${2:-8801}
-	echo "the viewer: http://localhost:$port/ (ctrl-c ends it)"
-	exec "${SSH[@]}" -L "$port:127.0.0.1:8800" "root@$(ip "$server")" \
-		"cd /opt/leeroy && exec bin/azview live --run \$($(newest_run))"
+	# the run server's live viewer, which it runs from the start (127.0.0.1:8800 there), through an SSH tunnel; the
+	# newest run server unless one is named, the first free local port from 8801, the browser opened on it
+	server=${1:-$(newest_server)}
+	[ -n "$server" ] || die "no run servers (just remote-ls)"
+	port=${2:-8801}
+	while lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; do port=$((port + 1)); done
+	addr=$(ip "$server")
+	echo "$server's viewer on http://localhost:$port/ (ctrl-c closes the tunnel)"
+	opener=xdg-open
+	command -v open >/dev/null && opener=open
+	(sleep 2 && "$opener" "http://localhost:$port/" >/dev/null 2>&1) &
+	exec "${SSH[@]}" -N -L "$port:127.0.0.1:8800" "root@$addr"
 	;;
 stop)
 	server=${1:?usage: stop <server>}

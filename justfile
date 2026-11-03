@@ -225,14 +225,14 @@ claude-token:
 remote-ls:
     deploy/hetzner/remote.sh ls
 
-[doc("A run server's run: the unit, its last lines, azbench status")]
+[doc("A run server's run: the unit, its last lines, azbench status (default: the newest run server)")]
 [group('remote')]
-remote-status server:
+remote-status server="":
     deploy/hetzner/remote.sh status {{ server }}
 
-[doc("Watch a run server's run in the viewer, through SSH (http://localhost:8801/)")]
+[doc("Open a run server's live viewer in your browser, through an SSH tunnel (default: the newest run server)")]
 [group('remote')]
-remote-view server port="8801":
+remote-view server="" port="":
     deploy/hetzner/remote.sh view {{ server }} {{ port }}
 
 [doc("A shell (or a command) on a run server")]

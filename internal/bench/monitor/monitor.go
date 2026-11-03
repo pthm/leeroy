@@ -18,7 +18,7 @@ import (
 )
 
 // Groups are the processes sampled, by their name (/proc/<pid>/comm); everything else counts only in the host totals.
-var Groups = []string{"azsdk", "claude", "codex", "opencode", "node", "worldserver", "authserver", "mysqld"}
+var Groups = []string{"azsdk", "claude", "codex", "opencode", "node", "worldserver", "authserver", "mysqld", "azview"}
 
 // Usage is one group's share: CPU as a percentage of one core (a busy 4-thread process is 400), resident memory.
 type Usage struct {

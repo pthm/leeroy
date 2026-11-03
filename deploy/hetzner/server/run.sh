@@ -11,6 +11,9 @@ set -a
 set +a
 log "run $task $*"
 if just up && wait_ready && just build; then
+	# the live viewer beside it, for just remote-view; it outlives a failed start of its own (restarts)
+	systemd-run --unit leeroy-view --property=Restart=on-failure --property=RestartSec=10 \
+		bash /opt/leeroy/deploy/hetzner/server/view.sh >/dev/null
 	bin/azbench run "suite/tasks/$task.yaml" --no-build --monitor 10s "$@"
 	log "azbench exited $?"
 else

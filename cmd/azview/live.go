@@ -1,4 +1,4 @@
-// azview live [log.jsonl ...] [--run <run or team dir>] [--port 8800] [--chars A,B] [--since 60m]
+// azview live [log.jsonl ...] [--run <run or team dir>] [--port 8800] [--host addr] [--chars A,B] [--since 60m]
 //
 // The run viewer: reads game logs (azsdk -events files, several at once) into a store, follows them as they grow, and serves the viewer at http://localhost:<port>/: the
 // map as terrain tiles, the samples around a moment, new data as server-sent events, and the panels as HTML.
@@ -61,9 +61,12 @@ func runLive(args []string) {
 	if v, ok := Flag(args, "chars"); ok {
 		src.Chars = strings.Split(v, ",")
 	}
-	port := "8800"
+	port, host := "8800", "" // every interface; --host 127.0.0.1: this machine alone (a remote run's, reached through SSH)
 	if v, ok := Flag(args, "port"); ok {
 		port = v
+	}
+	if v, ok := Flag(args, "host"); ok {
+		host = v
 	}
 	title := "live"
 	if dir != "" {
@@ -81,7 +84,7 @@ func runLive(args []string) {
 	n := len(s.events)
 	s.mu.RUnlock()
 	fmt.Printf("viewer on http://localhost:%s/ (%s; %d events)\n", port, strings.Join(src.Files, ", "), n)
-	log.Fatal(http.ListenAndServe(":"+port, srv))
+	log.Fatal(http.ListenAndServe(host+":"+port, srv))
 }
 
 // server is the viewer's HTTP side over a store.
