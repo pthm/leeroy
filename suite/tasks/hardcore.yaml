@@ -7,4 +7,4 @@ minutes: 240
 require_fresh: true
 party:
   - {class: warrior, spec: arms}
-models: [haiku, sonnet, opus, luna, terra, sol]
+models: [haiku, sonnet, opus, luna, terra, sol, or-opus, or-sonnet, or-haiku, or-sol, or-terra, or-luna, or-argon, or-flash, or-flash-lite, or-deepseek]

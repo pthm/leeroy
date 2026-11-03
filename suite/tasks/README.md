@@ -9,6 +9,7 @@ bin/azbench run suite/tasks/hardcore.yaml                      # every model, on
 bin/azbench run suite/tasks/hardcore.yaml --model sonnet,opus  # just these
 bin/azbench run suite/tasks/travel.yaml --dry-run              # the players and the first prompt, nothing started
 bin/azbench run suite/tasks/hogger.yaml --minutes 60
+bin/azbench run suite/checks/smoke.yaml                        # a check (below)
 bin/azbench run suite/tasks/travel.yaml --reset                # again from scratch (below)
 ```
 
@@ -22,20 +23,30 @@ characters already on the server are left out of the list. A task with
 workspaces moved to `var/workspaces/.old/<agent>-<time>`, and the worldserver restarted and waited for (it caches
 character names). It refuses if any of the characters is online.
 
+These are the published set: each is played by every model in [`models.yaml`](../models.yaml) (Claude Code, Codex, and
+opencode through OpenRouter), so a model's results line up across them.
+
 | Task | Minutes | Models | What it sets up |
 |---|---|---|---|
-| `smoke.yaml` | 2 | none | two characters with no agent: checks the harness end to end without spending model time |
-| `smoke-openrouter.yaml` | 5 | together | Claude Code and opencode on cheap models through OpenRouter: checks both paths for a few cents |
-| `levelling-party.yaml` | 60 | apart | five new level-1 Humans in Northshire, one of each class (a tank, a healer, three DPS) |
-| `frost-mages.yaml` | 60 | together | a new Frost Mage per model, all on opencode through OpenRouter: Claude, GPT and Gemini in three sizes, and DeepSeek |
-| `hogger.yaml` | 120 | apart | three new level-5 characters in Goldshire (Protection Paladin, Holy Priest, Frost Mage), goal: "Wanted: Hogger" (quest 176) |
-| `deadmines.yaml` | 10080 | apart | five new level-1 Humans in Northshire, a dungeon party, goal: clear the Deadmines (`achievement:628`). A week on the clock; each stops when it has the achievement |
 | `travel.yaml` | 90 | together | a new level-30 Human warrior in Northshire per model, goal: reach Darnassus (`zone:1657`) on the other continent |
-| `deadmines-geared.yaml` | 2880 | apart | the Deadmines party at level 20 with [kits](#kits): green gear, bags and the class spells trained |
-| `ubrs.yaml` | 1440 | apart | ten level-60s, every Alliance class but the death knight (two tanks, three healers), with pre-raid dungeon gear (kits: blues up to item level 63, none from Blackrock Spire), from Morgan's Vigil, goal: clear Upper Blackrock Spire (`achievement:1307`) |
 | `hardcore.yaml` | 240 | apart | a new level-1 Human Arms warrior in Northshire, levelling with `hardcore`: the first death ends the run |
+| `hogger.yaml` | 180 | apart | three new level-1 Humans in Northshire (Protection Paladin, Holy Priest, Frost Mage), goal: "Wanted: Hogger" (quest 176) |
+| `deadmines-geared.yaml` | 360 | apart | a dungeon party of five at level 20 with [kits](#kits) (green gear, bags, the class spells trained), goal: clear the Deadmines (`achievement:628`) |
+| `ubrs.yaml` | 1440 | apart | ten level-60s, every Alliance class but the death knight (two tanks, three healers), with pre-raid dungeon gear (kits: blues up to item level 63, none from Blackrock Spire), from Morgan's Vigil, goal: clear Upper Blackrock Spire (`achievement:1307`) |
 
-All but the smoke tests set `require_fresh`.
+All set `require_fresh`.
+
+## Checks
+
+[`suite/checks/`](../checks) holds tasks that test the tooling, not the models; they're never published. `just run
+<name>` and `just remote-run <name>` find them by name too, and their characters' names are kept apart from the
+tasks'.
+
+| Check | Minutes | What it checks |
+|---|---|---|
+| `smoke.yaml` | 2 | two characters with no agent: the harness end to end without spending model time (`just smoke`) |
+| `smoke-openrouter.yaml` | 5 | Claude Code and opencode on cheap models through OpenRouter: both paths for a few cents |
+| `kill10.yaml` | 30 | one agent logs in and kills 10 creatures: a whole agent run end to end, e.g. on a remote server |
 
 ## Fields
 
@@ -124,8 +135,8 @@ another effort, add another key (`opus-high`).
 
 opencode runs with its own empty config (`<run>/<agent>/opencode/`, not `~/.config/opencode`) and the same sandbox as
 Claude Code's allowed tools: it writes only in its workspace, reads the SDK and server source, and runs only `wow`,
-`azworld`, `standings`, and the command inventory generated into each workspace from the runtime configuration. `smoke-openrouter.yaml` checks both
-OpenRouter paths for a few cents.
+`azworld`, `standings`, and the command inventory generated into each workspace from the runtime configuration.
+`checks/smoke-openrouter.yaml` checks both OpenRouter paths for a few cents.
 
 ## Preflight
 

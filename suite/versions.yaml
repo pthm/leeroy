@@ -17,3 +17,6 @@
 - version: "0.4"
   from: "2026-11-02T15:30"
   notes: 'The repository restructured: the SDK is azsdk, what agents read moved with it (azsdk/docs, suite/agent). Runs record one game log per character in the SDK''s own types, with ATIF trajectories; the server is stock.'
+- version: "1.0"
+  from: "2026-11-02T20:15"
+  notes: 'The first published task set: travel, hardcore levelling, Hogger from level 1, the Deadmines at level 20 and Upper Blackrock Spire at level 60, each played by Claude Code, Codex and opencode through OpenRouter.'

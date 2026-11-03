@@ -43,7 +43,7 @@ func (b *Bench) LoadTask(f string, only []string) ([]*Scenario, error) {
 	if err != nil {
 		return nil, err
 	}
-	names, err := charNames(filepath.Dir(f))
+	names, err := charNames(b.Dir)
 	if err != nil {
 		return nil, err
 	}
@@ -124,13 +124,16 @@ func seat(task, model string, slot int) string { return fmt.Sprintf("%s/%s/%d", 
 //go:embed names.txt
 var nameList string
 
-// charNames names every character of every task in dir from names.txt, so no two share one: each seat (task, model,
-// party slot) hashes to a name, and takes the next free one if it's taken. Seats are named in file order, so a
-// seat's name stays the same unless a new task, sorting before its own, lands on it (it then gets the next free one).
+// charNames names every character of the suite's tasks and checks (suite/tasks, then suite/checks) from names.txt, so
+// no two share one: each seat (task, model, party slot) hashes to a name, and takes the next free one if it's taken.
+// Seats are named in file order, so a seat's name stays the same unless a new task, sorting before its own, lands on
+// it (it then gets the next free one).
 // Neutral names: chat doesn't say which model plays a character.
 func charNames(dir string) (map[string]string, error) {
 	list := strings.Fields(nameList)
-	files, _ := filepath.Glob(filepath.Join(dir, "*.yaml"))
+	files, _ := filepath.Glob(filepath.Join(dir, "tasks", "*.yaml"))
+	checks, _ := filepath.Glob(filepath.Join(dir, "checks", "*.yaml"))
+	files = append(files, checks...)
 	taken, out := map[string]bool{}, map[string]string{}
 	for _, f := range files {
 		t, err := readTask(f)

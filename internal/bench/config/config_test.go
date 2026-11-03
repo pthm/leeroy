@@ -17,6 +17,8 @@ func TestBenchConfigs(t *testing.T) {
 		t.Fatalf("tables: %d specs, goldshire %+v", len(b.Specs), b.Places["goldshire"])
 	}
 	files, _ := filepath.Glob("../../../suite/tasks/*.yaml")
+	checks, _ := filepath.Glob("../../../suite/checks/*.yaml")
+	files = append(files, checks...)
 	chars := map[string]string{} // every task's characters and agents are their own
 	for _, f := range files {
 		ss, err := b.LoadTask(f, nil)
@@ -44,7 +46,7 @@ func TestBenchConfigs(t *testing.T) {
 	} else if y, err := yaml.Marshal(ss[0]); err != nil || readYAMLBytes(y, &Scenario{}) != nil { // as a run dir keeps it
 		t.Fatalf("scenario.yaml doesn't read back (%v):\n%s", err, y)
 	}
-	if ss, _ := b.LoadTask("../../../suite/tasks/travel.yaml", nil); len(ss) != 1 || len(ss[0].Agents) != 6 {
+	if ss, _ := b.LoadTask("../../../suite/tasks/travel.yaml", nil); len(ss) != 1 || len(ss[0].Agents) != 16 {
 		t.Fatalf("travel is played together: %d runs", len(ss))
 	}
 }

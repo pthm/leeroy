@@ -150,19 +150,19 @@ data-roads:
 
 # ---------- the benchmark ----------
 
-[doc("Run a task from suite/tasks (e.g. just run ubrs --model terra)")]
+[doc("Run a task from suite/tasks, or a check from suite/checks (e.g. just run ubrs --model terra)")]
 [group('bench')]
 run task *args: build
-    bin/azbench run "suite/tasks/{{ task }}.yaml" --no-build {{ args }}
+    f=suite/tasks/{{ task }}.yaml; [ -f "$f" ] || f=suite/checks/{{ task }}.yaml; bin/azbench run "$f" --no-build {{ args }}
 
-[doc("The smoke task: two characters, no agents, 2 minutes: the harness end to end")]
+[doc("The smoke check: two characters, no agents, 2 minutes: the harness end to end")]
 [group('bench')]
 smoke: (run "smoke")
 
 [doc("Check a task's plan and the first prompt without starting anything")]
 [group('bench')]
 plan task *args: build
-    bin/azbench run "suite/tasks/{{ task }}.yaml" --no-build --dry-run {{ args }}
+    f=suite/tasks/{{ task }}.yaml; [ -f "$f" ] || f=suite/checks/{{ task }}.yaml; bin/azbench run "$f" --no-build --dry-run {{ args }}
 
 [doc("A running run's status: its players, clocks and standings (default: the newest run)")]
 [group('bench')]

@@ -18,4 +18,4 @@ party:
   - {class: warlock, spec: affliction, kit: affliction-60}
   - {class: hunter, spec: marksmanship, race: dwarf, kit: marksmanship-60}
   - {class: shaman, spec: elemental, race: draenei, kit: elemental-60}
-models: [sol, sonnet, terra]
+models: [haiku, sonnet, opus, luna, terra, sol, or-opus, or-sonnet, or-haiku, or-sol, or-terra, or-luna, or-argon, or-flash, or-flash-lite, or-deepseek]

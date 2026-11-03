@@ -2,7 +2,7 @@
 # Remote runs on Hetzner Cloud, from this checkout (the justfile's remote-* recipes call this):
 #
 #   image                 build the server snapshot: the server images, this checkout's data/ and tools, ready to run
-#   run <task> [args]     a server from the snapshot runs `azbench run suite/tasks/<task>.yaml [args]` on this checkout's
+#   run <task> [args]     a server from the snapshot runs `azbench run suite/tasks/<task>.yaml [args]` (or suite/checks/) on this checkout's
 #                         code as it is now, uploads the run to R2 and deletes itself
 #   ls                    the run servers
 #   status [server]       its run's status (default: the newest run server)
@@ -92,9 +92,11 @@ image)
 	;;
 run)
 	task=${1:?usage: run <task> [azbench run args]}; shift
-	[ -f "suite/tasks/$task.yaml" ] || die "no suite/tasks/$task.yaml"
+	file=suite/tasks/$task.yaml
+	[ -f "$file" ] || file=suite/checks/$task.yaml
+	[ -f "$file" ] || die "no suite/tasks/$task.yaml or suite/checks/$task.yaml"
 	# the keys its agents' runtimes need, before paying for a server (from the task's plan)
-	plan=$(go run ./cmd/azbench run "suite/tasks/$task.yaml" --dry-run --no-build "$@" 2>&1) || die "the task's plan failed: $plan"
+	plan=$(go run ./cmd/azbench run "$file" --dry-run --no-build "$@" 2>&1) || die "the task's plan failed: $plan"
 	if grep -qw claude <<<"$plan" && [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
 		die "this task runs Claude Code: no CLAUDE_CODE_OAUTH_TOKEN in .env (just claude-token)"
 	fi
@@ -136,7 +138,7 @@ run)
 	done
 	args=$(printf '%q ' "$@")
 	"${SSH[@]}" "root@$addr" "systemd-run --unit leeroy-run --description 'leeroy $task' --property=KillMode=mixed \
-		bash /opt/leeroy/deploy/hetzner/server/run.sh $task $args >/dev/null &&
+		bash /opt/leeroy/deploy/hetzner/server/run.sh $file $args >/dev/null &&
 		systemd-run --unit leeroy-deadline --on-active=${LEEROY_MAX_HOURS}h bash /opt/leeroy/deploy/hetzner/server/finish.sh deadline >/dev/null"
 	echo "started: just remote-status $name · just remote-view $name · deletes itself after the run (at most ${LEEROY_MAX_HOURS} h)"
 	;;

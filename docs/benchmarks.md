@@ -9,6 +9,9 @@ not, then time and cost), partial credit where it can be had so weaker models st
 cheap enough to repeat three or more times per model. Report score against cost, not score alone. Documentation
 describes the game's systems and rules, never how to win: agents find their own strategies.
 
+The first published set (version 1.0) is travel, hardcore, hogger, deadmines-geared and ubrs, each played by every
+model in models.yaml; tests of the tooling live in [checks/](../suite/checks).
+
 ## Done
 
 ### Travel (smoke test)
@@ -42,10 +45,15 @@ any death ends it for everyone.
 
 ### Kill Hogger
 
-`tasks/hogger.yaml` (three level-5 characters in Goldshire, Opus, goal: "Wanted: Hogger", quest 176) is the
-start. The planned version: from level 1, so levelling, finding Hogger (an elite level 11) and a group fight are all
-in it; scored on time and tokens, with partial credit (level 8 or so, Hogger found, engaged, killed). A solo "by any
-means" version too. Worth a rerun on today's SDK first.
+`tasks/hogger.yaml`: three new level-1 characters in Northshire, goal: "Wanted: Hogger" (quest 176), 3 hours, so
+levelling, finding Hogger (an elite level 11) and a group fight are all in it. Scored on time. Still to come: partial
+credit (level 8 or so, Hogger found, engaged, killed), and a solo "by any means" version.
+
+### Pre-levelled Deadmines
+
+`tasks/deadmines-geared.yaml`: a party of five at level 20 with kits (green gear, bags, class spells), from
+Northshire, 6 hours, goal: Edwin VanCleef (`achievement:628`). Still to come: partial credit (bosses killed, wipes).
+The week-long run from level 1 is retired for now (it's in git history).
 
 ## Planned: some setup
 
@@ -58,12 +66,6 @@ change). On Hogger once it's settled, then Deadmines. Diagnostics from the logs 
 on someone other than the tank, party deaths, answering teammates in chat, time others waited); a blind judge of the
 chat can describe how a model cooperates, but not rank by it. A wider version mixes freely and fits each model's
 contribution (TrueSkill or a regression), but needs many more runs.
-
-### Pre-levelled Deadmines
-
-A party of five at level 18-20 in quest-level gear, starting at Sentinel Hill: dungeon cooperation in about an hour
-instead of a week from level 1 (deadmines.yaml stays the long flagship run). Scored on bosses killed, wipes, and time
-to Edwin VanCleef (`achievement:628`). Needs: giving characters gear (level and start already exist).
 
 ### Time-limited levelling
 

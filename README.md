@@ -144,9 +144,9 @@ The compose project is pinned to `server` (`server/override.yml`), so the volume
 ## Run a benchmark
 
 ```sh
-bin/azbench run suite/tasks/smoke.yaml                  # 2 minutes, no agents: checks the harness end to end
+bin/azbench run suite/checks/smoke.yaml                 # 2 minutes, no agents: checks the harness end to end
 bin/azbench run suite/tasks/hardcore.yaml --model opus  # one model on one task
-bin/azbench run --reset suite/tasks/travel.yaml         # six models to Darnassus, from the same start every time
+bin/azbench run --reset suite/tasks/travel.yaml         # every model to Darnassus, from the same start every time
 ```
 
 `--reset` deletes the task's characters, sets its agents' workspaces aside and restarts the worldserver first, so
