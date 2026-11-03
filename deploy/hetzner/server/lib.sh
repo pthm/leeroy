@@ -1,6 +1,8 @@
 # Shared by the server-side scripts (sourced): mise's tools on the PATH, the server's readiness, R2 through rclone.
 export PATH="/root/.local/share/mise/shims:/root/.local/bin:$PATH"
 cd /opt/leeroy || exit 1
+# the checkout arrives owned by the laptop's user, the scripts run as root: git (and Go's VCS stamping) refuse that
+git config --global --get-all safe.directory | grep -qx /opt/leeroy || git config --global --add safe.directory /opt/leeroy
 
 log() { echo "$(date -u +%FT%TZ) $*" | tee -a /var/log/leeroy-run.log; }
 
