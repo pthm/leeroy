@@ -922,16 +922,19 @@ type Transport struct {
 	Stops   []TransportStop `json:"stops" doc:"where it docks, in the order it goes round"`
 	PeriodS float64         `json:"period_s" doc:"seconds for the whole round"`
 	Aboard  bool            `json:"aboard" doc:"you're on it"`
+	Kind    string          `json:"kind,omitempty" doc:"ship, zeppelin, elevator or tram"`
+	Seen    bool            `json:"seen" doc:"false: an elevator or tram here not yet in view: where it stops, not when"`
 }
 
 // TransportStop is a dock on a transport's route.
 type TransportStop struct {
-	Map        uint32  `json:"map"`
-	X          float64 `json:"x" doc:"where the transport stops: its centre, in the water beside the pier"`
-	Y          float64 `json:"y"`
-	Z          float64 `json:"z"`
-	ArrivesInS float64 `json:"arrives_in_s" doc:"seconds until it next arrives (0 while it's there)"`
-	DepartsInS float64 `json:"departs_in_s" doc:"seconds until it next leaves"`
+	Map        uint32    `json:"map"`
+	X          float64   `json:"x" doc:"where the transport stops: its centre, in the water beside the pier"`
+	Y          float64   `json:"y"`
+	Z          float64   `json:"z"`
+	ArrivesInS float64   `json:"arrives_in_s" doc:"seconds until it next arrives (0 while it's there)"`
+	DepartsInS float64   `json:"departs_in_s" doc:"seconds until it next leaves"`
+	Wait       *Position `json:"wait,omitempty" doc:"where to wait for it here (the pier, the landing): transports.board from within 12 yd of it; transports.leave here puts you on it"`
 }
 
 // Boarding is where you stand on a transport: its guid and your spot on it, in its axes.

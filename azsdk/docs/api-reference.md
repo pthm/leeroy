@@ -353,9 +353,9 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 
 | Function | | Returns |
 |---|---|---|
-| `transports.board(guid) → Request<Boarding>` | step onto a docked transport from beside it (within 35 yd of where its crew stand): you walk straight onto its deck and ride it from there (it carries you; me.position() follows). not_docked while it's moving; too_far; leaving it: transports.leave. Completion: the straight walk onto the deck finished and the character stands on the transport, sending ONTRANSPORT; transports.list() shows aboard and me.position() follows the transport. | [Request](#request), [Boarding](#boarding) |
-| `transports.leave([x, y, z]) → Request<Position>` | walk straight off the transport you're on, onto (x, y, z), at most 35 yd away; without one, the nearest walkable floor within 35 yd (the pier, at a dock). not_aboard. Completion: the straight walk off finished at the point; ONTRANSPORT is no longer sent, so the server drops the character as a passenger. | [Request](#request), [Position](#position) |
-| `transports.list() → Transport[]` | every boat and zeppelin seen (the server shows all of a map's when you arrive on it): where it is now, where it docks on its round and when it next arrives at and leaves each stop | [Transport](#transport) |
+| `transports.board(guid) → Request<Boarding>` | board a transport at the stop you're waiting at (within 12 yd of its wait point, transports.list: stops[].wait): waits for it to be there with time to step on, then walks onto it; aboard, it carries you (me.position() follows) until transports.leave. too_far; no_route: no stored routine for it. Times out if it doesn't come within a round. Completion: the straight walk onto the deck finished and the character stands on the transport, sending ONTRANSPORT; transports.list() shows aboard and me.position() follows the transport. | [Request](#request), [Boarding](#boarding) |
+| `transports.leave() → Request<Position>` | leave the transport you're on at the stop it's at, or the next one: waits for it to be there, then walks off onto the stop's wait point (the pier, the landing). not_aboard; no_route: no stored routine for it. Times out if it doesn't stop within a round. Completion: the straight walk off finished at the point; ONTRANSPORT is no longer sent, so the server drops the character as a passenger. | [Request](#request), [Position](#position) |
+| `transports.list() → Transport[]` | the boats, zeppelins, elevators and trams on your map (the server shows them when you arrive; a boat on another continent's leg, when it comes back), with where each stops, where to wait for it there (stops[].wait), and when it next arrives at and leaves each stop; elevators and trams on your map not yet in view are listed with seen false (their stops, no times) | [Transport](#transport) |
 
 ### units
 
@@ -2033,6 +2033,8 @@ Transport is a boat or zeppelin: where it is now, and where and when it docks.
 | `stops` | TransportStop[] | where it docks, in the order it goes round |
 | `period_s` | number | seconds for the whole round |
 | `aboard` | bool | you're on it |
+| `kind?` | string | ship, zeppelin, elevator or tram |
+| `seen` | bool | false: an elevator or tram here not yet in view: where it stops, not when |
 
 ### TransportStop
 
@@ -2046,6 +2048,7 @@ TransportStop is a dock on a transport's route.
 | `z` | number |  |
 | `arrives_in_s` | number | seconds until it next arrives (0 while it's there) |
 | `departs_in_s` | number | seconds until it next leaves |
+| `wait?` | Position | where to wait for it here (the pier, the landing): transports.board from within 12 yd of it; transports.leave here puts you on it |
 
 ### Boarding
 
@@ -2436,6 +2439,7 @@ GoalMet is the benchmark's judge recording the run's goal for this character (go
 | `goal` | string | the run's goal, e.g. achievement:628 |
 | `message` | string |  |
 | `ends_at` | number | unix ms: when your agent and session stop |
+| `end?` | bool | your run is over now: your scripts stopped and game actions fail run_over; reads still answer, so you can look back and write your notes until ends_at |
 
 ### Kill
 

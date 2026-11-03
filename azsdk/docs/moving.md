@@ -168,11 +168,13 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   `movement_changed`, `flight_start` and `flight_end` events mark the changes.
 - Teleports are `teleported` events (`far = true`: a different map, and the world around you reloads). Portals are
   objects (`type = "portal"`): `objects.use(portal)`.
-- Boats and zeppelins (`transports.list()`) go round fixed routes on a timetable, waiting a minute or so at each dock;
-  some cross to another continent on the way (a far teleport for everyone aboard). The server shows you every
-  transport on your map when you arrive on it, and the SDK computes where each is from then on, on any map: its
-  position, whether it's docked, and when it next arrives at and leaves each stop. A stop's position is the
-  transport's centre, in the water beside the pier. `transports.board(guid)` steps onto a docked transport from beside
-  it (within 35 yards of where its crew stand); aboard, it carries you and `me.position()` follows it. Walking or
-  jumping on deck isn't modelled: move only to leave. `transports.leave()` steps straight off onto the nearest walkable
-  floor within 35 yards (the pier, at a dock); leaving between docks drops you in the sea.
+- Transports (`transports.list()`): boats and zeppelins go round fixed routes on a timetable, waiting a
+  minute or so at each stop, some crossing to another continent on the way (a far teleport for everyone aboard);
+  elevators and trams (the Deeprun Tram) go back and forth, pausing at each end. The server shows you the boats and
+  zeppelins on your map when you arrive on it (one on another continent's leg shows when it comes back), and the
+  elevators and trams on your map; the SDK computes where each is from then on: its position, whether it's at a stop,
+  and when it next arrives at and leaves each one. Each stop has a wait point (`stops[].wait`: on the pier, the tower,
+  the landing or the platform). Stand within 12 yards of it and `transports.board(guid)` waits for the transport to
+  be there, with time to step on, then walks you aboard; aboard, it carries you and `me.position()` follows it.
+  Walking or jumping on deck isn't modelled: stay put until you leave. `transports.leave()` waits until the transport
+  is at a stop (the one it's at, or the next), then walks you off onto that stop's wait point.
