@@ -261,6 +261,11 @@ remote-view server="" port="":
 remote-ssh server *cmd:
     deploy/hetzner/remote.sh ssh {{ server }} {{ cmd }}
 
+[doc("Resume a kept run server's run (it ended unfinished: a crash), where it stopped")]
+[group('remote')]
+remote-resume server:
+    deploy/hetzner/remote.sh resume {{ server }}
+
 [doc("End a run server's run early: it pauses, uploads and the server goes")]
 [group('remote')]
 remote-stop server:

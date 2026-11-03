@@ -10,6 +10,7 @@
 #   view [server] [port]  its live viewer, which it runs from the start, through an SSH tunnel, in your browser
 #                         (default: the newest run server; the first free port from 8801)
 #   stop <server>         end its run early: the run pauses, is uploaded, and the server goes
+#   resume <server>       a kept server (its run ended unfinished, a crash): its run resumes where it stopped
 #   kill <server>         delete the server now, run and all
 #   runs                  the runs in R2
 #   fetch [run...]        download runs from R2 into var/runs (default: every one not here yet)
@@ -23,7 +24,8 @@ cd "$(dirname "$0")/../.."
 : "${LEEROY_LOCATION:=hil}"        # Hillsboro, Oregon (US West)
 : "${LEEROY_TYPE:=ccx23}"          # run servers: 4 dedicated cores, 16 GB (the snapshot needs a 160 GB disk or more)
 : "${LEEROY_IMAGE_TYPE:=ccx23}"    # the snapshot's builder: its disk (160 GB) is the smallest a run server can have
-: "${LEEROY_MAX_HOURS:=26}"        # a run server deletes itself after this long, whatever state it's in
+: "${LEEROY_MAX_HOURS:=26}"        # a run server deletes itself after this long, whatever state it's in (a reboot too)
+: "${LEEROY_KEEP_HOURS:=6}"        # one whose run ended unfinished (a crash) is kept this long, for remote-resume
 : "${LEEROY_SSH_KEY:=$HOME/.ssh/id_ed25519}"
 : "${R2_RUNS_BUCKET:=leeroy-runs}"
 KNOWN=var/remote/known_hosts
@@ -132,14 +134,20 @@ run)
 		echo "R2_ACCESS_KEY_ID=$R2_ACCESS_KEY_ID"
 		echo "R2_SECRET_ACCESS_KEY=$R2_SECRET_ACCESS_KEY"
 		echo "R2_RUNS_BUCKET=$R2_RUNS_BUCKET"
+		echo "LEEROY_KEEP_HOURS=$LEEROY_KEEP_HOURS"
 	} | "${SSH[@]}" "root@$addr" 'umask 077; cat > /etc/leeroy/ops.env'
 	for f in auth.json config.toml; do # Codex's login and settings
 		[ -f "$HOME/.codex/$f" ] && "${SSH[@]}" "root@$addr" "umask 077; mkdir -p /root/.codex; cat > /root/.codex/$f" < "$HOME/.codex/$f"
 	done
 	args=$(printf '%q ' "$@")
 	"${SSH[@]}" "root@$addr" "systemd-run --unit leeroy-run --description 'leeroy $task' --property=KillMode=mixed \
-		bash /opt/leeroy/deploy/hetzner/server/run.sh $file $args >/dev/null &&
-		systemd-run --unit leeroy-deadline --on-active=${LEEROY_MAX_HOURS}h bash /opt/leeroy/deploy/hetzner/server/finish.sh deadline >/dev/null"
+		bash /opt/leeroy/deploy/hetzner/server/run.sh $file $args >/dev/null"
+	# the deadline as unit files, not a transient timer: it outlives a reboot (Persistent: one missed while down fires)
+	"${SSH[@]}" "root@$addr" "printf '[Service]\nExecStart=/usr/bin/bash /opt/leeroy/deploy/hetzner/server/finish.sh deadline\n' \
+			>/etc/systemd/system/leeroy-deadline.service &&
+		printf '[Timer]\nOnCalendar=%s\nPersistent=true\n[Install]\nWantedBy=timers.target\n' \
+			\"\$(date -u -d '+${LEEROY_MAX_HOURS} hours' '+%Y-%m-%d %H:%M:%S UTC')\" >/etc/systemd/system/leeroy-deadline.timer &&
+		systemctl daemon-reload && systemctl enable -q --now leeroy-deadline.timer"
 	echo "started: just remote-status $name · just remote-view $name · deletes itself after the run (at most ${LEEROY_MAX_HOURS} h)"
 	;;
 ls)
@@ -168,6 +176,13 @@ view)
 	command -v open >/dev/null && opener=open
 	(sleep 2 && "$opener" "http://localhost:$port/" >/dev/null 2>&1) &
 	exec "${SSH[@]}" -N -L "$port:127.0.0.1:8800" "root@$addr"
+	;;
+resume)
+	# a kept server (its run ended unfinished: finish.sh): its run resumes where it stopped (run.sh, up to 3 times)
+	server=${1:?usage: resume <server>}
+	"${SSH[@]}" "root@$(ip "$server")" "systemctl reset-failed leeroy-run 2>/dev/null; systemd-run --unit leeroy-run \
+		--description 'leeroy resume' --property=KillMode=mixed bash /opt/leeroy/deploy/hetzner/server/run.sh \$(cat /var/lib/leeroy/task) >/dev/null"
+	echo "resuming: just remote-status $server · just remote-view $server"
 	;;
 stop)
 	server=${1:?usage: stop <server>}

@@ -20,6 +20,7 @@ if [ -e /var/lib/leeroy/started ]; then
 		exec bash /opt/leeroy/deploy/hetzner/server/finish.sh "done"
 	fi
 	echo $((n + 1)) >/var/lib/leeroy/resumes
+	systemctl stop leeroy-keep.timer 2>/dev/null # a kept server (finish.sh): resumed, it's a run again
 	log "started again (first at $(cat /var/lib/leeroy/started)): resuming $run ($((n + 1)) of 3)"
 	printf '%s\n' "The run was interrupted (the benchmark's harness restarted, nothing you did) and is resuming: \$LEFT minutes are left," \
 		"the time it was down didn't count. Your character is logging back in where it was. Carry on." >/var/lib/leeroy/resume.txt
@@ -27,7 +28,7 @@ if [ -e /var/lib/leeroy/started ]; then
 	log "azbench exited $?"
 	exec bash /opt/leeroy/deploy/hetzner/server/finish.sh "done"
 fi
-mkdir -p /var/lib/leeroy && date -u +%FT%TZ >/var/lib/leeroy/started
+mkdir -p /var/lib/leeroy && date -u +%FT%TZ >/var/lib/leeroy/started && echo "$task" >/var/lib/leeroy/task
 # no unattended upgrades during a run: after one, needrestart restarts the services using old libraries, this unit
 # among them (a stop and a start mid-run)
 systemctl disable --now -q apt-daily.timer apt-daily-upgrade.timer unattended-upgrades.service 2>/dev/null

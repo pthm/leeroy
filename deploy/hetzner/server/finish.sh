@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # The end of a remote run, once (a lock): the newest run uploaded to R2 (runs/<run>.tar.zst) with the server's log, then
-# the server deleted. `finish.sh deadline` (the leeroy-deadline timer) pauses a run still going first; if the upload
-# fails there, the server powers off instead of going, so the run isn't lost (just remote-ls shows it).
+# the server deleted, if the run finished or was paused (just remote-stop). A run that ended otherwise (its supervisor
+# died, the server or build failed) keeps its server, for just remote-resume, until LEEROY_KEEP_HOURS (the leeroy-keep
+# timer). `finish.sh deadline` (that timer, or leeroy-deadline's LEEROY_MAX_HOURS) pauses a run still going first and
+# always deletes; if the upload fails there, the server powers off instead of going, so the run isn't lost (just
+# remote-ls shows it).
 set -uo pipefail
 why=${1:-done}
 exec 9>/run/leeroy-finish.lock
@@ -47,6 +50,13 @@ if [ $ok = 0 ]; then
 		poweroff
 	fi
 	exit 1 # the deadline tries again
+fi
+status=$([ -n "$run" ] && jq -r '.status // ""' "$run/run.json" 2>/dev/null)
+if [ "$why" = done ] && [ "$status" != finished ] && [ "$status" != paused ]; then
+	keep=${LEEROY_KEEP_HOURS:-6}
+	log "the run ended ${status:-before starting}: keeping this server (just remote-resume $host, or just remote-kill $host); it deletes itself in $keep h"
+	systemd-run --unit leeroy-keep --on-active="${keep}h" bash /opt/leeroy/deploy/hetzner/server/finish.sh deadline >/dev/null 2>&1 || true
+	exit 0
 fi
 id=$(curl -fsS http://169.254.169.254/hetzner/v1/metadata/instance-id)
 log "deleting this server ($host, $id)"
