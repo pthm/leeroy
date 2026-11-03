@@ -79,7 +79,7 @@ standings                                        # the score, and the minutes le
 3. **You choose what wakes you.** `wow wait` blocks until an event in your subscription (`wow subscribe`): by
    default deaths, stalls (no XP for a while: `events.watch`), a task's call failing the same way 25 times in a row
    (`failure_loop`), script errors, tasks ending, your scripts'
-   questions, invites, trades, broken gear, chat from players to you, `goal_met` (the judge recorded your goal) and `maintenance` (an operator notice
+   questions, invites, trades, broken gear, chat from players to you, `goal_met` (the judge recorded your goal: your run is over, your scripts stop and game actions fail `run_over`, and you have a few minutes to write your notes) and `maintenance` (an operator notice
    about the run, with the time it takes effect). Chat that isn't a whisper or your name is collected until 2 s of
    quiet (8 s at most) before `wow wait` returns. `wow events` shows what led up to it.
 4. **You change scripts while they run.** Globals persist until you replace them. A loop that reads a settings

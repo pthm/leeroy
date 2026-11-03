@@ -1,0 +1,13 @@
+description: >
+  A small duel tournament, to check the round scheduler before the full one: four models, each pair once, in three
+  rounds of two pairs duelling at once at two spots (out of sight of each other). Level-60 Frost Mages in identical
+  gear and talents (kit frost-60-pvp), face to face 8 yards apart, 5 duels per pairing.
+goal: duels:5
+minutes: 20
+spots: [duel-1, duel-2]
+spread: 8 # face to face, inside the Duel spell's 10 yd
+require_fresh: true
+party:
+  - {class: mage, spec: frost, kit: frost-60-pvp}
+models: [luna, haiku, or-flash-lite, or-deepseek-flash]
+versus: true

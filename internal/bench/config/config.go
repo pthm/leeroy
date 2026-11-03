@@ -38,10 +38,14 @@ type Conditions struct {
 	Description string `yaml:"description"`
 	Goal        string `yaml:"goal"`    // a judge goal: score:100000, level:10, quest:176, skill:164:75 ...
 	Minutes     int    `yaml:"minutes"` // default 60
-	// WrapUpMinutes: how long an agent and its session keep going after its judge records the goal; default 5
+	// WrapUpMinutes: how long an agent keeps going after its judge records the goal, its run over (its session acts no
+	// more), to write its notes; default 5
 	WrapUpMinutes int `yaml:"wrap_up_minutes"`
 	// starting conditions, applied in the database while the characters are offline
-	Start   *Place   `yaml:"start"` // a name from places.yaml, or {x, y, z, map, zone}; nil: where they are
+	Start *Place `yaml:"start"` // a name from places.yaml, or {x, y, z, map, zone}; nil: where they are
+	// Spread (yards): the characters stand evenly on a circle this wide around the start, each facing its centre (two
+	// players: spread apart, face to face); 0: all on the start
+	Spread  float64  `yaml:"spread"`
 	Level   int      `yaml:"level"`
 	Money   int      `yaml:"money"`   // copper
 	Setup   []string `yaml:"setup"`   // revive, repair, reset_talents (for characters from earlier runs)
@@ -82,6 +86,9 @@ type Agent struct {
 	// prefix for opencode) or openrouter (OPENROUTER_API_KEY), for claude and opencode
 	Provider string `yaml:"provider"`
 	Kit      *Kit   `yaml:"kit,omitempty"` // its starting kit, as applied (Member.Kit)
+	// a versus task: where this agent's pair starts (the run's start otherwise), and who it plays
+	Start    *Place `yaml:"start,omitempty"`
+	Opponent string `yaml:"opponent,omitempty"`
 }
 
 // Place is a starting position: x y z map zone.
@@ -182,7 +189,7 @@ func ID(m map[string]int, s string) (int, error) {
 
 var (
 	nameRe  = regexp.MustCompile(`^[A-Za-z]{2,12}$`)
-	goalRe  = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|zone|kills|score):\d+|skill:\d+:\d+)$`)
+	goalRe  = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|zone|kills|duels|score):\d+|skill:\d+:\d+)$`)
 	agentRe = regexp.MustCompile(`^[a-z0-9-]{1,16}$`)
 )
 
@@ -299,6 +306,9 @@ func (b *Bench) Check(s *Scenario) error {
 	}
 	if !goalRe.MatchString(s.Goal) {
 		return fmt.Errorf("%s: goal %q: want level:<n>, score:<n>, quest:<id>, skill:<id>:<n> or the like", s.Name, s.Goal)
+	}
+	if s.Spread < 0 || (s.Spread > 0 && s.Start == nil && slices.ContainsFunc(s.Agents, func(a Agent) bool { return a.Start == nil })) {
+		return fmt.Errorf("%s: spread needs a start and can't be negative", s.Name)
 	}
 	if s.Start != nil && s.Start.Name != "" {
 		p, ok := b.Places[s.Start.Name]

@@ -104,8 +104,18 @@ func publish(root, runDir, task, out string) (string, error) {
 		}
 		a := agents[char]
 		p["class"], p["spec"], p["race"] = a.Class, a.Spec, a.Race
+		if a.Opponent != "" {
+			p["opponent"] = a.Opponent
+		}
+		if a.Start != nil { // a versus pair's spot, by its name in places.yaml
+			for name, pl := range b.Places {
+				if pl.X == a.Start.X && pl.Y == a.Start.Y && pl.Map == a.Start.Map {
+					p["spot"] = name
+				}
+			}
+		}
 		p["met"] = false
-		for k, v := range pick(judged[char], "met", "time_to_goal_s", "value", "score", "level", "gave_up", "died", "checkpoints") {
+		for k, v := range pick(judged[char], "met", "time_to_goal_s", "value", "score", "level", "gave_up", "died", "checkpoints", "duels", "duels_won") {
 			p[k] = v
 		}
 		if _, ok := p["time_to_goal_s"]; !ok && p["met"] == true { // older judges: the clock stopped at the goal
@@ -222,6 +232,9 @@ func publish(root, runDir, task, out string) (string, error) {
 		"id": id, "task": task, "version": ver.Version, "sdk_rev": ver.SDKRev, "scenario": name, "description": strings.TrimSpace(s.Description), "goal": s.Goal,
 		"minutes": s.Minutes, "hardcore": s.Hardcore, "level": s.Level, "started": started.Format(time.RFC3339),
 		"players": players, "maps": maps, "together": together(tracks, end), "chat_per_min": chatPerMinute(chat),
+	}
+	if strings.HasPrefix(s.Goal, "duels:") {
+		doc["matches"] = duelMatches(players)
 	}
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return "", err
@@ -413,4 +426,44 @@ func outages(diag string) []map[string]any {
 		})
 	}
 	return out
+}
+
+// duelMatches: a duel run's matches, as the site reads every versus task (head to head, ratings, match cards): each
+// pairing a match of two sides (one player each) at its spot, its duels the games ({at_s, winner: side 0 or 1, how}).
+// A battleground would be the same with a team on each side. Each player also gets games: {won, played}.
+func duelMatches(players []map[string]any) []map[string]any {
+	byChar := map[string]map[string]any{}
+	for _, p := range players {
+		byChar[fmt.Sprint(p["char"])] = p
+	}
+	side := func(p map[string]any) map[string]any {
+		return map[string]any{"model": p["model"], "runtime": p["runtime"], "effort": p["effort"], "players": []any{p["char"]}}
+	}
+	seen := map[string]bool{}
+	matches := []map[string]any{}
+	for _, p := range players {
+		duels, _ := p["duels"].([]any)
+		opp, _ := p["opponent"].(string)
+		if opp == "" && len(duels) > 0 {
+			opp = fmt.Sprint(duels[0].(map[string]any)["opponent"])
+		}
+		o := byChar[opp]
+		won := 0
+		games := []map[string]any{}
+		for _, d := range duels {
+			dm, _ := d.(map[string]any)
+			w := 1
+			if dm["won"] == true {
+				w, won = 0, won+1
+			}
+			games = append(games, map[string]any{"at_s": dm["at_s"], "winner": w, "how": dm["result"]})
+		}
+		p["games"] = map[string]any{"won": won, "played": len(duels)}
+		if o == nil || seen[fmt.Sprint(p["char"])] {
+			continue
+		}
+		seen[fmt.Sprint(p["char"])], seen[opp] = true, true
+		matches = append(matches, map[string]any{"spot": p["spot"], "sides": []any{side(p), side(o)}, "games": games})
+	}
+	return matches
 }

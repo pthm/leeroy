@@ -19,6 +19,14 @@ type Kit struct {
 	Bags    []int          `yaml:"bags"`    // up to 4, in the bag slots
 	Items   []Stack        `yaml:"items"`   // in the backpack, then the bags
 	Pet     *Pet           `yaml:"pet"`     // a hunter's tamed beast, at the kit's level
+	// Talents: a fixed build (the kit's talents replace the character's); none: the points stay unspent
+	Talents []Talent `yaml:"talents"`
+}
+
+// Talent is a talent (Talent.dbc id) at a rank.
+type Talent struct {
+	ID   int `yaml:"id"`
+	Rank int `yaml:"rank"`
 }
 
 // Pet is a tamed beast: a creature a hunter can tame (creature_template entry), and its name.
@@ -55,6 +63,16 @@ func (b *Bench) LoadKit(name string) (*Kit, error) {
 	}
 	if len(k.Bags) > 4 {
 		return nil, fmt.Errorf("kit %s: %d bags, 4 at most", name, len(k.Bags))
+	}
+	points := 0
+	for _, t := range k.Talents {
+		if t.Rank < 1 {
+			return nil, fmt.Errorf("kit %s: talent %d: rank %d", name, t.ID, t.Rank)
+		}
+		points += t.Rank
+	}
+	if points > max(0, k.Level-9) { // a point a level from 10
+		return nil, fmt.Errorf("kit %s: %d talent points, level %d has %d", name, points, k.Level, max(0, k.Level-9))
 	}
 	return &k, nil
 }

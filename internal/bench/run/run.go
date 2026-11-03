@@ -82,6 +82,13 @@ func (r *Runner) f() runfiles.Run { return runfiles.Run(r.dir) }
 // Dir is the run's directory.
 func (r *Runner) Dir() string { return r.dir }
 
+// Paused reports whether the run ended paused (azbench pause) rather than finished.
+func (r *Runner) Paused() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.paused
+}
+
 // logf: a line in supervisor.log, and on stderr.
 func (r *Runner) logf(f string, a ...any) {
 	line := fmt.Sprintf("%s %s\n", time.Now().Format("2006-01-02 15:04:05"), fmt.Sprintf(f, a...))
@@ -428,19 +435,20 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 	p.saveKit() // after the logout saved the character
 }
 
-// wrapUp: the judge recorded p's goal, so its score is final. The agent and session keep going for wrap (a loot roll
-// to finish, notes to write), and a goal_met event tells the agent, unless the run pauses first.
+// wrapUp: the judge recorded p's goal, so its score is final and its run is over: a goal_met event tells the agent,
+// and its session ends the run (its scripts stop and game actions fail run_over; the others play on). The agent keeps
+// wrap to look back and write its notes, unless the run pauses first.
 func (r *Runner) wrapUp(p *player, wrap time.Duration) {
 	end := time.Now().Add(wrap)
 	p.extendAgent(end)
 	p.runtimeState("supervisor", types.StateWrapUp)
 	if err := notify(r.ctx, p.port, "goal_met", types.GoalMet{
-		Goal:    r.s.Goal,
-		Message: "The judge recorded your goal; your score is final.", EndsAt: end.UnixMilli(),
+		Goal: r.s.Goal, End: true, EndsAt: end.UnixMilli(),
+		Message: fmt.Sprintf("The judge recorded your goal; your score is final and your run is over: your scripts have stopped and game actions now fail run_over. You have %.0f minutes to look back and write your notes (NOTES.md).", wrap.Minutes()),
 	}); err != nil {
 		p.logf("goal_met: %v", err)
 	}
-	p.logf("goal met: stopping in %.0f min", wrap.Minutes())
+	p.logf("goal met: run over for it, stopping in %.0f min", wrap.Minutes())
 	select {
 	case <-time.After(wrap):
 	case <-r.ctx.Done():

@@ -1,0 +1,13 @@
+description: >
+  A duel check: two level-60 Frost Mages in identical gear (kit frost-60-pvp: a fixed talent build, food and water) at duel-1 in Dun Morogh, two models against
+  each other in one world, 5 duels fought one after another. Health, mana and cooldowns aren't restored between duels.
+  Checks the duel tooling end to end (challenge, accept, results, the judge's count) before the duel tasks.
+goal: duels:5
+minutes: 45
+start: duel-1
+spread: 8 # face to face, inside the Duel spell's 10 yd
+require_fresh: true
+party:
+  - {class: mage, spec: frost, kit: frost-60-pvp}
+models: [luna, haiku]
+together: true

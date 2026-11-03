@@ -222,7 +222,7 @@ func (p *player) prepare(ctx context.Context) error {
 		return err
 	}
 	s := p.r.s
-	if s.Level > 0 || s.Money > 0 || s.Start != nil || len(s.Setup) > 0 || p.a.Kit != nil {
+	if s.Level > 0 || s.Money > 0 || s.Start != nil || p.a.Start != nil || len(s.Setup) > 0 || p.a.Kit != nil {
 		for try := 1; !charExists(p.a.Char) && try <= 3; try++ { // concurrent logins can time out on the auth server
 			if cmd, err := p.daemon("-duration", "8s"); err == nil {
 				for alive(cmd) {
@@ -322,12 +322,15 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 			"ANTHROPIC_DEFAULT_HAIKU_MODEL="+a.Model)
 	}
 	if a.Runtime == "opencode" {
-		// its own empty config dir, so the user's opencode config (plugins, providers, AGENTS.md) stays out of the run
+		// its own empty config dir, so the user's opencode config (plugins, providers, AGENTS.md) stays out of the run,
+		// and its own data, state and cache: opencode keeps its sessions in one SQLite database there, and agents
+		// sharing it fail at start with "database is locked" when they start together
 		cfg := filepath.Join(p.dir, "opencode")
 		if err := os.MkdirAll(cfg, 0o755); err != nil {
 			p.logf("opencode config: %v", err)
 		}
-		env = append(env, "XDG_CONFIG_HOME="+cfg, "OPENCODE_CONFIG_CONTENT="+opencodeConfig(repo, p.ws))
+		env = append(env, "XDG_CONFIG_HOME="+cfg, "XDG_DATA_HOME="+filepath.Join(cfg, "data"), "XDG_STATE_HOME="+filepath.Join(cfg, "state"),
+			"XDG_CACHE_HOME="+filepath.Join(cfg, "cache"), "OPENCODE_CONFIG_CONTENT="+opencodeConfig(repo, p.ws))
 	}
 	env = append(env, "PATH="+filepath.Join(repo, "suite", "agent", "bin")+":"+os.Getenv("PATH"),
 		"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "WOWBENCH_BOARD="+p.r.f().Board(),

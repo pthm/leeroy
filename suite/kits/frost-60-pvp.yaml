@@ -1,0 +1,50 @@
+# frost-60 (azbench kit gen mage 60 --spec frost --quality rare --max-ilvl 63 --not-from 229) with a fixed talent
+# build, 51 points deep in Frost, so duels measure fighting rather than talent choices.
+level: 60
+money: 90000 # copper
+trained: true # every spell the class trainers teach and class quests reward up to the level
+spells: [201, 5009]
+gear:
+  head: 16686 # Magister's Crown (item level 62, drop)
+  neck: 13085 # Horizon Choker (item level 51, drop)
+  shoulders: 16689 # Magister's Mantle (item level 60, drop)
+  chest: 8283 # Arcane Armor (item level 61, drop)
+  waist: 16685 # Magister's Belt (item level 58, drop)
+  legs: 16687 # Magister's Leggings (item level 61, drop)
+  feet: 16682 # Magister's Boots (item level 59, drop)
+  wrists: 13107 # Magiskull Cuffs (item level 62, drop)
+  hands: 18387 # Brightspark Gloves (item level 60, drop)
+  finger1: 13345 # Seal of Rivendare (item level 63, drop)
+  finger2: 18395 # Emerald Flame Ring (item level 62, drop)
+  trinket1: 45631 # High-powered Flashlight (item level 54, crafted)
+  trinket2: 17759 # Mark of Resolution (item level 60, quest)
+  back: 13376 # Royal Tribunal Cloak (item level 59, drop)
+  main_hand: 15801 # Valiant Shortsword (item level 58, quest)
+  off_hand: 43663 # Stormbound Tome (item level 55, crafted)
+  ranged: 16997 # Stormrager (item level 62, quest)
+bags: [4499, 4499, 4499, 4499] # Huge Brown Sack (12 slots, vendor)
+talents: # a fixed build: talent id and rank
+  - {id: 38, rank: 3} # Frostbite
+  - {id: 37, rank: 5} # Improved Frostbolt
+  - {id: 73, rank: 3} # Ice Shards
+  - {id: 1649, rank: 2} # Precision
+  - {id: 65, rank: 3} # Permafrost
+  - {id: 61, rank: 3} # Piercing Ice
+  - {id: 69, rank: 1} # Icy Veins
+  - {id: 741, rank: 2} # Arctic Reach
+  - {id: 67, rank: 3} # Shatter
+  - {id: 72, rank: 1} # Cold Snap
+  - {id: 1736, rank: 3} # Frozen Core
+  - {id: 1737, rank: 2} # Cold as Ice
+  - {id: 71, rank: 1} # Ice Barrier
+  - {id: 2214, rank: 2} # Shattered Barrier
+  - {id: 1738, rank: 5} # Arctic Winds
+  - {id: 1740, rank: 2} # Empowered Frostbolt
+  - {id: 1853, rank: 2} # Fingers of Frost
+  - {id: 1854, rank: 3} # Brain Freeze
+  - {id: 1741, rank: 1} # Summon Water Elemental
+  - {id: 1855, rank: 3} # Enduring Winter
+  - {id: 1857, rank: 1} # Deep Freeze
+items:
+  - {entry: 8766, count: 20} # Morning Glory Dew (drink, from vendors)
+  - {entry: 8952, count: 20} # Roasted Quail (food, from vendors)

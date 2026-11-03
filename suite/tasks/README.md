@@ -58,8 +58,9 @@ Unknown fields are errors, so a typo doesn't silently change a run.
 | `description` | for people |
 | `goal` | a judge goal: `score:100000` (XP per hour; "as much as possible"), `level:10`, `quest:176`, `achievement:628`, `quests:5`, `skill:164:75`, `money:<copper>`, `item:<entry>`, `quality:<0-5>`, `achpoints:<n>`, `zone:<id>` (in that zone, an AreaTable id) ([judge](../../internal/bench/judge/README.md)) |
 | `minutes` | the run's length; default 60 |
-| `wrap_up_minutes` | how long an agent and its session keep going after its judge records the goal (its score is final; a `goal_met` event tells it); default 5 |
+| `wrap_up_minutes` | how long an agent keeps going after its judge records the goal, to look back and write its notes: a `goal_met` event tells it its score is final and its run is over, its scripts stop and game actions fail `run_over` (reads still answer); the other players play on. Default 5 |
 | `start` | where every character starts: a name from [`places.yaml`](../places.yaml), `"x y z map zone"`, or `{x, y, z, map, zone}`. Omitted: where they are (new characters: their race's start) |
+| `spread` | with `start`: the characters stand evenly on a circle this many yards across around it, each facing its centre (two players: that far apart, face to face); default 0, all on the start |
 | `level`, `money` | set before the run (money in copper) |
 | `setup` | for characters from earlier runs: `revive` (no ghost, corpse or resurrection sickness), `repair` (every item), `reset_talents` |
 | `channel` | the zone channel joined at login; default `General - Elwynn Forest` |
@@ -72,7 +73,8 @@ Unknown fields are errors, so a typo doesn't silently change a run.
 | `models` | who plays: keys of [`models.yaml`](../models.yaml) |
 | `together` | `false` (default): a run per model, one after another, so none share the world. `true`: one run with every model's party in one world |
 
-Starting conditions (`start`, `level`, `money`, `setup`) are applied in the database while the character is offline;
+Starting conditions (`start`, `spread`, `level`, `money`, `setup`) are applied in the database while the character is
+offline, with full health and mana;
 a character that doesn't exist yet is created first with a short login.
 
 ## Kits
@@ -115,11 +117,13 @@ the file freely.
 | `gear` | slot to item entry: `head` `neck` `shoulders` `shirt` `chest` `waist` `legs` `feet` `wrists` `hands` `finger1` `finger2` `trinket1` `trinket2` `back` `main_hand` `off_hand` `ranged` `tabard`. A slot not listed keeps what the character wears |
 | `bags` | up to 4 bag entries |
 | `items` | `{entry, count}` stacks, in the backpack and then the bags. Arrows or bullets go in the ammo slot |
+| `talents` | a fixed build: `{id, rank}` (Talent.dbc ids; `kit save` writes them with names), replacing the character's talents; at most a point a level from 10. A talent that is itself a spell (Ice Barrier) is learned with it |
 | `pet` | `{entry, name}`: a hunter's tamed beast (a creature it can tame), its current pet at the kit's level; the server gives it its abilities |
 
 The skills that rise with level (weapons, Defense, the class's own) start at their cap for it, as playing there would
 leave them.
-Talents stay unspent: the server gives the points for the level. A kit can't go with an `item:` or `quality:` goal:
+Talents stay unspent unless the kit has a `talents` build (a duel kit fixes one, so duels measure fighting rather
+than talent choices): the server gives the points the level has left over. A kit can't go with an `item:` or `quality:` goal:
 the judge counts every item owned, the kit's too.
 
 ## Models

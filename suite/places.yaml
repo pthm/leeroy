@@ -3,3 +3,17 @@ northshire: "-8949.95 -132.49 83.53 0 12"   # Northshire Abbey, where Humans sta
 goldshire: "-9460 70 56.6 0 12"             # the Lion's Pride Inn
 stormwind-trade: "-8833.38 628.63 94.01 0 1519" # Stormwind's Trade District: trainers, vendors, bank, flights
 morgans-vigil: "-8363.5 -2738.9 185.7 0 46"     # Morgan's Vigil, Burning Steppes: the Alliance flight point by Blackrock Mountain
+
+# Duel spots: 50 yd of open ground, nothing within 50 yd, nothing hostile within 100 (some are slightly sloped), each
+# over 250 yd from the rest so pairs duelling at once can't see each other. Checked in game 2026-11-02.
+duel-1: "-5860 760 486.3 0 1"        # Dun Morogh, west snowfield
+duel-2: "-4800 740 388.0 0 1"        # Dun Morogh, north
+duel-3: "-4700 -2000 523.2 0 1"      # Dun Morogh, the ridge by the Ironforge airport
+duel-4: "-1980 -1340 210.2 1 215"    # Mulgore (Horde territory: their patrols are hostile)
+duel-5: "-8740 400 -6.1 1 1377"      # Silithus, desert gullies (at the edge of the playable map)
+duel-6: "7620 -820 16.1 1 148"       # Darkshore, the Ruins of Mathystra
+duel-7: "-4400 2260 8.4 1 357"       # Feralas, the Forgotten Coast
+duel-8: "-6960 -4720 8.9 1 440"      # Tanaris, by Steamwheedle Port (its NPCs ~57 yd off)
+duel-9: "-5480 920 392.8 0 1"        # Dun Morogh, snowfield
+duel-10: "-5280 220 386.6 0 1"       # Dun Morogh, Iceflow Lake (frozen; grey mobs on its islands)
+duel-11: "-5720 -2040 396.9 0 1"     # Dun Morogh, Helm's Bed Lake (frozen; grey mobs ~90 yd east)

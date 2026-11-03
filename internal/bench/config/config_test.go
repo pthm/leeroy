@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -58,5 +59,38 @@ func TestPlace(t *testing.T) {
 	}
 	if s.Start.X != -9460 || s.Start.Zone != 12 {
 		t.Fatalf("%+v", s.Start)
+	}
+}
+
+func TestRounds(t *testing.T) {
+	for _, n := range []int{2, 3, 4, 5, 16} {
+		var ms []string
+		for i := range n {
+			ms = append(ms, fmt.Sprint("m", i))
+		}
+		met := map[[2]string]int{}
+		rounds := Rounds(ms)
+		for _, r := range rounds {
+			in := map[string]bool{}
+			for _, p := range r {
+				if in[p[0]] || in[p[1]] {
+					t.Fatalf("%d models: %v plays twice in a round", n, p)
+				}
+				in[p[0]], in[p[1]] = true, true
+				a, b := min(p[0], p[1]), max(p[0], p[1])
+				met[[2]string{a, b}]++
+			}
+		}
+		if len(met) != n*(n-1)/2 {
+			t.Fatalf("%d models: %d pairs, want %d", n, len(met), n*(n-1)/2)
+		}
+		for p, c := range met {
+			if c != 1 {
+				t.Fatalf("%d models: %v met %d times", n, p, c)
+			}
+		}
+		if want := n - 1 + n%2; len(rounds) != want {
+			t.Fatalf("%d models: %d rounds, want %d", n, len(rounds), want)
+		}
 	}
 }

@@ -146,6 +146,10 @@ func benchCommand(cmd string, args []string) bool {
 			}
 			check(r.Run(false))
 			fmt.Println(r.Dir())
+			if r.Paused() { // pausing a run stops the task's other runs too (a versus task's later rounds)
+				fmt.Fprintln(os.Stderr, "paused: the task's remaining runs weren't started")
+				break
+			}
 		}
 	case "resume":
 		pos := parse(1, "<run dir> --message <file> [--minutes n] [--no-build]")

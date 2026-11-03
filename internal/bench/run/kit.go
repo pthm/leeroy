@@ -37,6 +37,26 @@ var passiveSpells = sync.OnceValue(func() map[int]bool {
 	return out
 })
 
+// talentRanks: each talent's spell per rank (Talent.dbc fields 4-8), read once.
+var talentRanks = sync.OnceValue(func() map[int][]int {
+	out := map[int][]int{}
+	b, err := os.ReadFile(filepath.Join(world.DataDir(), "dbc", "Talent.dbc"))
+	if err != nil || len(b) < 20 || string(b[:4]) != "WDBC" {
+		return out
+	}
+	n, size := int(binary.LittleEndian.Uint32(b[4:])), int(binary.LittleEndian.Uint32(b[12:]))
+	for i := 0; i < n && 20+(i+1)*size <= len(b); i++ {
+		rec := b[20+i*size:]
+		id := int(binary.LittleEndian.Uint32(rec))
+		for k := 4; k <= 8; k++ {
+			if sp := int(binary.LittleEndian.Uint32(rec[k*4:])); sp != 0 {
+				out[id] = append(out[id], sp)
+			}
+		}
+	}
+	return out
+})
+
 // learnedBy: what each spell teaches (Spell.dbc effects 71-73 of type 36, learn spell, the taught spell in fields
 // 116-118), read once. Class quests reward a spell like this: the warrior's level-10 quest teaches Defensive Stance,
 // Sunder Armor and Taunt.
@@ -235,6 +255,22 @@ func applyKit(k *config.Kit, char string, class int) error {
 			exec("INSERT INTO character_skills (guid, skill, value, max) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value), max = VALUES(max)", g, sk[0], v, v)
 		}
 	}
+	if len(k.Talents) > 0 { // the build replaces the character's talents, in the primary spec (specMask 1); the
+		// server adds their spells and auras when it loads them, and gives the points left over
+		exec("DELETE FROM character_talent WHERE guid = ?", g)
+		for _, t := range k.Talents {
+			ranks := talentRanks()[t.ID]
+			if t.Rank > len(ranks) {
+				return fmt.Errorf("kit: talent %d has %d ranks, not %d", t.ID, len(ranks), t.Rank)
+			}
+			sp := ranks[t.Rank-1]
+			exec("INSERT INTO character_talent (guid, spell, specMask) VALUES (?, ?, 1)", g, sp)
+			if !passiveSpells()[sp] && len(learnedBy()[sp]) == 0 { // a talent that is itself a spell to cast (Ice
+				// Barrier, Deep Freeze): learning it in game also learns the spell, which loading the talent doesn't
+				exec("INSERT IGNORE INTO character_spell (guid, spell, specMask) VALUES (?, ?, 1)", g, sp)
+			}
+		}
+	}
 	// the skills that rise with level, 5 a level (weapons, Defense, the class's own lines), at the cap for the new
 	// one, as playing there would leave them: the server grants the spells they unlock when it loads them (a druid's
 	// Teleport: Moonglade at 50 Balance)
@@ -383,7 +419,8 @@ func ApplyKit(k *config.Kit, char string) error {
 	return applyKit(k, char, atoi(r[0][0]))
 }
 
-// SaveKit reads a character as a kit: level, money, every spell, gear, bags and the items it carries; notes: item names.
+// SaveKit reads a character as a kit: level, money, every spell, its talents, gear, bags and the items it carries;
+// notes: item names.
 func SaveKit(char string) (*config.Kit, map[int]string, error) {
 	db := chars()
 	r, err := world.Rows(db, "SELECT guid, level, money FROM characters WHERE name = ?", char)
@@ -400,6 +437,18 @@ func SaveKit(char string) (*config.Kit, map[int]string, error) {
 	for _, s := range spells {
 		k.Spells = append(k.Spells, atoi(s[0]))
 	}
+	talents, err := world.Rows(db, "SELECT spell FROM character_talent WHERE guid = ? AND specMask & 1", g)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, t := range talents { // the rank spell back to its talent and rank
+		for id, ranks := range talentRanks() {
+			if i := slices.Index(ranks, atoi(t[0])); i >= 0 {
+				k.Talents = append(k.Talents, config.Talent{ID: id, Rank: i + 1})
+			}
+		}
+	}
+	slices.SortFunc(k.Talents, func(a, b config.Talent) int { return a.ID - b.ID })
 	inv, err := world.Rows(db, `SELECT ci.bag, ci.slot, ii.itemEntry, ii.count, it.name FROM character_inventory ci
   JOIN item_instance ii ON ii.guid = ci.item JOIN acore_world.item_template it ON it.entry = ii.itemEntry
   WHERE ci.guid = ? ORDER BY ci.bag, ci.slot`, g)

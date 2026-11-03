@@ -3,9 +3,11 @@ package run
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -47,7 +49,7 @@ func grantReader() error {
 // applyStart sets the scenario's starting conditions on an offline character: level, money, position, and the setup
 // steps for characters from earlier runs (revive, repair, reset_talents). health = 100000 so it logs in alive.
 func applyStart(s *config.Scenario, char string) error {
-	set := []string{"health = 100000"}
+	set := []string{"health = 100000", "power1 = 100000"} // full health and mana: the server caps both at login
 	var args []any
 	if s.Level > 0 {
 		set = append(set, "level = ?", "xp = 0")
@@ -57,9 +59,10 @@ func applyStart(s *config.Scenario, char string) error {
 		set = append(set, "money = ?")
 		args = append(args, s.Money)
 	}
-	if p := s.Start; p != nil {
-		set = append(set, "position_x = ?", "position_y = ?", "position_z = ?", "map = ?", "zone = ?")
-		args = append(args, p.X, p.Y, p.Z, p.Map, p.Zone)
+	if p := startOf(s, char); p != nil {
+		x, y, z, o := spot(s, char)
+		set = append(set, "position_x = ?", "position_y = ?", "position_z = ?", "orientation = ?", "map = ?", "zone = ?")
+		args = append(args, x, y, z, o, p.Map, p.Zone)
 	}
 	g := "(SELECT guid FROM (SELECT guid FROM characters WHERE name = ?) c)"
 	var q []string
@@ -152,4 +155,37 @@ func restartWorld() error {
 		}
 	}
 	return fmt.Errorf("the worldserver didn't say it was ready within 5 minutes (docker logs ac-worldserver)")
+}
+
+// startOf is where a character's run starts: its own start (a versus pair's spot), or the run's.
+func startOf(s *config.Scenario, char string) *config.Place {
+	for _, a := range s.Agents {
+		if a.Char == char && a.Start != nil {
+			return a.Start
+		}
+	}
+	return s.Start
+}
+
+// spot is where a character starts: its start, or with spread its place on the circle around it (by its order among
+// the agents starting there), on the ground and facing the centre.
+func spot(s *config.Scenario, char string) (x, y, z, o float64) {
+	p := startOf(s, char)
+	var here []string // the agents starting at the same place
+	for _, a := range s.Agents {
+		if q := startOf(s, a.Char); q != nil && *q == *p {
+			here = append(here, a.Char)
+		}
+	}
+	i := slices.Index(here, char)
+	if s.Spread <= 0 || i < 0 || len(here) < 2 {
+		return p.X, p.Y, p.Z, 0
+	}
+	a := 2 * math.Pi * float64(i) / float64(len(here))
+	x, y = p.X+s.Spread/2*math.Cos(a), p.Y+s.Spread/2*math.Sin(a)
+	z = p.Z
+	if h, _, _ := world.Sample(uint32(p.Map), x, y); !math.IsNaN(h) {
+		z = h + 0.5
+	}
+	return x, y, z, math.Mod(a+math.Pi, 2*math.Pi)
 }

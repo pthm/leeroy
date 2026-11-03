@@ -17,6 +17,11 @@ type Task struct {
 	Party      []Member `yaml:"party"`
 	Models     []string `yaml:"models"` // keys of models.yaml
 	Together   bool     `yaml:"together"`
+	// Versus: the models play each other in pairs, every pair once, in rounds where no model plays twice; a round is
+	// one run, its pairs at once, each pair at its own place from Spots (rotating each round). The party is one
+	// character; each pairing gets fresh ones.
+	Versus bool     `yaml:"versus"`
+	Spots  []string `yaml:"spots"` // places.yaml names, one for each pair in a round
 }
 
 // Member is one of a task's party: each model plays a character like it.
@@ -56,6 +61,9 @@ func (b *Bench) LoadTask(f string, only []string) ([]*Scenario, error) {
 			}
 			models = append(models, m)
 		}
+	}
+	if t.Versus {
+		return b.versus(t, models, names, f)
 	}
 	var out []*Scenario
 	for _, key := range models {
@@ -126,11 +134,82 @@ func (b *Bench) agents(t *Task, key string, m Model, names map[string]string) ([
 
 func seat(task, model string, slot int) string { return fmt.Sprintf("%s/%s/%d", task, model, slot) }
 
+// versusSeat: a model's seat in one pairing of a versus task (a character for each opponent)
+func versusSeat(task, model, opponent string) string { return seat(task, model+" vs "+opponent, 0) }
+
+// Rounds pairs every model with every other once, in rounds where none plays twice (the circle method: one stays,
+// the rest turn a place each round). An odd number of models gives one a bye each round.
+func Rounds(models []string) [][][2]string {
+	ms := slices.Clone(models)
+	if len(ms)%2 == 1 {
+		ms = append(ms, "") // the bye
+	}
+	n := len(ms)
+	var out [][][2]string
+	for r := 0; r < n-1; r++ {
+		var round [][2]string
+		for i := 0; i < n/2; i++ {
+			a, b := ms[i], ms[n-1-i]
+			if a != "" && b != "" {
+				round = append(round, [2]string{a, b})
+			}
+		}
+		out = append(out, round)
+		ms = append([]string{ms[0], ms[n-1]}, ms[1:n-1]...) // turn all but the first
+	}
+	return out
+}
+
+// versus makes a versus task's runs: a run per round, each pair at its spot, each agent told its opponent.
+func (b *Bench) versus(t *Task, models []string, names map[string]string, f string) ([]*Scenario, error) {
+	if len(t.Party) != 1 || t.Start != nil || len(t.Spots) == 0 || len(models) < 2 {
+		return nil, fmt.Errorf("%s: versus needs a party of one, spots (not start) and two or more models", t.Name)
+	}
+	var spots []Place
+	for _, n := range t.Spots {
+		p, ok := b.Places[n]
+		if !ok {
+			return nil, fmt.Errorf("%s: unknown spot %q (places.yaml)", t.Name, n)
+		}
+		spots = append(spots, p)
+	}
+	rounds := Rounds(models)
+	if len(rounds[0]) > len(spots) {
+		return nil, fmt.Errorf("%s: %d pairs a round, %d spots", t.Name, len(rounds[0]), len(spots))
+	}
+	var out []*Scenario
+	for r, round := range rounds {
+		s := &Scenario{Conditions: t.Conditions, Task: t.Name, Dir: filepath.Dir(f)}
+		s.Name = fmt.Sprintf("%s-r%02d", t.Name, r+1)
+		for j, pair := range round {
+			spot := spots[(j+r)%len(spots)]
+			for k, key := range pair {
+				m, ok := b.Models[key]
+				if !ok {
+					return nil, fmt.Errorf("%s: unknown model %q (models.yaml)", t.Name, key)
+				}
+				opp := pair[1-k]
+				as, err := b.agents(t, key, m, map[string]string{seat(t.Name, key, 0): names[versusSeat(t.Name, key, opp)]})
+				if err != nil {
+					return nil, err
+				}
+				as[0].Start, as[0].Opponent = &spot, names[versusSeat(t.Name, opp, key)]
+				s.Agents = append(s.Agents, as[0])
+			}
+		}
+		if err := b.Check(s); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
 //go:embed names.txt
 var nameList string
 
 // charNames names every character of the suite's tasks and checks (suite/tasks, then suite/checks) from names.txt, so
-// no two share one: each seat (task, model, party slot) hashes to a name, and takes the next free one if it's taken.
+// no two share one: each seat (task, model, party slot; a versus task: model and opponent) hashes to a name, and takes the next free one if it's taken.
 // Seats are named in file order, so a seat's name stays the same unless a new task, sorting before its own, lands on
 // it (it then gets the next free one).
 // Neutral names: chat doesn't say which model plays a character.
@@ -145,20 +224,31 @@ func charNames(dir string) (map[string]string, error) {
 		if err != nil {
 			return nil, err
 		}
+		seats := []string{}
 		for _, key := range t.Models {
-			for i := range t.Party {
-				s := seat(t.Name, key, i)
-				h := fnv.New64a()
-				h.Write([]byte(s))
-				n := int(h.Sum64() % uint64(len(list)))
-				for j := 0; taken[list[n]]; j++ {
-					if j == len(list) {
-						return nil, fmt.Errorf("names.txt has %d names, too few for every task's characters", len(list))
+			if t.Versus {
+				for _, opp := range t.Models {
+					if opp != key {
+						seats = append(seats, versusSeat(t.Name, key, opp))
 					}
-					n = (n + 1) % len(list)
 				}
-				taken[list[n]], out[s] = true, list[n]
+				continue
 			}
+			for i := range t.Party {
+				seats = append(seats, seat(t.Name, key, i))
+			}
+		}
+		for _, s := range seats {
+			h := fnv.New64a()
+			h.Write([]byte(s))
+			n := int(h.Sum64() % uint64(len(list)))
+			for j := 0; taken[list[n]]; j++ {
+				if j == len(list) {
+					return nil, fmt.Errorf("names.txt has %d names, too few for every task's characters", len(list))
+				}
+				n = (n + 1) % len(list)
+			}
+			taken[list[n]], out[s] = true, list[n]
 		}
 	}
 	return out, nil

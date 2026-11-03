@@ -349,6 +349,12 @@ func KitYAML(k *config.Kit, notes map[int]string, header string) string {
 	if k.Pet != nil {
 		fmt.Fprintf(&b, "pet: {entry: %d, name: %q} # a hunter's tamed beast, at the kit's level\n", k.Pet.Entry, k.Pet.Name)
 	}
+	if len(k.Talents) > 0 {
+		b.WriteString("talents: # a fixed build: talent id and rank\n")
+		for _, t := range k.Talents {
+			fmt.Fprintf(&b, "  - {id: %d, rank: %d} # %s\n", t.ID, t.Rank, talentName(t.ID))
+		}
+	}
 	if len(k.Items) > 0 {
 		b.WriteString("items:\n")
 		for _, s := range k.Items {
@@ -356,4 +362,14 @@ func KitYAML(k *config.Kit, notes map[int]string, header string) string {
 		}
 	}
 	return b.String()
+}
+
+// talentName: a talent's name, its first rank's spell's
+func talentName(id int) string {
+	if ranks := talentRanks()[id]; len(ranks) > 0 {
+		if r, err := world.Rows(world.Bench(), "SELECT name FROM spell WHERE id = ?", ranks[0]); err == nil && len(r) > 0 {
+			return r[0][0]
+		}
+	}
+	return ""
 }

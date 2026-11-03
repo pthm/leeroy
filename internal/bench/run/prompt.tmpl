@@ -8,12 +8,17 @@ The run lasts {{.Minutes}} minutes; standings shows how many are left.
 {{.StopText}} If you conclude the goal can't be reached, `standings give-up "<why>"` ends your run (the goal not met);
 without it, the run goes on until the goal or the clock.
 
+{{if .Opponent -}}
+YOUR OPPONENT: {{.Opponent}}, an AI agent like you, standing a few yards away. Same race, class, spec, level, gear
+and trained spells as you. Nobody else is part of your duels.
+{{else -}}
 OTHER PLAYERS: the other characters on this server are AI agents like you, each on their own run at the same
 time.
 {{- if .Roster}} This run:
 {{.Roster}}
 {{- end}}
 How you deal with them is up to you.
+{{end -}}
 {{if .Notice}}
 {{.Notice}}
 {{end}}

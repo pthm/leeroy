@@ -48,6 +48,8 @@ func goalText(goal string, mins int) string {
 		return "earn as many achievement points as you can"
 	case "kills":
 		return fmt.Sprintf("kill %s creatures", n)
+	case "duels":
+		return fmt.Sprintf("fight %s duels against your opponent, one after another, and win as many as you can. Either of\nyou can make each challenge (duel.challenge, duel.accept; players.md, \"Duels\")", n)
 	case "skill":
 		sk, lvl, _ := strings.Cut(n, ":")
 		name := skillNames[sk]
@@ -89,6 +91,11 @@ FACTION SCORE: every player on this server is on your faction (Alliance); the fa
 yours, is the sum of all players' scores. standings shows every player's score, rates, level and role, their damage
 dealt, damage taken and healing done (not scored), and the faction total.`,
 			"Do not stop early: keep improving your score until the time runs out."
+	case "duels":
+		return `You are scored on the duels you win. A duel counts once it is decided: one player is brought to 1 health
+or yields, or stays over 50 yards from the duel flag for 10 seconds; that player loses. Declined or withdrawn
+challenges don't count. Health, mana and cooldowns are not restored between duels.`,
+			"Do not stop until all the duels are decided or the time runs out."
 	case "achievement", "quest", "item", "quality", "zone", "kills":
 		return `You are scored on the time until the judge, which reads your character from the server database, sees
 the goal met: your score is 3600 / seconds to the goal (1 = met in an hour). If time runs out first, your score is 0.`,
@@ -126,6 +133,24 @@ func prompt(s *config.Scenario, b *config.Bench, a config.Agent, repo string) (s
 			identity = strings.TrimSuffix(identity, " and the class spells trained up to its level.") + "."
 		}
 	}
+	// a duel: the class and spec without the group role, and the one other player named as the opponent
+	opponent := ""
+	if kind, _, _ := strings.Cut(s.Goal, ":"); kind == "duels" {
+		if sp, ok := b.Specs[a.Spec]; ok {
+			identity = strings.Replace(identity, fmt.Sprintf(" Your role is %s: %s. The spec's key stats are %s.", sp.Role, sp.Optimise, sp.Stats), "", 1)
+		}
+		var others []config.Agent
+		for _, o := range s.Agents {
+			if o.Char != a.Char {
+				others = append(others, o)
+			}
+		}
+		if a.Opponent != "" {
+			opponent = a.Opponent
+		} else if len(others) == 1 {
+			opponent = others[0].Char
+		}
+	}
 	var roster []string // the other players with a spec: "- Char: Warrior - Protection (Tank)"
 	for _, o := range s.Agents {
 		if sp, ok := b.Specs[o.Spec]; ok && o.Char != a.Char {
@@ -144,7 +169,7 @@ func prompt(s *config.Scenario, b *config.Bench, a config.Agent, repo string) (s
 	err = promptTmpl.Execute(&out, map[string]any{
 		"Identity": identity, "GoalText": goalText(s.Goal, s.Minutes),
 		"Hint": strings.TrimSpace(s.Hint), "ScoreText": score, "StopText": stop, "Repo": repo,
-		"Roster": strings.Join(roster, "\n"), "Notice": notice, "Minutes": s.Minutes,
+		"Roster": strings.Join(roster, "\n"), "Notice": notice, "Minutes": s.Minutes, "Opponent": opponent,
 	})
 	return out.String(), err
 }
