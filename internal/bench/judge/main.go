@@ -220,7 +220,10 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 	}
 
 	parts := strings.Split(goal, ":") // skill:<id>:<n>: n is the skill id, the third part the level
-	kind, n := parts[0], parts[1]
+	kind, n := parts[0], ""
+	if len(parts) > 1 { // checkpoints has none
+		n = parts[1]
+	}
 	owned := `FROM character_inventory ci JOIN item_instance ii ON ii.guid = ci.item
   JOIN acore_world.item_template it ON it.entry = ii.itemEntry
   WHERE ci.guid = (SELECT guid FROM characters WHERE name = '` + char + `')`
