@@ -5,7 +5,7 @@ cd /opt/leeroy || exit 1
 # the checkout arrives owned by the laptop's user, the scripts run as root: git (and Go's VCS stamping) refuse that
 git config --global --get-all safe.directory | grep -qx /opt/leeroy || git config --global --add safe.directory /opt/leeroy
 
-log() { echo "$(date -u +%FT%TZ) $*" | tee -a /var/log/leeroy-run.log; }
+log() { echo "$(date -u +%FT%TZ) $*"; } # run.sh and finish.sh send their output to /var/log/leeroy-run.log
 
 # wait_ready: until the worldserver is up (its first boot downloads the client data and imports the databases)
 wait_ready() {

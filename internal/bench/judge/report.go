@@ -533,7 +533,7 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 	// cost at list price (models.dev, prices.json), the same way for every runtime: a subscription's runs too
 	var costOut any
 	if usd, ok := cost(str(meta["runtime"]), str(meta["provider"]), str(meta["model"]), tok.in, tok.out, tok.cr, tok.cw); ok && parts > 0 && outputKnown {
-		costOut = r1(usd)
+		costOut = math.Round(usd*100) / 100 // cents: a short run on a cheap model costs a few
 	}
 	progress := 0.0
 	if by["all"] != nil {

@@ -97,7 +97,7 @@ func publish(root, runDir, task, out string) (string, error) {
 				f := func(k string) float64 { v, _ := t[k].(float64); return v }
 				provider, _ := r["provider"].(string) // missing from the first reports
 				if usd, ok := judge.Cost(fmt.Sprint(p["runtime"]), provider, fmt.Sprint(p["model"]), f("input"), f("output"), f("cache_read"), f("cache_write")); ok {
-					p["cost_usd"] = math.Round(usd*10) / 10
+					p["cost_usd"] = math.Round(usd*100) / 100
 				}
 			}
 		}
