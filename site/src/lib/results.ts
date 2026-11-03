@@ -66,6 +66,7 @@ export interface Player {
   cast_icons?: Record<string, string>; // spell name -> icon (public/icons/<icon>.png)
   trajectory?: [number, number, number, string, number][]; // [minute, SDK calls succeeded, failed, top failure "op code", its count]
   cost_series?: [number, number][]; // [s from the start, cumulative USD]
+  checkpoints?: { name: string; at_s: number | null }[]; // the task's checkpoints (a dungeon's bosses), at_s when reached
   hardcore?: boolean; // set on load: scored on total XP earned before death or the clock, not XP per hour
   // provider outages waited out with the clock held (azbench run outage.go)
   outages?: { why: string; start: string; held_s: number; safe_wait_s: number; probes: number; outcome: string }[];
@@ -129,16 +130,16 @@ export const TASKS: Record<string, { title: string; short: string; summary: stri
     title: 'The Deadmines at level 20',
     short: 'Deadmines',
     summary:
-      'Five level-20 characters start in Northshire with green gear and their class spells trained: a tank, a healer and three damage dealers. The goal is to clear the Deadmines and kill Edwin VanCleef. The clock is six hours.',
-    scoring: 'Whether the party earns the Deadmines achievement, then how long it takes.',
+      'Five level-20 characters start in Northshire with green gear and their class spells trained: a tank, a healer and three damage dealers. The goal is to clear the Deadmines and kill Edwin VanCleef. The clock is two hours.',
+    scoring: 'Whether the party earns the Deadmines achievement, then how long it takes. Each boss killed is a checkpoint, so an unfinished run shows how far it got.',
     order: 4,
   },
   ubrs: {
     title: 'Upper Blackrock Spire at level 60',
     short: 'UBRS',
     summary:
-      'Ten level-60 characters, every Alliance class but the death knight, start at Morgan\'s Vigil in pre-raid dungeon gear: two tanks, three healers and five damage dealers. The goal is to clear Upper Blackrock Spire and kill General Drakkisath. The clock is one day.',
-    scoring: 'Whether the party earns the Upper Blackrock Spire achievement, then how long it takes.',
+      'Ten level-60 characters, every Alliance class but the death knight, start at Morgan\'s Vigil in pre-raid dungeon gear: two tanks, three healers and five damage dealers. The goal is to clear Upper Blackrock Spire and kill General Drakkisath. The clock is two hours.',
+    scoring: 'Whether the party earns the Upper Blackrock Spire achievement, then how long it takes. Each boss killed is a checkpoint, so an unfinished run shows how far it got.',
     order: 5,
   },
 };
@@ -379,7 +380,10 @@ export function outcome(p: Player, progress: boolean): { text: string; good: boo
   if (p.died) return { text: 'died', good: false };
   if (p.gave_up) return { text: 'gave up', good: false };
   if (progress) return { text: 'played', good: true };
-  return p.met ? { text: 'met', good: true } : { text: 'not met', good: false };
+  if (p.met) return { text: 'met', good: true };
+  const cp = p.checkpoints;
+  if (cp?.length) return { text: `${cp.filter(c => c.at_s != null).length}/${cp.length} checkpoints`, good: false };
+  return { text: 'not met', good: false };
 }
 
 // A harness's colour, as a background and a text class: Claude Code amber, Codex blue, opencode green.

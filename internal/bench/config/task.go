@@ -96,6 +96,11 @@ func readTask(f string) (*Task, error) {
 	if len(t.Party) == 0 || len(t.Models) == 0 {
 		return nil, fmt.Errorf("%s: a task needs a party and models", t.Name)
 	}
+	for _, c := range t.Checkpoints {
+		if c.Name == "" || c.Kill == 0 {
+			return nil, fmt.Errorf("%s: a checkpoint needs a name and a kill (a creature entry)", t.Name)
+		}
+	}
 	return &t, nil
 }
 

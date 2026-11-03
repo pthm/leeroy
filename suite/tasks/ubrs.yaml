@@ -2,9 +2,17 @@ description: >
   Ten level-60 Alliance characters, every class but the death knight, with pre-raid dungeon gear (blues up to item
   level 63, none from Blackrock Spire) and their class spells trained, starting at Morgan's Vigil in the Burning
   Steppes, with one goal: clear Upper Blackrock Spire (achievement 1307, earned when General Drakkisath dies). Two
-  tanks, three healers, five damage dealers. A day on the clock; each agent stops when it has the achievement.
+  tanks, three healers, five damage dealers. Two hours on the clock; each agent stops when it has the achievement.
+  Each boss is a checkpoint, so a run that doesn't finish shows how far it got.
 goal: achievement:1307
-minutes: 1440
+minutes: 120
+checkpoints: # Upper Blackrock Spire's bosses (creature entries; Gyth is Rend's encounter, Jed Runewatcher a rare spawn)
+  - {name: Pyroguard Emberseer, kill: 9816}
+  - {name: Solakar Flamewreath, kill: 10264}
+  - {name: Goraluk Anvilcrack, kill: 10899}
+  - {name: Warchief Rend Blackhand, kill: 10429}
+  - {name: The Beast, kill: 10430}
+  - {name: General Drakkisath, kill: 10363}
 start: morgans-vigil
 require_fresh: true
 party:

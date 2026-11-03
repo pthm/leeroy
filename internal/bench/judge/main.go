@@ -49,6 +49,8 @@ import (
 	"time"
 
 	"github.com/pthm/leeroy/azsdk/metrics"
+	"github.com/pthm/leeroy/azsdk/types"
+	"github.com/pthm/leeroy/internal/bench/config"
 	"github.com/pthm/leeroy/internal/bench/tools"
 )
 
@@ -162,6 +164,9 @@ type Options struct {
 	// Hardcore: the first death ends the run, the goal unmet, and the score is the total value earned before the death
 	// or the clock (how far it got without dying; a fast start that dies early doesn't score its rate)
 	Hardcore bool
+	// Checkpoints: each recorded (samples, result) with the seconds on the clock when the character or its party first
+	// killed its creature (the Events stream's kill and party_kill), so an unfinished run shows how far it got
+	Checkpoints []config.Checkpoint
 	// Hold, while it returns true, stops this character's clock: no polls, and the time doesn't count (a provider
 	// outage: the character is logged out until its agent can play again)
 	Hold func() bool
@@ -222,9 +227,13 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 	// --resume <samples.jsonl>: continue a paused run from its samples: same baseline, same curve, and the clock
 	// picks up at the last sample (the pause doesn't count)
 	type sample struct {
-		ElapsedS float64            `json:"elapsed_s"`
-		Value    float64            `json:"value"`
-		Signals  map[string]float64 `json:"signals"`
+		ElapsedS    float64            `json:"elapsed_s"`
+		Value       float64            `json:"value"`
+		Signals     map[string]float64 `json:"signals"`
+		Checkpoints []struct {
+			Name string   `json:"name"`
+			AtS  *float64 `json:"at_s"` // seconds on the clock when reached, null until then
+		} `json:"checkpoints"`
 	}
 	var prior []sample
 	if f := o.Resume; f != "" {
@@ -276,6 +285,14 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 	if len(prior) > 0 {
 		start -= int64(prior[len(prior)-1].ElapsedS * 1000)
 	}
+	reached := map[string]float64{} // checkpoint name -> seconds on the clock when first reached
+	if len(prior) > 0 {
+		for _, c := range prior[len(prior)-1].Checkpoints {
+			if c.AtS != nil {
+				reached[c.Name] = *c.AtS
+			}
+		}
+	}
 	var curve metrics.Curve // a resumed run replays its samples: same curve, area and best window
 	for _, p := range prior {
 		curve.Add(p.ElapsedS/3600, p.Value)
@@ -298,6 +315,13 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		level, xp, money := num(lxm[0]), num(lxm[1]), num(lxm[2])
 		elapsedS := math.Floor(float64(nowMs()-start)/1000 + 0.5)
 		r := curve.Add(elapsedS/3600, value)
+		if team != nil {
+			team.read()
+		}
+		var cps []obj
+		if len(o.Checkpoints) > 0 && team != nil {
+			cps = checkpoints(o.Checkpoints, team.evs[char], start, reached)
+		}
 		score := round1(r.Score)
 		if binaryGoal(goal) {
 			score = timeScore(value >= need, elapsedS)
@@ -322,6 +346,9 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		}
 		smp := append(append(obj{{"t", nowMs()}, {"elapsed_s", elapsedS}, {"level", level}, {"xp", xp}, {"money", money}, {"value", value}}, rates...),
 			kv{"signals", sig})
+		if cps != nil {
+			smp = append(smp, kv{"checkpoints", cps})
+		}
 		if samples != "" {
 			appendLine(samples, smp)
 		}
@@ -337,7 +364,6 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 				b = append(b, kv{"runtime", runtime})
 			}
 			if eventsFile != "" {
-				team.read()
 				mine := team.since(start)
 				var combat metrics.Combat
 				for _, e := range mine[char] {
@@ -411,4 +437,30 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		case <-time.After(every):
 		}
 	}
+}
+
+// checkpoints records in reached (name -> seconds on the clock) each checkpoint whose creature first dies in evs (the
+// character's kill and party_kill events; the clock started at start, unix ms), and returns them all in order:
+// {name, at_s}, at_s null until reached.
+func checkpoints(cps []config.Checkpoint, evs []metrics.Event, start int64, reached map[string]float64) []obj {
+	for _, e := range evs {
+		k, ok := e.Data.(types.Kill)
+		if !ok || (e.Type != "kill" && e.Type != "party_kill") {
+			continue
+		}
+		for _, c := range cps {
+			if _, done := reached[c.Name]; !done && k.Victim.Entry == c.Kill {
+				reached[c.Name] = math.Max(0, math.Floor(float64(e.T-start)/1000+0.5))
+			}
+		}
+	}
+	out := make([]obj, 0, len(cps))
+	for _, c := range cps {
+		var at any
+		if v, ok := reached[c.Name]; ok {
+			at = v
+		}
+		out = append(out, obj{{"name", c.Name}, {"at_s", at}})
+	}
+	return out
 }

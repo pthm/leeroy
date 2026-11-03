@@ -554,6 +554,9 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 			{"pace", l["pace"]},
 			{"score", l["score"]},
 		}
+		if c, ok := l["checkpoints"]; ok {
+			f = append(f, kv{"checkpoints", c})
+		}
 		res := readJSON(ar.result)
 		goal := str(meta["goal"])
 		if goal == "" {

@@ -105,7 +105,7 @@ func publish(root, runDir, task, out string) (string, error) {
 		a := agents[char]
 		p["class"], p["spec"], p["race"] = a.Class, a.Spec, a.Race
 		p["met"] = false
-		for k, v := range pick(judged[char], "met", "time_to_goal_s", "value", "score", "level", "gave_up", "died") {
+		for k, v := range pick(judged[char], "met", "time_to_goal_s", "value", "score", "level", "gave_up", "died", "checkpoints") {
 			p[k] = v
 		}
 		if _, ok := p["time_to_goal_s"]; !ok && p["met"] == true { // older judges: the clock stopped at the goal
@@ -114,6 +114,9 @@ func publish(root, runDir, task, out string) (string, error) {
 		if judged[char] == nil { // the judge's final word never written (a paused or stopped run): its last score
 			if sc, ok := r["score"].(map[string]any); ok {
 				p["value"], p["score"] = sc["value"], sc["score"]
+				if c, ok := sc["checkpoints"]; ok {
+					p["checkpoints"] = c
+				}
 				if t, ok := sc["time_to_goal_s"].(float64); ok {
 					p["met"], p["time_to_goal_s"] = true, t
 				}

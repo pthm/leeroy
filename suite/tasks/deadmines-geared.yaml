@@ -1,9 +1,18 @@
 description: >
   A dungeon party at level 20: five Humans in Northshire (a tank, a healer, three DPS) with green gear, bags and the
   class spells trained (suite/kits), and one goal: clear the Deadmines (achievement 628, earned when Edwin VanCleef
-  dies). Six hours on the clock; each agent stops when it has the achievement.
+  dies). Two hours on the clock; each agent stops when it has the achievement. Each boss is a checkpoint, so a run
+  that doesn't finish shows how far it got.
 goal: achievement:628
-minutes: 360
+minutes: 120
+checkpoints: # the Deadmines' bosses (creature entries), in the order they're usually met
+  - {name: Rhahk'Zor, kill: 644}
+  - {name: Sneed, kill: 643}
+  - {name: Gilnid, kill: 1763}
+  - {name: Mr. Smite, kill: 646}
+  - {name: Cookie, kill: 645}
+  - {name: Captain Greenskin, kill: 647}
+  - {name: Edwin VanCleef, kill: 639}
 require_fresh: true
 party:
   - {class: warrior, spec: protwarrior, kit: protwarrior-20}

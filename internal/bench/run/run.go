@@ -357,7 +357,7 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 		Every: 15 * time.Second, Samples: r.f().Samples(p.a.Char),
 		Board:  r.f().Board(),
 		Events: r.f().Events(p.a.Char), Role: spec.Role, Runtime: p.a.Runtime,
-		Hardcore: r.s.Hardcore, Hold: p.held,
+		Hardcore: r.s.Hardcore, Checkpoints: r.s.Checkpoints, Hold: p.held,
 	}
 	if resume {
 		o.Resume = o.Samples

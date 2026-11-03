@@ -31,8 +31,8 @@ opencode through OpenRouter), so a model's results line up across them.
 | `travel.yaml` | 90 | together | a new level-30 Human warrior in Northshire per model, goal: reach Darnassus (`zone:1657`) on the other continent |
 | `hardcore.yaml` | 240 | apart | a new level-1 Human Arms warrior in Northshire, levelling with `hardcore`: the first death ends the run |
 | `hogger.yaml` | 180 | apart | three new level-1 Humans in Northshire (Protection Paladin, Holy Priest, Frost Mage), goal: "Wanted: Hogger" (quest 176) |
-| `deadmines-geared.yaml` | 360 | apart | a dungeon party of five at level 20 with [kits](#kits) (green gear, bags, the class spells trained), goal: clear the Deadmines (`achievement:628`) |
-| `ubrs.yaml` | 1440 | apart | ten level-60s, every Alliance class but the death knight (two tanks, three healers), with pre-raid dungeon gear (kits: blues up to item level 63, none from Blackrock Spire), from Morgan's Vigil, goal: clear Upper Blackrock Spire (`achievement:1307`) |
+| `deadmines-geared.yaml` | 120 | apart | a dungeon party of five at level 20 with [kits](#kits) (green gear, bags, the class spells trained), goal: clear the Deadmines (`achievement:628`), each boss a checkpoint |
+| `ubrs.yaml` | 120 | apart | ten level-60s, every Alliance class but the death knight (two tanks, three healers), with pre-raid dungeon gear (kits: blues up to item level 63, none from Blackrock Spire), from Morgan's Vigil, goal: clear Upper Blackrock Spire (`achievement:1307`), each boss a checkpoint |
 
 All set `require_fresh`.
 
@@ -65,6 +65,7 @@ Unknown fields are errors, so a typo doesn't silently change a run.
 | `channel` | the zone channel joined at login; default `General - Elwynn Forest` |
 | `hint` | appended to the goal in the prompt |
 | `hardcore` | a character's first death ends its run; the score is then the total value earned before it ends (binary goals: unmet, 0), and the prompt states the rule |
+| `checkpoints` | progress on the way to the goal: `{name, kill}`, reached when the character or its party kills that creature (an entry), e.g. a dungeon's bosses. The judge records when each was first reached (`checkpoints` in the samples, the result and the report, `at_s` null until then), so a run that doesn't finish shows how far it got. Not in the prompt or the standings, and not scored |
 | `notice` | added to the prompt: text, or a `.md` file next to the task (e.g. what changed since the agents' last run) |
 | `require_fresh` | refuse to start if any agent's workspace exists |
 | `party` | the characters each model plays: `class`, `spec` (a key from [`specs.yaml`](../specs.yaml): the prompt states class, spec, role, what to optimise and key stats, lists the other players' specs, and the judge puts the role on the board), `race` (default human), `kit` (a starting kit from [`kits/`](../kits), below; none: a new character as the task's other conditions leave it) |

@@ -52,7 +52,8 @@ credit (level 8 or so, Hogger found, engaged, killed), and a solo "by any means"
 ### Pre-levelled Deadmines
 
 `tasks/deadmines-geared.yaml`: a party of five at level 20 with kits (green gear, bags, class spells), from
-Northshire, 6 hours, goal: Edwin VanCleef (`achievement:628`). Still to come: partial credit (bosses killed, wipes).
+Northshire, 2 hours, goal: Edwin VanCleef (`achievement:628`), each boss a checkpoint (when it died). Sol's level-1
+run spent 4 hours 17 inside, so the extra levels have to make up most of the difference.
 The week-long run from level 1 is retired for now (it's in git history).
 
 ## Planned: some setup

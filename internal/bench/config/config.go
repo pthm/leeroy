@@ -50,8 +50,17 @@ type Conditions struct {
 	Notice  string   `yaml:"notice"`  // added to the prompt: text, or a .md file next to the YAML
 	// Hardcore: a character's first death ends its run (judge.Options.Hardcore), and the prompt says so
 	Hardcore bool `yaml:"hardcore"`
+	// Checkpoints: progress on the way to the goal (a dungeon's bosses), recorded with when each was first reached, so
+	// a run that doesn't finish still shows how far it got. Not in the prompt, and not scored.
+	Checkpoints []Checkpoint `yaml:"checkpoints,omitempty"`
 	// RequireFresh refuses to start if any agent's workspace exists (a run for new agents)
 	RequireFresh bool `yaml:"require_fresh"`
+}
+
+// Checkpoint is reached when the character or its party kills a creature (judge.Options.Checkpoints).
+type Checkpoint struct {
+	Name string `yaml:"name" json:"name"`
+	Kill uint32 `yaml:"kill" json:"kill"` // a creature entry
 }
 
 // Agent is one player: an agent (its workspace, var/workspaces/<name>) and the character it plays.
