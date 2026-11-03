@@ -614,7 +614,7 @@ type Equipped struct {
 // OpResults maps each op to the data of its ok result (ops not listed have none).
 var OpResults = map[string]any{
 	"death.corpse":  Corpse{},
-	"items.compare": Comparison{}, "world.path": PathCheck{}, "world.los_spot": LOSSpot{}, "world.route": RouteCheck{}, "world.danger": DangerCheck{}, "trade.offer": Trade{}, "trade.cancel": Trade{}, "trade.start": Trade{}, "trade.open": Trade{}, "trade.accept": Trade{}, "trainer.list": Trainer{}, "items.info": Item{}, "quests.info": QuestInfo{}, "me.achievements": Achievements{}, "vendor.items": []VendorItem{},
+	"items.compare": Comparison{}, "world.path": PathCheck{}, "world.los_spot": LOSSpot{}, "world.route": RouteCheck{}, "world.plan": Plan{}, "world._plan_local": Plan{}, "world.danger": DangerCheck{}, "trade.offer": Trade{}, "trade.cancel": Trade{}, "trade.start": Trade{}, "trade.open": Trade{}, "trade.accept": Trade{}, "trainer.list": Trainer{}, "items.info": Item{}, "quests.info": QuestInfo{}, "me.achievements": Achievements{}, "vendor.items": []VendorItem{},
 	"gossip.open": GossipWindow{}, "gossip.select": GossipWindow{},
 	"move.to": MoveDone{}, "move.stop": MoveDone{}, "spells.cast": CastDone{}, "spells.cast_at": CastDone{},
 	"items.use": CastDone{}, "objects.use": ObjectActivation{}, "transports.board": Boarding{}, "transports.leave": Position{}, "items.loot": Looted{}, "items.open": Looted{}, "items.split": Item{}, "items.equip": Equipped{}, "items.roll": LootRollResult{},

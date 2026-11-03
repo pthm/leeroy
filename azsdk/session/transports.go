@@ -33,6 +33,8 @@ type transportsState struct {
 	mu    sync.Mutex
 	recs  map[uint64]*transportRec
 	paths map[uint32]*transportPath // by entry; nil: its template or path couldn't be built
+	// boardedAt: the stop each transport was boarded at (transports.leave doesn't step off there while it waits)
+	boardedAt map[uint64]int
 }
 
 // scanTransports records the transports in view and their path progress (a newer sighting replaces an older one):
@@ -203,7 +205,7 @@ const (
 
 func (b *Bot) setupTransports() {
 	e, w := b.lua, b.world
-	b.trs = &transportsState{recs: map[uint64]*transportRec{}, paths: map[uint32]*transportPath{}}
+	b.trs = &transportsState{recs: map[uint64]*transportRec{}, paths: map[uint32]*transportPath{}, boardedAt: map[uint64]int{}}
 	w.TransportPose = func(guid uint64) (x, y, z, o float32, ok bool) {
 		p, ok := b.transportAt(guid, time.Now())
 		return float32(p.x), float32(p.y), float32(p.z), float32(p.o), ok
@@ -282,6 +284,7 @@ func (b *Bot) setupTransports() {
 						return nil // leaving: the next time round
 					}
 					started = true
+					b.snapMovement() // the walk to the stop is over: its controller mustn't move us once we're off again
 					go func() { done <- w.WalkStraight(to, guid, [4]float32{st.Deck[0], st.Deck[1], st.Deck[2], 0}) }()
 					return nil
 				}
@@ -290,28 +293,50 @@ func (b *Bot) setupTransports() {
 					if err != nil {
 						return script.Fail("failed", err.Error(), nil)
 					}
+					b.trs.mu.Lock()
+					b.trs.boardedAt[guid] = stop
+					b.trs.mu.Unlock()
 					return script.Ok(types.Boarding{Transport: types.GUID(guid), X: round1f(float64(st.Deck[0])), Y: round1f(float64(st.Deck[1])), Z: round1f(float64(st.Deck[2]))})
 				default:
 					return nil
 				}
 			}, nil)
 		})
-	e.Func("transports.leave", "() → Request<Position>", "leave the transport you're on at the stop it's at, or the next one: waits for it to be there, then walks off onto the stop's wait point (the pier, the landing). not_aboard; no_route: no stored routine for it. Times out if it doesn't stop within a round",
-		func() map[string]any {
+	e.Func("transports.leave", "([{stop = n}]) → Request<Position>", "leave the transport you're on at the next stop it's at (not the one you boarded at, while it still waits there), or at stop n of its stops, transports.list: stops, from 1): waits for it to be there, then walks off onto the stop's wait point (the pier, the landing). not_aboard; no_route: no stored routine for it; bad_stop. Times out if it doesn't stop within a round",
+		func(opts map[string]any) map[string]any {
+			want := -1                        // the stop to leave at, else the first it reaches (not the one you boarded at, if it's still there)
+			switch n := opts["stop"].(type) { // a literal arrives as a float, a number from a table of ours as an int
+			case float64:
+				want = int(n) - 1
+			case int64:
+				want = int(n) - 1
+			case int:
+				want = n - 1
+			}
 			guid, _ := w.Transport()
 			if guid == 0 {
 				return b.refuse("transports.leave", nil, "not_aboard", "you're not on a transport")
 			}
-			if _, tt, _, _, _, ok := b.transportState(guid, time.Now()); !ok || tt == nil {
+			_, tt, _, _, _, ok := b.transportState(guid, time.Now())
+			if !ok || tt == nil {
 				return b.refuse("transports.leave", nil, "no_route", "no stored routine for leaving it")
+			}
+			if want >= len(tt.Stops) || want < -1 {
+				return b.refuse("transports.leave", nil, "bad_stop", "it has no such stop (transports.list: stops)")
 			}
 			done := make(chan error, 1)
 			started := false
+			b.trs.mu.Lock()
+			boarded, ok := b.trs.boardedAt[guid]
+			b.trs.mu.Unlock()
 			return b.request("transports.leave", map[string]any{"transport": gs(guid)}, b.roundTimeout(guid), func() *script.Outcome {
 				if !started {
-					_, tt, at, _, depart, ok := b.transportState(guid, time.Now())
-					if !ok || at < 0 {
-						return nil // between stops
+					_, tt, at, _, depart, ok2 := b.transportState(guid, time.Now())
+					if ok && at != boarded {
+						ok = false // it has left the stop you boarded at: any stop from here on
+					}
+					if !ok2 || at < 0 || (want >= 0 && at != want) || (want < 0 && ok && at == boarded) {
+						return nil // between stops, not the one to leave at, or still where you got on
 					}
 					wp := tt.Stops[at].Wait
 					px, py, _, _, _ := w.Position()
@@ -319,7 +344,11 @@ func (b *Bot) setupTransports() {
 						return nil // leaving: the next stop
 					}
 					started = true
-					go func() { done <- w.WalkStraight(wp, 0, [4]float32{}) }()
+					go func() {
+						err := w.WalkStraight(wp, 0, [4]float32{})
+						b.snapMovement() // off: the movement controller starts from here, not from the last walk before boarding
+						done <- err
+					}()
 					return nil
 				}
 				select {
@@ -334,6 +363,19 @@ func (b *Bot) setupTransports() {
 				}
 			}, nil)
 		})
+}
+
+// snapMovement puts the movement controller where the character is, its last walk forgotten: the transport moved us,
+// and a controller left with that walk's state would put us back at its end (updateMovement), as after a teleport
+func (b *Bot) snapMovement() {
+	x, y, z, o, _ := b.world.Position()
+	b.movementMu.Lock()
+	defer b.movementMu.Unlock()
+	b.isMoving = false
+	b.ensureMovementControllerLocked()
+	if b.moveController != nil {
+		b.moveController.AbortAndSnap(x, y, z, o)
+	}
 }
 
 // roundTimeout: how long boarding or leaving waits for transport guid: a whole round of it, and the walk

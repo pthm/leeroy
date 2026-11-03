@@ -59,6 +59,11 @@ task.spawn("ride", function()
       end
     end
   end
+  -- walk off the wait point and back, as an agent arrives: a walk before boarding must not haunt the ride (the
+  -- movement controller once put a character back at its last walk's end after leaving)
+  local p = me.position()
+  await(move.to(p.x + 5, p.y, p.z), 20)
+  await(move.to(%(wx)f, %(wy)f, %(wz)f), 20)
   local t
   for i = 1, %(timeout)d do t = find(); if t then break end; wait(1) end
   if not t then log("RIDE", {res = "not_seen"}); return end
@@ -91,7 +96,7 @@ def run(i, job):
     time.sleep(8)
     period = (tt["anim"][-1][0] / 1000) if tt.get("anim") else 900
     timeout = int(period + 60)
-    wow(port, RIDE % dict(entry=entry, stop=stop, wx=w[0], wy=w[1], timeout=timeout))
+    wow(port, RIDE % dict(entry=entry, stop=stop, wx=w[0], wy=w[1], wz=w[2], timeout=timeout))
     t0 = time.time()
     while time.time() - t0 < 2 * timeout + 60:
         ev = subprocess.run([f"{REPO}/bin/wow", "events", "--types", "log", "--last", "20"], env={**os.environ, "WOW_PORT": str(port)},

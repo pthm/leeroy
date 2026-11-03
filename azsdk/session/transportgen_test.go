@@ -2,6 +2,7 @@ package session
 
 import (
 	"bufio"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"math"
@@ -29,7 +30,22 @@ func TestGenerateTransportTable(t *testing.T) {
 	nav := navigation.NewEmbeddedNavigator(data).(interface {
 		FloorHeight(mapID uint32, x, y, hint float32) (float32, bool)
 		GetWaterLevel(mapID uint32, x, y float32) (float32, bool)
+		RoutePathContext(context.Context, uint32, navigation.Point3D, navigation.Point3D) (*navigation.PathResult, error)
 	})
+	// onMesh: the navmesh's point nearest p (where a route from p starts), if it's within 4 yd: a wait point a walk can
+	// start and end on (a floor query also finds floors the navmesh doesn't cover, a lift's rim)
+	onMesh := func(m uint32, p [3]float32) ([3]float32, bool) {
+		from := navigation.Point3D{X: p[0], Y: p[1], Z: p[2]}
+		res, err := nav.RoutePathContext(context.Background(), m, from, navigation.Point3D{X: p[0] + 1, Y: p[1], Z: p[2]})
+		if err != nil || res == nil || len(res.Points) == 0 {
+			return p, false
+		}
+		q := res.Points[0]
+		if math.Abs(float64(q.Z-p[2])) > 2 {
+			return p, false
+		}
+		return [3]float32{q.X, q.Y, q.Z}, true
+	}
 	floor := func(m uint32, at [3]float64, from, to, dz float64) ([3]float32, float64, bool) {
 		for r := from; r <= to; r += 1 {
 			best, bestD := [3]float32{}, math.Inf(1)
@@ -42,7 +58,9 @@ func TestGenerateTransportTable(t *testing.T) {
 				}
 				if ok && math.Abs(float64(h)-at[2]) <= dz {
 					if d := math.Abs(float64(h) - at[2]); d < bestD {
-						best, bestD = [3]float32{float32(x), float32(y), h}, d
+						if q, on := onMesh(m, [3]float32{float32(x), float32(y), h}); on && math.Hypot(float64(q[0])-x, float64(q[1])-y) < 1.5 {
+							best, bestD = q, d // a floor the navmesh covers: a walk can start and end there
+						}
 					}
 				}
 			}
@@ -83,12 +101,14 @@ func TestGenerateTransportTable(t *testing.T) {
 			t.Logf("%d %s: no path or crew", entry, r[1])
 			continue
 		}
+		tt.Period = tp.period
 		for i := range tp.frames {
 			if !tp.frames[i].stop() {
 				continue
 			}
 			pose := tp.restingAt(i)
-			st := tableStop{Frame: i, Map: pose.mapID, At: [3]float32{float32(pose.x), float32(pose.y), float32(pose.z)}}
+			st := tableStop{Frame: i, Map: pose.mapID, At: [3]float32{float32(pose.x), float32(pose.y), float32(pose.z)},
+				Arrive: tp.frames[i].arrive, Depart: tp.frames[i].depart}
 			bestR := math.Inf(1)
 			for _, s := range crew[r[5]] {
 				w := pose.toWorld([4]float32{s[0], s[1], s[2], 0})
@@ -125,11 +145,19 @@ func TestGenerateTransportTable(t *testing.T) {
 		}
 		tt := tableTransport{Entry: entry, Name: r[2], Kind: kindOf(r[2], 11), Map: u32(r[3]),
 			Spawn:   [4]float32{f32(r[4]), f32(r[5]), f32(r[6]), f32(r[7])},
-			PathRot: float32(sign * 2 * math.Acos(math.Max(-1, math.Min(1, f64(r[9]))))), Anim: a}
+			PathRot: float32(sign * 2 * math.Acos(math.Max(-1, math.Min(1, f64(r[9]))))), Anim: a, Period: uint32(a[len(a)-1][0])}
 		for _, p := range pauses(a) {
 			at := tt.staticAt(p[0])
 			st := tableStop{Frame: -1, Map: tt.Map, At: at, Arrive: p[0], Depart: p[1]}
-			w, _, ok := floor(tt.Map, [3]float64{float64(at[0]), float64(at[1]), float64(at[2])}, 3, 25, 2.5)
+			look := [3]float64{float64(at[0]), float64(at[1]), float64(at[2])}
+			if tt.Kind == "tram" { // a car's origin is its roof: the platform is the station floor, 11 yd down
+				look[2] -= 11
+			}
+			w, _, ok := floor(tt.Map, look, 3, 25, 2.5)
+
+			if tt.Kind == "tram" && ok {
+				st.Deck = [3]float32{0, 0, w[2] - at[2]} // aboard: at the platform's height, inside the car
+			}
 			if !ok {
 				t.Logf("%d %s map %d: no landing near %.1f %.1f %.1f", entry, r[2], tt.Map, at[0], at[1], at[2])
 				continue

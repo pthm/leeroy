@@ -73,7 +73,7 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   need no additional packet.
   Support sampling is discrete, so sub-sample ground gaps are not a continuous terrain-contact guarantee.
 - Route checks have a 30-second wall deadline including queueing (`route_timeout`). Legs are limited to
-  16384 yards in 3D and a 1024-tile search rectangle (`route_limit`): most of a continent in one walk. A search
+  16384 yards in 3D and a 4096-tile search rectangle (`route_limit`): most of a continent in one walk. A search
   that runs out before reaching the destination (no way through, or an extremely winding route) is `route_limit`
   too. A session admits at most 16 pending
   checks (`route_busy`) and runs one search at a time, shared with movement and nearby-unit reachability.
@@ -134,7 +134,7 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   identity: retain its request ID for cancellation.
 - Pause, stop, failure and normal task return cancel that task's active and queued walks. Session close clears
   all ownership. Cancellation never counts as arrival. Start a task and await a walk if it must finish.
-- Planning waits at most 30 seconds (`route_timeout`), and walking at most an hour (`timeout`). There is
+- Planning waits at most 30 seconds (`route_timeout`). A walk times out (`timeout`) after twice the time the route takes at your speed, plus 30 seconds (two hours at most). Routes prefer land: water costs as much more as swimming is slower. There is
   one planning worker per session. Cancellation reaches the underlying search and prevents late publication;
   the next owner can plan after the cancelled computation exits its current bounded step.
 - Movement-producing `act` helpers hold a lease across nested calls, waypoints and callbacks, including
@@ -178,4 +178,13 @@ Where things are from where you stand, walking and its traps. The rest of the SD
   the landing or the platform). Stand within 12 yards of it and `transports.board(guid)` waits for the transport to
   be there, with time to step on, then walks you aboard; aboard, it carries you and `me.position()` follows it.
   Walking or jumping on deck isn't modelled: stay put until you leave. `transports.leave()` waits until the transport
-  is at a stop (the one it's at, or the next), then walks you off onto that stop's wait point.
+  is at a stop, then walks you off onto that stop's wait point: the next stop after the one you boarded at, or
+  `transports.leave{stop = n}` for a particular one.
+- Journeys: `world.plan(x, y, z [, map])` finds the fastest way from where you are, walking, riding transports and
+  walking into portals (the Deeprun Tram's, the teleports within a city), and returns its legs with estimated times:
+  walk (`act.go_to`), ride (stand at `from`, `transports.board`, then `transports.leave{stop = leave_stop}`) and
+  portal. A ride's wait is from the transport's timetable once you've seen it, else half its round; walks are navmesh
+  routes timed at run speed on land and swim speed in water. It plans, nothing moves. `act.go_to` uses it itself for a
+  destination more than 150 yards away, or one walking can't reach, with the lifts, the trams and portals only: when
+  that's faster than walking, it takes them (an elevator up a mesa, the tram between Stormwind and Ironforge) and says
+  so (`data.via`). Boats and zeppelins are yours to take.

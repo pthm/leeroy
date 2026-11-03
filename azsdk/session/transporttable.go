@@ -29,6 +29,7 @@ type tableTransport struct {
 	Spawn   [4]float32   `json:"spawn,omitempty"`    // elevators and trams: where it's spawned (x, y, z, o)
 	PathRot float32      `json:"path_rot,omitempty"` // elevators and trams: its path's rotation
 	Anim    [][4]float32 `json:"anim,omitempty"`     // elevators and trams: (ms, x, y, z) offsets
+	Period  uint32       `json:"period"`             // ms a round takes (a boat's path, an elevator's loop)
 	Stops   []tableStop  `json:"stops"`
 }
 
@@ -38,7 +39,7 @@ type tableStop struct {
 	At     [3]float32 `json:"at"`               // where the transport is while it waits here
 	Wait   [3]float32 `json:"wait"`             // where to stand to board it here, and where leaving it here puts you
 	Deck   [3]float32 `json:"deck"`             // where to stand aboard, in its axes
-	Arrive uint32     `json:"arrive,omitempty"` // elevators: ms into its loop it arrives, and departs
+	Arrive uint32     `json:"arrive,omitempty"` // ms into its round it arrives here, and leaves
 	Depart uint32     `json:"depart,omitempty"`
 }
 
@@ -50,12 +51,12 @@ var transportTable = func() []tableTransport {
 	return t
 }()
 
-// period: an elevator's loop, ms
+// period: its round, ms
 func (tt *tableTransport) period() uint32 {
-	if len(tt.Anim) == 0 {
-		return 0
+	if len(tt.Anim) > 0 {
+		return uint32(tt.Anim[len(tt.Anim)-1][0])
 	}
-	return uint32(tt.Anim[len(tt.Anim)-1][0])
+	return tt.Period
 }
 
 // staticAt: where an elevator or tram is at ms into its loop (StaticTransport::RelocateToProgress, without the

@@ -29,6 +29,8 @@ func queryFailure(data any, code, message string) *script.Outcome {
 			d.Status = "partial"
 		}
 		return script.Fail(code, message, d)
+	case types.Plan:
+		return script.Fail(code, message, nil)
 	default:
 		panic("unknown route query data")
 	}
@@ -159,7 +161,7 @@ func routeArguments(pointsArg, optsArg any, currentMap uint32) []types.Position 
 
 func (b *Bot) registerRouteValidator(r *routeRequests) {
 	e := b.lua
-	e.Func("world.route", "(points [, opts = nil]) → Request<RouteCheck>", "validate 1..64 ordered 3D waypoints from your captured position before walking. points are {x,y,z} tuples or {x=...,y=...,z=...,map=...}; opts accepts only map (default current map), and every point must be on the current map. One 30s deadline covers queueing and all legs; max 16384 yards/1024 tiles per leg and 8192 output points. Shares world.path admission, cancellation and cache. Returns connected navmesh prefix, completed_legs, first blocked_leg and per-leg gaps; partial and timeout results remain failures. Does not assess hostile exposure.",
+	e.Func("world.route", "(points [, opts = nil]) → Request<RouteCheck>", "validate 1..64 ordered 3D waypoints from your captured position before walking. points are {x,y,z} tuples or {x=...,y=...,z=...,map=...}; opts accepts only map (default current map), and every point must be on the current map. One 30s deadline covers queueing and all legs; max 16384 yards/4096 tiles per leg and 8192 output points. Shares world.path admission, cancellation and cache. Returns connected navmesh prefix, completed_legs, first blocked_leg and per-leg gaps; partial and timeout results remain failures. Does not assess hostile exposure.",
 		func(points, opts any) any {
 			x, y, z, _, m := b.world.Position()
 			parsed := routeArguments(points, opts, m)

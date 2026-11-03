@@ -4,6 +4,8 @@ package types
 // An unconfirmed transport operation is an explicit failure, never inferred success.
 var ActionPostconditions = map[string]string{
 	"world.los_spot":          "a walkable spot within range of the point and in its line of sight was found; route_unreachable when there's none within max_walk",
+	"world._plan_local":       "a journey was found by lifts, trams and portals or on foot; nothing moved",
+	"world.plan":              "a journey was found: its walks are navmesh routes, its rides and waits from the transports' timetables; nothing moved",
 	"world.path":              "a complete supported navmesh route connects the requested floors with clear static body clearance; partial or unknown routes fail",
 	"world.route":             "every requested leg connects within one shared deadline",
 	"world.danger":            "a bounded observed-state assessment completed; inspect data.state, including unknown",

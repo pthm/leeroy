@@ -937,6 +937,27 @@ type TransportStop struct {
 	Wait       *Position `json:"wait,omitempty" doc:"where to wait for it here (the pier, the landing): transports.board from within 12 yd of it; transports.leave here puts you on it"`
 }
 
+// Plan is the fastest journey world.plan found: its legs in order and the estimated total.
+type Plan struct {
+	Legs    []PlanLeg `json:"legs"`
+	Seconds float64   `json:"seconds" doc:"estimated, waits included"`
+}
+
+// PlanLeg is a leg of a journey: walk to a point, ride a transport between two of its stops, or walk into a portal.
+type PlanLeg struct {
+	Action    string    `json:"action" doc:"walk, ride or portal"`
+	To        Position  `json:"to" doc:"where it ends: walk to it (act.go_to); a ride's on the stop's wait point; a portal's where it puts you"`
+	From      *Position `json:"from,omitempty" doc:"ride: the stop's wait point to board from; portal: where to walk into it"`
+	Seconds   float64   `json:"seconds" doc:"its estimated time, waits included"`
+	Name      string    `json:"name,omitempty" doc:"ride: the transport; portal: where it goes"`
+	Kind      string    `json:"kind,omitempty" doc:"ride: ship, zeppelin, elevator or tram"`
+	Entry     uint32    `json:"entry,omitempty"`
+	Transport *GUID     `json:"transport,omitempty" doc:"ride: its guid, once seen (transports.list)"`
+	BoardStop int       `json:"board_stop,omitempty" doc:"ride: the stop to board at (transports.list: stops, from 1)"`
+	LeaveStop int       `json:"leave_stop,omitempty" doc:"ride: the stop to leave at: transports.leave{stop = leave_stop}"`
+	WaitS     float64   `json:"wait_s,omitempty" doc:"ride: of its seconds, the wait for it to leave with you aboard"`
+}
+
 // Boarding is where you stand on a transport: its guid and your spot on it, in its axes.
 type Boarding struct {
 	Transport GUID    `json:"transport"`

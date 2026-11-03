@@ -34,7 +34,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `act.fail(op, code, message) → ActResult` | a failed result | [ActResult](#actresult) |
 | `act.fly{to = node id or name [, npc_entry or npc_guid]} → ActResult<Flight>` | walk to a flight master nearby, fly to a known destination and wait until you land | [ActResult](#actresult), [Flight](#flight) |
 | `act.follow{name [, distance = 5, until = fn, timeout_s = 600]} → ActResult` | requires until or timeout_s; call until each pass: anything but nil or false ends the follow, fail timeout at the deadline (at most 600 seconds), or player_not_visible after 5 seconds of absence | [ActResult](#actresult) |
-| `act.go_to{x, y [, z, map, tolerance = 4, vertical_tolerance = 3, tries = 3, unstuck = false, on_attacked = nil]} → ActResult` | walk to the requested map and floor; explicit z is never replaced by a floor query. Success requires horizontal and vertical tolerances; wrong_floor/wrong_map/unreachable include observed position and gaps. Without z, the floor: within 80 yd the one nearest your height, else the navmesh floor nearest the terrain (a dock, a raised street), else fail. tries is 1..32 for stuck retries; unstuck=true authorizes a last-resort hearth (unstuck_home). on_attacked stops to call your combat handler, then resumes | [ActResult](#actresult) |
+| `act.go_to{x, y [, z, map, tolerance = 4, vertical_tolerance = 3, tries = 3, unstuck = false, on_attacked = nil]} → ActResult` | walk to the requested map and floor; explicit z is never replaced by a floor query. Success requires horizontal and vertical tolerances; wrong_floor/wrong_map/unreachable include observed position and gaps. Without z, the floor: within 80 yd the one nearest your height, else the navmesh floor nearest the terrain (a dock, a raised street), else fail. tries is 1..32 for stuck retries; unstuck=true authorizes a last-resort hearth (unstuck_home). on_attacked stops to call your combat handler, then resumes. Over 150 yd, or where walking can't reach, it plans with the lifts, the trams and portals (world.plan) and takes them when that's faster than walking, leg by leg (data.via); boats and zeppelins it leaves to you | [ActResult](#actresult) |
 | `act.hp() → 0..1` | your health fraction |  |
 | `act.loot_nearby{[dist = 8, make_room = false]} → ActResult<Looted>` | loot at most 32 nearby corpses per call; fail on approach or loot errors with partial items/money. Destruction is opt-in with make_room = true, with one retry per corpse | [ActResult](#actresult), [Looted](#looted) |
 | `act.make_room{} → ActResult<Consumed>` | destroy the cheapest loaded poor-quality item that is not a possible usable gear upgrade; wait up to 5 seconds for confirmation, or no_disposable_item; options may be omitted | [ActResult](#actresult), [Consumed](#consumed) |
@@ -354,7 +354,7 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | Function | | Returns |
 |---|---|---|
 | `transports.board(guid) → Request<Boarding>` | board a transport at the stop you're waiting at (within 12 yd of its wait point, transports.list: stops[].wait): waits for it to be there with time to step on, then walks onto it; aboard, it carries you (me.position() follows) until transports.leave. too_far; no_route: no stored routine for it. Times out if it doesn't come within a round. Completion: the straight walk onto the deck finished and the character stands on the transport, sending ONTRANSPORT; transports.list() shows aboard and me.position() follows the transport. | [Request](#request), [Boarding](#boarding) |
-| `transports.leave() → Request<Position>` | leave the transport you're on at the stop it's at, or the next one: waits for it to be there, then walks off onto the stop's wait point (the pier, the landing). not_aboard; no_route: no stored routine for it. Times out if it doesn't stop within a round. Completion: the straight walk off finished at the point; ONTRANSPORT is no longer sent, so the server drops the character as a passenger. | [Request](#request), [Position](#position) |
+| `transports.leave([{stop = n}]) → Request<Position>` | leave the transport you're on at the next stop it's at (not the one you boarded at, while it still waits there), or at stop n of its stops, transports.list: stops, from 1): waits for it to be there, then walks off onto the stop's wait point (the pier, the landing). not_aboard; no_route: no stored routine for it; bad_stop. Times out if it doesn't stop within a round. Completion: the straight walk off finished at the point; ONTRANSPORT is no longer sent, so the server drops the character as a passenger. | [Request](#request), [Position](#position) |
 | `transports.list() → Transport[]` | the boats, zeppelins, elevators and trams on your map (the server shows them when you arrive; a boat on another continent's leg, when it comes back), with where each stops, where to wait for it there (stops[].wait), and when it next arrives at and leaves each stop; elevators and trams on your map not yet in view are listed with seen false (their stops, no times) | [Transport](#transport) |
 
 ### units
@@ -392,8 +392,9 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `world.in_sight(x, y, z) → bool?` | nothing in the map's static world models (buildings, caves, tunnels) between your eyes (1.8 yards up) and 1.5 yards above the point, the geometry the server's spell check uses; it doesn't model doors and other game objects, which the server also counts, or each model's own eye height. Trees, fences and terrain block neither check. nil when collision evidence is unavailable or its 60 ms budget expires |  |
 | `world.look([radius = 40]) → string` | a top-down text map of what's around you, north up: the ground (higher, lower, no floor), hostile creatures by letter with their aggro range shaded, other creatures, players and lootable corpses, then a line for each: level, distance, direction, o'clock, height above or below you, aggro radius and whether you're inside it, line of sight. wow look prints it |  |
 | `world.los_spot(x, y, z [, range = 30, max_walk = 60]) → Request<LOSSpot>` | where to stand to cast at something you can't see: the shortest walk to a spot within range yards of the point that sees it and most of the 4 yards round it (view, 0..1: a sliver of a view past a corner is lost when the target steps aside), with 2 yards of range to spare when it can; walk there with move.to. route_unreachable if there's none within max_walk yards of walking. Completion: a walkable spot within range of the point and in its line of sight was found; route_unreachable when there's none within max_walk. | [Request](#request), [LOSSpot](#losspot) |
-| `world.path(x, y, z) → Request<PathCheck>` | await a supported navmesh route with static body clearance from your current 3D position; collision evidence includes state, segment, model and bounded replan outcome. Dynamic doors and lifts are outside this check. Deadline 30s including queueing, max leg 16384 yards / 1024 tiles, at most 16 pending queries and one active search per session. Identical successful searches are cached (128 entries). Task pause/stop/failure/return and session close cancel pending work. Failures include route_blocked, collision_unavailable, route_unreachable, route_timeout, route_limit, route_busy and not_available; partial data never authorizes movement. Completion: a complete supported navmesh route connects the requested floors with clear static body clearance; partial or unknown routes fail. | [Request](#request), [PathCheck](#pathcheck) |
-| `world.route(points [, opts = nil]) → Request<RouteCheck>` | validate 1..64 ordered 3D waypoints from your captured position before walking. points are {x,y,z} tuples or {x=...,y=...,z=...,map=...}; opts accepts only map (default current map), and every point must be on the current map. One 30s deadline covers queueing and all legs; max 16384 yards/1024 tiles per leg and 8192 output points. Shares world.path admission, cancellation and cache. Returns connected navmesh prefix, completed_legs, first blocked_leg and per-leg gaps; partial and timeout results remain failures. Does not assess hostile exposure.. Completion: every requested leg connects within one shared deadline. | [Request](#request), [RouteCheck](#routecheck) |
+| `world.path(x, y, z) → Request<PathCheck>` | await a supported navmesh route with static body clearance from your current 3D position; collision evidence includes state, segment, model and bounded replan outcome. Dynamic doors and lifts are outside this check. Deadline 30s including queueing, max leg 16384 yards / 4096 tiles, at most 16 pending queries and one active search per session. Identical successful searches are cached (128 entries). Task pause/stop/failure/return and session close cancel pending work. Failures include route_blocked, collision_unavailable, route_unreachable, route_timeout, route_limit, route_busy and not_available; partial data never authorizes movement. Completion: a complete supported navmesh route connects the requested floors with clear static body clearance; partial or unknown routes fail. | [Request](#request), [PathCheck](#pathcheck) |
+| `world.plan(x, y, z [, map]) → Request<Plan>` | plan the fastest journey from where you are to (x, y, z) on map (default yours): legs to walk (act.go_to), transports to ride (stand at the leg's from, transports.board, then transports.leave{stop = leave_stop}) and portals to walk into, with each leg's estimated seconds and the total. A ride's wait is from the transport's timetable once you've seen it (transports.list), else half its round. Walks are navmesh routes; elevators and the Deeprun Tram on the way are legs too (act.go_to takes those itself). route_unreachable: no way found. Completion: a journey was found: its walks are navmesh routes, its rides and waits from the transports' timetables; nothing moved. | [Request](#request), [Plan](#plan) |
+| `world.route(points [, opts = nil]) → Request<RouteCheck>` | validate 1..64 ordered 3D waypoints from your captured position before walking. points are {x,y,z} tuples or {x=...,y=...,z=...,map=...}; opts accepts only map (default current map), and every point must be on the current map. One 30s deadline covers queueing and all legs; max 16384 yards/4096 tiles per leg and 8192 output points. Shares world.path admission, cancellation and cache. Returns connected navmesh prefix, completed_legs, first blocked_leg and per-leg gaps; partial and timeout results remain failures. Does not assess hostile exposure.. Completion: every requested leg connects within one shared deadline. | [Request](#request), [RouteCheck](#routecheck) |
 
 ## Types
 
@@ -2240,6 +2241,33 @@ Learned is a spell you learned from a trainer (learned; the trainer.learn result
 | `spell` | number |  |
 | `name` | string |  |
 
+### Plan
+
+Plan is the fastest journey world.plan found: its legs in order and the estimated total.
+
+| Field | Type | |
+|---|---|---|
+| `legs` | PlanLeg[] |  |
+| `seconds` | number | estimated, waits included |
+
+### PlanLeg
+
+PlanLeg is a leg of a journey: walk to a point, ride a transport between two of its stops, or walk into a portal.
+
+| Field | Type | |
+|---|---|---|
+| `action` | string | walk, ride or portal |
+| `to` | Position | where it ends: walk to it (act.go_to); a ride's on the stop's wait point; a portal's where it puts you |
+| `from?` | Position | ride: the stop's wait point to board from; portal: where to walk into it |
+| `seconds` | number | its estimated time, waits included |
+| `name?` | string | ride: the transport; portal: where it goes |
+| `kind?` | string | ride: ship, zeppelin, elevator or tram |
+| `entry?` | number |  |
+| `transport?` | GUID | ride: its guid, once seen (transports.list) |
+| `board_stop?` | number | ride: the stop to board at (transports.list: stops, from 1) |
+| `leave_stop?` | number | ride: the stop to leave at: transports.leave{stop = leave_stop} |
+| `wait_s?` | number | ride: of its seconds, the wait for it to leave with you aboard |
+
 ### LOSSpot
 
 LOSSpot is a spot near you from which a point is in sight (world.los_spot).
@@ -2781,7 +2809,9 @@ The `data` of an ok result, per op.
 | `vendor.repair` | Repaired |
 | `vendor.sell` | Sold |
 | `vendor.sell_junk` | Sold |
+| `world._plan_local` | Plan |
 | `world.danger` | DangerCheck |
 | `world.los_spot` | LOSSpot |
 | `world.path` | PathCheck |
+| `world.plan` | Plan |
 | `world.route` | RouteCheck |

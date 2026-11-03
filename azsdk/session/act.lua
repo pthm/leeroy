@@ -217,8 +217,9 @@ end
 -- o.on_attacked(attackers) (your fighting), then carry on
 local function walk(o, x, y, z)
   local req = move.to(x, y, z)
-  if not o.on_attacked and not o.observe_danger then return await(req, 600) end
-  local deadline = now() + 600000
+  -- move.to has its own deadline (the route at your speed, twice over): wait as long as it may take
+  if not o.on_attacked and not o.observe_danger then return await(req, 7200) end
+  local deadline = now() + 7200000
   while now() < deadline do
     local r = await(req, 0.5)
     if not (r.error and r.error.code == "wait_timeout") then return r end
@@ -250,6 +251,64 @@ local function walk(o, x, y, z)
 end
 
 local go_to_impl -- the unvalidated go_to, for the leg after a portal
+
+-- A journey world._plan_local found (by lift, tram and portal as well as on foot), leg by leg: walks are go_to's own
+-- (not planned again), a portal is walked into until it puts you at its other end, a ride is boarding at the leg's
+-- stop and leaving at its stop.
+local function rides(plan)
+  for _, l in ipairs(plan.legs) do if l.action ~= "walk" then return true end end
+  return false
+end
+local function follow(o, plan, fail)
+  local done = {}
+  local function leg_go(x, y, z)
+    local rest = {}
+    for k, v in pairs(o) do rest[k] = v end
+    rest.x, rest.y, rest.z, rest.map, rest.no_plan = x, y, z, nil, true
+    return go_to_impl(rest)
+  end
+  for i, l in ipairs(plan.legs) do
+    if l.action == "walk" then
+      local r = leg_go(l.to.x, l.to.y, l.to.z)
+      if not r.ok then return r end
+    elseif l.action == "portal" then
+      local m = me.position().map or 0
+      local function through() return (me.position().map or 0) ~= m or A.dist(l.to.x, l.to.y, l.to.z) < 20 end
+      move._expect_transfer(120) -- the teleport must not end the caller's movement lease
+      -- into the trigger: the walk there may already have set it off, and its middle can be above the floor, where
+      -- the walk itself fails (route_unreachable) once you're inside it; what counts is coming out the other end
+      local w = through() and {ok = true} or walk(o, l.from.x, l.from.y, l.from.z)
+      local deadline = now() + 20000
+      while not through() and now() < deadline do wait(0.5) end
+      if not through() then
+        if not w.ok then return fail(w.error.code, "walking into "..l.name..": "..(w.error.message or "")) end
+        return fail("unreachable", "walked into "..l.name.." but it didn't take you through")
+      end
+      wait(1) -- the loading screen, on another map
+    else -- ride
+      local r = leg_go(l.from.x, l.from.y, l.from.z)
+      if not r.ok then return r end
+      local t
+      for _ = 1, 15 do
+        for _, c in ipairs(transports.list()) do
+          local s = c.stops[l.board_stop]
+          if c.entry == l.entry and c.guid and s and s.wait and math.abs(s.wait.x - l.from.x) + math.abs(s.wait.y - l.from.y) < 6 then t = c end
+        end
+        if t then break end
+        wait(1)
+      end
+      if not t then return fail("unreachable", "the "..l.name.." for this stop isn't in view (transports.list)") end
+      local round = (t.period_s or 300) + 60
+      local b = await(transports.board(t.guid), round)
+      if not b.ok then return fail(b.error.code, "boarding the "..l.name..": "..(b.error.message or "")) end
+      local off = await(transports.leave({stop = l.leave_stop}), round)
+      if not off.ok then return fail(off.error.code, "leaving the "..l.name..": "..(off.error.message or "")) end
+    end
+    done[#done + 1] = l.action == "walk" and "walk" or (l.action .. " " .. (l.name or ""))
+  end
+  local p = me.position()
+  return result("act.go_to", true, {position = p, via = done, planned_s = plan.seconds})
+end
 function A.go_to(o)
   local tol, ztol = o.tolerance or 4, o.vertical_tolerance or 3
   local initial = me.position()
@@ -292,6 +351,18 @@ function A.go_to(o)
     return result("act.go_to", true, {position=me.position(), teleported=true, trigger=tp.trigger, to_map=tp.map})
   end
   local function arrived(d) return d.distance <= tol and d.vertical_gap <= ztol end
+  -- far, or (below) where walking can't get there: the fastest way, which can be a lift, the tram or a portal
+  -- (world._plan_local weighs walking all the way too); followed here when it rides or steps through one
+  local function planned()
+    if o.no_plan then return nil end
+    o.no_plan = true
+    local p = await(world._plan_local(o.x, o.y, z), 90)
+    if p.ok and rides(p.data) then return follow(o, p.data, fail) end
+  end
+  if A.dist(o.x, o.y) > 150 then
+    local via = planned()
+    if via then return via end
+  end
   local r
   for n = 1, o.tries or 3 do
     local d = evidence()
@@ -315,6 +386,10 @@ function A.go_to(o)
         rest.portal_taken, rest.z = true, z
         return go_to_impl(rest)
       end
+    end
+    if not r.ok and r.error.code == "route_unreachable" then
+      local via = planned()
+      if via then return via end
     end
     -- Control and query failures cannot be masked by a coincidentally nearby position.
     if not r.ok and r.error.code ~= "stuck" then return fail(r.error.code, r.error.message) end
@@ -1256,7 +1331,7 @@ for name, d in pairs({
   make_room = { "{} → ActResult<Consumed>", "destroy the cheapest loaded poor-quality item that is not a possible usable gear upgrade; wait up to 5 seconds for confirmation, or no_disposable_item; options may be omitted" },
   cast = { "(id [, guid, options]) → ActResult", "spells.check, stop only owned movement, face and await a server outcome; one facing retry. options: approach=false, max_move_yards=10 (max40), max_time_s=30 (max60). approach=true walks, when out of range or out of sight, to world.los_spot: the shortest walk to a spot in range with a clear, wide view (round a corridor bend, not up to the target), within max_move_yards. data preserves check, attempts, corrections and server action" },
   buff = { "(id [, guid]) → ActResult", "cast it unless the aura is already active (ok with data.status = already_active then)" },
-  go_to = { "{x, y [, z, map, tolerance = 4, vertical_tolerance = 3, tries = 3, unstuck = false, on_attacked = nil]} → ActResult", "walk to the requested map and floor; explicit z is never replaced by a floor query. Success requires horizontal and vertical tolerances; wrong_floor/wrong_map/unreachable include observed position and gaps. Without z, the floor: within 80 yd the one nearest your height, else the navmesh floor nearest the terrain (a dock, a raised street), else fail. tries is 1..32 for stuck retries; unstuck=true authorizes a last-resort hearth (unstuck_home). on_attacked stops to call your combat handler, then resumes" },
+  go_to = { "{x, y [, z, map, tolerance = 4, vertical_tolerance = 3, tries = 3, unstuck = false, on_attacked = nil]} → ActResult", "walk to the requested map and floor; explicit z is never replaced by a floor query. Success requires horizontal and vertical tolerances; wrong_floor/wrong_map/unreachable include observed position and gaps. Without z, the floor: within 80 yd the one nearest your height, else the navmesh floor nearest the terrain (a dock, a raised street), else fail. tries is 1..32 for stuck retries; unstuck=true authorizes a last-resort hearth (unstuck_home). on_attacked stops to call your combat handler, then resumes. Over 150 yd, or where walking can't reach, it plans with the lifts, the trams and portals (world.plan) and takes them when that's faster than walking, leg by leg (data.via); boats and zeppelins it leaves to you" },
   travel = { "{points = {{x, y, z}, ...} [, map, tolerance = 4, vertical_tolerance = 3, validate = true, allow_partial = false, stop_on_danger = false, unstuck = false, on_attacked = nil]} → ActResult", "validate all 1..64 3D waypoints with world.route before moving, then go_to each while holding movement ownership. Named waypoints accept x,y,z,map. Report first failed waypoint, completed_waypoints and validation evidence. allow_partial=true may walk a known route_unreachable prefix but still returns failure for the requested destination. validate=false permits unverified 2D waypoints; allow_partial then is invalid. Exposure is checked before each leg and during movement; the latest 64 observations are retained. stop_on_danger=true stops on hostile or unknown evidence" },
   approach = { "{unit [, range = 4, timeout = 60]} → ActResult<Creature>", "move within range and verify facing; reuse a pending walk until the target moves; bounded by timeout" },
   follow = { "{name [, distance = 5, until = fn, timeout_s = 600]} → ActResult", "requires until or timeout_s; call until each pass: anything but nil or false ends the follow, fail timeout at the deadline (at most 600 seconds), or player_not_visible after 5 seconds of absence" },
