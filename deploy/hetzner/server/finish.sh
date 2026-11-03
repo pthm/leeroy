@@ -53,7 +53,7 @@ if [ $ok = 0 ]; then
 fi
 status=$([ -n "$run" ] && jq -r '.status // ""' "$run/run.json" 2>/dev/null)
 if [ "$why" = done ] && [ "$status" != finished ] && [ "$status" != paused ]; then
-	keep=${LEEROY_KEEP_HOURS:-6}
+	keep=${LEEROY_KEEP_HOURS:-24}
 	log "the run ended ${status:-before starting}: keeping this server (just remote-resume $host, or just remote-kill $host); it deletes itself in $keep h"
 	systemd-run --unit leeroy-keep --on-active="${keep}h" bash /opt/leeroy/deploy/hetzner/server/finish.sh deadline >/dev/null 2>&1 || true
 	exit 0

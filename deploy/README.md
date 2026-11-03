@@ -49,7 +49,7 @@ live viewer beside it (`azview` on the server's localhost:8800 from the start; `
 first free port from 8801 and opens it). When the run
 ends the server uploads it to `leeroy-runs/runs/<run>.tar.zst` (its log to `logs/<server>.log`) and deletes itself,
 if the run finished or was stopped. A run that ended any other way (its supervisor died, the game server or the build
-failed) is uploaded all the same, but its server is kept for `LEEROY_KEEP_HOURS` (default 6): `just remote-resume`
+failed) is uploaded all the same, but its server is kept for `LEEROY_KEEP_HOURS` (default 24): `just remote-resume`
 picks the run up where it stopped (the characters, workspaces and conversations are on that server), `just remote-kill`
 deletes it sooner. If the run's unit is started again on its own (it was, twice, after an unattended upgrade, now off),
 the run resumes by itself, up to 3 times.
@@ -64,7 +64,7 @@ percentile and peak CPU, peak memory, per-process figures, and what the server c
 - Servers accept SSH alone (the `leeroy` firewall); the game server, MySQL and the viewer are only reachable through it.
 - The agents' keys are in `/etc/leeroy/agents.env`; the Hetzner and R2 keys, which the server needs to upload and delete
   itself, are in `/etc/leeroy/ops.env`, outside the agents' environment. Both go with the server.
-- A server deletes itself after `LEEROY_MAX_HOURS` (default 26) whatever state it's in, a kept one too, pausing and
+- A server deletes itself after `LEEROY_MAX_HOURS` (default 48) whatever state it's in, a kept one too, pausing and
   uploading a run still going first. The deadline is a systemd timer on disk, so it outlives a reboot. If that upload fails it powers off instead (`remote-ls` shows it; a stopped server still costs its
   disk), so a run is never lost.
 - A Codex login file holds a refresh token that changes when it's used: two runs at once on one login can log each

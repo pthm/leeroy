@@ -24,8 +24,8 @@ cd "$(dirname "$0")/../.."
 : "${LEEROY_LOCATION:=hil}"        # Hillsboro, Oregon (US West)
 : "${LEEROY_TYPE:=ccx23}"          # run servers: 4 dedicated cores, 16 GB (the snapshot needs a 160 GB disk or more)
 : "${LEEROY_IMAGE_TYPE:=ccx23}"    # the snapshot's builder: its disk (160 GB) is the smallest a run server can have
-: "${LEEROY_MAX_HOURS:=26}"        # a run server deletes itself after this long, whatever state it's in (a reboot too)
-: "${LEEROY_KEEP_HOURS:=6}"        # one whose run ended unfinished (a crash) is kept this long, for remote-resume
+: "${LEEROY_MAX_HOURS:=48}"        # a run server deletes itself after this long, whatever state it's in (a reboot too)
+: "${LEEROY_KEEP_HOURS:=24}"       # one whose run ended unfinished (a crash) is kept this long, for remote-resume
 : "${LEEROY_SSH_KEY:=$HOME/.ssh/id_ed25519}"
 : "${R2_RUNS_BUCKET:=leeroy-runs}"
 KNOWN=var/remote/known_hosts
