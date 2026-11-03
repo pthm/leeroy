@@ -30,3 +30,21 @@ Groups, chat, trades and the players around you. The rest of the SDK is in sdk.m
   `trade.offer` is ok half a second after sending unless refused (`untradeable`, `not_enough_money`), and
   `trade.status().mine` is what you offered. Any change to either offer un-accepts both: a pending `trade.accept`
   then fails `unaccepted`, so look at the trade and accept again. Accept after the offers settle.
+
+## Duels
+
+- `duel.challenge(name)` challenges a player within 10 yards (the Duel spell): ok once the server has sent the
+  challenge (`player_not_found`, `busy`, or the cast's refusal such as `out_of_range` or `no_dueling` where duels
+  aren't allowed). The other player gets a `duel_requested` event and answers with `duel.accept()` or
+  `duel.decline()`; you can withdraw your own challenge with `duel.decline()`.
+- Accepting starts a 3-second countdown (`duel_countdown`); then the duel is under way. The server plants a flag
+  between the two players where the challenge was made.
+- A duel ends when one player is brought to 1 health (they don't die) or yields with `duel.yield()`: result `beaten`.
+  A player more than 50 yards from the flag gets `duel_out_of_bounds` and loses if still out after 10 seconds: result
+  `fled`. A duel broken off before it is decided (declined, withdrawn) ends `cancelled`.
+- `duel_ended` says who won, who lost and how (`winner`, `loser`, `result`, `won` is true if you did).
+  `duel.state()` is the duel now: `none`, `requested`, `countdown`, `fighting` or `ended`, with the opponent.
+- Nothing is restored when a duel ends: the loser is left at 1 health, the winner with whatever health it had, and
+  both with the mana and cooldowns the duel left them. They regenerate as usual (game.md: out of combat, food and
+  drink), and the next duel starts from wherever they are.
+- Only the two duellers can affect a duel: nobody else can attack, heal or buff either of them while it lasts.

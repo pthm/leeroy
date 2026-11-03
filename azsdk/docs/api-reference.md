@@ -104,6 +104,16 @@ Conventions are in sdk.md. `request<T>`: an action's request, whose result's `da
 | `death.release() → Request` | release your spirit: ok once you're a ghost at the graveyard. Completion: ghost state is observed, or the character is already a ghost. | [Request](#request) |
 | `death.spirit_res(npc_guid) → Request` | as a ghost next to a spirit healer: resurrect there (resurrection sickness from level 11, and your gear loses durability). Completion: the character is observed alive and no longer a ghost; healer cost is not sent by the server beforehand. | [Request](#request) |
 
+### duel
+
+| Function | | Returns |
+|---|---|---|
+| `duel.accept() → Request<Duel>` | accept a pending challenge (duel_requested): ok at the countdown; the duel starts 3 s later. Completion: the server started the countdown. | [Request](#request), [Duel](#duel) |
+| `duel.challenge(player) → Request<Duel>` | challenge a player within ~10 yd (name or guid) to a duel: ok once the challenge is out (state requested); they answer with duel.accept or duel.decline. Completion: the server sent the challenge (SMSG_DUEL_REQUESTED); acceptance is not implied. | [Request](#request), [Duel](#duel) |
+| `duel.decline() → Request<Duel>` | decline a challenge to you, or withdraw your own. Completion: the challenge or duel was observed ended or cleared. | [Request](#request), [Duel](#duel) |
+| `duel.state() → Duel` | the duel now: none, requested, countdown, fighting or ended (with the result) | [Duel](#duel) |
+| `duel.yield() → Request<Duel>` | give up the duel under way: your opponent wins. Completion: the server ended the duel. | [Request](#request), [Duel](#duel) |
+
 ### events
 
 | Function | | Returns |
@@ -2056,6 +2066,21 @@ Attacking is the result of combat.attack.
 |---|---|---|
 | `already?` | bool | you were already attacking it |
 
+### Duel
+
+Duel is a duel's state: duel.state(), duel.* results and the duel_* events.
+
+| Field | Type | |
+|---|---|---|
+| `state` | string | none, requested (a challenge is pending: duel.accept() or duel.decline()), countdown (it starts 3 s after the accept), fighting, ended |
+| `challenger?` | string | who challenged |
+| `opponent?` | string | who you're duelling (empty while your challenge waits, if the server hasn't named them) |
+| `out_of_bounds?` | bool | you're over 50 yd from the duel flag: back within 10 s or you lose |
+| `result?` | string | duel_ended: beaten (the loser was brought to 1 health or yielded), fled (the loser stayed out of bounds), cancelled (declined, withdrawn or broken off before it was decided) |
+| `winner?` | string | duel_ended |
+| `loser?` | string | duel_ended |
+| `won?` | bool | duel_ended: you won |
+
 ### FlightMap
 
 FlightMap is a flight master's map: where you are and where you can fly from there.
@@ -2641,6 +2666,11 @@ An event is an [Event](#event) whose `data` is the type below.
 | `damage` | Damage | a hit involving you (melee, spell, DoT tick or damage shield), or an attack that missed |
 | `death` | Death | you died |
 | `dispel` | Dispel | auras dispelled or stolen from you, or by you |
+| `duel_countdown` | Duel | the challenge was accepted: the duel starts in 3 seconds |
+| `duel_ended` | Duel | a duel you were in ended: who won and how |
+| `duel_in_bounds` | Duel | you're back within 50 yd of the duel flag |
+| `duel_out_of_bounds` | Duel | you're over 50 yd from the duel flag: back within 10 s or you lose |
+| `duel_requested` | Duel | a duel challenge, yours or someone's to you: duel.accept() or duel.decline() |
 | `energize` | Energize | power (mana, rage, energy...) given to you, or by you |
 | `error` | ErrorEvent | the server refused something |
 | `failure_loop` | FailureLoop | a task's top-level call failed with the same code 25 times in a row, and again every 250 more; from 25, act.* helpers wait min(5, n/25) s before returning such a failure |
@@ -2701,6 +2731,10 @@ The `data` of an ok result, per op.
 |---|---|
 | `combat.attack` | Attacking |
 | `death.corpse` | Corpse |
+| `duel.accept` | Duel |
+| `duel.challenge` | Duel |
+| `duel.decline` | Duel |
+| `duel.yield` | Duel |
 | `flights.map` | FlightMap |
 | `flights.take` | Flight |
 | `gossip.open` | GossipWindow |

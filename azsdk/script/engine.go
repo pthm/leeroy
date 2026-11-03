@@ -34,6 +34,7 @@ var runtimeLua string
 // serialized, so both always see the same world and the same script state.
 type Engine struct {
 	mu      sync.Mutex
+	ended   string // End's reason: the run is over, so actions fail run_over
 	L       *lua.LState
 	logf    func(format string, args ...any)
 	docs    map[string]Doc
@@ -377,6 +378,24 @@ func (e *Engine) TakeScriptErrors() map[string]any {
 	return out
 }
 
+// End ends the character's run while its session stays up: every task stops, and from now on calls that act on the
+// game (those returning a Request) fail run_over with reason, and new tasks can't start. Reads still answer, so the
+// agent can look back at the run and write its notes. It returns how many tasks it stopped.
+func (e *Engine) End(reason string) int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.ended = reason
+	n := 0
+	for _, t := range e.tasks {
+		if t.State != "done" && t.State != "failed" && t.State != "stopped" {
+			t.State, t.Ended = "stopped", time.Now()
+			e.finish(t)
+			n++
+		}
+	}
+	return n
+}
+
 // Close stops the engine: its tasks end, pending requests close and the Lua state is freed.
 func (e *Engine) Close() {
 	e.mu.Lock()
@@ -471,6 +490,10 @@ func (e *Engine) registerFunc(name, sig, desc string, fn any, internal bool) {
 	need := contract.Required()
 	e.set(name, func(L *lua.LState) int {
 		defer e.recoverNative(L, name)
+		if e.ended != "" && strings.HasPrefix(contract.Returns, "Request") { // the run is over: no more acting on the game
+			L.Push(toLua(L, jsonish(e.Reqs.Now(Spec{Op: name}, Fail("run_over", e.ended, nil)))))
+			return 1
+		}
 		var diagnostic *diagnosticCall
 		if strings.Contains(sig, "→ Request") {
 			diagnostic = e.beginDiagnostic(L, name, nativeDiagnosticArgs(name, sig, L))
@@ -1311,6 +1334,9 @@ func (e *Engine) registerRuntime() {
 	tbl("task", map[string]lua.LGFunction{
 		// task.spawn([name,] fn, ...) -> id
 		"spawn": func(L *lua.LState) int {
+			if e.ended != "" {
+				L.RaiseError("run_over: %s", e.ended)
+			}
 			name, fi := "task", 1
 			if s, ok := L.Get(1).(lua.LString); ok {
 				name, fi = string(s), 2

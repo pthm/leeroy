@@ -192,6 +192,18 @@ type SummonRequest struct {
 	SecondsLeft float64 `json:"seconds_left" doc:"summon.accept() or summon.decline() before it expires"`
 }
 
+// Duel is a duel's state: duel.state(), duel.* results and the duel_* events.
+type Duel struct {
+	State       string `json:"state" doc:"none, requested (a challenge is pending: duel.accept() or duel.decline()), countdown (it starts 3 s after the accept), fighting, ended"`
+	Challenger  string `json:"challenger,omitempty" doc:"who challenged"`
+	Opponent    string `json:"opponent,omitempty" doc:"who you're duelling (empty while your challenge waits, if the server hasn't named them)"`
+	OutOfBounds bool   `json:"out_of_bounds,omitempty" doc:"you're over 50 yd from the duel flag: back within 10 s or you lose"`
+	Result      string `json:"result,omitempty" doc:"duel_ended: beaten (the loser was brought to 1 health or yielded), fled (the loser stayed out of bounds), cancelled (declined, withdrawn or broken off before it was decided)"`
+	Winner      string `json:"winner,omitempty" doc:"duel_ended"`
+	Loser       string `json:"loser,omitempty" doc:"duel_ended"`
+	Won         bool   `json:"won,omitempty" doc:"duel_ended: you won"`
+}
+
 // Battleground is a change to a battleground or arena queue (battleground).
 type Battleground struct {
 	Slot        uint32  `json:"slot" doc:"queue slot (0-2)"`
@@ -225,6 +237,7 @@ type GoalMet struct {
 	Goal    string `json:"goal" doc:"the run's goal, e.g. achievement:628"`
 	Message string `json:"message"`
 	EndsAt  int64  `json:"ends_at" doc:"unix ms: when your agent and session stop"`
+	End     bool   `json:"end,omitempty" doc:"your run is over now: your scripts stopped and game actions fail run_over; reads still answer, so you can look back and write your notes until ends_at"`
 }
 
 // Maintenance is an operator notice about the run (maintenance, sent by the run's supervisor).
@@ -499,6 +512,11 @@ var EventTypes = map[string]EventType{
 	"party_invite":         {PartyInvite{}, "someone invited you to their group"},
 	"ready_check":          {ReadyCheck{}, "your group leader started a ready check: group.ready(true|false)"},
 	"summon_request":       {SummonRequest{}, "a player is summoning you: summon.accept() or summon.decline()"},
+	"duel_requested":       {Duel{}, "a duel challenge, yours or someone's to you: duel.accept() or duel.decline()"},
+	"duel_countdown":       {Duel{}, "the challenge was accepted: the duel starts in 3 seconds"},
+	"duel_out_of_bounds":   {Duel{}, "you're over 50 yd from the duel flag: back within 10 s or you lose"},
+	"duel_in_bounds":       {Duel{}, "you're back within 50 yd of the duel flag"},
+	"duel_ended":           {Duel{}, "a duel you were in ended: who won and how"},
 	"travel_refused":       {TravelRefused{}, "the server refused a portal or an instance (level, group, full, lockout...)"},
 	"battleground":         {Battleground{}, "a battleground queue changed: queued, invited, entered, left"},
 	"motd":                 {Notice{}, "the server's message of the day (at login)"},
@@ -603,5 +621,6 @@ var OpResults = map[string]any{
 	"vendor.buy": ItemReceived{}, "vendor.sell": Sold{}, "vendor.sell_junk": Sold{}, "vendor.repair": Repaired{},
 	"trainer.learn": Learned{}, "quests.turn_in": QuestDone{}, "quests.accept": QuestDone{}, "talents.learn": TalentLearned{},
 	"pet.cast": Cast{}, "pet.cast_at": Cast{}, "pet.feed": Cast{},
+	"duel.challenge": Duel{}, "duel.accept": Duel{}, "duel.decline": Duel{}, "duel.yield": Duel{},
 	"combat.attack": Attacking{}, "move.unstuck": Teleport{}, "summon.accept": Teleport{}, "flights.map": FlightMap{}, "flights.take": Flight{}, "innkeeper.bind": Home{},
 }

@@ -211,7 +211,12 @@ var methods = map[string]method{
 		if err := json.Unmarshal(p.Data, &data); err != nil {
 			return nil, fmt.Errorf("events.harness: data: %w", err)
 		}
-		return e.Emit(p.Type, data).Seq, nil
+		seq := e.Emit(p.Type, data).Seq
+		if p.Type == "goal_met" && data["end"] == true { // the run is over for this character: its session stops acting
+			msg, _ := data["message"].(string)
+			e.End(msg)
+		}
+		return seq, nil
 	}),
 }
 
@@ -270,7 +275,7 @@ var (
 )
 
 var defaultSubs = []string{
-	"goal_met", "maintenance", "attention", "death", "stall", "failure_loop", "script_error", "task_finished", "party_invite", "trade", "summon_request", "ready_check", "loot_roll_start",
+	"goal_met", "maintenance", "attention", "death", "stall", "failure_loop", "script_error", "task_finished", "party_invite", "trade", "summon_request", "duel_requested", "duel_countdown", "duel_out_of_bounds", "duel_ended", "ready_check", "loot_roll_start",
 	"gear_broken", "chat:whisper", "chat:party", "chat:raid", "chat:say",
 }
 

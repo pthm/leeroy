@@ -440,3 +440,31 @@ func TestNestedProtectedWaitResults(t *testing.T) {
 		t.Fatalf("nested wait failed: %+v", e.TasksHeld())
 	}
 }
+
+// End stops every task and refuses actions (Request calls) and new tasks; reads still answer.
+func TestEngineEnd(t *testing.T) {
+	e := NewEngine(nolog, nil)
+	e.Func("game.act", "() → Request", "an action", func() map[string]any { return e.Reqs.Start(Spec{Op: "game.act"}) })
+	e.Func("game.read", "() → number", "a read", func() int { return 7 })
+	if _, err := e.Eval(`task.spawn("loop", function() while true do wait(1) end end)`); err != nil {
+		t.Fatal(err)
+	}
+	if n := e.End("the judge recorded your goal"); n != 1 {
+		t.Fatalf("End stopped %d tasks, want 1", n)
+	}
+	r, err := e.Eval(`return {game.act().id, game.read()}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, _ := r.([]any)
+	if len(ids) != 2 || fmt.Sprint(ids[1]) != "7" {
+		t.Fatalf("a read after End: %v", r)
+	}
+	id, _ := ids[0].(float64)
+	if res := e.Reqs.Result(int(id)); res["ok"] != false || fmt.Sprint(res["error"]) != "map[code:run_over message:the judge recorded your goal]" {
+		t.Fatalf("an action after End: %v", res)
+	}
+	if _, err := e.Eval(`task.spawn("again", function() end)`); err == nil || !strings.Contains(err.Error(), "run_over") {
+		t.Fatalf("a new task after End: %v", err)
+	}
+}
