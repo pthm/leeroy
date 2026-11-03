@@ -17,7 +17,7 @@ func TestRuntimeCommandsAndGeneratedContract(t *testing.T) {
 			command := p.agentCmd("smoke", "")
 			args := strings.Join(command.Args, " ")
 			env := strings.Join(command.Env, "\n")
-			if !strings.Contains(env, "WOW_MAX_WAIT=110") {
+			if !strings.Contains(env, "WOW_MAX_WAIT=600") {
 				t.Fatal("missing wait limit")
 			}
 			contract := shellContract(runtime)

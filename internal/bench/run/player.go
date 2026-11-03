@@ -345,7 +345,10 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 	}
 	env = append(env, "PATH="+filepath.Join(repo, "suite", "agent", "bin")+":"+os.Getenv("PATH"),
 		"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "WOWBENCH_BOARD="+p.r.f().Board(),
-		"WOWBENCH_CHAR="+a.Char, fmt.Sprintf("WOW_MAX_WAIT=%d", agentMaxWaitSeconds), fmt.Sprintf("WOW_PORT=%d", p.port))
+		"WOWBENCH_CHAR="+a.Char, fmt.Sprintf("WOW_MAX_WAIT=%d", agentMaxWaitSeconds), fmt.Sprintf("WOW_PORT=%d", p.port),
+		// the shells' own limit on a command, over the longest wait (Claude Code's default and maximum, opencode's default)
+		fmt.Sprintf("BASH_DEFAULT_TIMEOUT_MS=%d", agentShellTimeoutMS), fmt.Sprintf("BASH_MAX_TIMEOUT_MS=%d", agentShellTimeoutMS),
+		fmt.Sprintf("OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS=%d", agentShellTimeoutMS))
 	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // so stopping it stops its tools too
 	return cmd

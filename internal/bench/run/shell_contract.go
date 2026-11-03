@@ -5,9 +5,12 @@ import (
 	"strings"
 )
 
-// agentMaxWaitSeconds caps a wait (wow wait, wow -w): under the 120 s that Claude Code's and opencode's shells give a
-// command by default, with room to spare (codex exec has no limit: a 150 s command ran to completion)
-const agentMaxWaitSeconds = 110
+// agentMaxWaitSeconds caps a wait (wow wait, wow -w) at the session's own limit: 600 s. The runtimes' shells let a
+// command run longer (agentShellTimeoutMS: Claude Code's and opencode's default 120 s, raised; codex exec has none)
+const agentMaxWaitSeconds = 600
+
+// agentShellTimeoutMS: how long Claude Code's and opencode's shells let a command run, a minute over the longest wait
+const agentShellTimeoutMS = (agentMaxWaitSeconds + 60) * 1000
 
 // The same command inventory feeds the runtime permissions and generated help.
 func shellContract(runtime string) string {
