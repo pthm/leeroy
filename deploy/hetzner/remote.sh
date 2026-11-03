@@ -141,7 +141,7 @@ run)
 	echo "started: just remote-status $name · just remote-view $name · deletes itself after the run (at most ${LEEROY_MAX_HOURS} h)"
 	;;
 ls)
-	hcloud server list --selector leeroy -o columns=name,status,server_type,datacenter,ipv4,created,labels
+	hcloud server list --selector leeroy -o columns=name,status,type,location,ipv4,age,labels
 	;;
 status)
 	server=${1:-$(newest_server)}
