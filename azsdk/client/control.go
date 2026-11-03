@@ -19,9 +19,11 @@ var ErrServerDriven = errors.New("the server is moving you (flight, teleport, fe
 
 // 3.3.5 movement opcodes the client originates (MSG_MOVE_START_* .. HEARTBEAT); acks and teleport/worldport acks are
 // not in this set and always go through.
-var playerMoveOpcodes = map[uint16]bool{0xB5: true, 0xB6: true, 0xB7: true, 0xB8: true, 0xB9: true, 0xBA: true, 0xBB: true,
+var playerMoveOpcodes = map[uint16]bool{
+	0xB5: true, 0xB6: true, 0xB7: true, 0xB8: true, 0xB9: true, 0xBA: true, 0xBB: true,
 	0xBC: true, 0xBD: true, 0xBE: true, 0xBF: true, 0xC0: true, 0xC1: true, 0xC2: true, 0xC3: true, 0xC9: true, 0xCA: true,
-	0xCB: true, 0xDA: true, 0xDB: true, 0xEE: true}
+	0xCB: true, 0xDA: true, 0xDB: true, 0xEE: true,
+}
 
 const (
 	unitFlagStunned  = 0x00040000

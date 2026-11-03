@@ -22,8 +22,10 @@ type Query struct {
 
 func queryOf(r *http.Request) Query {
 	g := r.URL.Query().Get
-	q := Query{T: num(r, "t"), Sel: g("sel"), Tab: g("tab"), Sort: g("sort"), ByGroup: g("bygroup") == "1",
-		Cats: map[string]bool{}, Metric: g("metric"), Range: g("range"), Chart: g("chart"), Per: g("per")}
+	q := Query{
+		T: num(r, "t"), Sel: g("sel"), Tab: g("tab"), Sort: g("sort"), ByGroup: g("bygroup") == "1",
+		Cats: map[string]bool{}, Metric: g("metric"), Range: g("range"), Chart: g("chart"), Per: g("per"),
+	}
 	q.Grp, _ = strconv.Atoi(g("grp"))
 	q.Width, _ = strconv.Atoi(g("w"))
 	for _, c := range strings.Split(g("cats"), ",") {
@@ -61,16 +63,36 @@ func comma(n int) string {
 type metric struct{ Key, Label, Group string }
 
 var metrics = []metric{
-	{"dmg", "Damage done", "Combat"}, {"taken", "Damage taken", "Combat"}, {"heal", "Healing done", "Combat"},
-	{"healed", "Healing taken", "Combat"}, {"kills", "Kills", "Combat"}, {"deaths", "Deaths", "Combat"},
-	{"casts", "Casts", "Combat"}, {"combat", "Time in combat", "Combat"}, {"lowhp", "Time below 35% health", "Combat"},
+	{"dmg", "Damage done", "Combat"},
+	{"taken", "Damage taken", "Combat"},
+	{"heal", "Healing done", "Combat"},
+	{"healed", "Healing taken", "Combat"},
+	{"kills", "Kills", "Combat"},
+	{"deaths", "Deaths", "Combat"},
+	{"casts", "Casts", "Combat"},
+	{"combat", "Time in combat", "Combat"},
+	{"lowhp", "Time below 35% health", "Combat"},
 	{"oom", "Time out of mana (<10%)", "Combat"},
-	{"score", "Score", "Score"}, {"progress", "Progress", "Score"}, {"pace", "Pace", "Score"}, {"recent", "Rate, last 10 min", "Score"},
-	{"xp", "XP gained", "Progress"}, {"quests", "Quests completed", "Progress"}, {"levels", "Levels gained", "Progress"},
-	{"level", "Level", "Progress"}, {"loot", "Items looted", "Progress"}, {"money", "Money gained", "Progress"}, {"gold", "Money held", "Progress"},
-	{"distance", "Distance travelled", "Activity"}, {"dead", "Time dead", "Activity"}, {"idle", "Time idle", "Activity"},
-	{"moving", "Time moving", "Activity"}, {"grouped", "Time grouped", "Activity"},
-	{"say", "Agent messages", "Agent"}, {"api", "Eval calls", "Agent"}, {"errors", "Script errors", "Agent"}, {"chat", "Chat messages sent", "Agent"},
+	{"score", "Score", "Score"},
+	{"progress", "Progress", "Score"},
+	{"pace", "Pace", "Score"},
+	{"recent", "Rate, last 10 min", "Score"},
+	{"xp", "XP gained", "Progress"},
+	{"quests", "Quests completed", "Progress"},
+	{"levels", "Levels gained", "Progress"},
+	{"level", "Level", "Progress"},
+	{"loot", "Items looted", "Progress"},
+	{"money", "Money gained", "Progress"},
+	{"gold", "Money held", "Progress"},
+	{"distance", "Distance travelled", "Activity"},
+	{"dead", "Time dead", "Activity"},
+	{"idle", "Time idle", "Activity"},
+	{"moving", "Time moving", "Activity"},
+	{"grouped", "Time grouped", "Activity"},
+	{"say", "Agent messages", "Agent"},
+	{"api", "Eval calls", "Agent"},
+	{"errors", "Script errors", "Agent"},
+	{"chat", "Chat messages sent", "Agent"},
 }
 
 // metricGroups is the metrics by group, for the metric picker.

@@ -34,8 +34,10 @@ type Stack struct {
 }
 
 // Slots: the equipment slots, in the game's order (slot 0 is head).
-var Slots = []string{"head", "neck", "shoulders", "shirt", "chest", "waist", "legs", "feet", "wrists", "hands",
-	"finger1", "finger2", "trinket1", "trinket2", "back", "main_hand", "off_hand", "ranged", "tabard"}
+var Slots = []string{
+	"head", "neck", "shoulders", "shirt", "chest", "waist", "legs", "feet", "wrists", "hands",
+	"finger1", "finger2", "trinket1", "trinket2", "back", "main_hand", "off_hand", "ranged", "tabard",
+}
 
 // LoadKit reads suite/kits/<name>.yaml.
 func (b *Bench) LoadKit(name string) (*Kit, error) {

@@ -3,12 +3,13 @@ package run
 import (
 	"context"
 	"fmt"
-	acct "github.com/pthm/leeroy/internal/bench/account"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	acct "github.com/pthm/leeroy/internal/bench/account"
 
 	"github.com/pthm/leeroy/internal/bench/config"
 )

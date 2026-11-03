@@ -35,7 +35,7 @@ func toolName(s string) string {
 		return "unknown"
 	}
 	for _, c := range s {
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '.' || c == '-') {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' && c != '.' && c != '-' {
 			return "unknown"
 		}
 	}
@@ -72,6 +72,7 @@ func CommandFamily(command string) string {
 	}
 	return "unknown"
 }
+
 func (d *toolDiagnostics) begin(id, tool, command string, at int64) {
 	if id == "" {
 		return
@@ -82,6 +83,7 @@ func (d *toolDiagnostics) begin(id, tool, command string, at int64) {
 	}
 	d.pending[id] = pendingTool{start: at, tool: toolName(tool), family: CommandFamily(command)}
 }
+
 func (d *toolDiagnostics) end(id string, at int64, failed bool, exit *int, code string, known bool) {
 	p, ok := d.pending[id]
 	if !ok {
@@ -105,9 +107,12 @@ func (d *toolDiagnostics) end(id string, at int64, failed bool, exit *int, code 
 		outcome, code = "failed", "tool_denied"
 	}
 	durationKnown := ok && p.start > 0 && at >= p.start
-	d.emit(types.Diagnostic{Kind: "tool_call", Op: p.tool, Outcome: outcome, Code: code, DurationMS: max(at-p.start, 0),
-		Details: types.DiagnosticDetails{Runtime: d.runtime, Tool: p.tool, CommandFamily: p.family, ExitCode: exit, DurationKnown: &durationKnown}})
+	d.emit(types.Diagnostic{
+		Kind: "tool_call", Op: p.tool, Outcome: outcome, Code: code, DurationMS: max(at-p.start, 0),
+		Details: types.DiagnosticDetails{Runtime: d.runtime, Tool: p.tool, CommandFamily: p.family, ExitCode: exit, DurationKnown: &durationKnown},
+	})
 }
+
 func errorCode(m map[string]any) string {
 	if code := stringValue(m["error_code"]); code != "" {
 		return code
@@ -215,6 +220,7 @@ func (d *toolDiagnostics) observe(m map[string]any) {
 		}
 	}
 }
+
 func (d *toolDiagnostics) finish(at int64) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

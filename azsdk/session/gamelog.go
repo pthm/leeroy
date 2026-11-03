@@ -74,8 +74,10 @@ func (b *Bot) logTransports() {
 	now := time.Now()
 	for _, g := range guids {
 		if v, ok := b.transportView(g, now, aboard); ok {
-			rows = append(rows, types.TransportState{GUID: types.GUID(g), Entry: v.Entry, Name: v.Name, Map: v.Map,
-				X: round1(float32(v.X)), Y: round1(float32(v.Y)), O: v.O})
+			rows = append(rows, types.TransportState{
+				GUID: types.GUID(g), Entry: v.Entry, Name: v.Name, Map: v.Map,
+				X: round1(float32(v.X)), Y: round1(float32(v.Y)), O: v.O,
+			})
 		}
 	}
 	if len(rows) > 0 {
@@ -150,17 +152,21 @@ func (b *Bot) startGameLog() {
 				x, y, z, o, m := w.Position()
 				hp, hpmax := b.GetHealth()
 				pw, pwmax := b.GetPower()
-				st := types.State{Position: types.Position{X: round1(x), Y: round1(y), Z: round1(z), O: facing(o), Map: m},
-					Level: w.PlayerLevel(), Money: w.Money(), Group: groupID(w),
+				st := types.State{
+					Position: types.Position{X: round1(x), Y: round1(y), Z: round1(z), O: facing(o), Map: m},
+					Level:    w.PlayerLevel(), Money: w.Money(), Group: groupID(w),
 					Health: types.Resource{Current: hp, Max: hpmax}, Power: types.Resource{Current: pw, Max: pwmax, Type: name(powerNames, b.GetPowerType())},
-					Alive: b.IsAlive(), Ghost: b.IsGhost(), InCombat: b.InCombat(), XP: me.Value(0x27A)}
+					Alive: b.IsAlive(), Ghost: b.IsGhost(), InCombat: b.InCombat(), XP: me.Value(0x27A),
+				}
 				if g := b.gear(); len(g.Broken) > 0 {
 					st.Broken = g.Broken
 				}
 				if pg := b.GetPetGUID(); pg != 0 {
 					if u := b.GetUnitInfo(pg); u != nil {
-						st.Pet = &types.PetState{UnitRef: b.ref(pg), X: round1(u.PosX), Y: round1(u.PosY), Z: round1(u.PosZ),
-							Health: types.Resource{Current: u.Health, Max: u.MaxHealth}, Alive: u.IsAlive}
+						st.Pet = &types.PetState{
+							UnitRef: b.ref(pg), X: round1(u.PosX), Y: round1(u.PosY), Z: round1(u.PosZ),
+							Health: types.Resource{Current: u.Health, Max: u.MaxHealth}, Alive: u.IsAlive,
+						}
 					}
 				}
 				if tg := b.GetTargetGUID(); tg != 0 && b.IsAlive() {

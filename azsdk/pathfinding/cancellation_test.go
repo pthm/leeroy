@@ -31,6 +31,7 @@ func TestSearchCancellationStopsBatches(t *testing.T) {
 		t.Fatalf("work continued after cancel: %v calls=%d", err, calls)
 	}
 }
+
 func TestMeshLockWaitCancellation(t *testing.T) {
 	var mu sync.RWMutex
 	mu.Lock()
@@ -52,6 +53,7 @@ func TestMeshLockWaitCancellation(t *testing.T) {
 	}
 	mu.RUnlock()
 }
+
 func TestTileLoadCancellationDoesNotPoisonCache(t *testing.T) {
 	m := NewMMapManager(t.TempDir())
 	md := &mapData{loadedTiles: map[uint32]bool{}}
@@ -86,13 +88,14 @@ func TestTileReadChecksCancellationBetweenChunks(t *testing.T) {
 		t.Fatalf("uncancelled read: n=%d reads=%d err=%v", n, source.reads, err)
 	}
 }
+
 func TestOversizedTileRejectedBeforeAllocation(t *testing.T) {
 	dir := t.TempDir()
 	header := make([]byte, mmapTileHeaderSize)
 	binary.LittleEndian.PutUint32(header, mmapMagic)
 	binary.LittleEndian.PutUint32(header[8:], mmapVersion)
 	binary.LittleEndian.PutUint32(header[12:], maxTileBytes+1)
-	if err := os.WriteFile(filepath.Join(dir, "0000101.mmtile"), header, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "0000101.mmtile"), header, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	err := NewMMapManager(dir).loadTileContext(context.Background(), &mapData{loadedTiles: map[uint32]bool{}}, 0, 1, 1)
@@ -100,6 +103,7 @@ func TestOversizedTileRejectedBeforeAllocation(t *testing.T) {
 		t.Fatalf("size limit: %v", err)
 	}
 }
+
 func TestPathCancellationAndBoundsBeforeIO(t *testing.T) {
 	svc := NewPathFindingService("does-not-exist", "")
 	ctx, cancel := context.WithCancel(context.Background())

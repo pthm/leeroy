@@ -1,11 +1,12 @@
 package judge
 
 import (
-	"github.com/pthm/leeroy/runfiles"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/pthm/leeroy/runfiles"
 
 	"github.com/pthm/leeroy/azsdk/metrics"
 )
@@ -24,8 +25,10 @@ func newStreams(dir string) *streams {
 }
 
 // keep: the event types the metrics read (the files are mostly state, casts, results and logs).
-var keep = map[string]bool{"damage": true, "heal": true, "xp": true, "kill": true, "party_kill": true, "death": true,
-	"task_started": true, "task_finished": true, "stall": true, "party_changed": true}
+var keep = map[string]bool{
+	"damage": true, "heal": true, "xp": true, "kill": true, "party_kill": true, "death": true,
+	"task_started": true, "task_finished": true, "stall": true, "party_changed": true,
+}
 
 func (s *streams) read() {
 	files, _ := filepath.Glob(runfiles.Run(s.dir).EventsGlob())

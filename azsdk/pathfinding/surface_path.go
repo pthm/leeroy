@@ -3,14 +3,17 @@ package pathfinding
 import (
 	"context"
 	"fmt"
-	"github.com/pthm/leeroy/azsdk/internal/detour"
 	"math"
+
+	"github.com/pthm/leeroy/azsdk/internal/detour"
 )
 
 // MaxProjectionHorizontal: a requested start or destination this far beside the navmesh is still reached from its
 // nearest point: a vendor behind a counter, a trainer by a wall (Stormwind's)
-const MaxProjectionHorizontal = float32(3.0)
-const MaxProjectionVertical = float32(1.5)
+const (
+	MaxProjectionHorizontal = float32(3.0)
+	MaxProjectionVertical   = float32(1.5)
+)
 
 // Bound support sampling as well as path interpolation near steps and ledges.
 const surfaceSampleSpacing = 0.25
@@ -388,6 +391,7 @@ func (pf *PathFinder) centeredCorridor(ctx context.Context, r *PathResult, fract
 	out.Points, out.PointPolys, out.Transitions = pts, polys, links
 	return out, pf.validateSurface(ctx, out)
 }
+
 func (s *PathFindingService) CenteredPathContext(ctx context.Context, m uint32, r *PathResult, fraction float32) (*PathResult, error) {
 	pf, err := s.acquirePathFinderContext(ctx, m)
 	if err != nil {

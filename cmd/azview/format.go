@@ -42,9 +42,11 @@ func feedCat(kind string) (key, color string) {
 
 var (
 	// by the SDK's chat kinds
-	chatColor = map[string]string{"say": "#ffffff", "party": "#aaaaff", "raid": "#ff7f00", "guild": "#40ff40", "officer": "#40c040",
+	chatColor = map[string]string{
+		"say": "#ffffff", "party": "#aaaaff", "raid": "#ff7f00", "guild": "#40ff40", "officer": "#40c040",
 		"yell": "#ff4040", "whisper": "#ff80ff", "whisper_sent": "#ff80ff", "emote": "#ff8040", "npc_say": "#ffffff", "npc_party": "#aaaaff",
-		"npc_yell": "#ff4040", "npc_whisper": "#ff80ff", "npc_emote": "#ff8040", "channel": "#ffc0c0", "raid_warning": "#ff4800", "battleground": "#ff7f00"}
+		"npc_yell": "#ff4040", "npc_whisper": "#ff80ff", "npc_emote": "#ff8040", "channel": "#ffc0c0", "raid_warning": "#ff4800", "battleground": "#ff7f00",
+	}
 	qualities = []string{"poor", "common", "uncommon", "rare", "epic", "legendary", "artifact", "heirloom"} // the SDK's
 	quality   = []string{"#9d9d9d", "#ffffff", "#1eff00", "#0070dd", "#a335ee", "#ff8000", "#e6cc80", "#e6cc80"}
 	chatTag   = map[string]string{"party": "Party", "raid": "Raid", "guild": "Guild", "officer": "Officer", "raid_warning": "Raid Warning", "battleground": "Battleground"}

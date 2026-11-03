@@ -11,11 +11,13 @@ import (
 	"github.com/pthm/leeroy/azsdk/navigation"
 )
 
-const routeTimeout = 15 * time.Second
-const maxRouteLeg = 4096
-const maxRouteCells = 400000
-const maxRouteRows = 20000
-const maxRouteWaypoints = 64
+const (
+	routeTimeout      = 15 * time.Second
+	maxRouteLeg       = 4096
+	maxRouteCells     = 400000
+	maxRouteRows      = 20000
+	maxRouteWaypoints = 64
+)
 
 type routeError struct{ code, message string }
 
@@ -147,6 +149,7 @@ func validateRouteRequest(r routeRequest) {
 		panic(routeError{"route_limit", "maximum endpoint distance is 4096 yards; split the route into shorter queries"})
 	}
 }
+
 func routePosition(p [3]float64, m float64, z bool) *obj {
 	o := newObj("x", p[0], "y", p[1], "map", m)
 	if z {
@@ -154,6 +157,7 @@ func routePosition(p [3]float64, m float64, z bool) *obj {
 	}
 	return o
 }
+
 func routeFailed(base *obj, code, message string) *obj {
 	return base.set("status", "failed").set("reason", code).set("error", newObj("code", code, "message", message))
 }

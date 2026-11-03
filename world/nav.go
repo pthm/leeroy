@@ -26,6 +26,7 @@ const navCell = 8
 func roadPaths(m, x0, x1, y0, y1 float64) [][][2]float64 {
 	return roadPathsContext(context.Background(), m, x0, x1, y0, y1)
 }
+
 func roadPathsContext(ctx context.Context, m, x0, x1, y0, y1 float64) [][][2]float64 {
 	rows := qContext(ctx, fmt.Sprintf(`SELECT w.id, w.point, ROUND(w.position_x) x, ROUND(w.position_y) y FROM waypoint_data w
     WHERE w.id IN (SELECT a.path_id FROM creature c JOIN creature_addon a ON a.guid = c.guid JOIN creature_template t ON t.entry = c.id
@@ -78,6 +79,7 @@ type threat struct {
 func threats(m, x0, x1, y0, y1 float64, horde bool) []threat {
 	return threatsContext(context.Background(), m, x0, x1, y0, y1, horde)
 }
+
 func threatsContext(ctx context.Context, m, x0, x1, y0, y1 float64, horde bool) []threat {
 	side := "to_alliance"
 	if horde {
@@ -95,8 +97,10 @@ func threatsContext(ctx context.Context, m, x0, x1, y0, y1 float64, horde bool) 
 	}
 	for _, r := range rows {
 		checkRouteContext(ctx)
-		out = append(out, threat{entry: r.n("entry"), name: jsStr(r.get("name")), level: (r.n("lo") + r.n("hi")) / 2,
-			elite: r.n("rk") > 0, x: r.n("x"), y: r.n("y")})
+		out = append(out, threat{
+			entry: r.n("entry"), name: jsStr(r.get("name")), level: (r.n("lo") + r.n("hi")) / 2,
+			elite: r.n("rk") > 0, x: r.n("x"), y: r.n("y"),
+		})
 	}
 	return out
 }
@@ -108,6 +112,7 @@ func aggro(lvl, pl float64) float64 { return math.Max(5, math.Min(40, 20+(lvl-pl
 func route(m float64, from, to [2]float64, level float64, horde bool) *obj {
 	return planRoute(context.Background(), routeRequest{Map: m, From: [3]float64{from[0], from[1], 0}, To: [3]float64{to[0], to[1], 0}, Level: level, Horde: horde}, defaultRouteSource())
 }
+
 func searchTerrain(ctx context.Context, src routeSource, m float64, from, to [2]float64, level float64, horde bool) *obj {
 	const pad = 200
 	x0, x1 := math.Min(from[0], to[0])-pad, math.Max(from[0], to[0])+pad

@@ -56,8 +56,10 @@ func (b *Bot) questLookup(id uint32) map[string]any {
 		if p == nil {
 			return script.Fail("not_found", "the server has no quest with this ID", nil)
 		}
-		q := types.QuestInfo{ID: id, Title: p.title, Level: p.level, MinLevel: p.minLevel, Summary: b.gameText(p.summary),
-			Details: b.gameText(p.details), Completed: b.gameText(p.completed), Money: p.money, Spell: p.rewSpell, NextQuest: p.next}
+		q := types.QuestInfo{
+			ID: id, Title: p.title, Level: p.level, MinLevel: p.minLevel, Summary: b.gameText(p.summary),
+			Details: b.gameText(p.details), Completed: b.gameText(p.completed), Money: p.money, Spell: p.rewSpell, NextQuest: p.next,
+		}
 		for _, o := range p.objectives {
 			if o != "" {
 				q.Objectives = append(q.Objectives, b.gameText(o))

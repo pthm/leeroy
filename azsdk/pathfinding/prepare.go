@@ -3,8 +3,9 @@ package pathfinding
 import (
 	"context"
 	"fmt"
-	"github.com/pthm/leeroy/azsdk/internal/detour"
 	"math"
+
+	"github.com/pthm/leeroy/azsdk/internal/detour"
 )
 
 type PreparedPath struct {

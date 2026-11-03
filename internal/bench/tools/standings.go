@@ -3,13 +3,14 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/pthm/leeroy/azsdk/jqjson"
 	"math"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/pthm/leeroy/azsdk/jqjson"
 )
 
 const standingsUsage = `standings: where everyone in this run stands, best score first (score = (overall rate + best 15-min rate) / 2,
@@ -77,8 +78,10 @@ func Standings(args []string) int {
 		o.Set("rank", i+1)
 		o.Set("char", jqjson.Field(v, "char"))
 		o.Set("you", jqjson.Field(v, "char") == me)
-		for _, k := range []string{"score", "rate", "best_window", "recent_rate", "progress", "level", "role",
-			"damage_dealt", "damage_taken", "healing_done", "assist_share", "contested_hits", "avg_item_level", "money"} {
+		for _, k := range []string{
+			"score", "rate", "best_window", "recent_rate", "progress", "level", "role",
+			"damage_dealt", "damage_taken", "healing_done", "assist_share", "contested_hits", "avg_item_level", "money",
+		} {
 			o.Set(k, jqjson.Field(v, k))
 		}
 		o.Set("minutes", math.Floor(jqjson.Num(jqjson.Field(v, "elapsed_s"))/60))

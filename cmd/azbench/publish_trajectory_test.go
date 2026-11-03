@@ -16,11 +16,15 @@ func TestPlayOf(t *testing.T) {
 	}
 	tr := &atif.Trajectory{Steps: []atif.Step{
 		{Source: "user"},
-		{Source: "agent", Timestamp: "2026-11-02T10:00:10Z", Metrics: &atif.Metrics{CompletionTokens: 100, CostUSD: 0.5},
+		{
+			Source: "agent", Timestamp: "2026-11-02T10:00:10Z", Metrics: &atif.Metrics{CompletionTokens: 100, CostUSD: 0.5},
 			ToolCalls:   []atif.ToolCall{call("a", `bash -lc 'wow "return me.level()"'`), call("b", "wow wait 30"), call("c", "rg foo docs")},
-			Observation: &atif.Observation{Results: []atif.ObservationResult{res("a", true, 400), res("b", true, 30000), res("c", false, 20)}}},
-		{Source: "agent", Timestamp: "2026-11-02T10:01:10Z", Metrics: &atif.Metrics{CompletionTokens: 300, CostUSD: 0.25},
-			ToolCalls: []atif.ToolCall{{ToolCallID: "d", FunctionName: "Read", Arguments: map[string]any{"file_path": "x"}}}},
+			Observation: &atif.Observation{Results: []atif.ObservationResult{res("a", true, 400), res("b", true, 30000), res("c", false, 20)}},
+		},
+		{
+			Source: "agent", Timestamp: "2026-11-02T10:01:10Z", Metrics: &atif.Metrics{CompletionTokens: 300, CostUSD: 0.25},
+			ToolCalls: []atif.ToolCall{{ToolCallID: "d", FunctionName: "Read", Arguments: map[string]any{"file_path": "x"}}},
+		},
 	}}
 	p := playOf(tr)
 	names := map[string]toolUse{}

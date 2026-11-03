@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/pthm/leeroy/internal/bench/account"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/pthm/leeroy/internal/bench/account"
 
 	"github.com/pthm/leeroy/internal/bench/config"
 	"github.com/pthm/leeroy/internal/bench/judge"

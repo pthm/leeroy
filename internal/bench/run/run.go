@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/pthm/leeroy/internal/bench/monitor"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -20,6 +19,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/pthm/leeroy/internal/bench/monitor"
 
 	"github.com/goccy/go-yaml"
 	"github.com/pthm/leeroy/azsdk/types"
@@ -67,8 +68,10 @@ func New(b *config.Bench, s *config.Scenario, o Options) (*Runner, error) {
 	for i, a := range s.Agents {
 		race, _ := config.ID(config.Races, a.Race)
 		class, _ := config.ID(config.Classes, a.Class)
-		r.players = append(r.players, &player{r: r, a: a, race: race, class: class, port: o.BasePort + i,
-			ws: filepath.Join(o.Repo, "var/workspaces", a.Name), dir: runfiles.Run(r.dir).Agent(a.Name), state: "starting"})
+		r.players = append(r.players, &player{
+			r: r, a: a, race: race, class: class, port: o.BasePort + i,
+			ws: filepath.Join(o.Repo, "var/workspaces", a.Name), dir: runfiles.Run(r.dir).Agent(a.Name), state: "starting",
+		})
 	}
 	return r, nil
 }
@@ -106,8 +109,10 @@ func (r *Runner) manifest(fn func(*runfiles.Manifest)) {
 	if err != nil {
 		m = runfiles.Manifest{Task: r.s.Task, Scenario: r.s.Name, Goal: r.s.Goal, Hardcore: r.s.Hardcore, Status: "starting"}
 		for _, p := range r.players {
-			pl := runfiles.Player{Agent: p.a.Name, Char: p.a.Char, Race: p.a.Race, Class: p.a.Class, Spec: p.a.Spec,
-				Runtime: p.a.Runtime, Model: p.a.Model, Effort: p.a.Effort}
+			pl := runfiles.Player{
+				Agent: p.a.Name, Char: p.a.Char, Race: p.a.Race, Class: p.a.Class, Spec: p.a.Spec,
+				Runtime: p.a.Runtime, Model: p.a.Model, Effort: p.a.Effort,
+			}
 			if p.a.Kit != nil {
 				pl.Kit = fmt.Sprintf("level %d", p.a.Kit.Level)
 			}
@@ -339,11 +344,13 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 // play runs one player from the start of the clock: its judge, its agent, and the clean stop when the judge is done.
 func (r *Runner) play(p *player, resume bool, message string, left time.Duration) {
 	spec := r.b.Specs[p.a.Spec]
-	o := judge.Options{Char: p.a.Char, Goal: r.s.Goal, Timeout: time.Duration(r.s.Minutes) * time.Minute,
+	o := judge.Options{
+		Char: p.a.Char, Goal: r.s.Goal, Timeout: time.Duration(r.s.Minutes) * time.Minute,
 		Every: 15 * time.Second, Samples: r.f().Samples(p.a.Char),
 		Board:  r.f().Board(),
 		Events: r.f().Events(p.a.Char), Role: spec.Role, Runtime: p.a.Runtime,
-		Hardcore: r.s.Hardcore, Hold: p.held}
+		Hardcore: r.s.Hardcore, Hold: p.held,
+	}
 	if resume {
 		o.Resume = o.Samples
 	}
@@ -415,8 +422,10 @@ func (r *Runner) wrapUp(p *player, wrap time.Duration) {
 	end := time.Now().Add(wrap)
 	p.extendAgent(end)
 	p.runtimeState("supervisor", types.StateWrapUp)
-	if err := notify(r.ctx, p.port, "goal_met", types.GoalMet{Goal: r.s.Goal,
-		Message: "The judge recorded your goal; your score is final.", EndsAt: end.UnixMilli()}); err != nil {
+	if err := notify(r.ctx, p.port, "goal_met", types.GoalMet{
+		Goal:    r.s.Goal,
+		Message: "The judge recorded your goal; your score is final.", EndsAt: end.UnixMilli(),
+	}); err != nil {
 		p.logf("goal_met: %v", err)
 	}
 	p.logf("goal met: stopping in %.0f min", wrap.Minutes())
@@ -506,8 +515,10 @@ func (r *Runner) Plan() string {
 
 // host is the machine the run is on: cores and memory, and what the remote run says of the server (LEEROY_HOST_*).
 func host() runfiles.Host {
-	h := runfiles.Host{CPUs: runtime.NumCPU(), MemoryGB: monitor.MemoryGB(), Provider: os.Getenv("LEEROY_HOST_PROVIDER"),
-		Type: os.Getenv("LEEROY_HOST_TYPE"), Location: os.Getenv("LEEROY_HOST_LOCATION")}
+	h := runfiles.Host{
+		CPUs: runtime.NumCPU(), MemoryGB: monitor.MemoryGB(), Provider: os.Getenv("LEEROY_HOST_PROVIDER"),
+		Type: os.Getenv("LEEROY_HOST_TYPE"), Location: os.Getenv("LEEROY_HOST_LOCATION"),
+	}
 	h.Name, _ = os.Hostname()
 	h.PriceHour, _ = strconv.ParseFloat(os.Getenv("LEEROY_HOST_PRICE_HOUR"), 64)
 	return h

@@ -6,7 +6,6 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/pthm/leeroy/runfiles"
 	"math"
 	"os"
 	"path/filepath"
@@ -14,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/pthm/leeroy/runfiles"
 
 	"github.com/pthm/leeroy/internal/bench/run"
 	"github.com/pthm/leeroy/trajectory"
@@ -53,8 +54,10 @@ func readTrajectory(adir string, info trajectory.Info) *atif.Trajectory {
 }
 
 // wowCommands: wow's subcommands (azsdk/cmd/wow); anything else is Lua to evaluate
-var wowCommands = map[string]bool{"status": true, "look": true, "fights": true, "fight": true, "tasks": true, "answer": true,
-	"events": true, "wait": true, "subscribe": true, "help": true}
+var wowCommands = map[string]bool{
+	"status": true, "look": true, "fights": true, "fight": true, "tasks": true, "answer": true,
+	"events": true, "wait": true, "subscribe": true, "help": true,
+}
 
 // toolName: what a call ran: "wow <subcommand>" for wow, the program for the agents' other tools, else the tool.
 func toolName(c atif.ToolCall) string {

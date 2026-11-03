@@ -25,7 +25,7 @@ type MovementSender interface {
 	SendFallLand(at time.Time, x, y, z, o float32)
 	// SendRouteJump sends MSG_MOVE_JUMP running forward from a pose: a route's planned jump, at xyspeed along
 	// (cos, sin).
-	SendRouteJump(at time.Time, x, y, z, o float32, sinAngle, cosAngle, xyspeed float32)
+	SendRouteJump(at time.Time, x, y, z, o, sinAngle, cosAngle, xyspeed float32)
 }
 
 // MovementConfig tunes the client-like movement behavior.
@@ -177,6 +177,7 @@ func (m *MovementController) SetPreparedRoute(r *navigation.PathResult, at time.
 
 // Airborne: in the air on a route's jump; a new path or a stop has to wait for the landing.
 func (m *MovementController) Airborne() bool { return m.air >= 0 && m.isMoving }
+
 func (m *MovementController) setPath(path []navigation.Point3D, startTime time.Time, initialO float32, mapID uint32, prepared bool) {
 	if len(path) == 0 {
 		return
@@ -875,7 +876,7 @@ func (s *worldMovementSender) SendFallLand(at time.Time, x, y, z, o float32) {
 	_ = s.w.RouteFallLandAtTime(x, y, z, o, at)
 }
 
-func (s *worldMovementSender) SendRouteJump(at time.Time, x, y, z, o float32, sinAngle, cosAngle, xyspeed float32) {
+func (s *worldMovementSender) SendRouteJump(at time.Time, x, y, z, o, sinAngle, cosAngle, xyspeed float32) {
 	_ = s.w.RouteJumpAtTime(x, y, z, o, at, sinAngle, cosAngle, xyspeed)
 }
 
@@ -901,6 +902,7 @@ func movementGroundHeightWithSource(nav navigation.Navigator, mapID uint32, x, y
 func FloorAware(nav navigation.Navigator, mapID uint32, x, y, hintZ, ground float32) float32 {
 	return FloorAwareContext(context.Background(), nav, mapID, x, y, hintZ, ground)
 }
+
 func FloorAwareContext(ctx context.Context, nav navigation.Navigator, mapID uint32, x, y, hintZ, ground float32) float32 {
 	if ctx.Err() != nil {
 		return ground
@@ -1112,6 +1114,7 @@ func GroundHeightContext(ctx context.Context, nav navigation.Navigator, m uint32
 	h, ok = terrainHeightContext(ctx, nav, m, x, y)
 	return h, true, ok && ctx.Err() == nil
 }
+
 func terrainHeightContext(ctx context.Context, nav navigation.Navigator, m uint32, x, y float32) (float32, bool) {
 	if ctx.Err() != nil {
 		return 0, false

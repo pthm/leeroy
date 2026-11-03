@@ -2,10 +2,11 @@ package run
 
 import (
 	"encoding/json"
-	"github.com/pthm/leeroy/internal/bench/config"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pthm/leeroy/internal/bench/config"
 )
 
 func TestRuntimeCommandsAndGeneratedContract(t *testing.T) {
@@ -74,8 +75,10 @@ func TestEffortFlags(t *testing.T) {
 	want := map[string]string{"claude": "--effort high", "codex": `model_reasoning_effort="high"`, "opencode": "--variant high"}
 	for runtime, flag := range want {
 		dir := t.TempDir()
-		p := &player{r: &Runner{repo: dir, dir: dir}, ws: filepath.Join(dir, "workspace"), dir: dir,
-			a: config.Agent{Runtime: runtime, Char: "Test", Name: "test", Model: "x/y", Effort: "high"}}
+		p := &player{
+			r: &Runner{repo: dir, dir: dir}, ws: filepath.Join(dir, "workspace"), dir: dir,
+			a: config.Agent{Runtime: runtime, Char: "Test", Name: "test", Model: "x/y", Effort: "high"},
+		}
 		if args := strings.Join(p.agentCmd("smoke", "").Args, " "); !strings.Contains(args, flag) {
 			t.Errorf("%s: no %q in %s", runtime, flag, args)
 		}

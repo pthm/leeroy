@@ -16,6 +16,7 @@ func leafIndex(bounds AABox, count int) BIH {
 	}
 	return b
 }
+
 func collisionFixture(t *testing.T, vertices []Vector3, mesh []MeshTriangle) (*VMapManager, *StaticMapTree) {
 	t.Helper()
 	vm := NewVMapManager(t.TempDir())
@@ -29,9 +30,11 @@ func collisionFixture(t *testing.T, vertices []Vector3, mesh []MeshTriangle) (*V
 	vm.trees[0] = tree
 	return vm, tree
 }
+
 func wallFixture(t *testing.T) (*VMapManager, *StaticMapTree) {
 	return collisionFixture(t, []Vector3{{-5, -3, 0}, {-5, 3, 0}, {-5, 3, 4}, {-5, -3, 4}}, []MeshTriangle{{0, 1, 2}, {0, 2, 3}})
 }
+
 func TestMovementCapsuleDetectsThinWallAndBodyWidth(t *testing.T) {
 	vm, _ := wallFixture(t)
 	ctx := context.Background()
@@ -56,6 +59,7 @@ func TestMovementCapsuleDetectsThinWallAndBodyWidth(t *testing.T) {
 		t.Fatal(r)
 	}
 }
+
 func TestMovementCapsuleCeilingOverlapAndScale(t *testing.T) {
 	vm, _ := collisionFixture(t, []Vector3{{-20, -20, 1.8}, {20, -20, 1.8}, {20, 20, 1.8}, {-20, 20, 1.8}}, []MeshTriangle{{0, 1, 2}, {0, 2, 3}})
 	if r := vm.SweepBodyContext(context.Background(), 0, Point3D{}, Point3D{X: 1}, WalkingBody()); r.State != "blocked" || r.Fraction != 0 {
@@ -70,6 +74,7 @@ func TestMovementCapsuleCeilingOverlapAndScale(t *testing.T) {
 		t.Fatal(r)
 	}
 }
+
 func TestMovementCollisionUnavailableIsUnknown(t *testing.T) {
 	vm, tree := wallFixture(t)
 	delete(tree.modelCache, vm.basePath+"fixture.vmo")
@@ -94,6 +99,7 @@ func TestMovementCollisionUnavailableIsUnknown(t *testing.T) {
 		t.Fatal(r)
 	}
 }
+
 func TestCollisionIndexClippingAndMalformedNodes(t *testing.T) {
 	box := AABox{Vector3{-10, -10, -10}, Vector3{10, 10, 10}}
 	b := BIH{bounds: box, tree: []uint32{3, math.Float32bits(-1), math.Float32bits(1), 3 << 30, 1, 0, (3 << 30) | 1, 1, 0}, objs: []uint32{7, 9}}
@@ -114,6 +120,7 @@ func TestCollisionIndexClippingAndMalformedNodes(t *testing.T) {
 		t.Fatal("malformed index accepted")
 	}
 }
+
 func TestMovementCollisionRealInteriorRoutes(t *testing.T) {
 	data := requireACData(t)
 	svc := NewPathFindingServiceFromDataDir(data)

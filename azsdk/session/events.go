@@ -9,11 +9,12 @@ import (
 	"cmp"
 	"encoding/binary"
 	"fmt"
-	"github.com/pthm/leeroy/azsdk/metrics"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pthm/leeroy/azsdk/metrics"
 
 	"github.com/pthm/leeroy/azsdk/client"
 	"github.com/pthm/leeroy/azsdk/script"
@@ -113,7 +114,8 @@ func (b *Bot) emit(typ string, data any) {
 
 // request starts an action request: check is polled each tick, match sees each event; either returns nil to wait.
 func (b *Bot) request(op string, args map[string]any, timeout time.Duration, check func() *script.Outcome,
-	match func(script.Event) *script.Outcome) map[string]any {
+	match func(script.Event) *script.Outcome,
+) map[string]any {
 	return b.lua.Reqs.Start(script.Spec{Op: op, Args: args, Timeout: timeout, Check: check, Match: match, Hint: timeoutHints[op]})
 }
 
@@ -200,7 +202,8 @@ func slug(s string) string {
 }
 
 // ChatMsg (SharedDefines.h). The leaders' party, raid and battleground chat is that chat.
-var chatKinds = map[uint8]string{0: "system", 1: "say", 2: "party", 3: "raid", 4: "guild", 5: "officer", 6: "yell",
+var chatKinds = map[uint8]string{
+	0: "system", 1: "say", 2: "party", 3: "raid", 4: "guild", 5: "officer", 6: "yell",
 	7: "whisper", 8: "whisper", 9: "whisper_sent", 0xA: "emote", 0xB: "emote", 0xC: "npc_say", 0xD: "npc_party",
 	0xE: "npc_yell", 0xF: "npc_whisper", 0x10: "npc_emote", 0x11: "channel", 0x12: "channel_join", 0x13: "channel_leave",
 	0x14: "channel_list", 0x15: "channel_notice", 0x16: "channel_notice", 0x17: "afk", 0x18: "dnd", 0x19: "ignored",
@@ -208,7 +211,8 @@ var chatKinds = map[uint8]string{0: "system", 1: "say", 2: "party", 3: "raid", 4
 	0x21: "xp", 0x22: "honor", 0x23: "reputation", 0x24: "battleground_system", 0x25: "battleground_system",
 	0x26: "battleground_system", 0x27: "raid", 0x28: "raid_warning", 0x29: "npc_emote", 0x2A: "npc_whisper", 0x2B: "filtered",
 	0x2C: "battleground", 0x2D: "battleground", 0x2E: "restricted", 0x2F: "npc_say", 0x30: "achievement",
-	0x31: "guild_achievement", 0x32: "arena_points", 0x33: "party"}
+	0x31: "guild_achievement", 0x32: "arena_points", 0x33: "party",
+}
 
 func chatKind(t uint8) string {
 	if k, ok := chatKinds[t]; ok {
@@ -287,8 +291,10 @@ func (b *Bot) watchEvents() {
 		}
 		energize := func(src, dst uint64, spell, power, amount uint32, periodic bool) {
 			if (src == me || dst == me) && amount > 0 {
-				b.emit("energize", types.Energize{Src: b.ref(src), Dst: b.ref(dst), Spell: spell, SpellName: spellName(spell),
-					Power: name(powerNames, uint8(power)), Amount: amount, Periodic: periodic})
+				b.emit("energize", types.Energize{
+					Src: b.ref(src), Dst: b.ref(dst), Spell: spell, SpellName: spellName(spell),
+					Power: name(powerNames, uint8(power)), Amount: amount, Periodic: periodic,
+				})
 			}
 		}
 		switch op {
@@ -571,13 +577,15 @@ func (b *Bot) watchEvents() {
 				return
 			}
 			failedAt[uint64(spell)<<8|uint64(count)] = time.Now()
-			c := types.Cast{Count: count, Spell: spell, Name: spellName(spell), Code: castResultNames[code],
+			c := types.Cast{
+				Count: count, Spell: spell, Name: spellName(spell), Code: castResultNames[code],
 				Detail: castFailDetail(code, r, func(e uint32) string {
 					if n := itemTemplate(w, e).Name; n != "" {
 						return n
 					}
 					return fmt.Sprintf("item %d", e)
-				})}
+				}),
+			}
 			if code >= 28 && code <= 30 {
 				c.Hint = "needs a working weapon: check items.broken() and repair at an armorer (vendor.repair)"
 			}
@@ -687,7 +695,7 @@ func castMatch(spell uint32, count uint8) func(script.Event) *script.Outcome {
 func castMatchRepeating(spell uint32, count uint8, repeating bool) func(script.Event) *script.Outcome {
 	return func(ev script.Event) *script.Outcome {
 		c, ok := ev.Data.(types.Cast)
-		if !ok || c.Spell != spell || (c.Count != count && !(repeating && c.Count == 0 && ev.Type == "cast_done")) {
+		if !ok || c.Spell != spell || (c.Count != count && (!repeating || c.Count != 0 || ev.Type != "cast_done")) {
 			return nil
 		}
 		switch ev.Type {
@@ -833,8 +841,10 @@ func (b *Bot) setupWatch() {
 			}
 			if everyS > 0 && now.Sub(lastDigest).Seconds() >= everyS {
 				s := now.Sub(lastDigest).Seconds()
-				d := types.Progress{XP: sum(s), XPPerHour: rate(s), Kills: period.Kills + period.PartyKills,
-					Deaths: period.Deaths, Seconds: int(s)}
+				d := types.Progress{
+					XP: sum(s), XPPerHour: rate(s), Kills: period.Kills + period.PartyKills,
+					Deaths: period.Deaths, Seconds: int(s),
+				}
 				lastDigest, period = now, metrics.Combat{}
 				emit = append(emit, out{"progress", d})
 			}

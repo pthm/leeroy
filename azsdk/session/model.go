@@ -19,19 +19,39 @@ import (
 	"github.com/pthm/leeroy/azsdk/types"
 )
 
-var classNames = map[uint8]string{1: "warrior", 2: "paladin", 3: "hunter", 4: "rogue", 5: "priest", 6: "death_knight",
-	7: "shaman", 8: "mage", 9: "warlock", 11: "druid"}
-var raceNames = map[uint8]string{1: "human", 2: "orc", 3: "dwarf", 4: "night_elf", 5: "undead", 6: "tauren", 7: "gnome",
-	8: "troll", 10: "blood_elf", 11: "draenei"}
-var powerNames = map[uint8]string{0: "mana", 1: "rage", 2: "focus", 3: "energy", 6: "runic_power"}
-var qualityNames = []string{"poor", "common", "uncommon", "rare", "epic", "legendary", "artifact", "heirloom"}
-var itemClassNames = map[uint32]string{0: "consumable", 1: "container", 2: "weapon", 3: "gem", 4: "armor", 5: "reagent",
-	6: "projectile", 7: "trade_goods", 9: "recipe", 11: "quiver", 12: "quest", 13: "key", 15: "misc", 16: "glyph"}
+var classNames = map[uint8]string{
+	1: "warrior", 2: "paladin", 3: "hunter", 4: "rogue", 5: "priest", 6: "death_knight",
+	7: "shaman", 8: "mage", 9: "warlock", 11: "druid",
+}
+
+var raceNames = map[uint8]string{
+	1: "human", 2: "orc", 3: "dwarf", 4: "night_elf", 5: "undead", 6: "tauren", 7: "gnome",
+	8: "troll", 10: "blood_elf", 11: "draenei",
+}
+
+var (
+	powerNames     = map[uint8]string{0: "mana", 1: "rage", 2: "focus", 3: "energy", 6: "runic_power"}
+	qualityNames   = []string{"poor", "common", "uncommon", "rare", "epic", "legendary", "artifact", "heirloom"}
+	itemClassNames = map[uint32]string{
+		0: "consumable", 1: "container", 2: "weapon", 3: "gem", 4: "armor", 5: "reagent",
+		6: "projectile", 7: "trade_goods", 9: "recipe", 11: "quiver", 12: "quest", 13: "key", 15: "misc", 16: "glyph",
+	}
+)
+
 var npcRoles = []struct {
 	flag uint32
 	role string
-}{{0x1, "gossip"}, {0x2, "quest_giver"}, {0x10, "trainer"}, {0x80, "vendor"}, {0x1000, "repair"}, {0x2000, "flight_master"},
-	{0x4000, "spirit_healer"}, {0x10000, "innkeeper"}, {0x20000, "banker"}}
+}{
+	{0x1, "gossip"},
+	{0x2, "quest_giver"},
+	{0x10, "trainer"},
+	{0x80, "vendor"},
+	{0x1000, "repair"},
+	{0x2000, "flight_master"},
+	{0x4000, "spirit_healer"},
+	{0x10000, "innkeeper"},
+	{0x20000, "banker"},
+}
 
 func round1(f float32) float64 { return math.Round(float64(f)*10) / 10 }
 
@@ -64,9 +84,11 @@ func facing(o float32) *float64 {
 // ---------- units ----------
 
 func (b *Bot) baseUnit(u UnitInfo) types.Unit {
-	t := types.Unit{GUID: types.GUID(u.GUID), Name: u.Name, Level: u.Level, Health: u.Health, MaxHealth: u.MaxHealth,
+	t := types.Unit{
+		GUID: types.GUID(u.GUID), Name: u.Name, Level: u.Level, Health: u.Health, MaxHealth: u.MaxHealth,
 		Place: types.Place{X: round1(u.PosX), Y: round1(u.PosY), Z: round1(u.PosZ), Distance: round1(u.Distance)}, Alive: u.IsAlive,
-		Target: types.GUID(u.Target), InCombat: u.Flags&0x80000 != 0, Fleeing: u.Flags&0x800000 != 0} // UNIT_FLAG_IN_COMBAT, UNIT_FLAG_FLEEING
+		Target: types.GUID(u.Target), InCombat: u.Flags&0x80000 != 0, Fleeing: u.Flags&0x800000 != 0,
+	} // UNIT_FLAG_IN_COMBAT, UNIT_FLAG_FLEEING
 	if me := b.world.GetObject(b.world.CharGUID()); me != nil {
 		t.Reaction = factionReaction(u.Faction, me.Value(fieldUnitFaction))
 	}
@@ -76,10 +98,12 @@ func (b *Bot) baseUnit(u UnitInfo) types.Unit {
 }
 
 func (b *Bot) creature(u UnitInfo) types.Creature {
-	c := types.Creature{Unit: b.baseUnit(u), Entry: u.Entry, Lootable: u.Lootable,
+	c := types.Creature{
+		Unit: b.baseUnit(u), Entry: u.Entry, Lootable: u.Lootable,
 		TappedByOther: u.DynFlags&0x4 != 0 && u.DynFlags&0x8 == 0,                       // tapped, not by you
 		Attackable:    u.Flags&0x2 == 0 && u.Flags&0x2000000 == 0 && u.Flags&0x100 == 0, // non-attackable, not selectable, immune to players
-		Elite:         u.MaxHealth > u.Level*45+40}                                      // ponytail: rank isn't sent; elites have ~3x normal health
+		Elite:         u.MaxHealth > u.Level*45+40,
+	} // ponytail: rank isn't sent; elites have ~3x normal health
 	c.Attackable = c.Attackable && c.Reaction != "friendly" // a friendly NPC can't be attacked even when its flags allow it
 	for _, r := range npcRoles {
 		if u.NPCFlags&r.flag != 0 {
@@ -237,11 +261,13 @@ func (b *Bot) spellOf(id uint32) *types.Spell {
 	if sp == nil {
 		return nil
 	}
-	return &types.Spell{ID: id, Name: sp.Name, Rank: sp.Rank, Level: sp.Level, CastMS: sp.CastMS, CooldownMS: sp.Cooldown,
+	return &types.Spell{
+		ID: id, Name: sp.Name, Rank: sp.Rank, Level: sp.Level, CastMS: sp.CastMS, CooldownMS: sp.Cooldown,
 		CategoryCooldownMS: sp.CategoryCooldown, GCDMS: sp.GCD, Range: sp.Range, Cost: spellCost(sp, w.GetObject(w.CharGUID()), b.agent),
 		PowerType: name(powerNames, uint8(sp.PowerType)), Known: w.KnowsSpell(id),
 		Description: spellText(func(b *spelltext.Book) string { return b.DescriptionWith(id, scaling(w)) }),
-		Aura:        spellText(func(b *spelltext.Book) string { return b.TooltipWith(id, scaling(w)) })}
+		Aura:        spellText(func(b *spelltext.Book) string { return b.TooltipWith(id, scaling(w)) }),
+	}
 }
 
 var spellBook = sync.OnceValue(func() *spelltext.Book {
@@ -533,7 +559,7 @@ func characterStats(w *client.WorldClient) *types.Stats {
 		return nil
 	}
 	f := func(i uint16) float64 { return math.Round(float64(math.Float32frombits(o.Value(i)))*100) / 100 }
-	maxOf := func(base uint16, n uint16, float bool) float64 {
+	maxOf := func(base, n uint16, float bool) float64 {
 		best := 0.0
 		for k := uint16(1); k < n; k++ { // schools 1-6 (holy..arcane); 0 is physical
 			v := float64(o.Value(base + k))
@@ -546,10 +572,12 @@ func characterStats(w *client.WorldClient) *types.Stats {
 	}
 	speed := float64(o.Value(0x3E)) / 1000
 	minD, maxD := f(0x46), f(0x47)
-	st := types.Stats{Strength: o.Value(0x54), Agility: o.Value(0x55), Stamina: o.Value(0x56), Intellect: o.Value(0x57),
+	st := types.Stats{
+		Strength: o.Value(0x54), Agility: o.Value(0x55), Stamina: o.Value(0x56), Intellect: o.Value(0x57),
 		Spirit: o.Value(0x58), Armor: o.Value(0x63), AttackPower: o.Value(0x7B), RangedAttackPower: o.Value(0x7E),
 		WeaponDamage: [2]float64{minD, maxD}, WeaponSpeed: speed, CritPct: f(0x405), DodgePct: f(0x401), ParryPct: f(0x402),
-		SpellCritPct: maxOf(0x408, 7, true), SpellPower: uint32(maxOf(0x493, 7, false)), BonusHealing: o.Value(0x4A8)}
+		SpellCritPct: maxOf(0x408, 7, true), SpellPower: uint32(maxOf(0x493, 7, false)), BonusHealing: o.Value(0x4A8),
+	}
 	if speed > 0 {
 		st.MeleeDPS = math.Round((minD+maxD)/2/speed*10) / 10
 	}
@@ -562,7 +590,9 @@ func scaling(w *client.WorldClient) spelltext.Stats {
 	if st == nil {
 		return nil
 	}
-	return spelltext.Stats{"AP": float64(st.AttackPower), "RAP": float64(st.RangedAttackPower),
+	return spelltext.Stats{
+		"AP": float64(st.AttackPower), "RAP": float64(st.RangedAttackPower),
 		"SPH": float64(max(st.SpellPower, st.BonusHealing)), "SPS": float64(st.SpellPower), "SPI": float64(st.Spirit),
-		"PL": float64(w.PlayerLevel())}
+		"PL": float64(w.PlayerLevel()),
+	}
 }

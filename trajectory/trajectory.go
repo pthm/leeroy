@@ -220,8 +220,10 @@ func (b *builder) result(t int64, id, content string, ok bool, extra map[string]
 	if t >= b.at[id] && b.at[id] > 0 {
 		extra["duration_ms"] = t - b.at[id]
 	}
-	s.Observation.Results = append(s.Observation.Results, atif.ObservationResult{SourceCallID: id,
-		Content: atif.MessageContent{Text: content}, Extra: extra})
+	s.Observation.Results = append(s.Observation.Results, atif.ObservationResult{
+		SourceCallID: id,
+		Content:      atif.MessageContent{Text: content}, Extra: extra,
+	})
 }
 
 // metrics: a model call's tokens (input not cached, output, cache reads, cache writes) and their cost at list price
@@ -250,9 +252,13 @@ func Read(transcript string, info Info) (*atif.Trajectory, error) {
 		return nil, err
 	}
 	defer f.Close()
-	t := &atif.Trajectory{SchemaVersion: Version, Agent: atif.Agent{Name: runtimeNames[info.Runtime], Version: cmp.Or(info.Version, "unknown"),
-		ModelName: info.Model, Extra: map[string]any{"agent": info.Agent, "character": info.Char, "runtime": info.Runtime}},
-		Notes: "Converted by azbench from the " + info.Runtime + " transcript (agents/<agent>/transcript.jsonl)."}
+	t := &atif.Trajectory{
+		SchemaVersion: Version, Agent: atif.Agent{
+			Name: runtimeNames[info.Runtime], Version: cmp.Or(info.Version, "unknown"),
+			ModelName: info.Model, Extra: map[string]any{"agent": info.Agent, "character": info.Char, "runtime": info.Runtime},
+		},
+		Notes: "Converted by azbench from the " + info.Runtime + " transcript (agents/<agent>/transcript.jsonl).",
+	}
 	if info.Effort != "" {
 		t.Agent.Extra["reasoning_effort"] = info.Effort
 	}

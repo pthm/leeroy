@@ -20,6 +20,7 @@ type BodyProfile struct{ Radius, Height, StepHeight, MaxSlope float32 }
 func WalkingBody() BodyProfile {
 	return BodyProfile{Radius: 0.3, Height: 2.03128, StepHeight: 1.4, MaxSlope: 50}
 }
+
 func (p BodyProfile) valid() bool {
 	return p.Radius > 0 && p.Height > p.StepHeight+2*p.Radius && p.Height < 20 && p.StepHeight >= 0 && p.MaxSlope > 0 && p.MaxSlope < 90
 }
@@ -38,8 +39,8 @@ type CollisionCheck struct {
 func unknownCollision(reason string) CollisionCheck {
 	return CollisionCheck{State: "unknown", Reason: reason}
 }
-func vec(p Point3D) Vector3    { return Vector3{p.X, p.Y, p.Z} }
-func point(v Vector3) Point3D  { return Point3D{v.X, v.Y, v.Z} }
+func vec(p Point3D) Vector3    { return Vector3(p) }
+func point(v Vector3) Point3D  { return Point3D(v) }
 func length(v Vector3) float32 { return float32(math.Sqrt(float64(v.Dot(v)))) }
 func unit(v Vector3) Vector3 {
 	if l := length(v); l > 1e-9 {
@@ -47,6 +48,7 @@ func unit(v Vector3) Vector3 {
 	}
 	return Vector3{}
 }
+
 func boundsOf(vs ...Vector3) AABox {
 	b := AABox{vs[0], vs[0]}
 	for _, v := range vs[1:] {
@@ -55,16 +57,20 @@ func boundsOf(vs ...Vector3) AABox {
 	}
 	return b
 }
+
 func (b AABox) expanded(r float32) AABox {
 	return AABox{b.Low.Sub(Vector3{r, r, r}), b.High.Add(Vector3{r, r, r})}
 }
+
 func (b AABox) overlaps(o AABox) bool {
 	return b.Low.X <= o.High.X && b.High.X >= o.Low.X && b.Low.Y <= o.High.Y && b.High.Y >= o.Low.Y && b.Low.Z <= o.High.Z && b.High.Z >= o.Low.Z
 }
+
 func modelPoint(mi ModelInstance, p Vector3) Vector3 {
 	d := p.Sub(mi.iPos)
 	return mat3MulVec(mi.iInvRot, Vector3{-d.X, -d.Y, d.Z}).Mul(mi.iInvScale)
 }
+
 func worldNormal(mi ModelInstance, n Vector3) Vector3 {
 	// Inverse of inverse rotation (transpose); reflection matches VMAP coordinates.
 	r := mi.iInvRot

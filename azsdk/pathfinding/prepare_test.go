@@ -17,6 +17,7 @@ func preparationFixture(t *testing.T) (*PathFindingService, *PathResult) {
 	}
 	return s, r
 }
+
 func TestPreparedSupportAndMissingCoverage(t *testing.T) {
 	s, r := preparationFixture(t)
 	p, err := s.PrepareWalkingContext(context.Background(), 0, r, WalkingBody())
@@ -35,6 +36,7 @@ func TestPreparedSupportAndMissingCoverage(t *testing.T) {
 		t.Fatalf("missing coverage: %+v %v", p, err)
 	}
 }
+
 func TestPreparedRejectsIncompleteAndInvalidPaths(t *testing.T) {
 	s, r := preparationFixture(t)
 	for _, bad := range []*PathResult{nil, {}, {Type: PathfindIncomplete, Points: r.Points}} {
@@ -50,6 +52,7 @@ func TestPreparedRejectsIncompleteAndInvalidPaths(t *testing.T) {
 		t.Fatal("accepted stale polygon")
 	}
 }
+
 func TestPreparedCancellationDuringCollisionWait(t *testing.T) {
 	s, r := preparationFixture(t)
 	s.vmapMgr.mu.Lock()

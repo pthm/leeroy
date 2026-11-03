@@ -73,6 +73,7 @@ func MinimapAt(m uint32, x, y float64) (rgb [3]uint8, ok bool) {
 
 // RoadAt is how much of the ground at a world point is road (0-255; 0 without client data).
 func RoadAt(m uint32, x, y float64) uint8 { return roadAtContext(context.Background(), m, x, y) }
+
 func roadAtContext(ctx context.Context, m uint32, x, y float64) uint8 {
 	checkRouteContext(ctx)
 	if !roadMu.TryLock() {
@@ -112,6 +113,7 @@ func roadAtContext(ctx context.Context, m uint32, x, y float64) uint8 {
 	c := max(0, min(n-1, int((float64(GridSize*float64(32-gy))-y)/GridSize*n)))
 	return t[r*n+c]
 }
+
 func readRoadTile(file string) ([]byte, bool) {
 	info, err := os.Stat(file)
 	if err != nil {

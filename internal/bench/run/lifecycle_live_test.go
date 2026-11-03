@@ -37,8 +37,10 @@ func TestLifecycleAndSkillGoalLive(t *testing.T) {
 	suffix := fmt.Sprintf("%08x", uint32(time.Now().UnixNano()))
 	suffix = strings.Map(func(r rune) rune { return rune('a' + strings.IndexRune("0123456789abcdef", r)) }, suffix)
 	name, char := "rl-"+suffix, "Life"+suffix
-	s := &config.Scenario{Conditions: config.Conditions{Name: "reliability-lifecycle", Goal: "skill:185:75", Minutes: 2, Level: 5, Money: 2000, RequireFresh: true,
-		Start: &config.Place{X: -9467, Y: -5, Z: 57, Map: 0, Zone: 12}}, Agents: []config.Agent{{Name: name, Char: char, Race: "human", Class: "warrior", Runtime: "none"}}}
+	s := &config.Scenario{Conditions: config.Conditions{
+		Name: "reliability-lifecycle", Goal: "skill:185:75", Minutes: 2, Level: 5, Money: 2000, RequireFresh: true,
+		Start: &config.Place{X: -9467, Y: -5, Z: 57, Map: 0, Zone: 12},
+	}, Agents: []config.Agent{{Name: name, Char: char, Race: "human", Class: "warrior", Runtime: "none"}}}
 	makeRunner := func() *Runner {
 		r, err := New(b, s, Options{Repo: repo, BasePort: 8210, Dir: dir})
 		if err != nil {
@@ -135,7 +137,7 @@ func TestLifecycleAndSkillGoalLive(t *testing.T) {
 	}
 	report("paused", true)
 	raw, _ := os.ReadFile(filepath.Join(dir, "report.json"))
-	os.WriteFile(filepath.Join(dir, "paused-report.json"), raw, 0644)
+	os.WriteFile(filepath.Join(dir, "paused-report.json"), raw, 0o644)
 	var savedRank int
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

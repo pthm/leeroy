@@ -127,8 +127,10 @@ func (t mirrorTimer) view(id uint32) types.MirrorTimer {
 // watchAgentState goes on before login: the server sends SMSG_INITIAL_SPELLS (the cooldowns still running, the
 // Hearthstone's), the talents' spell modifiers and the world states while logging in.
 func (b *Bot) watchAgentState() *agentState {
-	s := &agentState{cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, onEvent: map[uint32]cdRule{}, pushed: map[uint32]time.Time{}, earned: map[uint32]bool{},
-		criteria: map[uint32]uint64{}, timers: map[uint32]mirrorTimer{}, mods: map[spellMod]int32{}}
+	s := &agentState{
+		cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, onEvent: map[uint32]cdRule{}, pushed: map[uint32]time.Time{}, earned: map[uint32]bool{},
+		criteria: map[uint32]uint64{}, timers: map[uint32]mirrorTimer{}, mods: map[spellMod]int32{},
+	}
 	w := b.world
 	s.itemCD = func(item uint64, entry, spell uint32) (cdRule, bool) {
 		if o := w.GetObject(item); o != nil {
@@ -346,8 +348,10 @@ func (b *Bot) setupAgentAPI() {
 				if s.corpse == nil {
 					return script.Fail("not_found", "server reports no reclaimable corpse", nil)
 				}
-				c := types.Corpse{Place: types.Place{X: round1(s.corpse[0]), Y: round1(s.corpse[1]), Z: round1(s.corpse[2])}, Map: uint32(s.corpse[3]),
-					ReclaimIn: math.Max(0, math.Ceil(time.Until(s.reclaimAt).Seconds()))}
+				c := types.Corpse{
+					Place: types.Place{X: round1(s.corpse[0]), Y: round1(s.corpse[1]), Z: round1(s.corpse[2])}, Map: uint32(s.corpse[3]),
+					ReclaimIn: math.Max(0, math.Ceil(time.Until(s.reclaimAt).Seconds())),
+				}
 				if in := uint32(s.corpse[4]); in != c.Map {
 					c.Instance = in
 					if p, ok := portalNear(b.areaTriggers, c.Map, in, s.corpse[0], s.corpse[1]); ok {
@@ -526,13 +530,15 @@ func (s *agentState) invalidateCorpse() {
 }
 
 // questInvalid: QuestFailedReason (QuestDef.h), SMSG_QUESTGIVER_QUEST_INVALID
-var questInvalid = map[uint32][2]string{0: {"requirements_not_met", "you don't meet its requirements"},
+var questInvalid = map[uint32][2]string{
+	0: {"requirements_not_met", "you don't meet its requirements"},
 	1: {"low_level", "you're not high enough level"}, 6: {"wrong_race", "not available to your race"},
 	7: {"already_done", "you've completed that quest"}, 12: {"only_one_timed", "you can only be on one timed quest at a time"},
 	13: {"already_on", "you're already on that quest"}, 16: {"expansion", "it needs an expansion"},
 	18: {"already_on", "you're already on that quest"}, 21: {"missing_items", "you don't have the required items with you"},
 	23: {"not_enough_money", "you don't have enough money"}, 26: {"daily_limit", "you've done 25 daily quests today"},
-	27: {"tired", "too much play time"}, 29: {"daily_done", "you've done that daily quest today"}}
+	27: {"tired", "too much play time"}, 29: {"daily_done", "you've done that daily quest today"},
+}
 
 // parseQuestRequestItems: SMSG_QUESTGIVER_REQUEST_ITEMS (PlayerMenu::SendQuestGiverRequestItems): npc, quest, title,
 // text, 0, emote, close on cancel, flags, suggested players, money, items (entry, count, display), then 3 if completable.
@@ -629,7 +635,7 @@ func (s *agentState) startCD(spell uint32, c cdRule, now time.Time) {
 	}
 	if c.cat != 0 && c.catrec > 0 {
 		s.catCD[c.cat] = now.Add(time.Duration(c.catrec) * time.Millisecond)
-	} else if s.catCD[c.cat] == cdWait {
+	} else if s.catCD[c.cat].Equal(cdWait) {
 		delete(s.catCD, c.cat)
 	}
 }
@@ -976,11 +982,13 @@ func loadSpells() {
 			rec := b[20+i*recSize:]
 			f := func(idx int) uint32 { return le.Uint32(rec[idx*4:]) }
 			// field indices per AzerothCore DBCStructure.h SpellEntry
-			spells[f(0)] = &spellRec{Name: str(f(136)), Rank: str(f(153)), Category: f(1), Cooldown: f(29),
+			spells[f(0)] = &spellRec{
+				Name: str(f(136)), Rank: str(f(153)), Category: f(1), Cooldown: f(29),
 				CategoryCooldown: f(30), GCDCategory: f(205), GCD: f(206), PowerType: f(41), Cost: f(42),
 				Range: ranges[f(46)], CastMS: castTimes[f(28)], Level: f(38), costPct: f(204), attrs: f(4), attrsEx2: f(6), dispel: f(2),
 				facing: f(19), casterState: f(20), targetState: f(21), family: f(208), familyFlags: [3]uint32{f(209), f(210), f(211)}, school: f(225),
-				mechanic: f(3), effMechanic: [3]uint32{f(83), f(84), f(85)}, effAura: [3]uint32{f(95), f(96), f(97)}, auraInterrupt: f(32), procFlags: f(34)}
+				mechanic: f(3), effMechanic: [3]uint32{f(83), f(84), f(85)}, effAura: [3]uint32{f(95), f(96), f(97)}, auraInterrupt: f(32), procFlags: f(34),
+			}
 			// the client's own Opening spells: SPELL_EFFECT_OPEN_LOCK (Effect[3] 71, MiscValue[3] 110 = lock type),
 			// hidden and unlogged (attributes 0x80|0x100); the lowest id for each lock type
 			for k := 0; k < 3; k++ {

@@ -54,10 +54,16 @@ func hostSummary(dir string) obj {
 		if peak(gmem) == 0 {
 			continue
 		}
-		groups = append(groups, kv{g, obj{{"cpu_pct_mean", r1(mean(gcpu))}, {"cpu_pct_peak", r1(peak(gcpu))},
-			{"mem_mb_peak", r1(peak(gmem))}, {"processes_peak", peak(col(func(s monitor.Sample) float64 { return float64(s.Groups[g].N) }))}}})
+		groups = append(groups, kv{g, obj{
+			{"cpu_pct_mean", r1(mean(gcpu))},
+			{"cpu_pct_peak", r1(peak(gcpu))},
+			{"mem_mb_peak", r1(peak(gmem))},
+			{"processes_peak", peak(col(func(s monitor.Sample) float64 { return float64(s.Groups[g].N) }))},
+		}})
 	}
-	res := obj{{"samples", len(ss)}, {"hours", r1(hours)},
+	res := obj{
+		{"samples", len(ss)},
+		{"hours", r1(hours)},
 		{"cpu_pct", obj{{"mean", r1(mean(cpu))}, {"p95", r1(p95(cpu))}, {"peak", r1(peak(cpu))}}},
 		{"load1_peak", r1(peak(col(func(s monitor.Sample) float64 { return s.Load1 })))},
 		{"mem_used_mb_peak", r1(peak(col(func(s monitor.Sample) float64 { return s.MemUsedMB })))},
@@ -65,7 +71,8 @@ func hostSummary(dir string) obj {
 		{"disk_used_gb_peak", r1(peak(col(func(s monitor.Sample) float64 { return s.DiskUsedGB })))},
 		{"net_rx_kbs_mean", r1(mean(col(func(s monitor.Sample) float64 { return s.NetRxKBs })))},
 		{"net_tx_kbs_mean", r1(mean(col(func(s monitor.Sample) float64 { return s.NetTxKBs })))},
-		{"groups", groups}}
+		{"groups", groups},
+	}
 	if m.Host.PriceHour > 0 {
 		res = append(res, kv{"cost_eur", math.Round(m.Host.PriceHour*hours*100) / 100})
 	}

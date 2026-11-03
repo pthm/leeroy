@@ -160,10 +160,12 @@ func TestItemErrors(t *testing.T) {
 		e := ev.Data.(types.ErrorEvent)
 		got = append(got, e.Op+" "+e.Code+" "+e.Message)
 	}
-	want := []string{"items cant_equip_level_i You must reach a higher level to use that: requires level 20",
+	want := []string{
+		"items cant_equip_level_i You must reach a higher level to use that: requires level 20",
 		"items too_many_special_bags too many special bags", "vendor.buy reputation_required buy failed: your reputation with their faction is too low",
 		"vendor.sell vendor_doesnt_buy sell failed: this vendor doesn't buy items",
-		"vendor.items vendor_not_found the vendor won't show its wares: vendor not found (stand within ~5 yd)"}
+		"vendor.items vendor_not_found the vendor won't show its wares: vendor not found (stand within ~5 yd)",
+	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("got\n%s", strings.Join(got, "\n"))
 	}

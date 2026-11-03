@@ -16,9 +16,11 @@ var promptText string
 
 var promptTmpl = template.Must(template.New("prompt").Parse(promptText))
 
-var skillNames = map[string]string{"164": "Blacksmithing", "165": "Leatherworking", "171": "Alchemy", "182": "Herbalism",
+var skillNames = map[string]string{
+	"164": "Blacksmithing", "165": "Leatherworking", "171": "Alchemy", "182": "Herbalism",
 	"185": "Cooking", "186": "Mining", "197": "Tailoring", "202": "Engineering", "333": "Enchanting", "356": "Fishing",
-	"393": "Skinning", "129": "First Aid", "755": "Jewelcrafting", "773": "Inscription"}
+	"393": "Skinning", "129": "First Aid", "755": "Jewelcrafting", "773": "Inscription",
+}
 
 // goalText: what the prompt asks for.
 func goalText(goal string, mins int) string {
@@ -139,8 +141,10 @@ func prompt(s *config.Scenario, b *config.Bench, a config.Agent, repo string) (s
 		score, stop = hardcoreText(s.Goal, score, stop)
 	}
 	var out strings.Builder
-	err = promptTmpl.Execute(&out, map[string]any{"Identity": identity, "GoalText": goalText(s.Goal, s.Minutes),
+	err = promptTmpl.Execute(&out, map[string]any{
+		"Identity": identity, "GoalText": goalText(s.Goal, s.Minutes),
 		"Hint": strings.TrimSpace(s.Hint), "ScoreText": score, "StopText": stop, "Repo": repo,
-		"Roster": strings.Join(roster, "\n"), "Notice": notice, "Minutes": s.Minutes})
+		"Roster": strings.Join(roster, "\n"), "Notice": notice, "Minutes": s.Minutes,
+	})
 	return out.String(), err
 }

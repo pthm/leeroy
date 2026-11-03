@@ -39,8 +39,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/pthm/leeroy/azsdk/metrics"
-	"github.com/pthm/leeroy/internal/bench/tools"
 	"math"
 	"os"
 	"path/filepath"
@@ -49,6 +47,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pthm/leeroy/azsdk/metrics"
+	"github.com/pthm/leeroy/internal/bench/tools"
 )
 
 // binaryGoal: a goal that is met or not (an achievement, a quest, an item, an item quality). Its score is by time.
@@ -131,9 +132,11 @@ func Main(args []string) (code int) {
 		return def
 	}
 	has := func(name string) bool { return slices.Contains(rest, "--"+name) }
-	o := Options{Char: args[0], Goal: args[1], Timeout: dur(flag("timeout", "4h")), Every: dur(flag("every", "15s")),
+	o := Options{
+		Char: args[0], Goal: args[1], Timeout: dur(flag("timeout", "4h")), Every: dur(flag("every", "15s")),
 		Samples: flag("samples", ""), Board: flag("board", ""), Events: flag("events", ""),
-		Role: flag("role", ""), Runtime: flag("runtime", ""), Resume: flag("resume", ""), Hardcore: has("hardcore")}
+		Role: flag("role", ""), Runtime: flag("runtime", ""), Resume: flag("resume", ""), Hardcore: has("hardcore"),
+	}
 	res, met, err := Run(context.Background(), o)
 	if err != nil {
 		fail("%v", err)
@@ -276,11 +279,12 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 	poll := func() ([]byte, bool, bool) {
 		sig := signals(char)
 		var value float64
-		if kind == "score" {
+		switch kind {
+		case "score":
 			value = composite(sig, base, w)
-		} else if kind == "kills" {
+		case "kills":
 			value = sig.get("creatures_killed") - base["creatures_killed"]
-		} else {
+		default:
 			value = num(sql(query)) - baseline
 		}
 		lxm := strings.Split(sql("SELECT level, xp, money FROM characters WHERE name = '"+char+"'"), "\t")
@@ -305,8 +309,13 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		if o.Hardcore && !binaryGoal(goal) {
 			score = round1(value)
 		}
-		rates := obj{{"rate", round1(r.Rate)}, {"recent_rate", round1(r.Recent)}, {"best_window", round1(r.BestWindow)},
-			{"pace", round1(r.Pace)}, {"score", score}}
+		rates := obj{
+			{"rate", round1(r.Rate)},
+			{"recent_rate", round1(r.Recent)},
+			{"best_window", round1(r.BestWindow)},
+			{"pace", round1(r.Pace)},
+			{"score", score},
+		}
 		smp := append(append(obj{{"t", nowMs()}, {"elapsed_s", elapsedS}, {"level", level}, {"xp", xp}, {"money", money}, {"value", value}}, rates...),
 			kv{"signals", sig})
 		if samples != "" {
@@ -358,7 +367,6 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 			return j, value >= need, true
 		}
 		return nil, false, false
-
 	}
 	var heldAt int64 // when the current hold began (0: not held)
 	for {

@@ -36,6 +36,7 @@ func TestSpatialCancelledLocksAndMissingModelStayUnknown(t *testing.T) {
 	cancel()
 	tree.loadMu.Unlock()
 }
+
 func TestSpatialReadBoundsAndTriangleCancellation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "large.vmo")
 	f, err := os.Create(path)
@@ -57,6 +58,7 @@ func TestSpatialReadBoundsAndTriangleCancellation(t *testing.T) {
 		t.Fatal("cancelled intersection", h)
 	}
 }
+
 func TestSpatialContextRealDataMatchesHeightAndSight(t *testing.T) {
 	data := requireACData(t)
 	s := NewPathFindingServiceFromDataDir(data)

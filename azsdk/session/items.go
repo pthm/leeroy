@@ -70,27 +70,33 @@ type itemProto struct {
 	pageText   uint32           // text to read (letters, books)
 }
 
-var statNames = map[uint32]string{0: "mana", 1: "health", 3: "agility", 4: "strength", 5: "intellect", 6: "spirit", 7: "stamina",
+var statNames = map[uint32]string{
+	0: "mana", 1: "health", 3: "agility", 4: "strength", 5: "intellect", 6: "spirit", 7: "stamina",
 	12: "defense", 13: "dodge", 14: "parry", 15: "block", 16: "melee_hit", 17: "ranged_hit", 18: "spell_hit", 19: "melee_crit",
 	20: "ranged_crit", 21: "spell_crit", 28: "melee_haste", 31: "hit", 32: "crit", 35: "resilience", 36: "haste", 37: "expertise",
 	38: "attack_power", 39: "ranged_attack_power", 41: "healing", 42: "spell_damage", 43: "mana_per_5s", 44: "armor_penetration",
-	45: "spell_power", 46: "health_per_5s", 47: "spell_penetration", 48: "block_value"}
+	45: "spell_power", 46: "health_per_5s", 47: "spell_penetration", 48: "block_value",
+}
 
 // inventory type -> slot name and the equipment slots (0-18) or bag slots (19-22) it can go in
 // equipSlots: equipment slot names agents can pass (inventory slot index)
-var equipSlots = map[string]uint8{"head": 0, "neck": 1, "shoulder": 2, "shirt": 3, "chest": 4, "waist": 5, "legs": 6, "feet": 7,
+var equipSlots = map[string]uint8{
+	"head": 0, "neck": 1, "shoulder": 2, "shirt": 3, "chest": 4, "waist": 5, "legs": 6, "feet": 7,
 	"wrists": 8, "hands": 9, "finger1": 10, "finger2": 11, "trinket1": 12, "trinket2": 13, "back": 14, "main_hand": 15,
-	"off_hand": 16, "ranged": 17, "tabard": 18}
+	"off_hand": 16, "ranged": 17, "tabard": 18,
+}
 
 var invSlots = map[uint32]struct {
 	name  string
 	slots []uint8
-}{1: {"head", []uint8{0}}, 2: {"neck", []uint8{1}}, 3: {"shoulder", []uint8{2}}, 4: {"shirt", []uint8{3}}, 5: {"chest", []uint8{4}},
+}{
+	1: {"head", []uint8{0}}, 2: {"neck", []uint8{1}}, 3: {"shoulder", []uint8{2}}, 4: {"shirt", []uint8{3}}, 5: {"chest", []uint8{4}},
 	20: {"chest", []uint8{4}}, 6: {"waist", []uint8{5}}, 7: {"legs", []uint8{6}}, 8: {"feet", []uint8{7}}, 9: {"wrists", []uint8{8}},
 	10: {"hands", []uint8{9}}, 11: {"finger", []uint8{10, 11}}, 12: {"trinket", []uint8{12, 13}}, 13: {"one_hand", []uint8{15, 16}},
 	14: {"shield", []uint8{16}}, 15: {"ranged", []uint8{17}}, 16: {"back", []uint8{14}}, 17: {"two_hand", []uint8{15}},
 	19: {"tabard", []uint8{18}}, 21: {"main_hand", []uint8{15}}, 22: {"off_hand", []uint8{16}}, 23: {"held_in_off_hand", []uint8{16}},
-	18: {"bag", []uint8{19, 20, 21, 22}}, 25: {"thrown", []uint8{17}}, 26: {"ranged", []uint8{17}}, 28: {"relic", []uint8{17}}}
+	18: {"bag", []uint8{19, 20, 21, 22}}, 25: {"thrown", []uint8{17}}, 26: {"ranged", []uint8{17}}, 28: {"relic", []uint8{17}},
+}
 
 // proficiency spells: item class (2 weapon, 4 armor) -> subclass -> the skill spell you need to know
 var proficiency = map[uint32]map[uint32]uint32{
@@ -232,13 +238,15 @@ func parseItemQuery(data []byte) {
 }
 
 // LootError (LootMgr.h)
-var lootErrors = map[int][2]string{0: {"not_yours", "you don't have permission to loot it (someone else's kill, or nothing for you)"},
+var lootErrors = map[int][2]string{
+	0: {"not_yours", "you don't have permission to loot it (someone else's kill, or nothing for you)"},
 	4: {"out_of_range", "too far away: get within 5 yd"}, 5: {"bad_facing", "face it to loot it"},
 	6: {"being_looted", "someone else is looting it"}, 8: {"not_standing", "stand up to loot"}, 9: {"stunned", "you're stunned"},
 	10: {"player_not_found", "player not found"}, 11: {"play_time_exceeded", "maximum play time exceeded"},
 	12: {"master_inventory_full", "that player's bags are full"}, 13: {"master_unique_item", "that player has too many of that item"},
 	14: {"master_other", "can't assign the item to that player"}, 15: {"already_pickpocketed", "its pockets were already picked"},
-	16: {"not_while_shapeshifted", "you can't loot while shapeshifted"}}
+	16: {"not_while_shapeshifted", "you can't loot while shapeshifted"},
+}
 
 // handleLootResponse takes what the loot window lets you take, then the money, and releases (non-blocking for the
 // read loop). Locked, master-looter and rolled-for slots stay: a roll arrives as SMSG_LOOT_START_ROLL (items.roll).
@@ -365,8 +373,10 @@ func (s *lootRolls) open() []pendingRoll {
 func (p pendingRoll) view(w *client.WorldClient) types.LootRoll {
 	it := itemTemplate(w, p.ItemID)
 	it.Count = p.ItemCount
-	lr := types.LootRoll{Roll: types.GUID(p.ItemGUID), Item: it, Choices: []string{},
-		SecondsLeft: math.Round(time.Until(p.until).Seconds()*10) / 10}
+	lr := types.LootRoll{
+		Roll: types.GUID(p.ItemGUID), Item: it, Choices: []string{},
+		SecondsLeft: math.Round(time.Until(p.until).Seconds()*10) / 10,
+	}
 	for i, c := range rollChoices {
 		if p.RollVoteMask&(1<<i) != 0 {
 			lr.Choices = append(lr.Choices, c)
@@ -746,13 +756,17 @@ func (b *Bot) setupItems() {
 	w.AddLootStartRollHook(func(r client.LootStartRoll) { b.emit("loot_roll_start", rolls.start(r).view(w)) })
 	w.AddLootRollHook(func(r client.LootRollEvent) {
 		g, choice, n := rolls.vote(r, w.CharGUID())
-		b.emit("loot_roll", types.LootRollResult{Roll: types.GUID(g), Item: itemTemplate(w, r.ItemID), Player: b.ref(r.TargetGUID),
-			Choice: choice, Number: n, Auto: r.AutoPass != 0})
+		b.emit("loot_roll", types.LootRollResult{
+			Roll: types.GUID(g), Item: itemTemplate(w, r.ItemID), Player: b.ref(r.TargetGUID),
+			Choice: choice, Number: n, Auto: r.AutoPass != 0,
+		})
 	})
 	w.AddLootRollWonHook(func(r client.LootRollWon) {
 		rolls.end(r.ItemGUID)
-		b.emit("loot_roll_won", types.LootRollResult{Roll: types.GUID(r.ItemGUID), Item: itemTemplate(w, r.ItemID),
-			Player: b.ref(r.WinnerGUID), Choice: rollChoice(r.RollType), Number: r.RollNumber})
+		b.emit("loot_roll_won", types.LootRollResult{
+			Roll: types.GUID(r.ItemGUID), Item: itemTemplate(w, r.ItemID),
+			Player: b.ref(r.WinnerGUID), Choice: rollChoice(r.RollType), Number: r.RollNumber,
+		})
 	})
 	w.AddLootAllPassedHook(func(r client.LootAllPassed) {
 		rolls.end(r.ItemGUID)
@@ -1050,7 +1064,6 @@ func (b *Bot) setupItems() {
 					return failOn(ev, "trainer.learn")
 				})
 		})
-
 }
 
 // plainObjectMatch: what answers using an object with no spell of ours, besides a state change: a teleport (a

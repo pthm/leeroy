@@ -25,8 +25,10 @@ func TestTransientError(t *testing.T) {
 }
 
 func TestOutageCode(t *testing.T) {
-	for why, want := range map[string]string{"API Error: 529 Overloaded": "capacity", "429 Too Many Requests": "rate_limited",
-		"request timed out": "timeout", "stream disconnected": "network", "500 Internal Server Error": "server_error"} {
+	for why, want := range map[string]string{
+		"API Error: 529 Overloaded": "capacity", "429 Too Many Requests": "rate_limited",
+		"request timed out": "timeout", "stream disconnected": "network", "500 Internal Server Error": "server_error",
+	} {
 		if got := outageCode(why); got != want {
 			t.Errorf("%q: %s, want %s", why, got, want)
 		}

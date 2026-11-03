@@ -14,8 +14,10 @@ type floorCell struct{ x, z, h uint16 }
 
 func interiorFinder(t *testing.T, cells ...floorCell) *PathFinder {
 	t.Helper()
-	p := detour.DtNavMeshCreateParams{Nvp: 4, PolyCount: int32(len(cells)), Cs: 1, Ch: 1,
-		Bmax: [3]float32{64, 64, 64}, WalkableHeight: 2, WalkableRadius: 0.3, WalkableClimb: 0.5, BuildBvTree: true}
+	p := detour.DtNavMeshCreateParams{
+		Nvp: 4, PolyCount: int32(len(cells)), Cs: 1, Ch: 1,
+		Bmax: [3]float32{64, 64, 64}, WalkableHeight: 2, WalkableRadius: 0.3, WalkableClimb: 0.5, BuildBvTree: true,
+	}
 	indices := map[[3]uint16]uint16{}
 	for _, c := range cells {
 		for _, v := range [][3]uint16{{c.x, c.h, c.z}, {c.x, c.h, c.z + 10}, {c.x + 10, c.h, c.z + 10}, {c.x + 10, c.h, c.z}} {

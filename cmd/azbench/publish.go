@@ -6,14 +6,15 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
-	"github.com/pthm/leeroy/azsdk/types"
-	"github.com/pthm/leeroy/trajectory"
 	"math"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/pthm/leeroy/azsdk/types"
+	"github.com/pthm/leeroy/trajectory"
 
 	"github.com/pthm/leeroy/internal/bench/config"
 	"github.com/pthm/leeroy/internal/bench/judge"
@@ -128,8 +129,10 @@ func publish(root, runDir, task, out string) (string, error) {
 				}
 			}
 			p["series"], p["deaths_at"] = series(f.Samples(char))
-			traj := readTrajectory(adir, trajectory.Info{Agent: a.Name, Char: char, Runtime: fmt.Sprint(p["runtime"]),
-				Model: fmt.Sprint(p["model"]), Provider: fmt.Sprint(r["provider"]), Effort: fmt.Sprint(p["effort"])})
+			traj := readTrajectory(adir, trajectory.Info{
+				Agent: a.Name, Char: char, Runtime: fmt.Sprint(p["runtime"]),
+				Model: fmt.Sprint(p["model"]), Provider: fmt.Sprint(r["provider"]), Effort: fmt.Sprint(p["effort"]),
+			})
 			if pl := playOf(traj); pl != nil && pl.Calls > 0 {
 				p["play"] = pl
 			}
@@ -227,8 +230,10 @@ func publish(root, runDir, task, out string) (string, error) {
 
 // benign: failures that are the SDK working as meant (a script replacing its own move, a swing that missed, a spell
 // still on the global cooldown), not mistakes worth showing
-var benign = map[string]bool{"replaced_by_owner": true, "cancelled": true, "task_stopped": true, "miss": true,
-	"dodge": true, "parry": true, "not_ready": true}
+var benign = map[string]bool{
+	"replaced_by_owner": true, "cancelled": true, "task_stopped": true, "miss": true,
+	"dodge": true, "parry": true, "not_ready": true,
+}
 
 // callsPerMinute: a player's SDK calls minute by minute, from its game log's results: [minute, succeeded, failed, the
 // minute's most frequent failure ("op code"), its count], minutes with no calls left out. Benign failures count as
@@ -399,8 +404,10 @@ func outages(diag string) []map[string]any {
 			continue
 		}
 		o := d.Details.Outage
-		out = append(out, map[string]any{"why": d.Code, "start": time.UnixMilli(o.Start).Format(time.RFC3339), "held_s": d.DurationMS / 1000,
-			"safe_wait_s": o.SafeWaitMS / 1000, "probes": o.Probes, "outcome": d.Outcome})
+		out = append(out, map[string]any{
+			"why": d.Code, "start": time.UnixMilli(o.Start).Format(time.RFC3339), "held_s": d.DurationMS / 1000,
+			"safe_wait_s": o.SafeWaitMS / 1000, "probes": o.Probes, "outcome": d.Outcome,
+		})
 	}
 	return out
 }

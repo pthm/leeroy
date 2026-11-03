@@ -243,8 +243,10 @@ func (b *Bot) meter(window float64) []types.Meter {
 	out := []types.Meter{}
 	for g, a := range units {
 		active := math.Max(1, float64(a.last-a.first)/1000)
-		m := types.Meter{Unit: b.ref(g), Damage: a.dmg, Healing: a.heal, Taken: a.taken, Healed: a.healed, Kills: a.kills,
-			DPS: math.Round(float64(a.dmg)/active*10) / 10, HPS: math.Round(float64(a.heal)/active*10) / 10, ActiveS: math.Round(active)}
+		m := types.Meter{
+			Unit: b.ref(g), Damage: a.dmg, Healing: a.heal, Taken: a.taken, Healed: a.healed, Kills: a.kills,
+			DPS: math.Round(float64(a.dmg)/active*10) / 10, HPS: math.Round(float64(a.heal)/active*10) / 10, ActiveS: math.Round(active),
+		}
 		if a.hits > 0 {
 			m.CritPct = math.Round(float64(a.crits) / float64(a.hits) * 100)
 		}

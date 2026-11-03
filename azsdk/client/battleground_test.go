@@ -9,7 +9,8 @@ import (
 // buildStatus writes the fixed head of SMSG_BATTLEFIELD_STATUS exactly as
 // BattlegroundMgr::BuildBattlegroundStatusPacket does.
 func buildStatus(queueSlot uint32, arenaType ArenaTeamType, isArena bool, bgTypeID uint32,
-	minLevel, maxLevel uint8, clientInstance uint32, isRated bool, status uint32) *bytes.Buffer {
+	minLevel, maxLevel uint8, clientInstance uint32, isRated bool, status uint32,
+) *bytes.Buffer {
 	buf := new(bytes.Buffer)
 	_ = binary.Write(buf, binary.LittleEndian, queueSlot)
 	buf.WriteByte(uint8(arenaType))

@@ -1,8 +1,9 @@
 package diagnostics
 
 import (
-	"github.com/pthm/leeroy/azsdk/types"
 	"testing"
+
+	"github.com/pthm/leeroy/azsdk/types"
 )
 
 func TestReliabilityCounts(t *testing.T) {

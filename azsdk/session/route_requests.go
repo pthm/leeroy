@@ -39,10 +39,12 @@ type routeRequests struct {
 func routePosition(p navigation.Point3D, m uint32) types.Position {
 	return types.Position{X: float64(p.X), Y: float64(p.Y), Z: float64(p.Z), Map: m}
 }
+
 func routeFailure(data types.PathCheck, code, message string) *script.Outcome {
 	data.Status, data.Reason, data.Reachable = "failed", code, false
 	return script.Fail(code, message, data)
 }
+
 func (r *routeRequests) start(task int, m uint32, from, to navigation.Point3D) map[string]any {
 	data := types.PathCheck{Status: "failed", Map: m, From: routePosition(from, m), Destination: routePosition(to, m), Source: "session_navmesh", Waypoints: []types.Position{}}
 	return r.submit(task, "world.path", map[string]any{"x": to.X, "y": to.Y, "z": to.Z}, data, func(ctx context.Context, j *routeRequest) *script.Outcome {
@@ -50,6 +52,7 @@ func (r *routeRequests) start(task int, m uint32, from, to navigation.Point3D) m
 		return checkRoute(data, from, to, result, err)
 	})
 }
+
 func (r *routeRequests) submit(task int, op string, args map[string]any, data any, run func(context.Context, *routeRequest) *script.Outcome) map[string]any {
 	h := r.reqs.Start(script.Spec{Op: op, Args: args, Timeout: time.Hour})
 	id := h["id"].(int)
@@ -78,6 +81,7 @@ func (r *routeRequests) submit(task int, op string, args map[string]any, data an
 	}()
 	return h
 }
+
 func (r *routeRequests) finish(j *routeRequest, out *script.Outcome) {
 	r.mu.Lock()
 	if j.done {
@@ -121,6 +125,7 @@ func (r *routeRequests) finish(j *routeRequest, out *script.Outcome) {
 	}
 	r.reqs.Resolve(j.id, out)
 }
+
 func (r *routeRequests) cancelTask(task int, reason string) {
 	r.mu.Lock()
 	var jobs []*routeRequest
@@ -152,6 +157,7 @@ func (r *routeRequests) cancelOwned(task, id int) bool {
 	r.finish(j, nil)
 	return true
 }
+
 func (r *routeRequests) close() {
 	r.mu.Lock()
 	r.closed = true

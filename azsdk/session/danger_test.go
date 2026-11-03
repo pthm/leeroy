@@ -2,9 +2,10 @@ package session
 
 import (
 	"context"
+	"testing"
+
 	"github.com/pthm/leeroy/azsdk/navigation"
 	"github.com/pthm/leeroy/azsdk/types"
-	"testing"
 )
 
 func TestDangerRequiresLocalFloorSightAndConnection(t *testing.T) {
@@ -49,6 +50,7 @@ func TestDangerRequiresLocalFloorSightAndConnection(t *testing.T) {
 		})
 	}
 }
+
 func TestTravelDangerPolicy(t *testing.T) {
 	actWorld(t, actBase+`mobs={{alive=true,reaction="hostile",x=10,y=0,z=0}}`, `
   r=act.travel{points={{10,0,0}},stop_on_danger=true};assert(not r.ok and r.error.code=="danger_ahead" and #moves==0)

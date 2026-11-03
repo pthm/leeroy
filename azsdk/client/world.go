@@ -1230,7 +1230,7 @@ func (w *WorldClient) LogLevel() LogLevel {
 // Connect connects to the world server
 func (w *WorldClient) Connect(worldAddr string) error {
 	// Prefer loopback when realmlist points at this host's LAN IP (avoids hairpin NAT).
-	worldAddr = strings.Replace(worldAddr, "192.168.178.110", "127.0.0.1", -1)
+	worldAddr = strings.ReplaceAll(worldAddr, "192.168.178.110", "127.0.0.1")
 
 	var err error
 	w.conn, err = net.DialTimeout("tcp", worldAddr, 10*time.Second)
@@ -2128,7 +2128,7 @@ func (w *WorldClient) sendMovementHeartbeatWithJumpLocked(fallTime uint32, zspee
 	return w.sendMovementHeartbeatWithJumpLockedAt(getMSTime(), fallTime, zspeed, sinAngle, cosAngle, xyspeed)
 }
 
-func (w *WorldClient) sendMovementHeartbeatWithJumpLockedAt(ts uint32, fallTime uint32, zspeed, sinAngle, cosAngle, xyspeed float32) error {
+func (w *WorldClient) sendMovementHeartbeatWithJumpLockedAt(ts, fallTime uint32, zspeed, sinAngle, cosAngle, xyspeed float32) error {
 	return w.sendFallingLockedAt(MsgMoveHeartbeat, ts, fallTime, zspeed, sinAngle, cosAngle, xyspeed)
 }
 
@@ -2153,7 +2153,7 @@ func (w *WorldClient) RouteFallLandAtTime(x, y, z, o float32, at time.Time) erro
 // JumpVelocity is the client's jump: this many yd/s up at take-off, under Gravity (yd/s^2).
 const JumpVelocity, Gravity = jumpVelocity, gravity
 
-func (w *WorldClient) sendFallingLockedAt(opcode uint16, ts uint32, fallTime uint32, zspeed, sinAngle, cosAngle, xyspeed float32) error {
+func (w *WorldClient) sendFallingLockedAt(opcode uint16, ts, fallTime uint32, zspeed, sinAngle, cosAngle, xyspeed float32) error {
 	flags := MoveFlagForward | MoveFlagFalling
 	w.currentMoveFlags = flags
 	w.transport = selfTransport{} // no ONTRANSPORT: the server drops us off it
@@ -3123,7 +3123,7 @@ func (w *WorldClient) QuestgiverCompleteQuest(npcGUID uint64, questID uint32) er
 }
 
 // QuestgiverChooseReward sends CMSG_QUESTGIVER_CHOOSE_REWARD
-func (w *WorldClient) QuestgiverChooseReward(npcGUID uint64, questID uint32, reward uint32) error {
+func (w *WorldClient) QuestgiverChooseReward(npcGUID uint64, questID, reward uint32) error {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, npcGUID)
 	binary.Write(buf, binary.LittleEndian, questID)
@@ -3219,7 +3219,7 @@ func (w *WorldClient) sendMovementLocked(opcode uint16, moveFlags uint32) error 
 	return w.sendMovementLockedAt(opcode, moveFlags, getMSTime())
 }
 
-func (w *WorldClient) sendMovementLockedAt(opcode uint16, moveFlags uint32, ts uint32) error {
+func (w *WorldClient) sendMovementLockedAt(opcode uint16, moveFlags, ts uint32) error {
 	w.currentMoveFlags = moveFlags
 	buf := new(bytes.Buffer)
 	if len(w.packedGUID) > 0 {
@@ -3399,7 +3399,7 @@ func (w *WorldClient) FindGameObjectByEntry(entry uint32, maxDist float32) uint6
 }
 
 // ObjectTrackStats returns counts by TypeID plus how many objects carry HighGuid GameObject.
-func (w *WorldClient) ObjectTrackStats() (byType map[uint8]int, gameObjectHigh int, total int) {
+func (w *WorldClient) ObjectTrackStats() (byType map[uint8]int, gameObjectHigh, total int) {
 	w.objectsMu.RLock()
 	defer w.objectsMu.RUnlock()
 	byType = make(map[uint8]int)
@@ -5389,7 +5389,7 @@ func (w *WorldClient) logMovementPacket(opcode uint16, data []byte) {
 
 	// Common prefix for most movement packets: flags(4) + flags2(2) + time(4) + x y z o (16)
 	if err := binary.Read(r, binary.LittleEndian, &flags); err != nil {
-		//w.log("[MOV] recv 0x%04X guid=%d bad flags", opcode, guid)
+		// w.log("[MOV] recv 0x%04X guid=%d bad flags", opcode, guid)
 		return
 	}
 	binary.Read(r, binary.LittleEndian, &flags2)

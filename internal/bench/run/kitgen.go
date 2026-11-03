@@ -75,11 +75,15 @@ type kitItem struct {
 
 // weapon subclasses each class can learn, and the proficiency spell and skill for each
 var (
-	classWeapons = map[int][]int{1: {0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 13, 15, 16, 18}, 2: {0, 1, 4, 5, 6, 7, 8},
+	classWeapons = map[int][]int{
+		1: {0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 13, 15, 16, 18}, 2: {0, 1, 4, 5, 6, 7, 8},
 		3: {0, 1, 2, 3, 6, 7, 8, 10, 13, 15, 16, 18}, 4: {0, 2, 3, 4, 7, 13, 15, 16, 18}, 5: {4, 10, 15, 19},
-		6: {0, 1, 4, 5, 6, 7, 8}, 7: {0, 1, 4, 5, 10, 13, 15}, 8: {7, 10, 15, 19}, 9: {7, 10, 15, 19}, 11: {4, 5, 6, 10, 13, 15}}
-	weaponSpell = map[int]int{0: 196, 1: 197, 2: 264, 3: 266, 4: 198, 5: 199, 6: 200, 7: 201, 8: 202, 10: 227, 13: 15590,
-		15: 1180, 16: 2567, 18: 5011, 19: 5009}
+		6: {0, 1, 4, 5, 6, 7, 8}, 7: {0, 1, 4, 5, 10, 13, 15}, 8: {7, 10, 15, 19}, 9: {7, 10, 15, 19}, 11: {4, 5, 6, 10, 13, 15},
+	}
+	weaponSpell = map[int]int{
+		0: 196, 1: 197, 2: 264, 3: 266, 4: 198, 5: 199, 6: 200, 7: 201, 8: 202, 10: 227, 13: 15590,
+		15: 1180, 16: 2567, 18: 5011, 19: 5009,
+	}
 )
 
 // armorType: the best armour a class wears at a level (1 cloth, 2 leather, 3 mail, 4 plate)
@@ -151,8 +155,10 @@ func GenKit(class, race int, spec string, level, quality, maxIlvl, notFrom int) 
 	armor := armorType(class, level)
 	var items []*kitItem
 	for _, r := range rows {
-		it := &kitItem{entry: atoi(r[0]), name: r[1], class: atoi(r[2]), sub: atoi(r[3]), inv: atoi(r[4]), ilvl: atoi(r[5]),
-			req: atoi(r[6]), quality: atoi(r[7]), slots: atoi(r[12]), ammo: atoi(r[13]), maxcount: atoi(r[14]), how: r[16], stats: map[int]float64{}}
+		it := &kitItem{
+			entry: atoi(r[0]), name: r[1], class: atoi(r[2]), sub: atoi(r[3]), inv: atoi(r[4]), ilvl: atoi(r[5]),
+			req: atoi(r[6]), quality: atoi(r[7]), slots: atoi(r[12]), ammo: atoi(r[13]), maxcount: atoi(r[14]), how: r[16], stats: map[int]float64{},
+		}
 		fmt.Sscan(r[8], &it.armor)
 		var lo, hi, delay float64
 		fmt.Sscan(r[9], &lo)

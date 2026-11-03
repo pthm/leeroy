@@ -8,14 +8,15 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/pthm/leeroy/azsdk/script"
-	"github.com/pthm/leeroy/azsdk/spelltext"
-	"github.com/pthm/leeroy/azsdk/types"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/pthm/leeroy/azsdk/script"
+	"github.com/pthm/leeroy/azsdk/spelltext"
+	"github.com/pthm/leeroy/azsdk/types"
 )
 
 const (
@@ -134,8 +135,10 @@ func (b *Bot) setupTalents() {
 					continue
 				}
 				r := rank(t)
-				tl := types.Talent{ID: t.id, Name: name(t), Rank: r, MaxRank: len(t.ranks), Row: t.row, Col: t.col,
-					Spell: t.ranks[min(r, len(t.ranks)-1)]}
+				tl := types.Talent{
+					ID: t.id, Name: name(t), Rank: r, MaxRank: len(t.ranks), Row: t.row, Col: t.col,
+					Spell: t.ranks[min(r, len(t.ranks)-1)],
+				}
 				ok := out.Points > 0 && r < len(t.ranks) && tree.Spent >= int(t.row)*5
 				if t.dependsOn != 0 {
 					for _, d := range talentList {

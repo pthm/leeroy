@@ -116,6 +116,7 @@ func (tm *TerrainManager) GetHeight(mapID uint32, x, y, z float32) (float32, boo
 func (tm *TerrainManager) getOrLoadGrid(mapID uint32, gx, gy int) (*gridTerrain, error) {
 	return tm.getOrLoadGridContext(context.Background(), mapID, gx, gy)
 }
+
 func (tm *TerrainManager) getOrLoadGridContext(ctx context.Context, mapID uint32, gx, gy int) (*gridTerrain, error) {
 	key := packGridKey(mapID, gx, gy)
 
@@ -204,8 +205,10 @@ func decodeWater(b []byte) *gridWater {
 		return nil
 	}
 	flags := b[off+4]
-	g := &gridWater{globalFlags: b[off+5], offX: int(b[off+8]), offY: int(b[off+9]), w: int(b[off+10]), h: int(b[off+11]),
-		level: math.Float32frombits(binary.LittleEndian.Uint32(b[off+12:]))}
+	g := &gridWater{
+		globalFlags: b[off+5], offX: int(b[off+8]), offY: int(b[off+9]), w: int(b[off+10]), h: int(b[off+11]),
+		level: math.Float32frombits(binary.LittleEndian.Uint32(b[off+12:])),
+	}
 	d := off + 16
 	if flags&0x1 == 0 { // MAP_LIQUID_NO_TYPE unset: 16x16 uint16 entries, then 16x16 uint8 flags
 		if d+768 > len(b) {
@@ -259,6 +262,7 @@ func (tm *TerrainManager) GetArea(mapID uint32, x, y float32) uint16 {
 	}
 	return gt.areaAt(x, y)
 }
+
 func (gt *gridTerrain) areaAt(x, y float32) uint16 {
 	if gt.area == nil {
 		return 0
@@ -279,6 +283,7 @@ func (tm *TerrainManager) GetWaterLevel(mapID uint32, x, y float32) (float32, bo
 	}
 	return gt.waterAt(x, y)
 }
+
 func (gt *gridTerrain) waterAt(x, y float32) (float32, bool) {
 	if gt.water == nil {
 		return 0, false

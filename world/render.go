@@ -11,8 +11,13 @@ import (
 var ramp = []struct {
 	u float64
 	c [3]float64
-}{{0, [3]float64{86, 125, 70}}, {0.35, [3]float64{120, 150, 84}}, {0.6, [3]float64{158, 150, 104}},
-	{0.8, [3]float64{140, 120, 96}}, {1, [3]float64{235, 232, 225}}}
+}{
+	{0, [3]float64{86, 125, 70}},
+	{0.35, [3]float64{120, 150, 84}},
+	{0.6, [3]float64{158, 150, 104}},
+	{0.8, [3]float64{140, 120, 96}},
+	{1, [3]float64{235, 232, 225}},
+}
 
 func tint(u float64) [3]float64 {
 	u = math.Max(0, math.Min(1, u))
@@ -36,7 +41,8 @@ type Map struct {
 // borders. heightRange fixes the colour scale (tiles must agree; nil fits the box). overlay, if set, can draw on it
 // with set(worldX, worldY, colour).
 func RenderMap(m uint32, xMin, xMax, yMin, yMax, res float64, heightRange *[2]float64,
-	overlay func(set func(wx, wy float64, c [3]uint8))) Map {
+	overlay func(set func(wx, wy float64, c [3]uint8)),
+) Map {
 	return renderMap(m, xMin, xMax, yMin, yMax, res, heightRange, overlay, true)
 }
 
@@ -47,7 +53,8 @@ func RenderRelief(m uint32, xMin, xMax, yMin, yMax, res float64) Map {
 }
 
 func renderMap(m uint32, xMin, xMax, yMin, yMax, res float64, heightRange *[2]float64,
-	overlay func(set func(wx, wy float64, c [3]uint8)), minimap bool) Map {
+	overlay func(set func(wx, wy float64, c [3]uint8)), minimap bool,
+) Map {
 	W, H := int(math.Ceil((yMax-yMin)/res)), int(math.Ceil((xMax-xMin)/res))
 	zoneOf := Areas(m).ZoneOf
 	heights, water, zone := make([]float64, W*H), make([]float64, W*H), make([]int, W*H)

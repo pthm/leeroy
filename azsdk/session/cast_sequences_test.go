@@ -1,10 +1,11 @@
 package session
 
 import (
-	"github.com/pthm/leeroy/azsdk/script"
-	"github.com/pthm/leeroy/azsdk/types"
 	"testing"
 	"time"
+
+	"github.com/pthm/leeroy/azsdk/script"
+	"github.com/pthm/leeroy/azsdk/types"
 )
 
 func TestCastSequencesDoNotReusePendingOrLateReplySlots(t *testing.T) {
@@ -25,6 +26,7 @@ func TestCastSequencesDoNotReusePendingOrLateReplySlots(t *testing.T) {
 		t.Fatal("expired sequence not reusable")
 	}
 }
+
 func TestCastMatchRejectsOtherRequestAndUnsolicitedOutcome(t *testing.T) {
 	first, second := castMatch(133, 1), castMatch(133, 2)
 	for _, typ := range []string{"cast_done", "cast_failed"} {

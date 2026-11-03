@@ -34,8 +34,10 @@ func syntheticFight(t *testing.T) types.Fight {
 		{t: t0.Add(6400 * time.Millisecond), kind: "damage", src: ref(b, "Kobold Tunneler"), dst: ref(me, ""), amount: 46, outcome: "crushing"},
 		{t: t0.Add(10 * time.Second), kind: "death", dst: ref(me, "")},
 	}
-	sum := &types.FightSummary{Outcome: "died", Seconds: 10, DamageDealt: 30, DamageTaken: 46,
-		Enemies: []types.UnitRef{ref(a, "Kobold Tunneler"), ref(b, "Kobold Tunneler")}}
+	sum := &types.FightSummary{
+		Outcome: "died", Seconds: 10, DamageDealt: 30, DamageTaken: 46,
+		Enemies: []types.UnitRef{ref(a, "Kobold Tunneler"), ref(b, "Kobold Tunneler")},
+	}
 	return buildFight(14, sum, t0, t0.Add(10*time.Second), frames, entries)
 }
 

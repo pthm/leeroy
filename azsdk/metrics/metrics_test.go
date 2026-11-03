@@ -28,16 +28,20 @@ func TestCurve(t *testing.T) {
 }
 
 func dmg(src, dst string, mob types.GUID, amount uint32) Event {
-	return Event{Type: "damage", Data: types.Damage{Src: types.UnitRef{Name: src, Me: true},
-		Dst: types.UnitRef{Name: dst, GUID: mob}, Amount: amount}}
+	return Event{Type: "damage", Data: types.Damage{
+		Src: types.UnitRef{Name: src, Me: true},
+		Dst: types.UnitRef{Name: dst, GUID: mob}, Amount: amount,
+	}}
 }
 
 func TestTeam(t *testing.T) {
 	xp := func(at int64, mob types.GUID) Event {
 		return Event{T: at, Type: "xp", Data: types.XPGain{Amount: 50, Source: "kill", Victim: &types.UnitRef{GUID: mob}}}
 	}
-	heal := Event{T: 1000, Type: "heal", Data: types.Damage{Src: types.UnitRef{Name: "Healer", Me: true},
-		Dst: types.UnitRef{Name: "Tank", Player: true}, Amount: 80}}
+	heal := Event{T: 1000, Type: "heal", Data: types.Damage{
+		Src: types.UnitRef{Name: "Healer", Me: true},
+		Dst: types.UnitRef{Name: "Tank", Player: true}, Amount: 80,
+	}}
 	tankHit := dmg("Tank", "Wolf", 1, 30)
 	tankHit.T = 5000
 	solo := dmg("Solo", "Boar", 2, 30)

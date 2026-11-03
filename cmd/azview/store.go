@@ -5,8 +5,6 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/pthm/leeroy/gamelog"
-	"github.com/pthm/leeroy/runfiles"
 	"math"
 	"os"
 	"path/filepath"
@@ -15,6 +13,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pthm/leeroy/gamelog"
+	"github.com/pthm/leeroy/runfiles"
 
 	"github.com/pthm/leeroy/world"
 )
@@ -49,14 +50,18 @@ func sampleOf(e Ev) Sample {
 	pw, pwmax := Res(e, "power")
 	pr, _ := e["power"].(map[string]any)
 	pt, _ := powerTypes.LoadOrStore(S(pr, "type"), S(pr, "type"))
-	s := Sample{T: N(e, "t"), X: N(e, "x"), Y: N(e, "y"), M: i("map"), Grp: i("group"),
+	s := Sample{
+		T: N(e, "t"), X: N(e, "x"), Y: N(e, "y"), M: i("map"), Grp: i("group"),
 		HP: int(hp), HPMax: int(hpmax), PW: int(pw), PWMax: int(pwmax), PT: pt.(string), Lvl: i("level"), XP: i("xp"), Money: i("money"),
-		Alive: Truthy(e["alive"]), Ghost: Truthy(e["ghost"]), Combat: Truthy(e["in_combat"])}
+		Alive: Truthy(e["alive"]), Ghost: Truthy(e["ghost"]), Combat: Truthy(e["in_combat"]),
+	}
 	if pe := Unit(e, "pet"); pe != nil {
 		name, _ := petNames.LoadOrStore(S(pe, "name"), S(pe, "name"))
 		php, phpmax := Res(pe, "health")
-		s.Pet = &PetSample{Name: name.(string), X: N(pe, "x"), Y: N(pe, "y"), HP: int(php), HPMax: int(phpmax),
-			Lvl: int(N(pe, "level")), Alive: Truthy(pe["alive"])}
+		s.Pet = &PetSample{
+			Name: name.(string), X: N(pe, "x"), Y: N(pe, "y"), HP: int(php), HPMax: int(phpmax),
+			Lvl: int(N(pe, "level")), Alive: Truthy(pe["alive"]),
+		}
 	}
 	return s
 }
@@ -148,8 +153,10 @@ type liveMsg struct {
 }
 
 func NewStore() *Store {
-	return &Store{byName: map[string]*Player{}, byEv: map[string][]Ev{}, rows: map[string][]statRow{}, lastGrp: map[string]string{}, npcSaid: map[string]Ev{},
-		items: map[int]world.ItemName{}, names: map[int]string{}, radii: map[int]float64{}, detect: map[int]float64{}, zones: map[int]string{}, agents: map[string]any{}, subs: map[chan liveMsg]bool{}, trs: map[string]*Transport{}}
+	return &Store{
+		byName: map[string]*Player{}, byEv: map[string][]Ev{}, rows: map[string][]statRow{}, lastGrp: map[string]string{}, npcSaid: map[string]Ev{},
+		items: map[int]world.ItemName{}, names: map[int]string{}, radii: map[int]float64{}, detect: map[int]float64{}, zones: map[int]string{}, agents: map[string]any{}, subs: map[chan liveMsg]bool{}, trs: map[string]*Transport{},
+	}
 }
 
 // insert puts v into s, sorted by t; appending is the usual case.
@@ -182,10 +189,12 @@ var (
 	markKinds = map[string]bool{"death": true, "achievement": true, "level_up": true, "quest_turned_in": true}
 	// keptKinds: the events the store files (the rest of a game log, the agent's results, auras, casts starting...,
 	// it has no use for)
-	keptKinds = map[string]bool{"state": true, "units": true, "transports": true, "chat": true, "group": true, "login": true,
+	keptKinds = map[string]bool{
+		"state": true, "units": true, "transports": true, "chat": true, "group": true, "login": true,
 		"logout": true, "say": true, "score": true, "damage": true, "heal": true, "kill": true, "death": true, "level_up": true,
 		"xp": true, "item_received": true, "money": true, "quest_turned_in": true, "achievement": true, "cast_done": true,
-		"area_changed": true, "resurrected": true, "api": true, "script_error": true}
+		"area_changed": true, "resurrected": true, "api": true, "script_error": true,
+	}
 	feedKinds = func() map[string]bool {
 		m := map[string]bool{}
 		for _, c := range feedCats {
@@ -694,8 +703,10 @@ func (s *Store) broadcast(evs []Ev) {
 			msgs = append(msgs, s.liveJSON("s", map[string]any{"char": p.Name, "class": p.Cls, "sample": s.mapSample(p, sampleOf(e))}))
 		case kind == "transports":
 			for _, r := range transports(e) {
-				msgs = append(msgs, s.liveJSON("tr", map[string]any{"guid": S(r, "guid"), "name": S(r, "name"), "entry": N(r, "entry"),
-					"sample": TrSample{N(e, "t"), N(r, "map"), N(r, "x"), N(r, "y"), N(r, "o")}}))
+				msgs = append(msgs, s.liveJSON("tr", map[string]any{
+					"guid": S(r, "guid"), "name": S(r, "name"), "entry": N(r, "entry"),
+					"sample": TrSample{N(e, "t"), N(r, "map"), N(r, "x"), N(r, "y"), N(r, "o")},
+				}))
 			}
 		case kind == "units" && p != nil:
 			msgs = append(msgs, s.liveJSON("u", map[string]any{"char": p.Name, "units": s.mapUnits(unitsOf(e))}))

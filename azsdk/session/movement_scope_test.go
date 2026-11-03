@@ -1,9 +1,10 @@
 package session
 
 import (
-	"github.com/pthm/leeroy/azsdk/script"
 	"testing"
 	"time"
+
+	"github.com/pthm/leeroy/azsdk/script"
 )
 
 // Real scope wrappers and controller, with deterministic game action stubs.
@@ -25,12 +26,14 @@ func leaseEngine(t *testing.T) (*script.Engine, *movementFixture) {
 	t.Cleanup(e.Close)
 	return e, f
 }
+
 func evalMovement(t *testing.T, e *script.Engine, code string) {
 	t.Helper()
 	if _, err := e.Eval(code); err != nil {
 		t.Fatalf("%v; tasks: %+v", err, e.TasksHeld())
 	}
 }
+
 func TestMovementLuaScopePreemptionAndCallbackFailure(t *testing.T) {
 	e, f := leaseEngine(t)
 	defer func() {
@@ -85,6 +88,7 @@ func TestMovementLuaScopePreemptionAndCallbackFailure(t *testing.T) {
 		t.Fatalf("caught exception leaked ownership: %v", o)
 	}
 }
+
 func TestMovementHelperLeaseSpansWaypoints(t *testing.T) {
 	e, f := leaseEngine(t)
 	evalMovement(t, e, `
@@ -106,6 +110,7 @@ func TestMovementHelperLeaseSpansWaypoints(t *testing.T) {
 	evalMovement(t, e, `assert(travel_result.ok and #moves==2)`)
 	grantedLease(t, f, queued)
 }
+
 func TestMovementLuaLeaseExpiresWhileCallbackSleeps(t *testing.T) {
 	e, f := leaseEngine(t)
 	evalMovement(t, e, `
@@ -123,6 +128,7 @@ func TestMovementLuaLeaseExpiresWhileCallbackSleeps(t *testing.T) {
 	e.CallTick()
 	evalMovement(t, e, `assert(not expired.ok and expired.error.code=="lease_timeout")`)
 }
+
 func TestActApproachAwaitsFacingAndKeepsPendingWalk(t *testing.T) {
 	actWorld(t, actBase+`
   reads=0
@@ -131,6 +137,7 @@ func TestActApproachAwaitsFacingAndKeepsPendingWalk(t *testing.T) {
   move.face=function() return {ok=false,error={code="failed",message="turn failed"}} end
  `, `r=act.approach{unit="123"};assert(not r.ok and r.error.code=="failed" and #moves==1)`)
 }
+
 func TestActFollowRequiresBoundAndBoundsAbsence(t *testing.T) {
 	actWorld(t, actBase+`
   units.players=function() return {} end

@@ -141,8 +141,10 @@ func (b *Bot) losSpot(ctx context.Context, m uint32, from, target navigation.Poi
 		return good[i].walk < good[j].walk
 	})
 	c := good[0]
-	return types.LOSSpot{X: round1(c.p.X), Y: round1(c.p.Y), Z: round1(c.p.Z), Walk: math.Round(c.walk*10) / 10,
-		Distance: math.Round(dist3(c.p, target)*10) / 10, View: math.Round(c.view*100) / 100}, ""
+	return types.LOSSpot{
+		X: round1(c.p.X), Y: round1(c.p.Y), Z: round1(c.p.Z), Walk: math.Round(c.walk*10) / 10,
+		Distance: math.Round(dist3(c.p, target)*10) / 10, View: math.Round(c.view*100) / 100,
+	}, ""
 }
 
 func (b *Bot) setupLOSSpot() {

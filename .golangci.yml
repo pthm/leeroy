@@ -1,0 +1,75 @@
+# golangci-lint, for both modules (azsdk/ finds this file too): `just lint` checks, `just fmt` formats (gofumpt).
+# After melange's (github.com/pthm/melange).
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gocritic
+    - misspell
+    - prealloc
+    - unconvert
+    - unparam
+    - revive
+  settings:
+    errcheck:
+      # Calls whose errors this code ignores on purpose:
+      exclude-functions:
+        - encoding/binary.Write # always into a bytes.Buffer, which can't fail
+        - encoding/binary.Read # packet parsing from a bytes.Reader: a short packet leaves zero values, by design
+        - (*bytes.Reader).ReadByte
+        - (*bytes.Reader).Read
+        - (*bytes.Reader).Seek
+        - fmt.Fprint # messages to stdout or stderr
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*os.File).Close # files read, or written and synced elsewhere
+        - (io.ReadCloser).Close # response bodies
+    revive:
+      rules:
+        # Doc comments on exported symbols, and a package comment.
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+        - name: package-comments
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        - hugeParam
+        - rangeValCopy
+    misspell: {} # no locale: the repo is written in British English (colour, behaviour); real typos only
+    prealloc:
+      simple: true
+      # for-loops: true (melange's) crashes prealloc v1.1.0 on azsdk/session (ast.Walk: unexpected node type <nil>)
+  exclusions:
+    paths:
+      - internal/detour/ # azsdk's vendored copy of detour-go: kept as upstream wrote it
+    rules:
+      # Doc comments are required on what other modules can import, not on internal/, commands or tests.
+      - path: (internal/|cmd/|_test\.go)
+        linters:
+          - revive
+      - path: _test\.go
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - gofumpt
+  settings:
+    gofumpt:
+      extra:
+        group-params: true
+  exclusions:
+    paths:
+      - internal/detour/

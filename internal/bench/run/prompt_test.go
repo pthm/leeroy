@@ -13,15 +13,19 @@ func TestPrompt(t *testing.T) {
 		"protwarrior": {Title: "Warrior - Protection", Role: "Tank", Optimise: "holding enemies' attention", Stats: "Stamina"},
 		"holy":        {Title: "Priest - Holy", Role: "Healer", Optimise: "healing done", Stats: "Intellect"},
 	}}
-	s := &config.Scenario{Conditions: config.Conditions{Goal: "score:100000", Minutes: 90, Notice: "The server was updated."},
-		Agents: []config.Agent{{Char: "Garrick", Race: "human", Spec: "protwarrior"}, {Char: "Paloma", Race: "human", Spec: "holy"}}}
+	s := &config.Scenario{
+		Conditions: config.Conditions{Goal: "score:100000", Minutes: 90, Notice: "The server was updated."},
+		Agents:     []config.Agent{{Char: "Garrick", Race: "human", Spec: "protwarrior"}, {Char: "Paloma", Race: "human", Spec: "holy"}},
+	}
 	text, err := prompt(s, b, s.Agents[0], "/repo")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"You are Garrick, a Human Warrior - Protection. Your role is Tank: holding enemies' attention.",
+	for _, want := range []string{
+		"You are Garrick, a Human Warrior - Protection. Your role is Tank: holding enemies' attention.",
 		"GOAL: progress as much as you can in 90 minutes", "best\nrate over any 15-minute stretch", "The run lasts 90 minutes",
-		"This run:\n- Paloma: Priest - Holy (Healer)\nHow you deal", "The server was updated.", "START WITH AGENTS.md"} {
+		"This run:\n- Paloma: Priest - Holy (Healer)\nHow you deal", "The server was updated.", "START WITH AGENTS.md",
+	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("missing %q in:\n%s", want, text)
 		}

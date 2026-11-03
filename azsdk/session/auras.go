@@ -13,8 +13,10 @@ import (
 )
 
 func (b *Bot) aura(a client.AuraInfo) types.Aura {
-	t := types.Aura{Spell: a.Spell, Name: spellName(a.Spell), Harmful: a.Harmful(), Stacks: max(a.Stacks, 1),
-		Mine: a.Caster != 0 && a.Caster == b.world.CharGUID()}
+	t := types.Aura{
+		Spell: a.Spell, Name: spellName(a.Spell), Harmful: a.Harmful(), Stacks: max(a.Stacks, 1),
+		Mine: a.Caster != 0 && a.Caster == b.world.CharGUID(),
+	}
 	if sp := spellInfo(a.Spell); sp != nil {
 		t.Dispel = dispelTypes[sp.dispel]
 	}
@@ -37,15 +39,19 @@ func hiddenAura(spell uint32) bool {
 }
 
 // controlAuras: SPELL_AURA_* that take control away (SpellAuraDefines.h), named for a spell with no mechanic
-var controlAuras = map[uint32]string{2: "charm", 5: "confuse", 6: "charm", 7: "fear", 12: "stun", 25: "pacify", 26: "root",
-	27: "silence", 60: "silence", 177: "charm"}
+var controlAuras = map[uint32]string{
+	2: "charm", 5: "confuse", 6: "charm", 7: "fear", 12: "stun", 25: "pacify", 26: "root",
+	27: "silence", 60: "silence", 177: "charm",
+}
 
 // mechanicNames: enum Mechanics (SharedDefines.h)
-var mechanicNames = map[uint32]string{1: "charm", 2: "disoriented", 3: "disarm", 4: "distract", 5: "fear", 6: "grip",
+var mechanicNames = map[uint32]string{
+	1: "charm", 2: "disoriented", 3: "disarm", 4: "distract", 5: "fear", 6: "grip",
 	7: "root", 8: "slow_attack", 9: "silence", 10: "sleep", 11: "snare", 12: "stun", 13: "freeze", 14: "knockout",
 	15: "bleed", 16: "bandage", 17: "polymorph", 18: "banish", 19: "shield", 20: "shackle", 21: "mount", 22: "infected",
 	23: "turn", 24: "horror", 25: "invulnerability", 26: "interrupt", 27: "daze", 28: "discovery", 29: "immune_shield",
-	30: "sap", 31: "enraged", 32: "wounded", 36: "taunted"}
+	30: "sap", 31: "enraged", 32: "wounded", 36: "taunted",
+}
 
 // controls: a unit's auras that take its control away, with the mechanic of the effect that does it (else the spell's)
 func controls(auras []client.AuraInfo) []types.Control {

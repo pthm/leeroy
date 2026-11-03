@@ -129,10 +129,15 @@ type Spec struct {
 	Stats    string `yaml:"stats"`
 }
 
-var Races = map[string]int{"human": 1, "orc": 2, "dwarf": 3, "night elf": 4, "undead": 5, "tauren": 6, "gnome": 7,
-	"troll": 8, "blood elf": 10, "draenei": 11}
-var Classes = map[string]int{"warrior": 1, "paladin": 2, "hunter": 3, "rogue": 4, "priest": 5, "death knight": 6,
-	"shaman": 7, "mage": 8, "warlock": 9, "druid": 11}
+var Races = map[string]int{
+	"human": 1, "orc": 2, "dwarf": 3, "night elf": 4, "undead": 5, "tauren": 6, "gnome": 7,
+	"troll": 8, "blood elf": 10, "draenei": 11,
+}
+
+var Classes = map[string]int{
+	"warrior": 1, "paladin": 2, "hunter": 3, "rogue": 4, "priest": 5, "death knight": 6,
+	"shaman": 7, "mage": 8, "warlock": 9, "druid": 11,
+}
 
 // RaceName and ClassName: the display name of an id ("Night Elf").
 func RaceName(id int) string  { return title(key(Races, id)) }

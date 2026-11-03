@@ -36,8 +36,10 @@ const party = `{"char":"A","t":1,"type":"login","data":{"class":"warrior"}}
 func TestRosterPanel(t *testing.T) {
 	s := storeOf(t, party)
 	got := render(t, s, "roster", Query{T: 1200, ByGroup: true, Sort: "score", Sel: "A"})
-	for _, want := range []string{"Group of 2", "50 yd apart", "1,234 / 2,000", "Kobold &lt;Miner&gt;", "40%", "“pulling now”", `class="pc combat sel"`,
-		`class="pc ghost"`, "Solo", "score <b>2.5</b>/h", `1<span class="g">g</span> 2<span class="s">s</span> 3<span class="c">c</span>`} {
+	for _, want := range []string{
+		"Group of 2", "50 yd apart", "1,234 / 2,000", "Kobold &lt;Miner&gt;", "40%", "“pulling now”", `class="pc combat sel"`,
+		`class="pc ghost"`, "Solo", "score <b>2.5</b>/h", `1<span class="g">g</span> 2<span class="s">s</span> 3<span class="c">c</span>`,
+	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("roster lacks %q", want)
 		}
@@ -165,7 +167,7 @@ func TestStripResolution(t *testing.T) {
 	s := storeOf(t, party)
 	s.Start = 0
 	narrow, wide, none := s.stripData(0, 3600000, nil, 400), s.stripData(0, 3600000, nil, 900), s.stripData(0, 3600000, nil, 0)
-	if !(narrow.NB < wide.NB) || wide.NB > 96 || narrow.NB < 4 || none.NB == 0 || len(wide.Rows) != 3 || len(wide.Rows[0].Cells) != wide.NB {
+	if (narrow.NB >= wide.NB) || wide.NB > 96 || narrow.NB < 4 || none.NB == 0 || len(wide.Rows) != 3 || len(wide.Rows[0].Cells) != wide.NB {
 		t.Fatalf("cells: narrow %d, wide %d, unknown width %d; rows %d", narrow.NB, wide.NB, none.NB, len(wide.Rows))
 	}
 }

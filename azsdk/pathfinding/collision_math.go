@@ -70,6 +70,7 @@ func closestTriangle(p, a, b, c Vector3) Vector3 {
 	}
 	return a.Add(ab.Mul(vb / den)).Add(ac.Mul(vc / den))
 }
+
 func segmentDistance(p, q, a, b Vector3) (Vector3, Vector3) {
 	d, e, r := q.Sub(p), b.Sub(a), p.Sub(a)
 	aa, ee := d.Dot(d), e.Dot(e)
@@ -102,6 +103,7 @@ func segmentDistance(p, q, a, b Vector3) (Vector3, Vector3) {
 	}
 	return p.Add(d.Mul(s)), a.Add(e.Mul(t))
 }
+
 func capsuleTriangleDistance(p, q, a, b, c Vector3) (float32, Vector3) {
 	if _, n, hit := rayTriangle(p, q.Sub(p), a, b, c); hit {
 		return 0, n

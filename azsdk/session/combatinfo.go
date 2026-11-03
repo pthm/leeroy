@@ -31,13 +31,21 @@ const (
 	smsgThreatClear   = 0x485
 )
 
-var auraStateNames = map[uint32]string{1: "defense", 2: "health_below_20", 3: "berserking", 4: "frozen", 5: "judgement",
+var auraStateNames = map[uint32]string{
+	1: "defense", 2: "health_below_20", 3: "berserking", 4: "frozen", 5: "judgement",
 	7: "hunter_parry", 8: "banished", 10: "victory_rush", 12: "faerie_fire", 13: "health_below_35", 14: "conflagrate",
-	15: "swiftmend", 16: "deadly_poison", 17: "enrage", 18: "bleeding", 23: "health_above_75"}
-var creatureTypes = map[uint32]string{1: "beast", 2: "dragonkin", 3: "demon", 4: "elemental", 5: "giant", 6: "undead",
-	7: "humanoid", 8: "critter", 9: "mechanical", 10: "not_specified", 11: "totem", 12: "non_combat_pet", 13: "gas_cloud"}
-var creatureRanks = map[uint32]string{0: "normal", 1: "elite", 2: "rare_elite", 3: "boss", 4: "rare"}
-var dispelTypes = map[uint32]string{1: "magic", 2: "curse", 3: "disease", 4: "poison"}
+	15: "swiftmend", 16: "deadly_poison", 17: "enrage", 18: "bleeding", 23: "health_above_75",
+}
+
+var creatureTypes = map[uint32]string{
+	1: "beast", 2: "dragonkin", 3: "demon", 4: "elemental", 5: "giant", 6: "undead",
+	7: "humanoid", 8: "critter", 9: "mechanical", 10: "not_specified", 11: "totem", 12: "non_combat_pet", 13: "gas_cloud",
+}
+
+var (
+	creatureRanks = map[uint32]string{0: "normal", 1: "elite", 2: "rare_elite", 3: "boss", 4: "rare"}
+	dispelTypes   = map[uint32]string{1: "magic", 2: "curse", 3: "disease", 4: "poison"}
+)
 
 type unitCast struct {
 	spell uint32

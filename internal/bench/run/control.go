@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/pthm/leeroy/azsdk/types"
-	"github.com/pthm/leeroy/internal/bench/diagnostics"
-	"github.com/pthm/leeroy/runfiles"
 	"net"
 	"net/http"
 	"os"
@@ -17,6 +14,10 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/pthm/leeroy/azsdk/types"
+	"github.com/pthm/leeroy/internal/bench/diagnostics"
+	"github.com/pthm/leeroy/runfiles"
 )
 
 // serveControl serves the run's control API on a free localhost port, written to control.json. It returns a stop
@@ -70,8 +71,10 @@ func (r *Runner) status() map[string]any {
 	var ps []map[string]any
 	for _, p := range r.players {
 		p.mu.Lock()
-		st := map[string]any{"agent": p.a.Name, "char": p.a.Char, "runtime": p.a.Runtime, "port": p.port, "state": p.state,
-			"agent_running": alive(p.agent), "session_running": alive(p.session)}
+		st := map[string]any{
+			"agent": p.a.Name, "char": p.a.Char, "runtime": p.a.Runtime, "port": p.port, "state": p.state,
+			"agent_running": alive(p.agent), "session_running": alive(p.session),
+		}
 		p.mu.Unlock()
 		diag := diagnostics.Read(p.a.Name, diagnostics.Paths(r.dir, p.a.Name)...)
 		st["active_failures"] = diag.TopActive(time.Now().UnixMilli(), 3)
@@ -83,8 +86,10 @@ func (r *Runner) status() map[string]any {
 		}
 		ps = append(ps, st)
 	}
-	return map[string]any{"run": r.dir, "state": "running", "scenario": r.s.Name, "goal": r.s.Goal, "minutes": r.s.Minutes,
-		"minutes_left": int(r.minutesLeft() + 0.5), "players": ps}
+	return map[string]any{
+		"run": r.dir, "state": "running", "scenario": r.s.Name, "goal": r.s.Goal, "minutes": r.s.Minutes,
+		"minutes_left": int(r.minutesLeft() + 0.5), "players": ps,
+	}
 }
 
 // restart brings one agent back mid-run: its session restarts (character calmed, logged out and in again with the

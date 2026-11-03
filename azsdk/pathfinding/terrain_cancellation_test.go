@@ -14,9 +14,11 @@ import (
 func flatTerrainFixture() []byte {
 	b := make([]byte, 80)
 	le := binary.LittleEndian
-	for offset, v := range map[int]uint32{0: mapMagicUint, 4: mapVersion, 12: 56, 16: 8, 20: 40, 24: 16, 28: 64, 32: 16,
+	for offset, v := range map[int]uint32{
+		0: mapMagicUint, 4: mapVersion, 12: 56, 16: 8, 20: 40, 24: 16, 28: 64, 32: 16,
 		40: mapHeightMagic, 44: mapHeightNoHeight, 48: math.Float32bits(42), 52: math.Float32bits(42),
-		56: mapAreaMagic, 64: mapLiquidMagic, 76: math.Float32bits(50)} {
+		56: mapAreaMagic, 64: mapLiquidMagic, 76: math.Float32bits(50),
+	} {
 		le.PutUint32(b[offset:], v)
 	}
 	le.PutUint16(b[60:], 1)
@@ -24,9 +26,10 @@ func flatTerrainFixture() []byte {
 	b[68], b[69] = 3, 1
 	return b
 }
+
 func TestTerrainCancelledLockDoesNotPoisonCache(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "0003232.map"), flatTerrainFixture(), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "0003232.map"), flatTerrainFixture(), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	tm := NewTerrainManager(dir)
@@ -51,6 +54,7 @@ func TestTerrainCancelledLockDoesNotPoisonCache(t *testing.T) {
 		t.Fatal("combined sample changed terrain semantics")
 	}
 }
+
 func TestTerrainReadBoundsAndCancelledDecode(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "oversized.map")
 	f, err := os.Create(path)
@@ -73,6 +77,7 @@ func TestTerrainReadBoundsAndCancelledDecode(t *testing.T) {
 		t.Fatalf("decode ignored cancellation: %v", err)
 	}
 }
+
 func TestTerrainContextSampleMatchesRealData(t *testing.T) {
 	dir := requireACData(t)
 	tm := NewTerrainManager(filepath.Join(dir, "maps"))

@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	acct "github.com/pthm/leeroy/internal/bench/account"
 	"io"
 	"os"
 	"os/exec"
@@ -19,6 +18,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	acct "github.com/pthm/leeroy/internal/bench/account"
 
 	"github.com/pthm/leeroy/azsdk/types"
 	"github.com/pthm/leeroy/internal/bench/config"
@@ -128,9 +129,11 @@ func (p *player) daemon(extra ...string) (*exec.Cmd, error) {
 		log.Close()
 		return nil, err
 	}
-	args := []string{"-char", p.a.Char, "-account", p.account(), "-listen", fmt.Sprintf("127.0.0.1:%d", p.port),
+	args := []string{
+		"-char", p.a.Char, "-account", p.account(), "-listen", fmt.Sprintf("127.0.0.1:%d", p.port),
 		"-agent", p.a.Name,
-		"-data", filepath.Join(p.r.repo, "data"), "-workspace", p.ws, "-race", fmt.Sprint(p.race), "-class", fmt.Sprint(p.class)}
+		"-data", filepath.Join(p.r.repo, "data"), "-workspace", p.ws, "-race", fmt.Sprint(p.race), "-class", fmt.Sprint(p.class),
+	}
 	if len(extra) == 0 {
 		args = append(args, "-events", p.r.f().Events(p.a.Char),
 			"-diagnostics", p.r.f().Diagnostics(p.a.Name))
@@ -249,8 +252,10 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 	switch a.Runtime {
 	case "codex":
 		// sandboxed to its workspace (writes) with network on (the session API is on localhost)
-		common := []string{"--json", "--skip-git-repo-check", "-c", "sandbox_workspace_write.network_access=true",
-			"-c", `approval_policy="never"`, "-c", "shell_environment_policy.inherit=all"}
+		common := []string{
+			"--json", "--skip-git-repo-check", "-c", "sandbox_workspace_write.network_access=true",
+			"-c", `approval_policy="never"`, "-c", "shell_environment_policy.inherit=all",
+		}
 		if a.Effort != "" {
 			common = append(common, "-c", fmt.Sprintf("model_reasoning_effort=%q", a.Effort))
 		}
@@ -322,8 +327,10 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 
 // agentCommands: the shell commands an agent may run (suite/agent/AGENTS.md lists them): its three tools and
 // read-only file and text commands, so output can be piped through head or grep
-var agentCommands = []string{"wow", "azworld", "standings", "sleep", "tail", "cat", "ls", "grep", "mkdir", "head", "wc",
-	"sort", "uniq", "cut", "rg"}
+var agentCommands = []string{
+	"wow", "azworld", "standings", "sleep", "tail", "cat", "ls", "grep", "mkdir", "head", "wc",
+	"sort", "uniq", "cut", "rg",
+}
 
 // opencodeConfig is the same sandbox as Claude's allowed tools: write only in the workspace, read the SDK and server
 // source, and run only the agent's tools and a few read-only commands. "ask" can't be answered in opencode run, so
@@ -342,7 +349,8 @@ func opencodeConfig(repo, ws string) string {
 	rel, _ := filepath.Rel(repo, ws)
 	b, _ := json.Marshal(map[string]any{"autoupdate": false, "share": "disabled", "snapshot": false, "permission": map[string]any{
 		"bash": bash, "external_directory": ext, "edit": map[string]string{"*": "deny", rel + "/**": "allow"},
-		"webfetch": "deny", "websearch": "deny", "codesearch": "deny", "doom_loop": "allow"}})
+		"webfetch": "deny", "websearch": "deny", "codesearch": "deny", "doom_loop": "allow",
+	}})
 	return string(b)
 }
 
@@ -429,7 +437,8 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 		prompt, _ := os.ReadFile(filepath.Join(p.dir, "prompt.md"))
 		if err := trajectory.Write(filepath.Join(p.dir, "transcript.jsonl"), filepath.Join(p.dir, "trajectory.json"), trajectory.Info{
 			Agent: p.a.Name, Char: p.a.Char, Runtime: p.a.Runtime, Version: p.cliVersionNow(), Model: p.a.Model, Provider: p.a.Provider, Effort: p.a.Effort,
-			Prompt: string(prompt), Usage: filepath.Join(p.dir, "usage.json")}); err != nil {
+			Prompt: string(prompt), Usage: filepath.Join(p.dir, "usage.json"),
+		}); err != nil {
 			p.logf("trajectory: %v", err)
 		}
 		code := cmd.ProcessState.ExitCode()
@@ -588,8 +597,10 @@ func (p *player) meta(spec config.Spec) {
 	p.version = version
 	p.mu.Unlock()
 	p.updateMeta(func(m map[string]any) { // keeps sdk_rev (changes)
-		for k, v := range map[string]any{"agent": p.a.Name, "char": p.a.Char, "runtime": p.a.Runtime, "version": version,
-			"model": model, "effort": effort, "provider": p.a.Provider, "spec": spec.Title, "role": spec.Role, "goal": p.r.s.Goal, "port": p.port} {
+		for k, v := range map[string]any{
+			"agent": p.a.Name, "char": p.a.Char, "runtime": p.a.Runtime, "version": version,
+			"model": model, "effort": effort, "provider": p.a.Provider, "spec": spec.Title, "role": spec.Role, "goal": p.r.s.Goal, "port": p.port,
+		} {
 			m[k] = v
 		}
 	})

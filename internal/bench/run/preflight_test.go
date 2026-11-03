@@ -3,10 +3,11 @@ package run
 import (
 	"context"
 	"fmt"
-	"github.com/pthm/leeroy/azsdk/navigation"
-	"github.com/pthm/leeroy/internal/bench/config"
 	"strings"
 	"testing"
+
+	"github.com/pthm/leeroy/azsdk/navigation"
+	"github.com/pthm/leeroy/internal/bench/config"
 )
 
 func TestScenarioPreflightQuestCaveAndHogger(t *testing.T) {
@@ -50,6 +51,7 @@ func TestScenarioPreflightQuestCaveAndHogger(t *testing.T) {
 		})
 	}
 }
+
 func TestPreflightUnavailableDoesNotCertifyFloor(t *testing.T) {
 	src := preflightSource{query: func(context.Context, string, ...any) ([]map[string]string, error) { return nil, fmt.Errorf("offline") }, path: func(context.Context, uint32, navigation.Point3D, navigation.Point3D) (*navigation.PathResult, error) {
 		return nil, context.DeadlineExceeded

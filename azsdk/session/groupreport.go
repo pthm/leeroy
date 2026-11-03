@@ -63,8 +63,10 @@ func (b *Bot) sampleGroup() {
 		}
 		g.dead[name] = !p.Alive
 	}
-	add(b.config.CharacterName, metrics.Pos{X: float64(x), Y: float64(y), Map: float64(m),
-		Alive: b.IsAlive() && !b.IsGhost(), Combat: b.InCombat()}, true)
+	add(b.config.CharacterName, metrics.Pos{
+		X: float64(x), Y: float64(y), Map: float64(m),
+		Alive: b.IsAlive() && !b.IsGhost(), Combat: b.InCombat(),
+	}, true)
 	for _, mb := range info.Members {
 		if mb.Position == nil {
 			continue
@@ -87,8 +89,10 @@ func (b *Bot) sampleGroup() {
 }
 
 func (b *Bot) setupGroupReport() {
-	g := &groupLog{pos: map[string][]metrics.Pos{}, sight: map[string][]bool{}, kills: map[string][]int64{},
-		deaths: map[string][]int64{}, dead: map[string]bool{}}
+	g := &groupLog{
+		pos: map[string][]metrics.Pos{}, sight: map[string][]bool{}, kills: map[string][]int64{},
+		deaths: map[string][]int64{}, dead: map[string]bool{},
+	}
 	b.group = g
 	b.lua.Bus.Listen(func(ev script.Event) {
 		var who string
@@ -153,10 +157,12 @@ func (b *Bot) setupGroupReport() {
 				if len(sight) > 0 {
 					in = math.Round(100 * float64(seen) / float64(len(sight)))
 				}
-				r.Members = append(r.Members, types.GroupMemberReport{Name: n, You: n == b.config.CharacterName,
+				r.Members = append(r.Members, types.GroupMemberReport{
+					Name: n, You: n == b.config.CharacterName,
 					Seconds: u.Seconds, FightingPct: u.FightingPct, TravellingPct: u.TravellingPct, IdlePct: u.IdlePct,
 					DeadPct: u.DeadPct, WithGroupPct: u.WithGroupPct, InSightPct: in, Kills: count(g.kills[n]),
-					Deaths: count(g.deaths[n])})
+					Deaths: count(g.deaths[n]),
+				})
 			}
 			return r
 		})

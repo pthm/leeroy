@@ -108,7 +108,7 @@ func kitIcons(k *run.Kit, dir string) {
 }
 
 // castIcons: spell name -> icon, for the cast counts.
-func castIcons(casts map[string]int, spells map[string]int, dir string) map[string]string {
+func castIcons(casts, spells map[string]int, dir string) map[string]string {
 	out := map[string]string{}
 	for name := range casts {
 		if n := useIcon(spellIcons()[spells[name]], dir); n != "" {

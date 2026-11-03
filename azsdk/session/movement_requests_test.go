@@ -70,9 +70,11 @@ func newMovementFixture(t *testing.T, block bool) *movementFixture {
 	})
 	return f
 }
+
 func (f *movementFixture) start(task int, x float64) int {
 	return f.control.start(task, "test", "c1", types.Position{X: x})["id"].(int)
 }
+
 func waitMovement(t *testing.T, predicate func() bool) {
 	t.Helper()
 	for until := time.Now().Add(time.Second); time.Now().Before(until); time.Sleep(time.Millisecond) {
@@ -82,6 +84,7 @@ func waitMovement(t *testing.T, predicate func() bool) {
 	}
 	t.Fatal("movement condition did not become true")
 }
+
 func (f *movementFixture) walking(t *testing.T, id int) {
 	t.Helper()
 	waitMovement(t, func() bool {
@@ -89,6 +92,7 @@ func (f *movementFixture) walking(t *testing.T, id int) {
 		return o != nil && o.RequestID == id && o.Phase == "walking"
 	})
 }
+
 func (f *movementFixture) resultCode(t *testing.T, id int, want string) {
 	t.Helper()
 	r := f.control.reqs.Result(id)
@@ -99,6 +103,7 @@ func (f *movementFixture) resultCode(t *testing.T, id int, want string) {
 		t.Fatalf("code = %v, want %s", got, want)
 	}
 }
+
 func TestMovementFIFOAndCancellation(t *testing.T) {
 	f := newMovementFixture(t, false)
 	a := f.start(1, 100)
@@ -131,6 +136,7 @@ func TestMovementFIFOAndCancellation(t *testing.T) {
 		t.Fatalf("not idle: %v %v", o, q)
 	}
 }
+
 func TestMovementQueueDeadlineAndOwnerReplacement(t *testing.T) {
 	f := newMovementFixture(t, false)
 	a := f.start(1, 100)
@@ -148,6 +154,7 @@ func TestMovementQueueDeadlineAndOwnerReplacement(t *testing.T) {
 		t.Fatalf("busy result lacks owner: %v", r)
 	}
 }
+
 func TestMovementCancelledPlannerCannotPublish(t *testing.T) {
 	f := newMovementFixture(t, true)
 	a := f.start(1, 100)
@@ -163,6 +170,7 @@ func TestMovementCancelledPlannerCannotPublish(t *testing.T) {
 		t.Fatalf("stale plan published or stopped newer movement: %v moving=%v", f.published, f.moving)
 	}
 }
+
 func TestMovementPlanningDeadlineAndSessionClose(t *testing.T) {
 	f := newMovementFixture(t, true)
 	a := f.start(1, 100)
@@ -185,6 +193,7 @@ func TestMovementPlanningDeadlineAndSessionClose(t *testing.T) {
 		t.Fatalf("cancelled path published: %v", f.published)
 	}
 }
+
 func TestMovementImmediateEvaluationsAreDistinctOwners(t *testing.T) {
 	f := newMovementFixture(t, false)
 	a := f.start(0, 100)
@@ -201,6 +210,7 @@ func TestMovementImmediateEvaluationsAreDistinctOwners(t *testing.T) {
 	f.resultCode(t, a, "cancelled")
 	f.walking(t, b)
 }
+
 func TestMovementTaskCancelClearsAllQueuedWork(t *testing.T) {
 	f := newMovementFixture(t, false)
 	a := f.start(1, 100)
@@ -268,9 +278,11 @@ func (n *blockedMovementNavigator) FindPathContext(_ context.Context, _ uint32, 
 	<-n.release
 	return &navigation.PathResult{Found: true, Points: []navigation.Point3D{a, b}}, nil
 }
+
 func (*blockedMovementNavigator) GetHeight(_ uint32, x, y, z float32) (float32, bool) {
 	return z - 5, true
 }
+
 func (*blockedMovementNavigator) GetTerrainHeight(_ uint32, x, y float32) (float32, bool) {
 	return 0, false
 }
@@ -380,6 +392,7 @@ func TestMovementWorldInvalidationCancelsQueueAndLatePlan(t *testing.T) {
 		t.Fatal("old-world plan published")
 	}
 }
+
 func TestMovementWorldInvalidationPoisonsSleepingLease(t *testing.T) {
 	f := newMovementFixture(t, false)
 	h := f.control.acquire(1, "owner", "call", "normal", 0, 60)
@@ -460,6 +473,7 @@ func TestMovementStoppedNearbyOrOnWrongFloorIsNotArrival(t *testing.T) {
 		})
 	}
 }
+
 func TestMovementPreparationFailureCannotBecomeNearbySuccess(t *testing.T) {
 	for _, state := range []string{"blocked", "unknown"} {
 		t.Run(state, func(t *testing.T) {

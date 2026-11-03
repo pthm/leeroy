@@ -42,8 +42,10 @@ func loadPathNodes(dataDir string) map[uint32][]pathNode {
 			r := b[20+i*rs:]
 			f := func(c int) float64 { return float64(math.Float32frombits(le.Uint32(r[c*4:]))) }
 			path := le.Uint32(r[4:])
-			pathNodes.byPath[path] = append(pathNodes.byPath[path], pathNode{index: le.Uint32(r[8:]), mapID: le.Uint32(r[12:]),
-				x: f(4), y: f(5), z: f(6), flags: le.Uint32(r[28:]), delay: le.Uint32(r[32:])})
+			pathNodes.byPath[path] = append(pathNodes.byPath[path], pathNode{
+				index: le.Uint32(r[8:]), mapID: le.Uint32(r[12:]),
+				x: f(4), y: f(5), z: f(6), flags: le.Uint32(r[28:]), delay: le.Uint32(r[32:]),
+			})
 		}
 		for _, nodes := range pathNodes.byPath {
 			sort.Slice(nodes, func(i, j int) bool { return nodes[i].index < nodes[j].index })
@@ -98,6 +100,7 @@ func (s *spline) weigh(index int, tv [4]float64) [3]float64 {
 func (s *spline) eval(index int, t float64) [3]float64 {
 	return s.weigh(index, [4]float64{t * t * t, t * t, t, 1})
 }
+
 func (s *spline) deriv(index int, t float64) [3]float64 {
 	return s.weigh(index, [4]float64{3 * t * t, 2 * t, 1, 0})
 }

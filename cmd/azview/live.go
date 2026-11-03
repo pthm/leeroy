@@ -158,11 +158,15 @@ func (v *server) page(w http.ResponseWriter, r *http.Request) {
 	if start == 0 {
 		start = float64(time.Now().UnixMilli())
 	}
-	boot := map[string]any{"start": start, "last": math.Max(lastT, start), "players": players, "maps": v.maps, "labels": v.labels,
-		"tileVersion": v.tileVersion, "detail": v.detailMaps(), "maxDetail": world.MaxDetail, "detailVersion": world.DetailVersion, "navVersion": world.NavVersion, "roads": world.RoadSquares(), "marks": marks, "ticks": ticks, "cats": cats}
+	boot := map[string]any{
+		"start": start, "last": math.Max(lastT, start), "players": players, "maps": v.maps, "labels": v.labels,
+		"tileVersion": v.tileVersion, "detail": v.detailMaps(), "maxDetail": world.MaxDetail, "detailVersion": world.DetailVersion, "navVersion": world.NavVersion, "roads": world.RoadSquares(), "marks": marks, "ticks": ticks, "cats": cats,
+	}
 	b, _ := json.Marshal(boot) // escapes < > &, so the data can't close its <script> tag
-	data := map[string]any{"Title": v.title, "Boot": map[string]any{"Players": players}, "BootJSON": template.JS(b),
-		"Cats": feedCats, "Metrics": metricGroups(), "Ranges": ranges}
+	data := map[string]any{
+		"Title": v.title, "Boot": map[string]any{"Players": players}, "BootJSON": template.JS(b),
+		"Cats": feedCats, "Metrics": metricGroups(), "Ranges": ranges,
+	}
 	w.Header().Set("content-type", "text/html; charset=utf-8")
 	if err := templates().ExecuteTemplate(w, "page.html", data); err != nil {
 		log.Print(err)

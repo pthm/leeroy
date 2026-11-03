@@ -201,8 +201,10 @@ func TestChatText(t *testing.T) {
 func TestGhostPlayerNotAlive(t *testing.T) {
 	b := testBot()
 	for g, flags := range map[uint64]uint32{7: 0x10, 8: 0} {
-		b.world.PutObjectForTest(&client.WorldObject{GUID: g, IsPlayer: true,
-			Values: map[uint16]uint32{client.UnitFieldHealth: 1, client.UnitFieldMaxHealth: 100, fieldPlayerFlags: flags}})
+		b.world.PutObjectForTest(&client.WorldObject{
+			GUID: g, IsPlayer: true,
+			Values: map[uint16]uint32{client.UnitFieldHealth: 1, client.UnitFieldMaxHealth: 100, fieldPlayerFlags: flags},
+		})
 		p := b.player(*b.GetUnitInfo(g))
 		if p.Ghost != (flags != 0) || p.Alive == p.Ghost {
 			t.Errorf("flags %#x: ghost %v alive %v", flags, p.Ghost, p.Alive)
@@ -215,8 +217,10 @@ func TestGhostPlayerNotAlive(t *testing.T) {
 func TestGroupLootRefusals(t *testing.T) {
 	b := testBot()
 	b.setupGroupRules()
-	for call, code := range map[string]string{`group.set_loot("dice")`: "bad_method", `group.set_loot("group_loot", "common")`: "bad_threshold",
-		`group.set_loot("need_before_greed", "rare")`: "not_in_group", `group.promote("42")`: "not_in_group"} {
+	for call, code := range map[string]string{
+		`group.set_loot("dice")`: "bad_method", `group.set_loot("group_loot", "common")`: "bad_threshold",
+		`group.set_loot("need_before_greed", "rare")`: "not_in_group", `group.promote("42")`: "not_in_group",
+	} {
 		if _, err := b.lua.Eval(`r = result(` + call + `.id) assert(r.ok == false and r.error.code == "` + code + `", json.encode(r))`); err != nil {
 			t.Errorf("%s: %v", call, err)
 		}

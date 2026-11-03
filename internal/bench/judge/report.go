@@ -13,8 +13,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/pthm/leeroy/azsdk/types"
-	"github.com/pthm/leeroy/runfiles"
 	"math"
 	"os"
 	"path/filepath"
@@ -23,6 +21,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/pthm/leeroy/azsdk/types"
+	"github.com/pthm/leeroy/runfiles"
 
 	"github.com/pthm/leeroy/azsdk/metrics"
 	"github.com/pthm/leeroy/internal/bench/diagnostics"
@@ -36,8 +37,10 @@ var (
 )
 
 // what woke a wait with no --types: the default subscription, plus the old default (level_up, error, any chat)
-var wakers = []string{"goal_met", "maintenance", "attention", "death", "stall", "failure_loop", "script_error", "task_finished", "party_invite", "trade",
-	"gear_broken", "chat", "level_up", "error", "resurrected"}
+var wakers = []string{
+	"goal_met", "maintenance", "attention", "death", "stall", "failure_loop", "script_error", "task_finished", "party_invite", "trade",
+	"gear_broken", "chat", "level_up", "error", "resurrected",
+}
 
 func jsonl(f string) []map[string]any {
 	fh, err := os.Open(f)
@@ -77,6 +80,7 @@ func get(m any, k string) any {
 	}
 	return nil
 }
+
 func isoMs(s string) int64 {
 	t, err := time.Parse(time.RFC3339Nano, s)
 	if err != nil {
@@ -84,6 +88,7 @@ func isoMs(s string) int64 {
 	}
 	return t.UnixMilli()
 }
+
 func stampMs(name string) int64 {
 	m := stampRe.FindStringSubmatch(name)
 	if m == nil {
@@ -92,6 +97,7 @@ func stampMs(name string) int64 {
 	t, _ := time.ParseInLocation("20060102-150405", strings.Join(m[1:4], "")+"-"+strings.Join(m[4:7], ""), time.Local)
 	return t.UnixMilli()
 }
+
 func median(a []float64) any {
 	if len(a) == 0 {
 		return nil
@@ -100,6 +106,7 @@ func median(a []float64) any {
 	slices.Sort(s)
 	return math.Round(s[len(s)/2])
 }
+
 func p90(a []float64) any {
 	if len(a) == 0 {
 		return nil
@@ -108,6 +115,7 @@ func p90(a []float64) any {
 	slices.Sort(s)
 	return math.Round(s[int(float64(len(s))*0.9)])
 }
+
 func r1(v float64) any {
 	if math.IsNaN(v) || math.IsInf(v, 0) {
 		return nil
@@ -135,9 +143,11 @@ func reportAgents(dir string) []agentRun {
 	}
 	var out []agentRun
 	for _, p := range m.Players {
-		out = append(out, agentRun{agent: p.Agent, char: p.Char, run: f.Agent(p.Agent),
+		out = append(out, agentRun{
+			agent: p.Agent, char: p.Char, run: f.Agent(p.Agent),
 			events: f.Events(p.Char), samples: f.Samples(p.Char), result: f.Result(p.Char), diag: f.Diagnostics(p.Agent),
-			paused: m.Status == "paused"})
+			paused: m.Status == "paused",
+		})
 	}
 	return out
 }
@@ -195,8 +205,10 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 				usage[str(msg["id"])] = struct {
 					u       tokens
 					session string
-				}{tokens{fnum(u["input_tokens"]), fnum(u["output_tokens"]), fnum(u["cache_read_input_tokens"]),
-					fnum(u["cache_creation_input_tokens"])}, str(e["session_id"])}
+				}{tokens{
+					fnum(u["input_tokens"]), fnum(u["output_tokens"]), fnum(u["cache_read_input_tokens"]),
+					fnum(u["cache_creation_input_tokens"]),
+				}, str(e["session_id"])}
 			}
 		case typ == "user" && t != 0:
 			cs, _ := msg["content"].([]any)
@@ -544,8 +556,14 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 	var final any
 	if len(score) > 0 {
 		l := score[len(score)-1]
-		f := obj{{"value", l["value"]}, {"rate", l["rate"]}, {"recent_rate", l["recent_rate"]},
-			{"best_window", l["best_window"]}, {"pace", l["pace"]}, {"score", l["score"]}}
+		f := obj{
+			{"value", l["value"]},
+			{"rate", l["rate"]},
+			{"recent_rate", l["recent_rate"]},
+			{"best_window", l["best_window"]},
+			{"pace", l["pace"]},
+			{"score", l["score"]},
+		}
 		res := readJSON(ar.result)
 		goal := str(meta["goal"])
 		if goal == "" {
@@ -570,35 +588,81 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 	judgeState := savedJudgeState(ar)
 
 	return obj{
-		{"agent", ar.agent}, {"char", char}, {"runtime", meta["runtime"]}, {"model", meta["model"]}, {"effort", meta["effort"]}, {"provider", meta["provider"]},
-		{"hours", r1(H)}, {"progress", progress}, {"progress_per_hour", rate(by["all"])},
+		{"agent", ar.agent},
+		{"char", char},
+		{"runtime", meta["runtime"]},
+		{"model", meta["model"]},
+		{"effort", meta["effort"]},
+		{"provider", meta["provider"]},
+		{"hours", r1(H)},
+		{"progress", progress},
+		{"progress_per_hour", rate(by["all"])},
 		{"score", final},
-		{"score_provisional", judgeState != "completed"}, {"judge_state", judgeState}, {"diagnostics", diag},
+		{"score_provisional", judgeState != "completed"},
+		{"judge_state", judgeState},
+		{"diagnostics", diag},
 		{"duty_cycle_pct", share("script")}, // time with a script task running
-		{"idle_gaps", obj{{"n", len(gaps)}, {"median_s", median(gaps)}, {"p90_s", p90(gaps)},
-			{"total_min", r1(sum(gaps) / 60)}}},
+		{"idle_gaps", obj{
+			{"n", len(gaps)},
+			{"median_s", median(gaps)},
+			{"p90_s", p90(gaps)},
+			{"total_min", r1(sum(gaps) / 60)},
+		}},
 		// while a script runs: the agent blocked in wow wait/sleep, between calls, or in a call
-		{"progress_per_hour_by_state", obj{{"waiting", rate(by["waiting"])}, {"thinking", rate(by["thinking"])},
-			{"in_call", rate(by["in_call"])}, {"no_script", rate(by["no_script"])}}},
-		{"time_pct_by_state", obj{{"waiting", share("waiting")}, {"thinking", share("thinking")},
-			{"in_call", share("in_call")}, {"no_script", share("no_script")}}},
+		{"progress_per_hour_by_state", obj{
+			{"waiting", rate(by["waiting"])},
+			{"thinking", rate(by["thinking"])},
+			{"in_call", rate(by["in_call"])},
+			{"no_script", rate(by["no_script"])},
+		}},
+		{"time_pct_by_state", obj{
+			{"waiting", share("waiting")},
+			{"thinking", share("thinking")},
+			{"in_call", share("in_call")},
+			{"no_script", share("no_script")},
+		}},
 		{"wakes", obj{{"waits", waits}, {"early", early}, {"per_hour", perH(float64(early))}, {"by_trigger", byTrigger}}},
-		{"restarts", obj{{"agent_calls", restarts}, {"per_hour", perH(float64(restarts))},
+		{"restarts", obj{
+			{"agent_calls", restarts},
+			{"per_hour", perH(float64(restarts))},
 			{"script_starts_per_hour", perH(float64(len(starts)))},
-			{"warmup_progress_per_hour", obj{{"first_minute", rate(sinceStart["first_minute"])},
-				{"settled", rate(sinceStart["settled"])}}}}},
-		{"deaths", deaths}, {"deaths_per_hour", perH(float64(deaths))},
+			{"warmup_progress_per_hour", obj{
+				{"first_minute", rate(sinceStart["first_minute"])},
+				{"settled", rate(sinceStart["settled"])},
+			}},
+		}},
+		{"deaths", deaths},
+		{"deaths_per_hour", perH(float64(deaths))},
 		{"stalls", obj{{"no_xp", noXP}, {"slow", stalls["slow"]}}},
-		{"calls", len(calls)}, {"think_s", obj{{"median", median(thinks)}}},
-		{"tokens", tokOut}, {"cost_usd", costOut},
-		{"combat", obj{{"damage_dealt", combat.DamageDealt}, {"damage_taken", combat.DamageTaken},
-			{"healing_done", combat.HealingDone}, {"kills", combat.Kills}, {"party_kills", combat.PartyKills},
-			{"deaths", combat.Deaths}, {"xp", combat.XP}}},
-		{"coop", obj{{"assist_share", round3(co.AssistShare)}, {"assists", co.Assists},
-			{"useful", co.Useful}, {"hits", co.Hits}, {"contested_hits", co.Contested}}},
-		{"time_use", obj{{"seconds", use.Seconds}, {"fighting_pct", use.FightingPct}, {"travelling_pct", use.TravellingPct},
-			{"idle_pct", use.IdlePct}, {"dead_pct", use.DeadPct}, {"with_group_pct", use.WithGroupPct},
-			{"broken_weapon_pct", use.BrokenWeaponPct}}},
+		{"calls", len(calls)},
+		{"think_s", obj{{"median", median(thinks)}}},
+		{"tokens", tokOut},
+		{"cost_usd", costOut},
+		{"combat", obj{
+			{"damage_dealt", combat.DamageDealt},
+			{"damage_taken", combat.DamageTaken},
+			{"healing_done", combat.HealingDone},
+			{"kills", combat.Kills},
+			{"party_kills", combat.PartyKills},
+			{"deaths", combat.Deaths},
+			{"xp", combat.XP},
+		}},
+		{"coop", obj{
+			{"assist_share", round3(co.AssistShare)},
+			{"assists", co.Assists},
+			{"useful", co.Useful},
+			{"hits", co.Hits},
+			{"contested_hits", co.Contested},
+		}},
+		{"time_use", obj{
+			{"seconds", use.Seconds},
+			{"fighting_pct", use.FightingPct},
+			{"travelling_pct", use.TravellingPct},
+			{"idle_pct", use.IdlePct},
+			{"dead_pct", use.DeadPct},
+			{"with_group_pct", use.WithGroupPct},
+			{"broken_weapon_pct", use.BrokenWeaponPct},
+		}},
 	}
 }
 
@@ -642,8 +706,10 @@ func readPositions(dir string) map[string][]metrics.Pos {
 			}
 			if e, ok := metrics.Decode(l); ok {
 				if p, ok := e.Data.(types.State); ok {
-					out[char] = append(out[char], metrics.Pos{T: e.T, X: p.X, Y: p.Y, Map: float64(p.Map), Alive: p.Alive,
-						Combat: p.InCombat, Group: float64(p.Group), Broken: slices.Contains(p.Broken, "main_hand")})
+					out[char] = append(out[char], metrics.Pos{
+						T: e.T, X: p.X, Y: p.Y, Map: float64(p.Map), Alive: p.Alive,
+						Combat: p.InCombat, Group: float64(p.Group), Broken: slices.Contains(p.Broken, "main_hand"),
+					})
 				}
 			}
 		}

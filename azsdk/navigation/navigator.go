@@ -118,6 +118,7 @@ func NewEmbeddedNavigator(dataDir string) Navigator {
 func (n *embeddedNavigator) FindPath(mapID uint32, start, dest Point3D) (*PathResult, error) {
 	return n.FindPathContext(context.Background(), mapID, start, dest)
 }
+
 func (n *embeddedNavigator) FindPathContext(ctx context.Context, mapID uint32, start, dest Point3D) (*PathResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, pathfinding.QueryTimeout)
 	defer cancel()
@@ -231,9 +232,11 @@ func (n *embeddedNavigator) InLineOfSightContext(ctx context.Context, m uint32, 
 func (n *embeddedNavigator) GetHeightContext(ctx context.Context, m uint32, x, y, z float32) (float32, bool) {
 	return n.svc.GetHeightContext(ctx, m, x, y, z)
 }
+
 func (n *embeddedNavigator) FloorHeightContext(ctx context.Context, m uint32, x, y, z float32) (float32, bool) {
 	return n.svc.FloorHeightContext(ctx, m, x, y, z)
 }
+
 func (n *embeddedNavigator) GetTerrainHeightContext(ctx context.Context, m uint32, x, y float32) (float32, bool) {
 	return n.svc.GetTerrainHeightContext(ctx, m, x, y)
 }

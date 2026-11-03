@@ -11,8 +11,10 @@ import (
 	"github.com/pthm/leeroy/azsdk/types"
 )
 
-const maxRouteLegs = 64
-const maxRouteWaypoints = 8192
+const (
+	maxRouteLegs      = 64
+	maxRouteWaypoints = 8192
+)
 
 func queryFailure(data any, code, message string) *script.Outcome {
 	switch d := data.(type) {
@@ -45,6 +47,7 @@ func (r *routeRequests) progress(j *routeRequest, data types.RouteCheck) bool {
 	j.data = data
 	return true
 }
+
 func (r *routeRequests) startRoute(task int, from types.Position, points []types.Position) map[string]any {
 	points = slices.Clone(points)
 	data := types.RouteCheck{Map: from.Map, From: from, Destination: points[len(points)-1], Source: "session_navmesh", Status: "failed", Waypoints: []types.Position{}, Legs: []types.RouteLeg{}, BlockedLeg: 1}
@@ -153,6 +156,7 @@ func routeArguments(pointsArg, optsArg any, currentMap uint32) []types.Position 
 	}
 	return out
 }
+
 func (b *Bot) registerRouteValidator(r *routeRequests) {
 	e := b.lua
 	e.Func("world.route", "(points [, opts = nil]) → Request<RouteCheck>", "validate 1..64 ordered 3D waypoints from your captured position before walking. points are {x,y,z} tuples or {x=...,y=...,z=...,map=...}; opts accepts only map (default current map), and every point must be on the current map. One 15s deadline covers queueing and all legs; max 4096 yards/1024 tiles per leg and 8192 output points. Shares world.path admission, cancellation and cache. Returns connected navmesh prefix, completed_legs, first blocked_leg and per-leg gaps; partial and timeout results remain failures. Does not assess hostile exposure.",

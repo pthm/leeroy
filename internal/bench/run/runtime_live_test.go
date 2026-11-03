@@ -38,15 +38,15 @@ func TestRuntimePermissionsLive(t *testing.T) {
 				t.Fatal("unsupported runtime")
 			}
 			dir := filepath.Join(root, runtime)
-			if err := os.MkdirAll(dir, 0755); err != nil {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
 				t.Fatal(err)
 			}
 			ws := filepath.Join(dir, "workspace")
-			if err := os.Mkdir(ws, 0755); err != nil {
+			if err := os.Mkdir(ws, 0o755); err != nil {
 				t.Fatal("fresh workspace required:", err)
 			}
 			for name, body := range map[string]string{"fixture.txt": "alpha\nbeta\n", "AGENTS.md": shellContract(runtime), "CLAUDE.md": "@AGENTS.md\n"} {
-				if err := os.WriteFile(filepath.Join(ws, name), []byte(body), 0644); err != nil {
+				if err := os.WriteFile(filepath.Join(ws, name), []byte(body), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -127,7 +127,7 @@ func TestRuntimePermissionsLive(t *testing.T) {
 				t.Error("no completed background sleep evidence with its actual duration")
 			}
 			summary, _ := json.MarshalIndent(seen, "", "  ")
-			os.WriteFile(filepath.Join(dir, "commands.json"), summary, 0644)
+			os.WriteFile(filepath.Join(dir, "commands.json"), summary, 0o644)
 			fmt.Fprintf(os.Stderr, "%s permission smoke: %d command families observed; artifacts %s\n", runtime, len(seen), dir)
 		})
 	}

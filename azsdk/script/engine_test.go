@@ -22,11 +22,11 @@ func tick(e *Engine, n int) {
 
 func TestLuaWorkspaceAndExecutionDeadline(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "module.lua"), []byte("return 42"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "module.lua"), []byte("return 42"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	outside := filepath.Join(t.TempDir(), "outside.lua")
-	if err := os.WriteFile(outside, []byte("return 99"), 0600); err != nil {
+	if err := os.WriteFile(outside, []byte("return 99"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, filepath.Join(dir, "escape.lua")); err != nil {
@@ -333,7 +333,6 @@ func TestFuncRequiredArgs(t *testing.T) {
 	if _, err := e.Eval(`return quests.turn_in("n")`); err == nil {
 		t.Fatal("quests.turn_in with one of two required arguments didn't fail")
 	}
-
 }
 
 func TestNPCGUIDArgument(t *testing.T) {

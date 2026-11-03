@@ -15,8 +15,10 @@ func TestHostSummary(t *testing.T) {
 	os.MkdirAll(filepath.Dir(f.Resources()), 0o755)
 	var lines []byte
 	for i, cpu := range []float64{10, 50, 90} {
-		b, _ := json.Marshal(map[string]any{"t": int64(i) * 1800_000, "cpu_pct": cpu, "mem_used_mb": 1000 * float64(i+1), "mem_total_mb": 32000,
-			"groups": map[string]any{"azsdk": map[string]any{"cpu_pct": cpu / 2, "mem_mb": 400, "n": 2}}})
+		b, _ := json.Marshal(map[string]any{
+			"t": int64(i) * 1800_000, "cpu_pct": cpu, "mem_used_mb": 1000 * float64(i+1), "mem_total_mb": 32000,
+			"groups": map[string]any{"azsdk": map[string]any{"cpu_pct": cpu / 2, "mem_mb": 400, "n": 2}},
+		})
 		lines = append(append(lines, b...), '\n')
 	}
 	os.WriteFile(f.Resources(), lines, 0o644)

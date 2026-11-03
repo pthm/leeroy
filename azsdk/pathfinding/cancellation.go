@@ -11,10 +11,12 @@ import (
 	"github.com/pthm/leeroy/azsdk/internal/detour"
 )
 
-const QueryTimeout = 15 * time.Second
-const MaxLegYards = 4096
-const MaxQueryTiles = 1024
-const maxTileBytes = 16 << 20
+const (
+	QueryTimeout  = 15 * time.Second
+	MaxLegYards   = 4096
+	MaxQueryTiles = 1024
+	maxTileBytes  = 16 << 20
+)
 
 var ErrQueryLimit = errors.New("route exceeds query limits: use legs of at most 4096 yards and at most 1024 tiles")
 

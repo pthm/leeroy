@@ -91,6 +91,8 @@ func Use(char string, pos map[string][]Pos, played func(t int64) bool) TimeUse {
 		}
 		return math.Floor(100*float64(a)/float64(len(secs)) + 0.5)
 	}
-	return TimeUse{Seconds: len(secs), FightingPct: pct(fighting), TravellingPct: pct(moving), IdlePct: pct(idle),
-		DeadPct: pct(dead), WithGroupPct: pct(grouped), BrokenWeaponPct: pct(broken)}
+	return TimeUse{
+		Seconds: len(secs), FightingPct: pct(fighting), TravellingPct: pct(moving), IdlePct: pct(idle),
+		DeadPct: pct(dead), WithGroupPct: pct(grouped), BrokenWeaponPct: pct(broken),
+	}
 }

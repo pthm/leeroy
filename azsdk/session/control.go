@@ -235,8 +235,10 @@ func (b *Bot) setupControl() {
 				return nil
 			}
 			me := w.CharGUID()
-			g := types.Group{Members: []types.GroupMember{}, MeLeader: st.LeaderGUID == me, LootMethod: nameAt(lootMethods, st.LootMethod),
-				Threshold: nameAt(qualityNames, st.LootThresh)}
+			g := types.Group{
+				Members: []types.GroupMember{}, MeLeader: st.LeaderGUID == me, LootMethod: nameAt(lootMethods, st.LootMethod),
+				Threshold: nameAt(qualityNames, st.LootThresh),
+			}
 			if st.LootMethod == client.LootMethodMasterLoot {
 				g.MasterLoot = types.GUID(st.LootMaster)
 			}
@@ -474,8 +476,10 @@ func (c *controlState) onPacket(b *Bot, op uint16, data []byte) {
 				break
 			}
 			fail("trainer.learn", map[uint32]string{0: "unavailable", 1: "not_enough_money", 2: "skill_too_low"}[reason],
-				fmt.Sprintf("can't learn spell %d: %s", spell, map[uint32]string{0: "not available to you (class, or already known; trainer.list says)",
-					1: "not enough money", 2: "not available to you now (trainer.list shows what you can learn and when)"}[reason]))
+				fmt.Sprintf("can't learn spell %d: %s", spell, map[uint32]string{
+					0: "not available to you (class, or already known; trainer.list says)",
+					1: "not enough money", 2: "not available to you now (trainer.list shows what you can learn and when)",
+				}[reason]))
 		}
 	case 0x1B3: // SMSG_TRAINER_BUY_SUCCEEDED: trainer, spell
 		if len(data) >= 12 {
@@ -734,9 +738,11 @@ func (b *Bot) setupGroupRules() {
 // LootMethod (LootMgr.h)
 var lootMethods = []string{"free_for_all", "round_robin", "master_loot", "group_loot", "need_before_greed"}
 
-var equipErrors = map[byte]string{1: "You must reach a higher level to use that", 4: "Bag is full", 17: "You can't carry any more of those", 22: "Slot is empty",
+var equipErrors = map[byte]string{
+	1: "You must reach a higher level to use that", 4: "Bag is full", 17: "You can't carry any more of those", 22: "Slot is empty",
 	23: "Item not found", 25: "Out of range", 29: "Not enough money", 38: "You are dead", 39: "You can't do that right now",
-	49: "Already looted", 50: "Inventory is full", 52: "Item is sold out", 53: "Bag is full", 56: "Bag is full", 57: "Item is sold out"}
+	49: "Already looted", 50: "Inventory is full", 52: "Item is sold out", 53: "Bag is full", 56: "Bag is full", 57: "Item is sold out",
+}
 
 // inventoryError: SMSG_INVENTORY_CHANGE_FAILURE's code and text (Player::SendEquipError: result, item, item2, bag
 // subclass, then the required level for CANT_EQUIP_LEVEL_I and PURCHASE_LEVEL_TOO_LOW).
@@ -759,27 +765,34 @@ func inventoryError(data []byte) (string, string) {
 }
 
 // BuyResult and SellResult (Item.h)
-var buyErrors = map[byte][2]string{0: {"not_sold_here", "vendor doesn't have that item"}, 1: {"already_sold", "the item was already sold"},
+var buyErrors = map[byte][2]string{
+	0: {"not_sold_here", "vendor doesn't have that item"}, 1: {"already_sold", "the item was already sold"},
 	2: {"not_enough_money", "not enough money"}, 4: {"seller_dislikes_you", "the vendor won't trade with you"},
 	5: {"out_of_range", "too far from the vendor"}, 7: {"sold_out", "sold out"}, 8: {"cant_carry_more", "you can't carry more of that"},
-	11: {"rank_required", "your rank is too low"}, 12: {"reputation_required", "your reputation with their faction is too low"}}
+	11: {"rank_required", "your rank is too low"}, 12: {"reputation_required", "your reputation with their faction is too low"},
+}
 
-var sellErrors = map[byte][2]string{1: {"item_not_found", "item not found"}, 2: {"wont_buy", "the vendor won't buy that"},
+var sellErrors = map[byte][2]string{
+	1: {"item_not_found", "item not found"}, 2: {"wont_buy", "the vendor won't buy that"},
 	3: {"vendor_not_found", "vendor not found"}, 4: {"not_yours", "you don't own that"}, 5: {"unknown", "the server refused"},
 	6: {"bag_not_empty", "empty the bag first"}, 7: {"vendor_doesnt_buy", "this vendor doesn't buy items"},
-	8: {"needs_repair", "repair it first"}, 9: {"bag_error", "internal bag error"}}
+	8: {"needs_repair", "repair it first"}, 9: {"bag_error", "internal bag error"},
+}
 
 // ChatNotify (Channel.h) refusals: op, code, message
-var channelErrors = map[uint8][3]string{4: {"chat.join", "wrong_password", "wrong password"},
+var channelErrors = map[uint8][3]string{
+	4:    {"chat.join", "wrong_password", "wrong password"},
 	5:    {"chat.channel", "not_member", "you aren't in that channel: chat.join it first"},
 	0x11: {"chat.channel", "muted", "you don't have permission to speak"}, 0x13: {"chat.join", "banned", "you're banned from that channel"},
 	0x1A: {"chat.join", "wrong_faction", "wrong faction for that channel"}, 0x1B: {"chat.join", "invalid_name", "invalid channel name"},
 	0x1F: {"chat.channel", "throttled", "too many messages: wait before sending another"},
 	0x20: {"chat.channel", "not_in_area", "you're not in that channel's area"},
-	0x21: {"chat.join", "not_in_lfg", "queue in the dungeon finder before joining that channel"}}
+	0x21: {"chat.join", "not_in_lfg", "queue in the dungeon finder before joining that channel"},
+}
 
 // PartyResult (SharedDefines.h)
-var partyErrors = map[uint32][2]string{1: {"bad_player_name", "no player by that name online"}, 2: {"not_in_your_group", "not in your group"},
+var partyErrors = map[uint32][2]string{
+	1: {"bad_player_name", "no player by that name online"}, 2: {"not_in_your_group", "not in your group"},
 	3: {"not_in_your_instance", "not in your instance"}, 4: {"group_full", "group is full"}, 5: {"already_in_group", "already in a group"},
 	6: {"not_in_group", "you aren't in a group"}, 7: {"not_leader", "you aren't the leader"}, 8: {"wrong_faction", "wrong faction"},
 	9: {"ignoring_you", "they're ignoring you"}, 12: {"lfg_pending", "in the dungeon finder queue"},
@@ -791,4 +804,5 @@ var partyErrors = map[uint32][2]string{1: {"bad_player_name", "no player by that
 	23: {"boot_too_few_players", "dungeon finder: too few players to kick"}, 24: {"boot_not_eligible", "dungeon finder: they can't be kicked"},
 	25: {"raid_level_too_low", "everyone must be level 10 for a raid"}, 26: {"boot_in_combat", "dungeon finder: can't kick in combat"},
 	27: {"kick_reason_needed", "a kick vote needs a reason"}, 28: {"boot_dungeon_complete", "dungeon finder: the dungeon is done"},
-	29: {"boot_loot_rolls", "dungeon finder: can't kick during loot rolls"}, 30: {"teleport_in_combat", "dungeon finder: can't teleport in combat"}}
+	29: {"boot_loot_rolls", "dungeon finder: can't kick during loot rolls"}, 30: {"teleport_in_combat", "dungeon finder: can't teleport in combat"},
+}

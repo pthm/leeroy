@@ -34,8 +34,10 @@ func TestRestored(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "autorun.lua"), []byte(`task.keep("main", main)`), 0o644)
 
 	note := p.restored()
-	for _, want := range []string{"Tasks running when it stopped: main, healer.", "- autorun.lua ran.", "Tasks running now: none.",
-		"You are a ghost at -9460.2 62.5 56.0, map 0 (Elwynn Forest, Goldshire)."} {
+	for _, want := range []string{
+		"Tasks running when it stopped: main, healer.", "- autorun.lua ran.", "Tasks running now: none.",
+		"You are a ghost at -9460.2 62.5 56.0, map 0 (Elwynn Forest, Goldshire).",
+	} {
 		if !strings.Contains(note, want) {
 			t.Errorf("note lacks %q:\n%s", want, note)
 		}

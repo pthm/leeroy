@@ -12,6 +12,7 @@ import (
 func leaseRequest(f *movementFixture, task int, priority string, queue, max float64) int {
 	return f.control.acquire(task, "owner", "call", priority, queue, max)["id"].(int)
 }
+
 func grantedLease(t *testing.T, f *movementFixture, id int) int {
 	t.Helper()
 	r := f.control.reqs.Result(id)
@@ -20,6 +21,7 @@ func grantedLease(t *testing.T, f *movementFixture, id int) int {
 	}
 	return r["data"].(map[string]any)["lease_id"].(int)
 }
+
 func TestMovementLeaseRetainedAcrossWalksAndNestedScopes(t *testing.T) {
 	f := newMovementFixture(t, false)
 	m := f.control
@@ -57,6 +59,7 @@ func TestMovementLeaseRetainedAcrossWalksAndNestedScopes(t *testing.T) {
 	}
 	f.walking(t, b)
 }
+
 func TestMovementLeasePreemptionCannotResumeOldCallback(t *testing.T) {
 	f := newMovementFixture(t, true)
 	m := f.control
@@ -94,6 +97,7 @@ func TestMovementLeasePreemptionCannotResumeOldCallback(t *testing.T) {
 		t.Fatalf("cancelled plans published: %v", f.published)
 	}
 }
+
 func TestMovementLeaseDeadlineIsNotExtendedByNesting(t *testing.T) {
 	f := newMovementFixture(t, false)
 	m := f.control
@@ -115,6 +119,7 @@ func TestMovementLeaseDeadlineIsNotExtendedByNesting(t *testing.T) {
 		t.Fatal("expired scope released a newer owner")
 	}
 }
+
 func TestMovementLeaseQueueDeadlinesPriorityAndFIFO(t *testing.T) {
 	f := newMovementFixture(t, false)
 	m := f.control
@@ -135,6 +140,7 @@ func TestMovementLeaseQueueDeadlinesPriorityAndFIFO(t *testing.T) {
 	m.release(4, l4)
 	grantedLease(t, f, normal)
 }
+
 func TestMovementLeasePauseAndInvalidOptions(t *testing.T) {
 	f := newMovementFixture(t, false)
 	m := f.control

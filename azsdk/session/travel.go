@@ -66,8 +66,10 @@ func loadTaxi() {
 		for i := uint32(0); i < n; i++ {
 			r := recs[i*rs:]
 			f := func(c int) float32 { return math.Float32frombits(le.Uint32(r[c*4:])) }
-			nd := &taxiNode{id: le.Uint32(r), mapID: le.Uint32(r[4:]), x: f(2), y: f(3), z: f(4),
-				horde: le.Uint32(r[rs-8:]) != 0, alliance: le.Uint32(r[rs-4:]) != 0} // the last two fields: MountCreatureID[horde, alliance]
+			nd := &taxiNode{
+				id: le.Uint32(r), mapID: le.Uint32(r[4:]), x: f(2), y: f(3), z: f(4),
+				horde: le.Uint32(r[rs-8:]) != 0, alliance: le.Uint32(r[rs-4:]) != 0,
+			} // the last two fields: MountCreatureID[horde, alliance]
 			if off := le.Uint32(r[5*4:]); off < uint32(len(strs)) {
 				nd.name = string(bytes.SplitN(strs[off:], []byte{0}, 2)[0])
 			}
@@ -167,7 +169,7 @@ func (b *Bot) setupTravel() {
 	}
 	b.travel = t
 	w, e := b.world, b.lua
-	var menus = make(chan [2]uint64, 4) // (npc, node) as flight maps arrive, for flights.map
+	menus := make(chan [2]uint64, 4) // (npc, node) as flight maps arrive, for flights.map
 	w.AddPacketHook(func(op uint16, data []byte) {
 		r := bytes.NewReader(data)
 		u32 := func() (v uint32) { binary.Read(r, binary.LittleEndian, &v); return }
@@ -223,11 +225,15 @@ func (b *Bot) setupTravel() {
 			}
 		case smsgActivateTaxiReply:
 			if code := u32(); code != 0 {
-				names := map[uint32]string{1: "server_error", 2: "no_such_path", 3: "not_enough_money", 4: "too_far",
+				names := map[uint32]string{
+					1: "server_error", 2: "no_such_path", 3: "not_enough_money", 4: "too_far",
 					5: "no_flight_master", 6: "not_visited", 7: "busy", 8: "mounted", 9: "shapeshifted", 10: "moving",
-					11: "same_node", 12: "not_standing"}
-				b.emit("error", types.ErrorEvent{Op: "flights.take", Code: name(names, code),
-					Message: "the flight master refused: " + name(names, code)})
+					11: "same_node", 12: "not_standing",
+				}
+				b.emit("error", types.ErrorEvent{
+					Op: "flights.take", Code: name(names, code),
+					Message: "the flight master refused: " + name(names, code),
+				})
 			}
 		}
 	})

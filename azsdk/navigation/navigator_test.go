@@ -1,8 +1,9 @@
 package navigation
 
 import (
-	"github.com/pthm/leeroy/azsdk/internal/detour"
 	"testing"
+
+	"github.com/pthm/leeroy/azsdk/internal/detour"
 
 	"github.com/pthm/leeroy/azsdk/pathfinding"
 )

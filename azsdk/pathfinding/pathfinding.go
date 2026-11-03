@@ -110,6 +110,7 @@ type PathFinder struct {
 func NewPathFinder(mmapMgr *MMapManager, terrainMgr *TerrainManager, vmapMgr *VMapManager, mapID uint32) (*PathFinder, error) {
 	return newPathFinderContext(context.Background(), mmapMgr, terrainMgr, vmapMgr, mapID)
 }
+
 func newPathFinderContext(ctx context.Context, mmapMgr *MMapManager, terrainMgr *TerrainManager, vmapMgr *VMapManager, mapID uint32) (*PathFinder, error) {
 	md, err := mmapMgr.getOrLoadMapDataContext(ctx, mapID)
 	if err != nil {
@@ -256,6 +257,7 @@ func (pf *PathFinder) ensureTilesForPath(ctx context.Context, start, dest Point3
 func (pf *PathFinder) FindPath(start, dest Point3D) (*PathResult, error) {
 	return pf.FindPathContext(context.Background(), start, dest)
 }
+
 func (pf *PathFinder) FindPathContext(ctx context.Context, start, dest Point3D) (*PathResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeout)
 	defer cancel()
@@ -584,6 +586,7 @@ func (s *PathFindingService) getPool(mapID uint32) *pathFinderPool {
 func (s *PathFindingService) acquirePathFinder(mapID uint32) (*PathFinder, error) {
 	return s.acquirePathFinderContext(context.Background(), mapID)
 }
+
 func (s *PathFindingService) acquirePathFinderContext(ctx context.Context, mapID uint32) (*PathFinder, error) {
 	pool := s.getPool(mapID)
 
@@ -610,6 +613,7 @@ func (s *PathFindingService) releasePathFinder(mapID uint32, pf *PathFinder) {
 func (s *PathFindingService) FindPath(mapID uint32, start, dest Point3D) (*PathResult, error) {
 	return s.FindPathContext(context.Background(), mapID, start, dest)
 }
+
 func (s *PathFindingService) FindPathContext(ctx context.Context, mapID uint32, start, dest Point3D) (*PathResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeout)
 	defer cancel()
@@ -659,6 +663,7 @@ func (s *PathFindingService) GetHeight(mapID uint32, x, y, z float32) (float32, 
 func (s *PathFindingService) FloorHeight(mapID uint32, x, y, hint float32) (float32, bool) {
 	return s.FloorHeightContext(context.Background(), mapID, x, y, hint)
 }
+
 func (s *PathFindingService) FloorHeightContext(ctx context.Context, mapID uint32, x, y, hint float32) (float32, bool) {
 	pf, err := s.acquirePathFinderContext(ctx, mapID)
 	if err != nil {
@@ -782,6 +787,7 @@ func (pf *PathFinder) GetHeight(x, y, z float32) (float32, bool) {
 func (pf *PathFinder) FloorHeight(x, y, hint float32) (float32, bool) {
 	return pf.floorHeightContext(context.Background(), x, y, hint)
 }
+
 func (pf *PathFinder) floorHeightContext(ctx context.Context, x, y, hint float32) (float32, bool) {
 	if err := pf.ensureTilesForPointContext(ctx, Point3D{X: x, Y: y, Z: hint}, 1.5); err != nil {
 		return 0, false
@@ -901,10 +907,12 @@ func (pf *PathFinder) getHeightContext(ctx context.Context, x, y, z float32) (fl
 	}
 	return 0, false
 }
+
 func gridHeightContext(ctx context.Context, tm *TerrainManager, m uint32, x, y float32) (float32, bool) {
 	h, _, _, err := tm.GetGridSampleContext(ctx, m, x, y)
 	return h, err == nil && !math.IsNaN(float64(h))
 }
+
 func (s *PathFindingService) GetHeightContext(ctx context.Context, m uint32, x, y, z float32) (float32, bool) {
 	pf, err := s.acquirePathFinderContext(ctx, m)
 	if err != nil {
@@ -913,12 +921,14 @@ func (s *PathFindingService) GetHeightContext(ctx context.Context, m uint32, x, 
 	defer s.releasePathFinder(m, pf)
 	return pf.getHeightContext(ctx, x, y, z)
 }
+
 func (s *PathFindingService) GetTerrainHeightContext(ctx context.Context, m uint32, x, y float32) (float32, bool) {
 	if s.terrainMgr == nil {
 		return 0, false
 	}
 	return gridHeightContext(ctx, s.terrainMgr, m, x, y)
 }
+
 func (s *PathFindingService) InLineOfSightContext(ctx context.Context, m uint32, x1, y1, z1, x2, y2, z2 float32) (bool, bool) {
 	if s.vmapMgr == nil {
 		return false, false

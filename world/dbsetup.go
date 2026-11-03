@@ -61,6 +61,7 @@ func (d *DBC) I(r, i int) int32  { return int32(d.U(r, i)) }
 func (d *DBC) F(r, i int) float32 {
 	return math.Float32frombits(d.U(r, i))
 }
+
 func (d *DBC) S(r, i int) string {
 	p := d.strs + int(d.U(r, i))
 	if p >= len(d.b) {
@@ -142,13 +143,17 @@ func Setup(schema, repo string) (summary string, err error) {
 	var ach, crit, cat, area, overlay, factionName, reaction, spell []sqlRow
 	d := mustDBC("Achievement.dbc")
 	for r := 0; r < d.Rows(); r++ {
-		ach = append(ach, sqlRow{U(d, r, 0), I(d, r, 1), I(d, r, 2), U(d, r, 3), text(d.S(r, 4)), text(d.S(r, 21)), U(d, r, 38), U(d, r, 39),
-			U(d, r, 41), U(d, r, 60), U(d, r, 61)})
+		ach = append(ach, sqlRow{
+			U(d, r, 0), I(d, r, 1), I(d, r, 2), U(d, r, 3), text(d.S(r, 4)), text(d.S(r, 21)), U(d, r, 38), U(d, r, 39),
+			U(d, r, 41), U(d, r, 60), U(d, r, 61),
+		})
 	}
 	d = mustDBC("Achievement_Criteria.dbc")
 	for r := 0; r < d.Rows(); r++ {
-		crit = append(crit, sqlRow{U(d, r, 0), U(d, r, 1), U(d, r, 2), U(d, r, 3), U(d, r, 4), U(d, r, 5), U(d, r, 6), U(d, r, 7),
-			U(d, r, 8), text(d.S(r, 9)), U(d, r, 26), U(d, r, 29)})
+		crit = append(crit, sqlRow{
+			U(d, r, 0), U(d, r, 1), U(d, r, 2), U(d, r, 3), U(d, r, 4), U(d, r, 5), U(d, r, 6), U(d, r, 7),
+			U(d, r, 8), text(d.S(r, 9)), U(d, r, 26), U(d, r, 29),
+		})
 	}
 	d = mustDBC("Achievement_Category.dbc")
 	for r := 0; r < d.Rows(); r++ {
@@ -248,8 +253,10 @@ func Setup(schema, repo string) (summary string, err error) {
 				break
 			}
 		}
-		spell = append(spell, sqlRow{U(d, r, 0), text(d.S(r, 136)), text(d.S(r, 153)), jsSlice(text(d.S(r, 170)), 1000), U(d, r, 39), castTime[d.U(r, 28)],
-			int64(jsRound(rng[d.U(r, 46)])), U(d, r, 29), U(d, r, 30), I(d, r, 41), U(d, r, 42), created})
+		spell = append(spell, sqlRow{
+			U(d, r, 0), text(d.S(r, 136)), text(d.S(r, 153)), jsSlice(text(d.S(r, 170)), 1000), U(d, r, 39), castTime[d.U(r, 28)],
+			int64(jsRound(rng[d.U(r, 46)])), U(d, r, 29), U(d, r, 30), I(d, r, 41), U(d, r, 42), created,
+		})
 	}
 
 	// Cell (lx, ly) of grid file (gx, gy) is centred at 533.33 * (32 - g - (l + 0.5) / 16), the inverse of

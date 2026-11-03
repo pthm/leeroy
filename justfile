@@ -42,12 +42,32 @@ vet:
     go vet ./...
     cd azsdk && go vet ./...
 
-[doc("What CI checks: both modules build as outside users see them (no go.work), and vet clean")]
+[doc("golangci-lint both modules (.golangci.yml)")]
+[group('test')]
+lint:
+    golangci-lint run ./...
+    cd azsdk && golangci-lint run ./...
+
+[doc("Format both modules (gofumpt, through golangci-lint)")]
+[group('test')]
+fmt:
+    golangci-lint fmt ./...
+    cd azsdk && golangci-lint fmt ./...
+
+[doc("Fail if any Go file isn't formatted (shows the diff)")]
+[group('test')]
+fmt-check:
+    golangci-lint fmt --diff ./...
+    cd azsdk && golangci-lint fmt --diff ./...
+
+[doc("What CI checks: both modules build as outside users see them (no go.work), formatted, vet and lint clean")]
 [group('test')]
 ci:
     GOWORK=off go build ./...
     cd azsdk && GOWORK=off go build ./...
+    just fmt-check
     just vet
+    just lint
 
 [doc("Everything before a push: ci, the tests, the site with its links")]
 [group('test')]

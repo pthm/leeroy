@@ -28,8 +28,10 @@ var notRoad = regexp.MustCompile(`(?i)(gravel|burningsteppsbrick01)`)
 
 // roadModel: models that carry roads over water and chasms (no ground texture there), drawn into the road rasters;
 // not the bricks, lamps, braziers and statues named after bridges
-var roadModel = regexp.MustCompile(`(?i)bridge`)
-var notRoadModel = regexp.MustCompile(`(?i)(brick|brazier|lantern|statue|lamp|teleporter)`)
+var (
+	roadModel    = regexp.MustCompile(`(?i)bridge`)
+	notRoadModel = regexp.MustCompile(`(?i)(brick|brazier|lantern|statue|lamp|teleporter)`)
+)
 
 // Minimap writes <out>/<map id>/<gx>_<gy>.png: the client's minimap image of each 533-yard grid square (gx from x,
 // gy from y, as the server's .map files), north up.
@@ -249,5 +251,5 @@ func inTriangle(x, y float64, a, b, c [3]float64) bool {
 	d2 := (x-c[0])*(b[1]-c[1]) - (b[0]-c[0])*(y-c[1])
 	d3 := (x-a[0])*(c[1]-a[1]) - (c[0]-a[0])*(y-a[1])
 	neg, pos := d1 < 0 || d2 < 0 || d3 < 0, d1 > 0 || d2 > 0 || d3 > 0
-	return !(neg && pos)
+	return !neg || !pos
 }

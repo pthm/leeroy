@@ -32,6 +32,7 @@ func TestMultiRouteStopsAtBlockedLeg(t *testing.T) {
 		t.Fatalf("%+v calls=%d", data, calls)
 	}
 }
+
 func TestMultiRouteChainsActualEndpoint(t *testing.T) {
 	r := newRouteFixture(t)
 	var starts []float32
@@ -47,6 +48,7 @@ func TestMultiRouteChainsActualEndpoint(t *testing.T) {
 		t.Fatalf("%+v starts=%v", data, starts)
 	}
 }
+
 func TestMultiRouteTimeoutKeepsPrefix(t *testing.T) {
 	r := newRouteFixture(t)
 	r.timeout = 30 * time.Millisecond
@@ -71,6 +73,7 @@ func TestMultiRouteTimeoutKeepsPrefix(t *testing.T) {
 		t.Fatalf("%+v calls=%d observed=%d", data, calls.Load(), observed.Load())
 	}
 }
+
 func TestMultiRouteRejectsOtherMapBeforeSearch(t *testing.T) {
 	r := newRouteFixture(t)
 	r.find = func(context.Context, uint32, navigation.Point3D, navigation.Point3D) (*navigation.PathResult, error) {
@@ -84,6 +87,7 @@ func TestMultiRouteRejectsOtherMapBeforeSearch(t *testing.T) {
 		t.Fatalf("%+v", data)
 	}
 }
+
 func TestMultiRouteOutputBound(t *testing.T) {
 	r := newRouteFixture(t)
 	calls := 0
@@ -103,6 +107,7 @@ func TestMultiRouteOutputBound(t *testing.T) {
 		t.Fatalf("bound: points=%d completed=%d blocked=%d calls=%d", len(data.Waypoints), data.CompletedLegs, data.BlockedLeg, calls)
 	}
 }
+
 func TestMultiRouteArguments(t *testing.T) {
 	b := testBot()
 	defer b.lua.Close()

@@ -23,8 +23,10 @@ type Price struct {
 //go:embed prices.json
 var pricesJSON []byte
 
-var pricedProviders = []string{"anthropic", "openai", "openrouter", "google", "deepseek", "moonshotai", "zai",
-	"xai", "mistral", "alibaba", "minimax"}
+var pricedProviders = []string{
+	"anthropic", "openai", "openrouter", "google", "deepseek", "moonshotai", "zai",
+	"xai", "mistral", "alibaba", "minimax",
+}
 
 // priceKey is the models.dev key for an agent's model: opencode's model is already provider/model; Claude and Codex
 // report the bare model, served by Anthropic and OpenAI unless the provider (meta.json) says otherwise.

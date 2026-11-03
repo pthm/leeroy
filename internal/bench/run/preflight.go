@@ -72,6 +72,7 @@ func preflightRows(db *sql.DB) func(context.Context, string, ...any) ([]map[stri
 		return out, rows.Err()
 	}
 }
+
 func CheckScenario(repo string, s *config.Scenario) Preflight {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -79,6 +80,7 @@ func CheckScenario(repo string, s *config.Scenario) Preflight {
 	defer nav.Close()
 	return checkScenario(ctx, s, preflightSource{query: preflightRows(world.DB(world.Admin, "acore_world")), skill: func(id int) (string, bool) { return preflightSkill(filepath.Join(repo, "data/dbc/SkillLine.dbc"), id) }, path: nav.FindPathContext})
 }
+
 func checkScenario(ctx context.Context, s *config.Scenario, src preflightSource) Preflight {
 	out := Preflight{Schema: 1, Scenario: s.Name, Goal: s.Goal, CheckedAt: time.Now().UTC().Format(time.RFC3339), Findings: []Finding{}}
 	add := func(check, status, agent, message string, evidence any) {
@@ -240,12 +242,13 @@ func checkScenario(ctx context.Context, s *config.Scenario, src preflightSource)
 	add("preparation_time", "unknown", "", "available minutes are reported; travel, training, leveling and encounter success depend on agent choices and server state", map[string]any{"minutes": s.Minutes})
 	return out
 }
+
 func SavePreflight(path string, p Preflight) error {
 	b, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(b, '\n'), 0644)
+	return os.WriteFile(path, append(b, '\n'), 0o644)
 }
 
 func preflightSkill(path string, id int) (string, bool) {

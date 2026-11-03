@@ -60,6 +60,7 @@ func readDBC(dir, name string) (*dbc, error) {
 	d.strs = b[20+d.n*d.rs:]
 	return d, nil
 }
+
 func (d *dbc) u(r, f int) uint32 {
 	return binary.LittleEndian.Uint32(d.b[20+uint32(r)*d.rs+uint32(f)*4:])
 }
@@ -67,6 +68,7 @@ func (d *dbc) i(r, f int) int32 { return int32(d.u(r, f)) }
 func (d *dbc) f(r, f int) float32 {
 	return math.Float32frombits(d.u(r, f))
 }
+
 func (d *dbc) s(r, f int) string {
 	off := d.u(r, f)
 	if off >= uint32(len(d.strs)) {
@@ -86,12 +88,16 @@ func Load(dataDir string) (*Book, error) {
 	if err != nil {
 		return nil, err
 	}
-	b := &Book{spells: map[uint32]*spell{}, duration: map[uint32]int32{}, radius: map[uint32]float32{},
-		ranges: map[uint32]float32{}, vars: map[uint32]map[string]string{}}
+	b := &Book{
+		spells: map[uint32]*spell{}, duration: map[uint32]int32{}, radius: map[uint32]float32{},
+		ranges: map[uint32]float32{}, vars: map[uint32]map[string]string{},
+	}
 	// field indices per AzerothCore DBCStructure.h SpellEntry (3.3.5a)
 	for r := 0; r < int(sp.n); r++ {
-		s := &spell{desc: sp.s(r, 170), tip: sp.s(r, 187), duration: sp.u(r, 40), rng: sp.u(r, 46), varID: sp.u(r, 232),
-			procChance: sp.u(r, 35), procCharges: sp.u(r, 36), stack: sp.u(r, 49), maxTargets: sp.u(r, 212)}
+		s := &spell{
+			desc: sp.s(r, 170), tip: sp.s(r, 187), duration: sp.u(r, 40), rng: sp.u(r, 46), varID: sp.u(r, 232),
+			procChance: sp.u(r, 35), procCharges: sp.u(r, 36), stack: sp.u(r, 49), maxTargets: sp.u(r, 212),
+		}
 		for k := 0; k < 3; k++ {
 			s.die[k], s.base[k], s.radius[k] = sp.i(r, 74+k), sp.i(r, 80+k), sp.u(r, 92+k)
 			s.amp[k], s.multiple[k], s.chain[k], s.perCombo[k] = sp.u(r, 98+k), sp.f(r, 101+k), sp.u(r, 104+k), sp.f(r, 119+k)
@@ -134,9 +140,11 @@ type Stats map[string]float64
 
 // statNames: the scaling tokens descriptions use (Spell.dbc counts: AP 596, RAP 105, SPH 94, MW 27...), and what
 // to call them
-var statNames = map[string]string{"AP": "attack power", "RAP": "ranged attack power", "SPH": "spell power",
+var statNames = map[string]string{
+	"AP": "attack power", "RAP": "ranged attack power", "SPH": "spell power",
 	"SPS": "spell power", "SPI": "spirit", "PL": "level", "MW": "weapon damage", "MWB": "weapon damage",
-	"MWS": "weapon speed", "RWB": "ranged weapon damage", "HND": "hands"}
+	"MWS": "weapon speed", "RWB": "ranged weapon damage", "HND": "hands",
+}
 
 // Description is the spell's description with its placeholders filled in ("" for an unknown spell).
 func (b *Book) Description(id uint32) string { return b.DescriptionWith(id, nil) }
@@ -522,6 +530,7 @@ func (p *parser) sum() (float64, bool) {
 	}
 	return v, ok
 }
+
 func (p *parser) product() (float64, bool) {
 	v, ok := p.unary()
 	for ok && p.i < len(p.s) && (p.s[p.i] == '*' || p.s[p.i] == '/') {
@@ -538,6 +547,7 @@ func (p *parser) product() (float64, bool) {
 	}
 	return v, ok
 }
+
 func (p *parser) unary() (float64, bool) {
 	if p.i < len(p.s) && p.s[p.i] == '-' {
 		p.i++

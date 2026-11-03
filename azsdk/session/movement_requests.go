@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/pthm/leeroy/azsdk/pathfinding"
 	"math"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/pthm/leeroy/azsdk/pathfinding"
 
 	"github.com/pthm/leeroy/azsdk/script"
 	"github.com/pthm/leeroy/azsdk/types"
@@ -95,6 +96,7 @@ func (m *movementRequests) unlock() {
 		m.reqs.Resolve(c.id, c.result)
 	}
 }
+
 func (m *movementRequests) finishLocked(r *movementRequest, result *script.Outcome) {
 	r.cancelled.Store(true)
 	if r.cancel != nil {
@@ -109,6 +111,7 @@ func (m *movementRequests) finishLocked(r *movementRequest, result *script.Outco
 		m.active = nil
 	}
 }
+
 func (m *movementRequests) activateLocked(r *movementRequest) {
 	if r.lease != nil {
 		m.grantLeaseLocked(r)
@@ -133,6 +136,7 @@ func (m *movementRequests) activateLocked(r *movementRequest) {
 	default:
 	}
 }
+
 func (m *movementRequests) advanceLocked() {
 	if m.active != nil || m.lease != nil || m.closed {
 		return
@@ -150,6 +154,7 @@ func (m *movementRequests) advanceLocked() {
 		}
 	}
 }
+
 func (m *movementRequests) start(taskID int, task, call string, dest types.Position) map[string]any {
 	m.mu.Lock()
 	defer m.unlock()
@@ -185,6 +190,7 @@ func (m *movementRequests) start(taskID int, task, call string, dest types.Posit
 	}
 	return handle
 }
+
 func (m *movementRequests) worker() {
 	for {
 		select {
@@ -250,11 +256,13 @@ func (m *movementRequests) worker() {
 		m.unlock()
 	}
 }
+
 func (m *movementRequests) distance(r *movementRequest) float64 {
 	p := m.backend.position()
 	d := r.owner.Destination
 	return math.Sqrt((p.X-d.X)*(p.X-d.X) + (p.Y-d.Y)*(p.Y-d.Y) + (p.Z-d.Z)*(p.Z-d.Z))
 }
+
 func (m *movementRequests) poll() {
 	m.mu.Lock()
 	defer m.unlock()
@@ -295,6 +303,7 @@ func (m *movementRequests) poll() {
 	}
 	m.advanceLocked()
 }
+
 func (m *movementRequests) cancelTask(taskID int, reason string) {
 	m.mu.Lock()
 	defer m.unlock()
@@ -321,6 +330,7 @@ func (m *movementRequests) cancelTask(taskID int, reason string) {
 	}
 	m.advanceLocked()
 }
+
 func (m *movementRequests) close() {
 	m.mu.Lock()
 	defer m.unlock()
@@ -341,6 +351,7 @@ func (m *movementRequests) close() {
 	}
 	m.queue = nil
 }
+
 func (m *movementRequests) snapshot() (*types.MovementOwner, []types.MovementOwner) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -351,6 +362,7 @@ func (m *movementRequests) snapshot() (*types.MovementOwner, []types.MovementOwn
 	}
 	return owner, queue
 }
+
 func (m *movementRequests) cancel(id int) *script.Outcome {
 	m.mu.Lock()
 	defer m.unlock()
@@ -368,6 +380,7 @@ func (m *movementRequests) cancel(id int) *script.Outcome {
 	}
 	return script.Fail("not_pending", "no pending movement with that request ID", nil)
 }
+
 func (m *movementRequests) stop(taskID int) *script.Outcome {
 	m.mu.Lock()
 	defer m.unlock()
@@ -386,6 +399,7 @@ func (m *movementRequests) stop(taskID int) *script.Outcome {
 	}
 	return script.Ok(types.MoveDone{Stopped: true})
 }
+
 func (b *Bot) setupMovementRequests() {
 	e := b.lua
 	m := newMovementRequests(e.Reqs, movementBackend{
@@ -481,11 +495,13 @@ func (m *movementRequests) expectTransfer(task int, timeout time.Duration) {
 		m.expectedTransferUntil = m.now().Add(timeout)
 	}
 }
+
 func (m *movementRequests) transferredSince(serial uint64) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.transferSerial != serial
 }
+
 func (m *movementRequests) cancelExpectedTransfer(task int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

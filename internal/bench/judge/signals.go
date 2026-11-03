@@ -137,7 +137,7 @@ func weights() map[string]float64 {
 }
 
 // composite is the weighted sum of each signal's change since base.
-func composite(now obj, base map[string]float64, w map[string]float64) float64 {
+func composite(now obj, base, w map[string]float64) float64 {
 	s := 0.0
 	for k, wt := range w {
 		s += wt * (now.get(k) - base[k])

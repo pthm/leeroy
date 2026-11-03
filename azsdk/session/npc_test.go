@@ -48,8 +48,10 @@ func TestGossipRequiresObservedWindow(t *testing.T) {
 // Packets laid out as AzerothCore writes them (PlayerMenu::SendGossipMenu, WorldPackets::NPC::TrainerList).
 func TestNPCPackets(t *testing.T) {
 	le := binary.LittleEndian
-	s := &npcState{trainers: map[uint64]types.Trainer{}, trainAt: map[uint64]time.Time{}, texts: map[uint32]string{},
-		status: map[uint64]uint8{}}
+	s := &npcState{
+		trainers: map[uint64]types.Trainer{}, trainAt: map[uint64]time.Time{}, texts: map[uint32]string{},
+		status: map[uint64]uint8{},
+	}
 
 	g := le.AppendUint64(nil, 0xF130000000000042)
 	g = le.AppendUint32(g, 7)   // menu

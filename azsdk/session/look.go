@@ -52,7 +52,7 @@ func aggro(c *types.Creature, me me3, myLevel uint32) {
 		return
 	}
 	c.AggroRadius = aggroRadius(c.Level, myLevel)
-	c.InAggro = math.Sqrt(math.Pow(c.X-me.x, 2)+math.Pow(c.Y-me.y, 2)+math.Pow(c.Z-me.z, 2)) <= c.AggroRadius
+	c.InAggro = math.Sqrt((c.X-me.x)*(c.X-me.x)+(c.Y-me.y)*(c.Y-me.y)+(c.Z-me.z)*(c.Z-me.z)) <= c.AggroRadius
 }
 
 // danger: the hostile creatures whose aggro range you're in or within 15 yd of, nearest edge first, at most 5, each
@@ -60,8 +60,10 @@ func aggro(c *types.Creature, me me3, myLevel uint32) {
 // line of sight (the reach annotator), which decides whether a creature in range can see you.
 func danger(hostile []types.Creature, sight func(*types.Danger)) (out []types.Danger, inAggro int, margin *float64) {
 	for _, c := range hostile {
-		d := types.Danger{GUID: c.GUID, Name: c.Name, Level: c.Level, Elite: c.Elite, Place: c.Place, AggroRadius: c.AggroRadius,
-			Margin: math.Round(c.Distance - c.AggroRadius)}
+		d := types.Danger{
+			GUID: c.GUID, Name: c.Name, Level: c.Level, Elite: c.Elite, Place: c.Place, AggroRadius: c.AggroRadius,
+			Margin: math.Round(c.Distance - c.AggroRadius),
+		}
 		if d.Margin > 15 {
 			continue
 		}
@@ -223,8 +225,10 @@ func (b *Bot) look(radius float64) string {
 		if math.Abs(c.X-me.x) > radius || math.Abs(c.Y-me.y) > radius*1.0 {
 			continue
 		}
-		u := lookUnit{name: cmp.Or(c.Name, "?"), kind: c.Reaction, level: c.Level, x: c.X, y: c.Y, z: c.Z,
-			distance: c.Distance, clock: c.Clock, dz: c.DZ, aggro: c.AggroRadius, inAggro: c.InAggro, inSight: c.InSight}
+		u := lookUnit{
+			name: cmp.Or(c.Name, "?"), kind: c.Reaction, level: c.Level, x: c.X, y: c.Y, z: c.Z,
+			distance: c.Distance, clock: c.Clock, dz: c.DZ, aggro: c.AggroRadius, inAggro: c.InAggro, inSight: c.InSight,
+		}
 		switch {
 		case !c.Alive:
 			if !c.Lootable {
@@ -248,8 +252,10 @@ func (b *Bot) look(radius float64) string {
 		if n > '9' || math.Abs(p.X-me.x) > radius || math.Abs(p.Y-me.y) > radius {
 			continue
 		}
-		units = append(units, lookUnit{label: n, name: p.Name, kind: "player", level: p.Level, x: p.X, y: p.Y, z: p.Z,
-			distance: p.Distance, clock: p.Clock, dz: p.DZ})
+		units = append(units, lookUnit{
+			label: n, name: p.Name, kind: "player", level: p.Level, x: p.X, y: p.Y, z: p.Z,
+			distance: p.Distance, clock: p.Clock, dz: p.DZ,
+		})
 		n++
 	}
 	_, _, _, _, m := b.world.Position()

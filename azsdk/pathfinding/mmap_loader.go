@@ -62,6 +62,7 @@ func (m *MMapManager) GetNavMesh(mapID uint32) (*detour.DtNavMesh, error) {
 func (m *MMapManager) EnsureTileLoaded(mapID uint32, x, y int32) error {
 	return m.EnsureTileLoadedContext(context.Background(), mapID, x, y)
 }
+
 func (m *MMapManager) EnsureTileLoadedContext(ctx context.Context, mapID uint32, x, y int32) error {
 	md, err := m.getOrLoadMapDataContext(ctx, mapID)
 	if err != nil {
@@ -122,6 +123,7 @@ func (m *MMapManager) CreateQuery(mapID uint32) (*detour.DtNavMeshQuery, error) 
 func (m *MMapManager) getOrLoadMapData(mapID uint32) (*mapData, error) {
 	return m.getOrLoadMapDataContext(context.Background(), mapID)
 }
+
 func (m *MMapManager) getOrLoadMapDataContext(ctx context.Context, mapID uint32) (*mapData, error) {
 	if err := lockContext(ctx, m.mu.TryRLock); err != nil {
 		return nil, err
@@ -209,6 +211,7 @@ func (m *MMapManager) loadNavMeshContext(ctx context.Context, mapID uint32) (*de
 func (m *MMapManager) loadTile(md *mapData, mapID uint32, x, y int32) error {
 	return m.loadTileContext(context.Background(), md, mapID, x, y)
 }
+
 func (m *MMapManager) loadTileContext(ctx context.Context, md *mapData, mapID uint32, x, y int32) error {
 	packed := packTileID(x, y)
 

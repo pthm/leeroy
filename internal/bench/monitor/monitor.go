@@ -139,8 +139,10 @@ func read(root string, at time.Time) snapshot {
 
 func diff(a, b snapshot) Sample {
 	dt := b.at.Sub(a.at).Seconds()
-	out := Sample{T: b.at.UnixMilli(), Load1: b.load1, MemTotalMB: round(b.memTotal / 1024), MemUsedMB: round((b.memTotal - b.memAvail) / 1024),
-		DiskUsedGB: round(b.diskUsed / 1e9), DiskTotalGB: round(b.diskTotal / 1e9), Groups: map[string]Usage{}}
+	out := Sample{
+		T: b.at.UnixMilli(), Load1: b.load1, MemTotalMB: round(b.memTotal / 1024), MemUsedMB: round((b.memTotal - b.memAvail) / 1024),
+		DiskUsedGB: round(b.diskUsed / 1e9), DiskTotalGB: round(b.diskTotal / 1e9), Groups: map[string]Usage{},
+	}
 	if b.total > a.total {
 		out.CPUPct = round(100 * float64(b.busy-a.busy) / float64(b.total-a.total))
 	}

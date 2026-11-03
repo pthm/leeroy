@@ -40,8 +40,10 @@ func (b *Bot) watchTotems() {
 		}
 		le := binary.LittleEndian
 		t.mu.Lock()
-		t.slots[data[0]] = totemSlot{guid: le.Uint64(data[1:]), spell: le.Uint32(data[13:]),
-			until: time.Now().Add(time.Duration(le.Uint32(data[9:])) * time.Millisecond)}
+		t.slots[data[0]] = totemSlot{
+			guid: le.Uint64(data[1:]), spell: le.Uint32(data[13:]),
+			until: time.Now().Add(time.Duration(le.Uint32(data[9:])) * time.Millisecond),
+		}
 		t.mu.Unlock()
 	})
 }
@@ -64,8 +66,10 @@ func (b *Bot) setupTotems() {
 		out := []types.Totem{}
 		for i, el := range totemElements {
 			if s, up := b.totemUp(i); up {
-				out = append(out, types.Totem{Element: el, GUID: types.GUID(s.guid), Spell: s.spell, Name: spellName(s.spell),
-					SecondsLeft: int(time.Until(s.until).Seconds())})
+				out = append(out, types.Totem{
+					Element: el, GUID: types.GUID(s.guid), Spell: s.spell, Name: spellName(s.spell),
+					SecondsLeft: int(time.Until(s.until).Seconds()),
+				})
 			}
 		}
 		return out

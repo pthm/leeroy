@@ -65,8 +65,16 @@ func byModel(cards []map[string]any) []obj {
 				perHour = round1(usd / hours)
 			}
 		}
-		out = append(out, obj{{"runtime", k[0]}, {"model", k[1]}, {"players", len(scores)}, {"score", MeanSE(scores)},
-			{"best", best}, {"total", round1(total)}, {"cost_usd", cost}, {"cost_per_agent_hour", perHour}})
+		out = append(out, obj{
+			{"runtime", k[0]},
+			{"model", k[1]},
+			{"players", len(scores)},
+			{"score", MeanSE(scores)},
+			{"best", best},
+			{"total", round1(total)},
+			{"cost_usd", cost},
+			{"cost_per_agent_hour", perHour},
+		})
 	}
 	return out
 }

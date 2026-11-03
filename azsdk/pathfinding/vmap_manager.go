@@ -214,9 +214,10 @@ func (b *BIH) intersectRay(ray Ray, maxDist *float32, stopAtFirst bool) bool {
 	offsetBack := [3]uint32{}
 	for i := 0; i < 3; i++ {
 		dirI := ray.Direction.X
-		if i == 1 {
+		switch i {
+		case 1:
 			dirI = ray.Direction.Y
-		} else if i == 2 {
+		case 2:
 			dirI = ray.Direction.Z
 		}
 		bits := floatToRawIntBits(dirI) >> 31
@@ -242,10 +243,8 @@ func (b *BIH) intersectRay(ray Ray, maxDist *float32, stopAtFirst bool) bool {
 		tmin := sn.tmin
 		tmax := sn.tmax
 
-		for {
-			if node >= len(b.tree) {
-				break
-			}
+		for node < len(b.tree) {
+
 			tn := b.tree[node]
 			axis := (tn & (3 << 30)) >> 30
 			bvh2 := (tn & (1 << 29)) != 0
@@ -498,6 +497,7 @@ type WorldModel struct {
 func (w *WorldModel) readFile(filename string) error {
 	return w.readFileContext(context.Background(), filename)
 }
+
 func (w *WorldModel) readFileContext(ctx context.Context, filename string) error {
 	f, reader, err := openVMapContext(ctx, filename)
 	if err != nil {
@@ -588,6 +588,7 @@ func readFloat32(r io.Reader) (float32, error) {
 func (w *WorldModel) getHeight(ray Ray, maxDist float32) float32 {
 	return w.getHeightContext(context.Background(), ray, maxDist)
 }
+
 func (w *WorldModel) getHeightContext(ctx context.Context, ray Ray, maxDist float32) float32 {
 	// return min t , caller computes height
 	minT := maxDist
@@ -755,6 +756,7 @@ func validateVMapVectorChunk(name string, chunkSize, count, elemBytes, maxCount 
 func (g *GroupModel) getHeight(ray Ray, maxDist float32) float32 {
 	return g.getHeightContext(context.Background(), ray, maxDist)
 }
+
 func (g *GroupModel) getHeightContext(ctx context.Context, ray Ray, maxDist float32) float32 {
 	// Brute force over the group's triangles, after a bounds check: most of a building's groups are nowhere near
 	// the ray, and skipping them takes path ground-snapping from ~3 ms to microseconds per point.
@@ -880,6 +882,7 @@ func ensureTrailingSlash(p string) string {
 func (vm *VMapManager) getTree(mapID uint32) (*StaticMapTree, error) {
 	return vm.getTreeContext(context.Background(), mapID)
 }
+
 func (vm *VMapManager) getTreeContext(ctx context.Context, mapID uint32) (*StaticMapTree, error) {
 	if err := lockContext(ctx, vm.mu.TryRLock); err != nil {
 		return nil, err
@@ -920,6 +923,7 @@ func (vm *VMapManager) getTreeContext(ctx context.Context, mapID uint32) (*Stati
 func (vm *VMapManager) GetHeight(mapID uint32, x, y, z, maxSearch float32) (float32, bool) {
 	return vm.GetHeightContext(context.Background(), mapID, x, y, z, maxSearch)
 }
+
 func (vm *VMapManager) GetHeightContext(ctx context.Context, mapID uint32, x, y, z, maxSearch float32) (float32, bool) {
 	tree, err := vm.getTreeContext(ctx, mapID)
 	if err != nil || tree == nil {
@@ -980,6 +984,7 @@ type modelCacheEntry struct {
 func (s *StaticMapTree) InitMap(fname string) bool {
 	return s.initMapContext(context.Background(), fname)
 }
+
 func (s *StaticMapTree) initMapContext(ctx context.Context, fname string) bool {
 	full := s.basePath + fname
 	f, reader, err := openVMapContext(ctx, full)
@@ -1036,6 +1041,7 @@ func (s *StaticMapTree) initMapContext(ctx context.Context, fname string) bool {
 func (s *StaticMapTree) LoadMapTile(tileX, tileY uint32) error {
 	return s.loadMapTileContext(context.Background(), tileX, tileY)
 }
+
 func (s *StaticMapTree) loadMapTileContext(ctx context.Context, tileX, tileY uint32) error {
 	if err := lockContext(ctx, s.loadMu.TryLock); err != nil {
 		return err
@@ -1119,6 +1125,7 @@ func getTileFileName(mapID, tileX, tileY uint32) string {
 func (s *StaticMapTree) getHeight(pos Vector3, maxSearch float32) float32 {
 	return s.getHeightContext(context.Background(), pos, maxSearch)
 }
+
 func (s *StaticMapTree) getHeightContext(ctx context.Context, pos Vector3, maxSearch float32) float32 {
 	candidates := s.heightCandidatesContext(ctx, pos)
 	if len(candidates) == 0 {
@@ -1146,6 +1153,7 @@ func (s *StaticMapTree) getHeightContext(ctx context.Context, pos Vector3, maxSe
 func (s *StaticMapTree) heightCandidates(pos Vector3) []*ModelInstance {
 	return s.heightCandidatesContext(context.Background(), pos)
 }
+
 func (s *StaticMapTree) heightCandidatesContext(ctx context.Context, pos Vector3) []*ModelInstance {
 	if lockContext(ctx, s.dataMu.TryRLock) != nil {
 		return nil
@@ -1189,6 +1197,7 @@ func (s *StaticMapTree) modelInstanceNearLocked(mi *ModelInstance, pos Vector3) 
 func (s *StaticMapTree) modelForInstance(mi *ModelInstance) (*WorldModel, bool) {
 	return s.modelForInstanceContext(context.Background(), mi)
 }
+
 func (s *StaticMapTree) modelForInstanceContext(ctx context.Context, mi *ModelInstance) (*WorldModel, bool) {
 	if lockContext(ctx, s.dataMu.TryRLock) != nil {
 		return nil, false
@@ -1301,6 +1310,7 @@ func bytesToMiB(bytes int64) float64 {
 func (s *StaticMapTree) intersectModelHeight(mi *ModelInstance, model *WorldModel, pos Vector3, maxSearch float32) float32 {
 	return s.intersectModelHeightContext(context.Background(), mi, model, pos, maxSearch)
 }
+
 func (s *StaticMapTree) intersectModelHeightContext(ctx context.Context, mi *ModelInstance, model *WorldModel, pos Vector3, maxSearch float32) float32 {
 	if model == nil {
 		return INVALID_HEIGHT
@@ -1376,7 +1386,8 @@ func (tm *TerrainManager) getCombinedHeightWithVMap(mapID uint32, x, y, z float3
 func (vm *VMapManager) InLineOfSight(mapID uint32, a, b Vector3) (bool, bool) {
 	return vm.InLineOfSightContext(context.Background(), mapID, a, b)
 }
-func (vm *VMapManager) InLineOfSightContext(ctx context.Context, mapID uint32, a, b Vector3) (clear bool, ok bool) {
+
+func (vm *VMapManager) InLineOfSightContext(ctx context.Context, mapID uint32, a, b Vector3) (clear, ok bool) {
 	tree, err := vm.getTreeContext(ctx, mapID)
 	if err != nil || tree == nil {
 		return true, false

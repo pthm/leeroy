@@ -44,8 +44,10 @@ func TestAggroRadius(t *testing.T) {
 
 // a small map: you in the middle, a hostile north-east with its aggro range, no floor past 6 yd north
 func TestRenderLook(t *testing.T) {
-	units := []lookUnit{{label: 'A', name: "Kobold Tunneler", kind: "hostile", level: 6, x: 4, y: -4, z: -14, distance: 15.5, clock: 2,
-		dz: -14, aggro: 3, inAggro: true}}
+	units := []lookUnit{{
+		label: 'A', name: "Kobold Tunneler", kind: "hostile", level: 6, x: 4, y: -4, z: -14, distance: 15.5, clock: 2,
+		dz: -14, aggro: 3, inAggro: true,
+	}}
 	out := renderLook(me3{}, 1, 8, units, func(x, y float64) (float64, bool) { return 0, x <= 6 })
 	lines := strings.Split(out, "\n")
 	grid := lines[3:8] // after the three header lines: 5 rows of 9

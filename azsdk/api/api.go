@@ -86,7 +86,8 @@ var methods = map[string]method{
 	"script.eval": typed(func(s Sessions, p struct {
 		Char string `json:"char"`
 		Code string `json:"code"`
-	}) (any, error) {
+	},
+	) (any, error) {
 		e, err := engine(s, p.Char)
 		if err != nil {
 			return nil, err
@@ -109,7 +110,8 @@ var methods = map[string]method{
 		Char string `json:"char"`
 		Fn   string `json:"fn"`
 		Args []any  `json:"args"`
-	}) (any, error) {
+	},
+	) (any, error) {
 		e, err := engine(s, p.Char)
 		if err != nil {
 			return nil, err
@@ -130,7 +132,8 @@ var methods = map[string]method{
 		Char string `json:"char"`
 		Full bool   `json:"full"`
 		script.Query
-	}) (any, error) {
+	},
+	) (any, error) {
 		e, err := engine(s, p.Char)
 		if err != nil {
 			return nil, err
@@ -145,7 +148,8 @@ var methods = map[string]method{
 	"events.subscribe": typed(func(s Sessions, p struct {
 		Char  string   `json:"char"`
 		Types []string `json:"types"`
-	}) (any, error) {
+	},
+	) (any, error) {
 		e, err := engine(s, p.Char)
 		if err != nil {
 			return nil, err
@@ -166,7 +170,8 @@ var methods = map[string]method{
 		Since   *uint64 `json:"since"`
 		Full    bool    `json:"full"`
 		script.Query
-	}) (any, error) {
+	},
+	) (any, error) {
 		e, err := engine(s, p.Char)
 		if err != nil {
 			return nil, err
@@ -181,7 +186,7 @@ var methods = map[string]method{
 		if len(p.Types) == 0 {
 			p.Types = subscribed(e)
 		}
-		p.Query.Since, p.Query.Wake = e.Bus.Seq(), true
+		p.Query.Since, p.Wake = e.Bus.Seq(), true
 		if p.Since != nil {
 			p.Query.Since = *p.Since
 		}
@@ -193,7 +198,8 @@ var methods = map[string]method{
 		Char string          `json:"char"`
 		Type string          `json:"type"`
 		Data json.RawMessage `json:"data"`
-	}) (any, error) {
+	},
+	) (any, error) {
 		e, err := engine(s, p.Char)
 		if err != nil {
 			return nil, err
@@ -263,8 +269,10 @@ var (
 	subs   = map[*script.Engine][]string{}
 )
 
-var defaultSubs = []string{"goal_met", "maintenance", "attention", "death", "stall", "failure_loop", "script_error", "task_finished", "party_invite", "trade", "summon_request", "ready_check", "loot_roll_start",
-	"gear_broken", "chat:whisper", "chat:party", "chat:raid", "chat:say"}
+var defaultSubs = []string{
+	"goal_met", "maintenance", "attention", "death", "stall", "failure_loop", "script_error", "task_finished", "party_invite", "trade", "summon_request", "ready_check", "loot_roll_start",
+	"gear_broken", "chat:whisper", "chat:party", "chat:raid", "chat:say",
+}
 
 func subscribed(e *script.Engine) []string {
 	subsMu.Lock()
@@ -277,8 +285,10 @@ func subscribed(e *script.Engine) []string {
 
 // informational events eval replies always show in full (they don't wake the agent unless subscribed). Channel
 // chat is how players broadcast to each other, so it's shown even though it doesn't wake by default.
-var shown = []string{"goal_met", "maintenance", "level_up", "resurrected", "error", "notice", "party_changed", "quest_complete", "quest_turned_in",
-	"chat:channel", "slow_tick"}
+var shown = []string{
+	"goal_met", "maintenance", "level_up", "resurrected", "error", "notice", "party_changed", "quest_complete", "quest_turned_in",
+	"chat:channel", "slow_tick",
+}
 
 // news summarises the events since the agent's last eval: {seq, counts by type, important events (last 20)}.
 func news(e *script.Engine) map[string]any {

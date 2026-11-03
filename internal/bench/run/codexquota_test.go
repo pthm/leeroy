@@ -43,8 +43,15 @@ func TestCodexQuota(t *testing.T) {
 		used         float64
 		reached      bool
 		alert, pause bool
-	}{{50, false, false, false}, {81, false, true, false}, {85, false, false, false}, {92, false, true, false},
-		{95, false, false, false}, {97, false, true, true}, {10, true, true, true}} {
+	}{
+		{50, false, false, false},
+		{81, false, true, false},
+		{85, false, false, false},
+		{92, false, true, false},
+		{95, false, false, false},
+		{97, false, true, true},
+		{10, true, true, true},
+	} {
 		msg, pause := codexQuotaAlert(&codexQuota{Used: c.used, Reached: c.reached}, &alerted)
 		if (msg != "") != c.alert || pause != c.pause {
 			t.Fatalf("%v%%, reached %v: msg %q pause %v", c.used, c.reached, msg, pause)

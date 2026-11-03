@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/pthm/leeroy/azsdk/jqjson"
 	"io"
 	"math"
 	"net"
@@ -17,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pthm/leeroy/azsdk/jqjson"
 )
 
 const wowUsage = `wow 'return me.level()'              evaluate Lua in the live session (shared with your running scripts), print JSON
@@ -396,6 +397,7 @@ func maxWaitSeconds() int {
 	}
 	return 600
 }
+
 func validWait(n int) bool {
 	if n < 0 || n > maxWaitSeconds() {
 		fmt.Fprintf(os.Stderr, "wow: wait must be 0..%d seconds; use repeated wow wait 20 calls for longer monitoring\n", maxWaitSeconds())

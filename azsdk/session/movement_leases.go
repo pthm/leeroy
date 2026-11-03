@@ -30,12 +30,14 @@ func movementPriority(p string) int {
 	}
 	return 0
 }
+
 func (m *movementRequests) expireLeaseLocked() {
 	if m.lease != nil && !m.now().Before(m.lease.deadline) {
 		m.invalidateLeaseLocked(script.Fail("lease_timeout", "movement control lease expired", m.ownerLocked()))
 		m.advanceLocked()
 	}
 }
+
 func (m *movementRequests) ownerLocked() *types.MovementOwner {
 	var o types.MovementOwner
 	if m.lease != nil {
@@ -55,6 +57,7 @@ func (m *movementRequests) ownerLocked() *types.MovementOwner {
 	}
 	return &o
 }
+
 func (m *movementRequests) enqueueLocked(r *movementRequest) {
 	// Higher priorities go first; equal priority remains FIFO.
 	i := len(m.queue)
@@ -65,6 +68,7 @@ func (m *movementRequests) enqueueLocked(r *movementRequest) {
 	copy(m.queue[i+1:], m.queue[i:])
 	m.queue[i] = r
 }
+
 func (m *movementRequests) invalidateLeaseLocked(reason *script.Outcome) {
 	l := m.lease
 	if l == nil {
@@ -80,6 +84,7 @@ func (m *movementRequests) invalidateLeaseLocked(reason *script.Outcome) {
 	// Keep the failed lease attached to its task until its wrappers unwind. A
 	// callback returning after preemption cannot silently acquire movement again.
 }
+
 func (m *movementRequests) grantLeaseLocked(r *movementRequest) {
 	l := r.lease
 	l.owner.RequestID = 0
@@ -91,6 +96,7 @@ func (m *movementRequests) grantLeaseLocked(r *movementRequest) {
 	m.leases[l.owner.TaskID] = l
 	m.completions = append(m.completions, movementCompletion{r.owner.RequestID, script.Ok(map[string]any{"lease_id": l.owner.LeaseID})})
 }
+
 func (m *movementRequests) acquire(taskID int, task, call, priority string, queueSeconds, leaseSeconds float64) map[string]any {
 	m.mu.Lock()
 	defer m.unlock()
@@ -150,6 +156,7 @@ func (m *movementRequests) acquire(taskID int, task, call, priority string, queu
 	}
 	return h
 }
+
 func (m *movementRequests) release(taskID, leaseID int) *script.Outcome {
 	m.mu.Lock()
 	defer m.unlock()
@@ -188,6 +195,7 @@ func (m *movementRequests) permissionLocked(taskID int) *script.Outcome {
 	}
 	return nil
 }
+
 func (m *movementRequests) steer(taskID int, fn func() *script.Outcome) *script.Outcome {
 	m.mu.Lock()
 	defer m.unlock()

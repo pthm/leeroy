@@ -256,8 +256,10 @@ func OpenClient(dir string) (*Client, error) {
 	if len(locale) > 0 {
 		l := filepath.Dir(locale[0])
 		code := filepath.Base(l)
-		for _, n := range []string{"patch-" + code + "-3", "patch-" + code + "-2", "patch-" + code, "lichking-locale-" + code,
-			"expansion-locale-" + code, "locale-" + code, "base-" + code} {
+		for _, n := range []string{
+			"patch-" + code + "-3", "patch-" + code + "-2", "patch-" + code, "lichking-locale-" + code,
+			"expansion-locale-" + code, "locale-" + code, "base-" + code,
+		} {
 			paths = append(paths, filepath.Join(l, n+".MPQ"))
 		}
 	}

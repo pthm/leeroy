@@ -30,58 +30,105 @@ const recoveryWorld = actBase + `
 
 func TestRecoveryBoundedFailuresAndPostconditions(t *testing.T) {
 	for _, tc := range []struct{ name, stubs, body string }{
-		{"no automatic healer", `death.corpse=function() return {ok=true,data={x=100,y=0,z=0,reclaim_in=0}} end;world.path=function() return {ok=false,op="world.path",error={code="route_unreachable",message="no path"}} end;mobs={healer}`,
-			`r=act.recover{rest=false};assert(not r.ok and r.error.code=="route_unreachable" and spirits==0 and r.data.spirit_option.requires_permission)`},
-		{"explicit fallback", `death.corpse=function() return {ok=true,data={x=100,y=0,z=0,reclaim_in=0}} end;world.path=function() return {ok=false,op="world.path",error={code="route_unreachable",message="no path"}} end;mobs={healer}`,
-			`r=act.recover{rest=false,allow_spirit_fallback=true};assert(r.ok and spirits==1 and reclaims==0 and r.data.state=="done" and r.data.last_error.code=="route_unreachable")`},
-		{"two reclaim failures", `death.reclaim=function() reclaims=reclaims+1;return {ok=false,op="death.reclaim",error={code="not_yet",message="timer not ready"}} end`,
-			`r=act.recover{rest=false};assert(not r.ok and r.error.code=="retry_exhausted" and reclaims==2 and spirits==0 and r.data.last_error.code=="not_yet")`},
-		{"timer never ready", `death.corpse=function() return {ok=true,data={x=0,y=0,z=0,reclaim_in=99}} end`,
-			`r=act.recover{rest=false,timeout_s=2};assert(not r.ok and r.error.code=="recovery_timeout" and reclaims==0 and clock==2000)`},
-		{"missing corpse", `death.corpse=function() return {ok=false,error={code="timeout",message="no corpse reply"}} end`,
-			`r=act.corpse_run{timeout_s=2};assert(not r.ok and r.error.code=="timeout" and reclaims==0)`},
-		{"safe spot walk failure", `mobs={{alive=true,reaction="hostile",x=10,y=0,z=0}};move.to=function() return {ok=false,op="move.to",error={code="stuck",message="blocked"}} end`,
-			`r=act.corpse_run();assert(not r.ok and r.error.code=="stuck" and reclaims==0 and r.data.failed_step=="move.to")`},
-		{"wrong floor", `pos.z=10;move.to=function() return {ok=true} end`,
-			`r=act.corpse_run();assert(not r.ok and r.error.code=="wrong_floor" and reclaims==0)`},
-		{"unknown collision", `world.in_sight=function() return nil end`,
-			`r=act.recover{rest=false};assert(not r.ok and r.error.code=="unsafe_recovery" and reclaims==0)`},
-		{"unsafe healer cannot bypass", `mobs={healer,{alive=true,reaction="hostile",x=0,y=0,z=0}}`,
-			`r=act.recover{spirit=true,safe=false,rest=false};assert(not r.ok and r.error.code=="unsafe_recovery" and spirits==0)`},
-		{"healer arrives after transfer", `units.nearby=function() if clock<600 then return {} end return {healer} end`,
-			`r=act.spirit_res();assert(r.ok and spirits==1 and clock>=600 and clock<5000)`},
-		{"healer observation has deadline", `units.nearby=function() return {} end`,
-			`r=act.spirit_res{timeout_s=1};assert(not r.ok and r.error.code=="recovery_timeout" and clock==1000 and spirits==0)`},
-		{"healer move failure", `healer.x=10;healer.distance=10;mobs={healer};move.to=function() return {ok=false,op="move.to",error={code="stuck",message="blocked"}} end`,
-			`r=act.spirit_res();assert(not r.ok and r.error.code=="stuck" and spirits==0)`},
-		{"healer failure budget", `mobs={healer};death.spirit_res=function() spirits=spirits+1;return {ok=false,op="death.spirit_res",error={code="refused",message="refused"}} end`,
-			`r=act.spirit_res();assert(not r.ok and r.error.code=="retry_exhausted" and spirits==2 and r.data.last_error.code=="refused")`},
-		{"false resurrection success", `death.reclaim=function() reclaims=reclaims+1;return {ok=true} end`,
-			`r=act.corpse_run();assert(not r.ok and r.error.code=="retry_exhausted" and reclaims==2 and not r.data.alive)`},
-		{"broken main hand", `me.gear=function() return {weapon={broken=true},broken={"main_hand"}} end;mobs={{guid="8",roles={"repair"}}}`,
-			`r=act.recover{rest=false};assert(not r.ok and r.error.code=="needs_repair" and r.data.state=="needs_repair" and #r.data.repair_options==1 and r.data.money==100)`},
-		{"failed rest", `me.health=function() return {current=50,max=100} end`,
-			`r=act.recover{timeout_s=60};assert(not r.ok and r.error.code=="rest_timeout" and r.data.state=="attention")`},
-		{"already alive checks gear", `alive=true;me.gear=function() return {weapon={broken=true},broken={"main_hand"}} end`,
-			`r=act.recover();assert(not r.ok and r.error.code=="needs_repair" and reclaims==0)`},
-		{"instance portal", `move._expect_transfer=function(s) expected=s end;death.corpse=function() return {ok=true,data={x=100,y=0,z=0,reclaim_in=0,instance=36,portal=true}} end;move.to=function(x) moved=x;alive=true;return {ok=false,op="move.to",error={code="teleported",message="world position changed"}} end`,
-			`r=act.recover{rest=false};assert(r.ok and moved==100 and expected>0 and reclaims==0 and spirits==0)`},
-		{"instance portal past the navmesh", `move._expect_transfer=function() end;death.corpse=function() return {ok=true,data={x=100,y=0,z=0,reclaim_in=0,instance=36,portal=true,radius=7}} end;world.path=function() return {ok=false,op="world.path",error={code="route_unreachable",message="short"},data={waypoints={{x=50,y=0,z=0},{x=96,y=0,z=1}}}} end;move.to=function(x) moved=x;alive=true;return {ok=false,op="move.to",error={code="teleported",message="moved"}} end`,
-			`r=act.recover{rest=false};assert(r.ok and moved==96)`},
-		{"instance portal out of reach", `move._expect_transfer=function() end;death.corpse=function() return {ok=true,data={x=100,y=0,z=0,reclaim_in=0,instance=36,portal=true,radius=7}} end;world.path=function() return {ok=false,op="world.path",error={code="route_unreachable",message="short"},data={waypoints={{x=50,y=0,z=0}}}} end`,
-			`r=act.corpse_run();assert(not r.ok and r.error.code=="route_unreachable")`},
-		{"instance portal without resurrection", `move._expect_transfer=function() end;death.corpse=function() return {ok=true,data={x=100,y=0,z=0,reclaim_in=0,instance=36,portal=true}} end;move.to=function() return {ok=true} end`,
-			`r=act.corpse_run{timeout_s=60};assert(not r.ok and r.error.code=="not_alive" and reclaims==0)`},
-		{"instance without portal", `death.corpse=function() return {ok=true,data={x=100,y=0,z=0,reclaim_in=0,instance=36}} end`,
-			`r=act.corpse_run();assert(not r.ok and r.error.code=="unreachable" and reclaims==0)`},
-		{"lease invalidated before resurrection", `move._check=function() return {ok=false,error={code="lease_timeout",message="expired"}} end`,
-			`r=act.recover{rest=false,allow_spirit_fallback=true};assert(not r.ok and r.error.code=="lease_timeout" and reclaims==0 and spirits==0)`},
+		{
+			"no automatic healer", `death.corpse=function() return {ok=true,data={x=100,y=0,z=0,reclaim_in=0}} end;world.path=function() return {ok=false,op="world.path",error={code="route_unreachable",message="no path"}} end;mobs={healer}`,
+			`r=act.recover{rest=false};assert(not r.ok and r.error.code=="route_unreachable" and spirits==0 and r.data.spirit_option.requires_permission)`,
+		},
+		{
+			"explicit fallback", `death.corpse=function() return {ok=true,data={x=100,y=0,z=0,reclaim_in=0}} end;world.path=function() return {ok=false,op="world.path",error={code="route_unreachable",message="no path"}} end;mobs={healer}`,
+			`r=act.recover{rest=false,allow_spirit_fallback=true};assert(r.ok and spirits==1 and reclaims==0 and r.data.state=="done" and r.data.last_error.code=="route_unreachable")`,
+		},
+		{
+			"two reclaim failures", `death.reclaim=function() reclaims=reclaims+1;return {ok=false,op="death.reclaim",error={code="not_yet",message="timer not ready"}} end`,
+			`r=act.recover{rest=false};assert(not r.ok and r.error.code=="retry_exhausted" and reclaims==2 and spirits==0 and r.data.last_error.code=="not_yet")`,
+		},
+		{
+			"timer never ready", `death.corpse=function() return {ok=true,data={x=0,y=0,z=0,reclaim_in=99}} end`,
+			`r=act.recover{rest=false,timeout_s=2};assert(not r.ok and r.error.code=="recovery_timeout" and reclaims==0 and clock==2000)`,
+		},
+		{
+			"missing corpse", `death.corpse=function() return {ok=false,error={code="timeout",message="no corpse reply"}} end`,
+			`r=act.corpse_run{timeout_s=2};assert(not r.ok and r.error.code=="timeout" and reclaims==0)`,
+		},
+		{
+			"safe spot walk failure", `mobs={{alive=true,reaction="hostile",x=10,y=0,z=0}};move.to=function() return {ok=false,op="move.to",error={code="stuck",message="blocked"}} end`,
+			`r=act.corpse_run();assert(not r.ok and r.error.code=="stuck" and reclaims==0 and r.data.failed_step=="move.to")`,
+		},
+		{
+			"wrong floor", `pos.z=10;move.to=function() return {ok=true} end`,
+			`r=act.corpse_run();assert(not r.ok and r.error.code=="wrong_floor" and reclaims==0)`,
+		},
+		{
+			"unknown collision", `world.in_sight=function() return nil end`,
+			`r=act.recover{rest=false};assert(not r.ok and r.error.code=="unsafe_recovery" and reclaims==0)`,
+		},
+		{
+			"unsafe healer cannot bypass", `mobs={healer,{alive=true,reaction="hostile",x=0,y=0,z=0}}`,
+			`r=act.recover{spirit=true,safe=false,rest=false};assert(not r.ok and r.error.code=="unsafe_recovery" and spirits==0)`,
+		},
+		{
+			"healer arrives after transfer", `units.nearby=function() if clock<600 then return {} end return {healer} end`,
+			`r=act.spirit_res();assert(r.ok and spirits==1 and clock>=600 and clock<5000)`,
+		},
+		{
+			"healer observation has deadline", `units.nearby=function() return {} end`,
+			`r=act.spirit_res{timeout_s=1};assert(not r.ok and r.error.code=="recovery_timeout" and clock==1000 and spirits==0)`,
+		},
+		{
+			"healer move failure", `healer.x=10;healer.distance=10;mobs={healer};move.to=function() return {ok=false,op="move.to",error={code="stuck",message="blocked"}} end`,
+			`r=act.spirit_res();assert(not r.ok and r.error.code=="stuck" and spirits==0)`,
+		},
+		{
+			"healer failure budget", `mobs={healer};death.spirit_res=function() spirits=spirits+1;return {ok=false,op="death.spirit_res",error={code="refused",message="refused"}} end`,
+			`r=act.spirit_res();assert(not r.ok and r.error.code=="retry_exhausted" and spirits==2 and r.data.last_error.code=="refused")`,
+		},
+		{
+			"false resurrection success", `death.reclaim=function() reclaims=reclaims+1;return {ok=true} end`,
+			`r=act.corpse_run();assert(not r.ok and r.error.code=="retry_exhausted" and reclaims==2 and not r.data.alive)`,
+		},
+		{
+			"broken main hand", `me.gear=function() return {weapon={broken=true},broken={"main_hand"}} end;mobs={{guid="8",roles={"repair"}}}`,
+			`r=act.recover{rest=false};assert(not r.ok and r.error.code=="needs_repair" and r.data.state=="needs_repair" and #r.data.repair_options==1 and r.data.money==100)`,
+		},
+		{
+			"failed rest", `me.health=function() return {current=50,max=100} end`,
+			`r=act.recover{timeout_s=60};assert(not r.ok and r.error.code=="rest_timeout" and r.data.state=="attention")`,
+		},
+		{
+			"already alive checks gear", `alive=true;me.gear=function() return {weapon={broken=true},broken={"main_hand"}} end`,
+			`r=act.recover();assert(not r.ok and r.error.code=="needs_repair" and reclaims==0)`,
+		},
+		{
+			"instance portal", `move._expect_transfer=function(s) expected=s end;death.corpse=function() return {ok=true,data={x=100,y=0,z=0,reclaim_in=0,instance=36,portal=true}} end;move.to=function(x) moved=x;alive=true;return {ok=false,op="move.to",error={code="teleported",message="world position changed"}} end`,
+			`r=act.recover{rest=false};assert(r.ok and moved==100 and expected>0 and reclaims==0 and spirits==0)`,
+		},
+		{
+			"instance portal past the navmesh", `move._expect_transfer=function() end;death.corpse=function() return {ok=true,data={x=100,y=0,z=0,reclaim_in=0,instance=36,portal=true,radius=7}} end;world.path=function() return {ok=false,op="world.path",error={code="route_unreachable",message="short"},data={waypoints={{x=50,y=0,z=0},{x=96,y=0,z=1}}}} end;move.to=function(x) moved=x;alive=true;return {ok=false,op="move.to",error={code="teleported",message="moved"}} end`,
+			`r=act.recover{rest=false};assert(r.ok and moved==96)`,
+		},
+		{
+			"instance portal out of reach", `move._expect_transfer=function() end;death.corpse=function() return {ok=true,data={x=100,y=0,z=0,reclaim_in=0,instance=36,portal=true,radius=7}} end;world.path=function() return {ok=false,op="world.path",error={code="route_unreachable",message="short"},data={waypoints={{x=50,y=0,z=0}}}} end`,
+			`r=act.corpse_run();assert(not r.ok and r.error.code=="route_unreachable")`,
+		},
+		{
+			"instance portal without resurrection", `move._expect_transfer=function() end;death.corpse=function() return {ok=true,data={x=100,y=0,z=0,reclaim_in=0,instance=36,portal=true}} end;move.to=function() return {ok=true} end`,
+			`r=act.corpse_run{timeout_s=60};assert(not r.ok and r.error.code=="not_alive" and reclaims==0)`,
+		},
+		{
+			"instance without portal", `death.corpse=function() return {ok=true,data={x=100,y=0,z=0,reclaim_in=0,instance=36}} end`,
+			`r=act.corpse_run();assert(not r.ok and r.error.code=="unreachable" and reclaims==0)`,
+		},
+		{
+			"lease invalidated before resurrection", `move._check=function() return {ok=false,error={code="lease_timeout",message="expired"}} end`,
+			`r=act.recover{rest=false,allow_spirit_fallback=true};assert(not r.ok and r.error.code=="lease_timeout" and reclaims==0 and spirits==0)`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			actWorld(t, recoveryWorld+fastClock+tc.stubs, tc.body+`;assert(r.data.state=="done" or r.data.state=="attention" or r.data.state=="needs_repair");assert(r.id==nil and r.pending==nil)`)
 		})
 	}
 }
+
 func TestRecoveryReleaseFailureAndValidation(t *testing.T) {
 	actWorld(t, recoveryWorld+`
   me.ghost=function() return false end
@@ -93,6 +140,7 @@ func TestRecoveryReleaseFailureAndValidation(t *testing.T) {
   end
  `)
 }
+
 func TestRecoveryCoordinatorJoiningCancellationAndExpiry(t *testing.T) {
 	e := script.NewEngine(func(string, ...any) {}, nil)
 	defer e.Close()
@@ -141,6 +189,7 @@ func recoveryEngine(t *testing.T) (*script.Engine, *recoveryCoordinator, *moveme
 	c.cancelMovement = f.control.cancelTask
 	return e, c, f
 }
+
 func TestRecoveryDuplicateHandlersJoinWithoutChangingPolicy(t *testing.T) {
 	e, _, f := recoveryEngine(t)
 	reclaims, reqID := 0, 0
@@ -168,6 +217,7 @@ func TestRecoveryDuplicateHandlersJoinWithoutChangingPolicy(t *testing.T) {
 		t.Fatalf("recovery leaked ownership: %+v", o)
 	}
 }
+
 func TestRecoveryOwnerLifecycleTerminatesJoiners(t *testing.T) {
 	for _, operation := range []string{"stop", "pause"} {
 		t.Run(operation, func(t *testing.T) {

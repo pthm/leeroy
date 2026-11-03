@@ -45,7 +45,7 @@ func TestHarnessResumeAndTornRecord(t *testing.T) {
 	p.setState("playing")
 	p.setState("paused")
 	path := r.f().Diagnostics("a1")
-	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
 	f.WriteString(`{"schema":1,"seq":3`)
 	f.Close()
 	resumed := &player{a: p.a, dir: dir, r: r}
@@ -80,7 +80,7 @@ func TestAgentExitDrainsTranscriptBeforeSnapshot(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	bin := filepath.Join(dir, "codex")
-	if err := os.WriteFile(bin, []byte("#!/bin/sh\nprintf '%s\\n' '{\"type\":\"thread.started\",\"thread_id\":\"test-123\"}' '{\"type\":\"turn.completed\"}'\n"), 0700); err != nil {
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nprintf '%s\\n' '{\"type\":\"thread.started\",\"thread_id\":\"test-123\"}' '{\"type\":\"turn.completed\"}'\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))

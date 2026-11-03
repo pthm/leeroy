@@ -4,45 +4,73 @@ import "testing"
 
 func TestGoToFloorPostconditions(t *testing.T) {
 	for _, tc := range []struct{ name, stubs, body string }{
-		{"preserve explicit z", `world.ground_z=function() error("must not replace requested z") end`,
-			`r=act.go_to{x=0,y=0,z=20};assert(r.ok and #moves==1 and moves[1].z==20 and r.data.vertical_gap==0)`},
-		{"wrong floor despite raw success", `move.to=function() pos={x=10,y=0,z=10};return {ok=true} end`,
-			`r=act.go_to{x=10,y=0,z=0};assert(not r.ok and r.error.code=="wrong_floor" and r.data.vertical_gap==10 and r.data.position.z==10)`},
-		{"selected floor enforced", `world.ground_z=function() return 20 end;move.to=function() return {ok=true} end`,
-			`r=act.go_to{x=0,y=0};assert(not r.ok and r.error.code=="wrong_floor" and r.data.destination.z==20)`},
-		{"far floor over the terrain", `world.ground_z=function(x,y,z) if z==nil then return 21 elseif z>=29 then return 35 end return nil end`,
-			`r=act.go_to{x=100,y=0};assert(moves[1].z==35 and r.data.destination.z==35)`},
-		{"unknown floor", `world.ground_z=function() return nil end`,
-			`r=act.go_to{x=10,y=0};assert(not r.ok and r.error.code=="wrong_floor" and #moves==0)`},
-		{"wrong map before movement", `pos.map=1`,
-			`r=act.go_to{x=10,y=0,z=0,map=0};assert(not r.ok and r.error.code=="wrong_map" and #moves==0)`},
-		{"map changes during movement", `move.to=function() pos={x=10,y=0,z=0,map=1};return {ok=true} end`,
-			`r=act.go_to{x=10,y=0,z=0};assert(not r.ok and r.error.code=="wrong_map")`},
-		{"raw success outside tolerance", `move.to=function() return {ok=true} end`,
-			`r=act.go_to{x=100,y=0,z=0};assert(not r.ok and r.error.code=="unreachable" and r.data.distance==100)`},
-		{"control failure at destination", `move.to=function() pos={x=10,y=0,z=0};return {ok=false,error={code="preempted",message="recovery"}} end`,
-			`r=act.go_to{x=10,y=0,z=0};assert(not r.ok and r.error.code=="preempted")`},
-		{"through a same-map portal", `move._expect_transfer=function(s) expected=s end
+		{
+			"preserve explicit z", `world.ground_z=function() error("must not replace requested z") end`,
+			`r=act.go_to{x=0,y=0,z=20};assert(r.ok and #moves==1 and moves[1].z==20 and r.data.vertical_gap==0)`,
+		},
+		{
+			"wrong floor despite raw success", `move.to=function() pos={x=10,y=0,z=10};return {ok=true} end`,
+			`r=act.go_to{x=10,y=0,z=0};assert(not r.ok and r.error.code=="wrong_floor" and r.data.vertical_gap==10 and r.data.position.z==10)`,
+		},
+		{
+			"selected floor enforced", `world.ground_z=function() return 20 end;move.to=function() return {ok=true} end`,
+			`r=act.go_to{x=0,y=0};assert(not r.ok and r.error.code=="wrong_floor" and r.data.destination.z==20)`,
+		},
+		{
+			"far floor over the terrain", `world.ground_z=function(x,y,z) if z==nil then return 21 elseif z>=29 then return 35 end return nil end`,
+			`r=act.go_to{x=100,y=0};assert(moves[1].z==35 and r.data.destination.z==35)`,
+		},
+		{
+			"unknown floor", `world.ground_z=function() return nil end`,
+			`r=act.go_to{x=10,y=0};assert(not r.ok and r.error.code=="wrong_floor" and #moves==0)`,
+		},
+		{
+			"wrong map before movement", `pos.map=1`,
+			`r=act.go_to{x=10,y=0,z=0,map=0};assert(not r.ok and r.error.code=="wrong_map" and #moves==0)`,
+		},
+		{
+			"map changes during movement", `move.to=function() pos={x=10,y=0,z=0,map=1};return {ok=true} end`,
+			`r=act.go_to{x=10,y=0,z=0};assert(not r.ok and r.error.code=="wrong_map")`,
+		},
+		{
+			"raw success outside tolerance", `move.to=function() return {ok=true} end`,
+			`r=act.go_to{x=100,y=0,z=0};assert(not r.ok and r.error.code=="unreachable" and r.data.distance==100)`,
+		},
+		{
+			"control failure at destination", `move.to=function() pos={x=10,y=0,z=0};return {ok=false,error={code="preempted",message="recovery"}} end`,
+			`r=act.go_to{x=10,y=0,z=0};assert(not r.ok and r.error.code=="preempted")`,
+		},
+		{
+			"through a same-map portal", `move._expect_transfer=function(s) expected=s end
 		  world._via_portal=function() return {name="Tower Portal",enter={x=5,y=0,z=50},exit={x=40,y=0,z=0}} end
 		  move.to=function(x,y,z) moves[#moves+1]={x=x,y=y,z=z}
 		   if x==5 then pos={x=40,y=0,z=0};return {ok=false,error={code="teleported",message="moved"}} end
 		   if pos.x==40 then pos={x=x,y=y,z=z};return {ok=true} end
 		   return {ok=false,error={code="route_unreachable",message="short"}} end`,
-			`r=act.go_to{x=50,y=0,z=0};assert(r.ok and expected and #moves==3 and moves[2].x==5 and pos.x==50)`},
-		{"portal that doesn't teleport", fastClock + `move._expect_transfer=function() end
+			`r=act.go_to{x=50,y=0,z=0};assert(r.ok and expected and #moves==3 and moves[2].x==5 and pos.x==50)`,
+		},
+		{
+			"portal that doesn't teleport", fastClock + `move._expect_transfer=function() end
 		  world._via_portal=function() return {name="Tower Portal",enter={x=5,y=0,z=50},exit={x=40,y=0,z=0}} end
 		  move.to=function(x,y,z) if x==5 then pos={x=5,y=0,z=50};return {ok=true} end return {ok=false,error={code="route_unreachable",message="short"}} end`,
-			`r=act.go_to{x=50,y=0,z=0};assert(not r.ok and r.error.code=="unreachable")`},
-		{"into a teleport to another map", `move._expect_transfer=function(s) expected=s end
+			`r=act.go_to{x=50,y=0,z=0};assert(not r.ok and r.error.code=="unreachable")`,
+		},
+		{
+			"into a teleport to another map", `move._expect_transfer=function(s) expected=s end
 		  world._teleport_at=function() return {trigger=4354,map=530,enter={x=20,y=0,z=0}} end
 		  move.to=function(x,y,z) moves[#moves+1]={x=x,y=y,z=z} pos={x=-248,y=921,z=84,map=530} return {ok=false,error={code="teleported",message="moved"}} end`,
-			`r=act.go_to{x=21,y=1,z=0};assert(r.ok and expected and #moves==1 and moves[1].x==20 and r.data.teleported and r.data.to_map==530)`},
-		{"a teleport trigger that doesn't fire", fastClock + `move._expect_transfer=function() end
+			`r=act.go_to{x=21,y=1,z=0};assert(r.ok and expected and #moves==1 and moves[1].x==20 and r.data.teleported and r.data.to_map==530)`,
+		},
+		{
+			"a teleport trigger that doesn't fire", fastClock + `move._expect_transfer=function() end
 		  world._teleport_at=function() return {trigger=4354,map=530,enter={x=20,y=0,z=0}} end
 		  move.to=function(x,y,z) pos={x=x,y=y,z=z} return {ok=true} end`,
-			`r=act.go_to{x=21,y=1,z=0};assert(not r.ok and r.error.code=="unreachable")`},
-		{"unverified fallback", `move.to=function() pos={x=10,y=0,z=0};return {ok=true,data={no_path=true}} end`,
-			`r=act.go_to{x=10,y=0,z=0};assert(not r.ok and r.error.code=="route_unreachable")`},
+			`r=act.go_to{x=21,y=1,z=0};assert(not r.ok and r.error.code=="unreachable")`,
+		},
+		{
+			"unverified fallback", `move.to=function() pos={x=10,y=0,z=0};return {ok=true,data={no_path=true}} end`,
+			`r=act.go_to{x=10,y=0,z=0};assert(not r.ok and r.error.code=="route_unreachable")`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) { actWorld(t, actBase+tc.stubs, tc.body) })
 	}
@@ -70,24 +98,38 @@ func TestTravelRequiresWholeRouteOrExplicitPrefix(t *testing.T) {
   assert(moves[1].x==10 and moves[2].x==15 and r.data.completed_waypoints==1 and r.data.waypoint==2)
  `)
 }
+
 func TestTravelValidationAndFailureEvidence(t *testing.T) {
 	for _, tc := range []struct{ name, stubs, body string }{
-		{"verified before moving", `checks=0;world.route=function(points,opts) checks=checks+1;assert(#moves==0 and #points==2 and opts.map==0);return {ok=true,data={status="verified",from=pos,completed_legs=2}} end`,
-			`r=act.travel{points={{10,0,0},{20,0,5}}};assert(r.ok and checks==1 and #moves==2 and r.data.completed_waypoints==2 and r.data.status=="verified")`},
-		{"explicit unverified 2D", `world.route=function() error("validation disabled") end`,
-			`r=act.travel{points={{10,0},{20,0}},validate=false};assert(r.ok and r.data.status=="unverified" and #moves==2)`},
-		{"late wrong floor", `move.to=function(x,y,z) moves[#moves+1]={x=x};pos={x=x,y=y,z=(x==20 and 10 or z)};return {ok=true} end`,
-			`r=act.travel{points={{10,0,0},{20,0,0},{30,0,0}}};assert(not r.ok and r.error.code=="wrong_floor" and r.data.waypoint==2 and r.data.completed_waypoints==1 and #moves==2)`},
-		{"all maps checked first", ``,
-			`r=act.travel{points={{10,0,0},{x=20,y=0,z=0,map=1}}};assert(not r.ok and r.error.code=="wrong_map" and #moves==0)`},
-		{"validation moves character", `world.route=function() pos={x=100,y=0,z=0};return {ok=true,data={status="verified",from={x=0,y=0,z=0},completed_legs=1}} end`,
-			`r=act.travel{points={{10,0,0}}};assert(not r.ok and r.error.code=="route_stale" and #moves==0)`},
-		{"timeout cannot authorize prefix", `world.route=function() return {ok=false,error={code="route_timeout",message="route deadline"},data={status="partial",completed_legs=1,blocked_leg=2,waypoints={{x=10,y=0,z=0}}}} end`,
-			`r=act.travel{points={{10,0,0},{20,0,0}},allow_partial=true};assert(not r.ok and r.error.code=="route_timeout" and #moves==0)`},
+		{
+			"verified before moving", `checks=0;world.route=function(points,opts) checks=checks+1;assert(#moves==0 and #points==2 and opts.map==0);return {ok=true,data={status="verified",from=pos,completed_legs=2}} end`,
+			`r=act.travel{points={{10,0,0},{20,0,5}}};assert(r.ok and checks==1 and #moves==2 and r.data.completed_waypoints==2 and r.data.status=="verified")`,
+		},
+		{
+			"explicit unverified 2D", `world.route=function() error("validation disabled") end`,
+			`r=act.travel{points={{10,0},{20,0}},validate=false};assert(r.ok and r.data.status=="unverified" and #moves==2)`,
+		},
+		{
+			"late wrong floor", `move.to=function(x,y,z) moves[#moves+1]={x=x};pos={x=x,y=y,z=(x==20 and 10 or z)};return {ok=true} end`,
+			`r=act.travel{points={{10,0,0},{20,0,0},{30,0,0}}};assert(not r.ok and r.error.code=="wrong_floor" and r.data.waypoint==2 and r.data.completed_waypoints==1 and #moves==2)`,
+		},
+		{
+			"all maps checked first", ``,
+			`r=act.travel{points={{10,0,0},{x=20,y=0,z=0,map=1}}};assert(not r.ok and r.error.code=="wrong_map" and #moves==0)`,
+		},
+		{
+			"validation moves character", `world.route=function() pos={x=100,y=0,z=0};return {ok=true,data={status="verified",from={x=0,y=0,z=0},completed_legs=1}} end`,
+			`r=act.travel{points={{10,0,0}}};assert(not r.ok and r.error.code=="route_stale" and #moves==0)`,
+		},
+		{
+			"timeout cannot authorize prefix", `world.route=function() return {ok=false,error={code="route_timeout",message="route deadline"},data={status="partial",completed_legs=1,blocked_leg=2,waypoints={{x=10,y=0,z=0}}}} end`,
+			`r=act.travel{points={{10,0,0},{20,0,0}},allow_partial=true};assert(not r.ok and r.error.code=="route_timeout" and #moves==0)`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) { actWorld(t, actBase+tc.stubs, tc.body) })
 	}
 }
+
 func TestTravelStrictOptions(t *testing.T) {
 	actWorld(t, actBase, `
   local invalid={

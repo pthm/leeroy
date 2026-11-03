@@ -28,22 +28,30 @@ func TestActVendorRequiredSteps(t *testing.T) {
 		{"buy only", "", `r = act.vendor{npc_entry = 123, buy = {{9}}}
           assert(r.ok and #r.steps == 2 and #r.data.bought == 1)
           assert(table.concat(calls, ",") == "vendor.items,vendor.buy")`},
-		{"partial purchase", `vendor.buy = function() return raw("vendor.buy", nil, "not_enough_money") end`,
+		{
+			"partial purchase", `vendor.buy = function() return raw("vendor.buy", nil, "not_enough_money") end`,
 			`r = act.vendor{npc_guid = npc.guid, sell_junk = true, buy = {{9}, {10}}}
           assert(not r.ok and r.error.code == "not_enough_money" and r.error.next == "inspect state")
           assert(r.data.sold.money == 7 and #r.data.completed == 2 and #r.data.remaining == 2)
           assert(r.data.remaining[1].item_entry == 9 and r.steps[3].request_id == 3 and not r.steps[3].ok)
-          assert(#calls == 3)`},
-		{"failed sale", `vendor.sell_junk = function() return raw("vendor.sell_junk", {count = 1, failed = 1}, "cannot_sell") end`,
+          assert(#calls == 3)`,
+		},
+		{
+			"failed sale", `vendor.sell_junk = function() return raw("vendor.sell_junk", {count = 1, failed = 1}, "cannot_sell") end`,
 			`r = act.vendor{npc_entry = 123, sell_junk = true, repair = true, buy = {{9}}}
           assert(not r.ok and r.error.code == "cannot_sell" and r.data.sold.count == 1)
-          assert(#calls == 1 and #r.data.remaining == 4)`},
-		{"failed repair", `vendor.repair = function() return raw("vendor.repair", {fixed = 1, still_damaged = 1}, "not_repaired") end`,
+          assert(#calls == 1 and #r.data.remaining == 4)`,
+		},
+		{
+			"failed repair", `vendor.repair = function() return raw("vendor.repair", {fixed = 1, still_damaged = 1}, "not_repaired") end`,
 			`r = act.vendor{npc_entry = 123, repair = true, buy = {{9}}}
-          assert(not r.ok and r.data.repaired.fixed == 1 and #calls == 1)`},
-		{"list unavailable", `vendor.items = function() return raw("vendor.items", nil, "not_available") end`,
+          assert(not r.ok and r.data.repaired.fixed == 1 and #calls == 1)`,
+		},
+		{
+			"list unavailable", `vendor.items = function() return raw("vendor.items", nil, "not_available") end`,
 			`r = act.vendor{npc_entry = 123, buy = {{9}}}
-          assert(not r.ok and r.error.code == "not_available" and #calls == 1)`},
+          assert(not r.ok and r.error.code == "not_available" and #calls == 1)`,
+		},
 		{"precheck all roles", `npc.roles = {"vendor"}`, `r = act.vendor{npc_entry = 123, sell_junk = true, repair = true}
           assert(not r.ok and r.error.code == "wrong_npc" and #calls == 0)`},
 	} {

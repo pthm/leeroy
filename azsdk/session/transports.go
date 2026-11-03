@@ -93,9 +93,11 @@ func (b *Bot) transportView(guid uint64, now time.Time, aboard uint64) (types.Tr
 	creatures.Lock()
 	name := goNames.m[entry]
 	creatures.Unlock()
-	v := types.Transport{GUID: types.GUID(guid), Entry: entry, Name: name, Map: pose.mapID, X: round1f(pose.x), Y: round1f(pose.y),
+	v := types.Transport{
+		GUID: types.GUID(guid), Entry: entry, Name: name, Map: pose.mapID, X: round1f(pose.x), Y: round1f(pose.y),
 		Z: round1f(pose.z), O: math.Round(pose.o*100) / 100, Moving: pose.moving, PeriodS: float64(tp.period) / 1000, Aboard: guid == aboard,
-		Stops: []types.TransportStop{}}
+		Stops: []types.TransportStop{},
+	}
 	timer := pp % tp.period
 	until := func(ms uint32) float64 { return float64((ms+tp.period-timer)%tp.period) / 1000 }
 	for i := range tp.frames {
@@ -103,8 +105,10 @@ func (b *Bot) transportView(guid uint64, now time.Time, aboard uint64) (types.Tr
 		if !f.stop() {
 			continue
 		}
-		s := types.TransportStop{Map: f.node.mapID, X: round1f(f.node.x), Y: round1f(f.node.y), Z: round1f(f.node.z),
-			ArrivesInS: until(f.arrive), DepartsInS: until(f.depart)}
+		s := types.TransportStop{
+			Map: f.node.mapID, X: round1f(f.node.x), Y: round1f(f.node.y), Z: round1f(f.node.z),
+			ArrivesInS: until(f.arrive), DepartsInS: until(f.depart),
+		}
 		if pose.stop == i {
 			s.ArrivesInS = 0
 			d := s
@@ -244,7 +248,7 @@ func (b *Bot) setupTransports() {
 
 // nearestFloor: the nearest point with navmesh floor within r yd of (x, y) at about height z (8 yd up or down): rings
 // of 16 points 2 yd apart.
-func (b *Bot) nearestFloor(x, y, z float32, r float32) ([3]float32, bool) {
+func (b *Bot) nearestFloor(x, y, z, r float32) ([3]float32, bool) {
 	fn, ok := b.nav.(interface {
 		FloorHeight(mapID uint32, x, y, hint float32) (float32, bool)
 	})

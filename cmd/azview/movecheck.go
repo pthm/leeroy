@@ -8,16 +8,16 @@
 package main
 
 import (
-	"path/filepath"
-
 	"encoding/json"
 	"fmt"
-	"github.com/pthm/leeroy/gamelog"
 	"math"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/pthm/leeroy/gamelog"
 
 	"github.com/pthm/leeroy/world"
 )

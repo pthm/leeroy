@@ -12,28 +12,49 @@ import (
 	"strings"
 )
 
-var classes = map[string]float64{"warrior": 1, "paladin": 2, "hunter": 3, "rogue": 4, "priest": 5, "death knight": 6,
-	"shaman": 7, "mage": 8, "warlock": 9, "druid": 11}
+var classes = map[string]float64{
+	"warrior": 1, "paladin": 2, "hunter": 3, "rogue": 4, "priest": 5, "death knight": 6,
+	"shaman": 7, "mage": 8, "warlock": 9, "druid": 11,
+}
 
 // what each class can wear and wield (weapons: what it can learn; some need a trainer first). Armor at levels below 40.
-var armorOf = map[int][]int{1: {1, 2, 3, 6}, 2: {1, 2, 3, 6}, 3: {1, 2}, 4: {1, 2}, 5: {1}, 6: {1, 2, 3, 4}, 7: {1, 2, 6},
-	8: {1}, 9: {1}, 11: {1, 2}}
+var armorOf = map[int][]int{
+	1: {1, 2, 3, 6}, 2: {1, 2, 3, 6}, 3: {1, 2}, 4: {1, 2}, 5: {1}, 6: {1, 2, 3, 4}, 7: {1, 2, 6},
+	8: {1}, 9: {1}, 11: {1, 2},
+}
+
 var weaponsOf = map[int][]int{
 	1: {0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 13, 15, 16, 18}, 2: {0, 1, 4, 5, 6, 7, 8}, 3: {0, 1, 2, 3, 6, 7, 8, 10, 13, 15, 16, 18},
 	4: {0, 2, 3, 4, 7, 13, 15, 16, 18}, 5: {4, 10, 15, 19}, 6: {0, 1, 4, 5, 6, 7, 8}, 7: {0, 1, 4, 5, 10, 13, 15},
-	8: {7, 10, 15, 19}, 9: {7, 10, 15, 19}, 11: {4, 5, 6, 10, 13, 15}}
+	8: {7, 10, 15, 19}, 9: {7, 10, 15, 19}, 11: {4, 5, 6, 10, 13, 15},
+}
 
 // slot name -> inventory types, in this order
 var gearSlots = []struct {
 	name  string
 	types []int
-}{{"head", []int{1}}, {"neck", []int{2}}, {"shoulder", []int{3}}, {"chest", []int{5, 20}}, {"waist", []int{6}},
-	{"legs", []int{7}}, {"feet", []int{8}}, {"wrists", []int{9}}, {"hands", []int{10}}, {"finger", []int{11}},
-	{"trinket", []int{12}}, {"back", []int{16}}, {"main hand", []int{13, 17, 21}}, {"off hand", []int{13, 14, 22, 23}},
-	{"ranged", []int{15, 25, 26, 28}}}
+}{
+	{"head", []int{1}},
+	{"neck", []int{2}},
+	{"shoulder", []int{3}},
+	{"chest", []int{5, 20}},
+	{"waist", []int{6}},
+	{"legs", []int{7}},
+	{"feet", []int{8}},
+	{"wrists", []int{9}},
+	{"hands", []int{10}},
+	{"finger", []int{11}},
+	{"trinket", []int{12}},
+	{"back", []int{16}},
+	{"main hand", []int{13, 17, 21}},
+	{"off hand", []int{13, 14, 22, 23}},
+	{"ranged", []int{15, 25, 26, 28}},
+}
 
-var gearStats = map[int]string{0: "mana", 1: "health", 3: "agility", 4: "strength", 5: "intellect", 6: "spirit", 7: "stamina",
-	31: "hit", 32: "crit", 35: "resilience", 36: "haste", 38: "attack_power", 43: "mana_per_5s", 45: "spell_power"}
+var gearStats = map[int]string{
+	0: "mana", 1: "health", 3: "agility", 4: "strength", 5: "intellect", 6: "spirit", 7: "stamina",
+	31: "hit", 32: "crit", 35: "resilience", 36: "haste", 38: "attack_power", 43: "mana_per_5s", 45: "spell_power",
+}
 
 // slotOf: inventory type -> slot name (the last slot listing it wins, as Object.fromEntries does)
 var slotOf = func() map[int]string {
@@ -152,7 +173,7 @@ func upgrades(o upgradeOpts) any {
 		}
 		return r
 	}
-	add := func(r *obj, src *obj) {
+	add := func(r, src *obj) {
 		id := r.n("entry")
 		it := byID[id]
 		if it == nil {

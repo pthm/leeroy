@@ -23,10 +23,13 @@ func writeEvents(t *testing.T, path string, events []types.Diagnostic) {
 		}
 	}
 }
+
 func failure(seq uint64, at int64) types.Diagnostic {
-	return types.Diagnostic{Schema: 1, Seq: seq, T: at, Agent: "a1", Session: "s1", Task: "main", TaskID: 1,
+	return types.Diagnostic{
+		Schema: 1, Seq: seq, T: at, Agent: "a1", Session: "s1", Task: "main", TaskID: 1,
 		Kind: "action_finished", Op: "act.go_to", Outcome: "failed", Code: "unreachable", DurationMS: 100,
-		Details: types.DiagnosticDetails{Target: "42"}}
+		Details: types.DiagnosticDetails{Target: "42"},
+	}
 }
 
 func TestEpisodesRequireThreeFailuresWithinWindow(t *testing.T) {
@@ -93,7 +96,7 @@ func TestCoverageAndClaimEvidence(t *testing.T) {
 	events[2].Kind = "task_status"
 	events[2].Details = types.DiagnosticDetails{Status: "quest accepted", AgentClaim: true}
 	writeEvents(t, path, events)
-	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
 	f.WriteString("{\"schema\":1")
 	f.Close()
 	s := Read("a1", path, filepath.Join(dir, "harness.jsonl"))
@@ -106,7 +109,7 @@ func TestCoverageAndClaimEvidence(t *testing.T) {
 	if !reflect.DeepEqual(s, Read("a1", path, filepath.Join(dir, "harness.jsonl"))) {
 		t.Fatal("saved report is not reproducible")
 	}
-	os.WriteFile(path, []byte("{\"t\":1000,\"ev\":\"score\"}\n"), 0600)
+	os.WriteFile(path, []byte("{\"t\":1000,\"ev\":\"score\"}\n"), 0o600)
 	if old := Read("a1", path); old.Coverage.Status != "unavailable" || old.Coverage.FirstMS != nil || old.Coverage.CostStatus != "unavailable" {
 		t.Fatalf("legacy artifacts: %+v", old)
 	}
@@ -281,8 +284,10 @@ func TestSightRefusedCounts(t *testing.T) {
 	clear, blocked := true, false
 	var events []types.Diagnostic
 	for i, p := range []*bool{&clear, &blocked, nil} {
-		events = append(events, types.Diagnostic{Schema: 1, Seq: uint64(i + 1), T: int64(1000 * (i + 1)), Agent: "a1", Session: "s1", Kind: "sight_refused",
-			Details: types.DiagnosticDetails{SpellID: 2050, Sight: &types.DiagnosticSight{Map: 36, Predicted: p}}})
+		events = append(events, types.Diagnostic{
+			Schema: 1, Seq: uint64(i + 1), T: int64(1000 * (i + 1)), Agent: "a1", Session: "s1", Kind: "sight_refused",
+			Details: types.DiagnosticDetails{SpellID: 2050, Sight: &types.DiagnosticSight{Map: 36, Predicted: p}},
+		})
 	}
 	writeEvents(t, path, events)
 	s := Read("a1", path)

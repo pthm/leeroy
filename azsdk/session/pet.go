@@ -159,9 +159,11 @@ func (b *Bot) setupPet() {
 		}
 		u := b.GetUnitInfo(g)
 		pt := uint8(o.Value(client.UnitFieldBytes0) >> 24)
-		out := &types.Pet{GUID: types.GUID(g), Health: types.Resource{Current: o.Value(client.UnitFieldHealth), Max: o.Value(client.UnitFieldMaxHealth)},
+		out := &types.Pet{
+			GUID: types.GUID(g), Health: types.Resource{Current: o.Value(client.UnitFieldHealth), Max: o.Value(client.UnitFieldMaxHealth)},
 			Power:  types.Resource{Current: o.Value(client.UnitFieldPower1 + uint16(pt)), Max: o.Value(client.UnitFieldMaxPower1 + uint16(pt)), Type: name(powerNames, pt)},
-			Spells: []types.PetSpell{}}
+			Spells: []types.PetSpell{},
+		}
 		if u != nil {
 			out.Name, out.Level = u.Name, u.Level
 			if u.Target != 0 {

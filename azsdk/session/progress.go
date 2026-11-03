@@ -15,12 +15,16 @@ import (
 	"github.com/pthm/leeroy/azsdk/types"
 )
 
-var slotNames = []string{"head", "neck", "shoulder", "shirt", "chest", "waist", "legs", "feet", "wrists", "hands",
-	"finger", "finger", "trinket", "trinket", "back", "main_hand", "off_hand", "ranged", "tabard"}
+var slotNames = []string{
+	"head", "neck", "shoulder", "shirt", "chest", "waist", "legs", "feet", "wrists", "hands",
+	"finger", "finger", "trinket", "trinket", "back", "main_hand", "off_hand", "ranged", "tabard",
+}
 
 // how much each equipment slot counts toward the gear score: the weapon most, then the big armor pieces
-var slotWeight = map[int]float64{0: 1.5, 1: 0.5, 2: 1.5, 4: 1.5, 5: 1, 6: 1.5, 7: 1, 8: 0.75, 9: 1, 10: 0.5, 11: 0.5,
-	12: 0.5, 13: 0.5, 14: 0.75, 15: 4, 16: 1, 17: 0.75}
+var slotWeight = map[int]float64{
+	0: 1.5, 1: 0.5, 2: 1.5, 4: 1.5, 5: 1, 6: 1.5, 7: 1, 8: 0.75, 9: 1, 10: 0.5, 11: 0.5,
+	12: 0.5, 13: 0.5, 14: 0.75, 15: 4, 16: 1, 17: 0.75,
+}
 
 var qualityFactor = map[string]float64{"poor": 0.6, "common": 0.85, "uncommon": 1, "rare": 1.1, "epic": 1.2, "legendary": 1.2}
 
@@ -152,8 +156,10 @@ func loadClassSpells() {
 			if sp == nil || sp.Level == 0 || sp.Name == "" || sp.attrs&0x1C0 != 0 {
 				continue
 			}
-			classSpells.list = append(classSpells.list, classSpell{id: spell, level: sp.Level, classMask: class, raceMask: race,
-				name: sp.Name, rank: sp.Rank})
+			classSpells.list = append(classSpells.list, classSpell{
+				id: spell, level: sp.Level, classMask: class, raceMask: race,
+				name: sp.Name, rank: sp.Rank,
+			})
 		}
 		// a spell with ranks also has unranked internal effect spells of the same name (Execute's damage): drop those
 		ranked := map[string]bool{}

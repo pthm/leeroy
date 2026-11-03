@@ -476,8 +476,10 @@ func gameExtras(rec *recording) map[string]any {
 			m.What = cmp.Or(world.Achievements()[m.id].Title, fmt.Sprint("achievement ", m.id))
 		}
 	}
-	out := map[string]any{"milestones": rec.milestones, "loot": rec.loot, "places": rec.places, "kills_by": top(kills),
-		"damage_to": top(rec.damage), "heard_from": rec.heard}
+	out := map[string]any{
+		"milestones": rec.milestones, "loot": rec.loot, "places": rec.places, "kills_by": top(kills),
+		"damage_to": top(rec.damage), "heard_from": rec.heard,
+	}
 	if rec.petUp > 0 {
 		out["pet_pct"] = math.Round(100 * float64(rec.petUp) / float64(rec.samples))
 	}

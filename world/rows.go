@@ -122,6 +122,7 @@ type qerr struct{ error }
 // q runs a read-only query on the world DB (wowbench.* for the derived tables): rows as ordered objects, numbers as
 // float64. A repeated column name keeps its first position and takes the last value. Panics with qerr on failure.
 func q(query string) []*obj { return qContext(context.Background(), query) }
+
 func qContext(ctx context.Context, query string) []*obj {
 	if strings.TrimSpace(query) == "" {
 		return []*obj{}

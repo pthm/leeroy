@@ -14,8 +14,10 @@ import (
 func TestCooldowns(t *testing.T) {
 	le := binary.LittleEndian
 	const me, potion, hearth = uint64(0x2A), uint64(0x4000000000000077), uint32(8690)
-	s := &agentState{cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, onEvent: map[uint32]cdRule{},
-		pushed: map[uint32]time.Time{}}
+	s := &agentState{
+		cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, onEvent: map[uint32]cdRule{},
+		pushed: map[uint32]time.Time{},
+	}
 	s.itemCD = func(item uint64, entry, spell uint32) (cdRule, bool) {
 		return cdRule{rec: -1, cat: 4, catrec: 120000, onEvent: true}, (item == potion || entry == 858) && spell == 439
 	}
@@ -89,8 +91,10 @@ func TestGCDOncePerCast(t *testing.T) {
 	spellsDir, spellsOnce = dir, sync.Once{}
 	le := binary.LittleEndian
 	const me, heal, fort = uint64(0x2A), uint32(2050), uint32(1243) // Lesser Heal (1.5 s cast), Power Word: Fortitude
-	s := &agentState{cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, onEvent: map[uint32]cdRule{},
-		pushed: map[uint32]time.Time{}}
+	s := &agentState{
+		cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, onEvent: map[uint32]cdRule{},
+		pushed: map[uint32]time.Time{},
+	}
 	pkt := func(op uint16, spell uint32) {
 		p := append(append(packGUID(me), packGUID(me)...), 1)
 		s.onPacket(me, op, le.AppendUint32(le.AppendUint32(le.AppendUint32(p, spell), 0), 1500))
@@ -132,8 +136,10 @@ func TestRangedAttackCooldown(t *testing.T) {
 	spellsDir, spellsOnce = dir, sync.Once{}
 	le := binary.LittleEndian
 	const me = uint64(0x2A)
-	s := &agentState{cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, onEvent: map[uint32]cdRule{},
-		pushed: map[uint32]time.Time{}, rangedMS: func() int32 { return 2300 }}
+	s := &agentState{
+		cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, onEvent: map[uint32]cdRule{},
+		pushed: map[uint32]time.Time{}, rangedMS: func() int32 { return 2300 },
+	}
 	for spell, want := range map[uint32]float64{2764: 2300, 3018: 2300, 5019: 2300, 75: 0, 1243: 0} { // Throw, Shoot (bow, wand), Auto Shot, Fortitude
 		p := append(append(packGUID(me), packGUID(me)...), 0)
 		s.onPacket(me, smsgSpellGo, le.AppendUint32(le.AppendUint32(p, spell), 0))
@@ -149,8 +155,10 @@ func TestRangedAttackCooldown(t *testing.T) {
 func TestCooldownsRestored(t *testing.T) {
 	le := binary.LittleEndian
 	const me = uint64(0x2A)
-	s := &agentState{cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, onEvent: map[uint32]cdRule{},
-		pushed: map[uint32]time.Time{}}
+	s := &agentState{
+		cd: map[uint32]time.Time{}, catCD: map[uint32]time.Time{}, onEvent: map[uint32]cdRule{},
+		pushed: map[uint32]time.Time{},
+	}
 	s.itemCD = func(_ uint64, entry, spell uint32) (cdRule, bool) {
 		switch {
 		case entry == 858 && spell == 439: // a potion

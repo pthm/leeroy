@@ -209,7 +209,7 @@ func NewBot(id string, config Config) *Bot {
 		stopCh: make(chan struct{}),
 	}
 	if config.ValidationMode && config.ValidationLogPath != "" {
-		if f, err := os.OpenFile(config.ValidationLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		if f, err := os.OpenFile(config.ValidationLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
 			b.validationFile = f
 			b.validationEnc = json.NewEncoder(f)
 		} else {
@@ -857,9 +857,11 @@ func (b *Bot) moveToPointGuarded(x, y, z float32, valid func() bool) (noPath boo
 	defer cancel()
 	return b.moveToPointContext(ctx, x, y, z, valid)
 }
+
 func (b *Bot) moveToPointContext(ctx context.Context, x, y, z float32, valid func() bool) (noPath bool) {
 	return b.prepareMoveContext(ctx, x, y, z, valid) != nil
 }
+
 func (b *Bot) prepareMoveContext(ctx context.Context, x, y, z float32, valid func() bool) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -932,7 +934,6 @@ func (b *Bot) prepareMoveContext(ctx context.Context, x, y, z float32, valid fun
 	var prepared *navigation.PathResult
 	if b.nav != nil {
 		result, err := b.findPath(ctx, mapID, current, navigation.Point3D{X: x, Y: y, Z: z})
-
 		if err != nil {
 			return err
 		}
@@ -1670,10 +1671,12 @@ func (b *Bot) PetAttack(target uint64) {
 }
 
 // shapeshiftForms: SharedDefines ShapeshiftForm, the form byte of UNIT_FIELD_BYTES_2
-var shapeshiftForms = map[uint32]string{1: "cat", 2: "tree", 3: "travel", 4: "aquatic", 5: "bear", 8: "dire_bear",
+var shapeshiftForms = map[uint32]string{
+	1: "cat", 2: "tree", 3: "travel", 4: "aquatic", 5: "bear", 8: "dire_bear",
 	13: "shadow_dance", 16: "ghost_wolf", 17: "battle_stance", 18: "defensive_stance", 19: "berserker_stance",
 	22: "metamorphosis", 27: "swift_flight", 28: "shadowform", 29: "flight", 30: "stealth", 31: "moonkin",
-	32: "spirit_of_redemption"}
+	32: "spirit_of_redemption",
+}
 
 // stance: your shapeshift form (Unit::GetShapeshiftForm, byte 3 of UNIT_FIELD_BYTES_2), nil for none
 func (b *Bot) stance() any { return stanceOf(b.world.GetObject(b.world.CharGUID())) }

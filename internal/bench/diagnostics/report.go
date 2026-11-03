@@ -4,11 +4,12 @@ package diagnostics
 import (
 	"bufio"
 	"encoding/json"
-	"github.com/pthm/leeroy/runfiles"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/pthm/leeroy/runfiles"
 
 	"github.com/pthm/leeroy/azsdk/types"
 )
@@ -139,9 +140,11 @@ type recorded struct {
 // Read uses only the supplied artifacts. Old records without diagnostics are explicitly unavailable.
 // Incomplete last lines are reported as malformed coverage, not silently interpreted as successful work.
 func Read(agent string, paths ...string) Summary {
-	s := Summary{Schema: 1, Coverage: Coverage{Status: "unavailable", CostStatus: "unavailable", Files: []string{}, MissingFiles: []string{}, Sessions: []string{}, ReadErrors: []string{}, Gaps: []Gap{}},
+	s := Summary{
+		Schema: 1, Coverage: Coverage{Status: "unavailable", CostStatus: "unavailable", Files: []string{}, MissingFiles: []string{}, Sessions: []string{}, ReadErrors: []string{}, Gaps: []Gap{}},
 		ByOperation: []Aggregate{}, Episodes: []Episode{}, Evidence: []Evidence{}, Tools: ToolSummary{Status: "unavailable", ByTool: []ToolAggregate{}},
-		Unavailable: []string{"movement_preemptions", "movement_wait_ms", "route_timeouts", "recovery_attempts"}}
+		Unavailable: []string{"movement_preemptions", "movement_wait_ms", "route_timeouts", "recovery_attempts"},
+	}
 	var events []recorded
 	seen := map[string]bool{}
 	for _, path := range paths {

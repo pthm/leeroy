@@ -36,8 +36,10 @@ func TestParse(t *testing.T) {
 func TestDiff(t *testing.T) {
 	t0 := time.Unix(1000, 0)
 	a := snapshot{at: t0, busy: 100, total: 1000, rx: 0, tx: 0, procs: map[int]proc{1: {"azsdk", 100, 1024}}}
-	b := snapshot{at: t0.Add(10 * time.Second), busy: 400, total: 2000, memTotal: 4096 * 1024, memAvail: 1024 * 1024, rx: 10240, tx: 20480,
-		procs: map[int]proc{1: {"azsdk", 300, 2048}, 2: {"azsdk", 50, 1024}}}
+	b := snapshot{
+		at: t0.Add(10 * time.Second), busy: 400, total: 2000, memTotal: 4096 * 1024, memAvail: 1024 * 1024, rx: 10240, tx: 20480,
+		procs: map[int]proc{1: {"azsdk", 300, 2048}, 2: {"azsdk", 50, 1024}},
+	}
 	s := diff(a, b)
 	if s.CPUPct != 30 || s.MemUsedMB != 3072 || s.NetRxKBs != 1 || s.NetTxKBs != 2 {
 		t.Fatalf("host: %+v", s)

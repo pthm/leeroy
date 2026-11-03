@@ -50,6 +50,7 @@ func TestRouteVerification(t *testing.T) {
 		})
 	}
 }
+
 func newRouteFixture(t *testing.T) *routeRequests {
 	t.Helper()
 	r := &routeRequests{reqs: script.NewRequests(script.NewBus("")), jobs: map[int]*routeRequest{}, timeout: time.Second}
@@ -82,6 +83,7 @@ func TestCancelOwnedQueryCancelsBackendAndRefusesForeignTask(t *testing.T) {
 	}
 	routeResult(t, r, id, "cancelled")
 }
+
 func routeResult(t *testing.T, r *routeRequests, id int, code string) {
 	t.Helper()
 	waitMovement(t, func() bool { return r.reqs.Result(id)["pending"] != true })
@@ -96,6 +98,7 @@ func routeResult(t *testing.T, r *routeRequests, id int, code string) {
 		t.Fatalf("wanted %s: %v", code, got)
 	}
 }
+
 func TestRouteDeadlineAndLateCompletion(t *testing.T) {
 	r := newRouteFixture(t)
 	r.timeout = 10 * time.Millisecond
@@ -117,6 +120,7 @@ func TestRouteDeadlineAndLateCompletion(t *testing.T) {
 	waitMovement(t, func() bool { r.mu.Lock(); defer r.mu.Unlock(); return len(r.jobs) == 0 })
 	routeResult(t, r, id, "route_timeout")
 }
+
 func TestRouteQueueBoundSurvivesCancellation(t *testing.T) {
 	r := newRouteFixture(t)
 	release := make(chan struct{})
@@ -133,6 +137,7 @@ func TestRouteQueueBoundSurvivesCancellation(t *testing.T) {
 	id := r.start(2, 0, navigation.Point3D{}, navigation.Point3D{})["id"].(int)
 	routeResult(t, r, id, "route_busy")
 }
+
 func TestRouteSchedulerLifecycle(t *testing.T) {
 	for _, tc := range []struct{ name, body, control, code string }{
 		{"pause", "p=world.path(10,0,0);wait(60)", "task.pause(1)", "task_paused"},
@@ -180,6 +185,7 @@ func (n *countingNavigator) FindPathContext(_ context.Context, _ uint32, a, b na
 	n.calls.Add(1)
 	return &navigation.PathResult{Found: true, Points: []navigation.Point3D{a, b}}, nil
 }
+
 func TestRouteCacheIsolationAndBound(t *testing.T) {
 	b := testBot()
 	defer b.lua.Close()

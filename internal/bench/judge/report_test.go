@@ -50,8 +50,10 @@ func TestReportCard(t *testing.T) {
 		if i >= 16 { // the death at 4 min
 			deaths = 1
 		}
-		rec = append(rec, map[string]any{"t": t0 + i*15_000, "elapsed_s": i * 15, "value": float64(min64(i, 32) * 100),
-			"signals": map[string]any{"deaths": deaths}})
+		rec = append(rec, map[string]any{
+			"t": t0 + i*15_000, "elapsed_s": i * 15, "value": float64(min64(i, 32) * 100),
+			"signals": map[string]any{"deaths": deaths},
+		})
 	}
 	lines(f.Samples("Tester"), rec)
 	lines(f.Events("Tester"), []any{
@@ -62,10 +64,13 @@ func TestReportCard(t *testing.T) {
 	})
 	call := func(id, cmd string, a, b int64) []any {
 		return []any{
-			map[string]any{"type": "assistant", "timestamp": iso(a), "message": map[string]any{"id": id,
-				"content": []any{map[string]any{"type": "tool_use", "id": id, "input": map[string]any{"command": cmd}}}}},
+			map[string]any{"type": "assistant", "timestamp": iso(a), "message": map[string]any{
+				"id":      id,
+				"content": []any{map[string]any{"type": "tool_use", "id": id, "input": map[string]any{"command": cmd}}},
+			}},
 			map[string]any{"type": "user", "timestamp": iso(b), "message": map[string]any{
-				"content": []any{map[string]any{"type": "tool_result", "tool_use_id": id}}}},
+				"content": []any{map[string]any{"type": "tool_result", "tool_use_id": id}},
+			}},
 		}
 	}
 	var tr []any
@@ -113,12 +118,16 @@ func TestReportOpencode(t *testing.T) {
 	os.WriteFile(f.Meta("a1"), []byte(`{"agent":"a1","char":"Tester","runtime":"opencode","model":"`+model+`","provider":"openrouter"}`), 0o644)
 	var b []byte
 	for _, x := range []any{
-		map[string]any{"type": "tool_use", "timestamp": iso(t0 + 1000), "part": map[string]any{"tool": "bash",
-			"state": map[string]any{"input": map[string]any{"command": "wow wait 60"}, "time": map[string]any{"start": t0, "end": t0 + 60_000}}}},
+		map[string]any{"type": "tool_use", "timestamp": iso(t0 + 1000), "part": map[string]any{
+			"tool":  "bash",
+			"state": map[string]any{"input": map[string]any{"command": "wow wait 60"}, "time": map[string]any{"start": t0, "end": t0 + 60_000}},
+		}},
 		map[string]any{"type": "step_finish", "timestamp": iso(t0 + 61_000), "part": map[string]any{
-			"tokens": map[string]any{"input": 10_000, "output": 100_000, "reasoning": 50_000, "cache": map[string]any{"read": 20_000_000, "write": 1_000_000}}}},
+			"tokens": map[string]any{"input": 10_000, "output": 100_000, "reasoning": 50_000, "cache": map[string]any{"read": 20_000_000, "write": 1_000_000}},
+		}},
 		map[string]any{"type": "step_finish", "timestamp": iso(t0 + 62_000), "part": map[string]any{
-			"tokens": map[string]any{"input": 5_000, "output": 50_000, "reasoning": 0, "cache": map[string]any{"read": 21_000_000, "write": 0}}}},
+			"tokens": map[string]any{"input": 5_000, "output": 50_000, "reasoning": 0, "cache": map[string]any{"read": 21_000_000, "write": 0}},
+		}},
 	} {
 		j, _ := json.Marshal(x)
 		b = append(append(b, j...), '\n')
@@ -164,8 +173,10 @@ func TestByModel(t *testing.T) {
 	card := func(rt, model string, score float64, cost any) map[string]any {
 		return map[string]any{"runtime": rt, "model": model, "score": map[string]any{"score": score}, "cost_usd": cost, "hours": 1.0}
 	}
-	g, _ := json.Marshal(byModel([]map[string]any{card("claude", "m", 100, 2.0), card("opencode", "m", 50, nil),
-		card("claude", "m", 300, 4.0)}))
+	g, _ := json.Marshal(byModel([]map[string]any{
+		card("claude", "m", 100, 2.0), card("opencode", "m", 50, nil),
+		card("claude", "m", 300, 4.0),
+	}))
 	want := `[{"runtime":"claude","model":"m","players":2,"score":{"mean":200,"se":100},"best":300,"total":400,"cost_usd":6,"cost_per_agent_hour":3},` +
 		`{"runtime":"opencode","model":"m","players":1,"score":{"mean":50,"se":null},"best":50,"total":50,"cost_usd":null,"cost_per_agent_hour":null}]`
 	if string(g) != want {

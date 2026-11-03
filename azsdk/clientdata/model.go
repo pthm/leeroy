@@ -115,9 +115,11 @@ func LoadWMO(c Source, name string) (*Model, error) {
 			}
 		case "MODD":
 			for o := 0; o+40 <= len(b); o += 40 {
-				m.Doodads = append(m.Doodads, Doodad{Name: strings.ReplaceAll(cstrings(modn, le.Uint32(b[o:])&0xFFFFFF), "/", `\`),
-					Pos: [3]float32{f32(b, o+4), f32(b, o+8), f32(b, o+12)}, Rot: [4]float32{f32(b, o+16), f32(b, o+20), f32(b, o+24), f32(b, o+28)},
-					Scale: f32(b, o+32)})
+				m.Doodads = append(m.Doodads, Doodad{
+					Name: strings.ReplaceAll(cstrings(modn, le.Uint32(b[o:])&0xFFFFFF), "/", `\`),
+					Pos:  [3]float32{f32(b, o+4), f32(b, o+8), f32(b, o+12)}, Rot: [4]float32{f32(b, o+16), f32(b, o+20), f32(b, o+24), f32(b, o+28)},
+					Scale: f32(b, o+32),
+				})
 			}
 		}
 	})

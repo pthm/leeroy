@@ -6,12 +6,13 @@ package world
 
 import (
 	"fmt"
-	"github.com/pthm/leeroy/azsdk/spelltext"
 	"io"
 	"math"
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/pthm/leeroy/azsdk/spelltext"
 )
 
 const limit = "15"
@@ -19,9 +20,19 @@ const limit = "15"
 var npcFlagNames = []struct {
 	bit  int
 	name string
-}{{0x1, "gossip"}, {0x2, "questgiver"}, {0x10, "trainer"}, {0x80, "vendor"}, {0x1000, "repair"},
-	{0x2000, "flightmaster"}, {0x4000, "spirithealer"}, {0x10000, "innkeeper"}, {0x20000, "banker"},
-	{0x200000, "auctioneer"}, {0x400000, "stablemaster"}}
+}{
+	{0x1, "gossip"},
+	{0x2, "questgiver"},
+	{0x10, "trainer"},
+	{0x80, "vendor"},
+	{0x1000, "repair"},
+	{0x2000, "flightmaster"},
+	{0x4000, "spirithealer"},
+	{0x10000, "innkeeper"},
+	{0x20000, "banker"},
+	{0x200000, "auctioneer"},
+	{0x400000, "stablemaster"},
+}
 
 func npcFlags(f int) []string {
 	out := []string{}
@@ -36,11 +47,15 @@ func npcFlags(f int) []string {
 var (
 	rankNames    = []string{"normal", "elite", "rare elite", "boss", "rare"}
 	qualityNames = []string{"poor", "common", "uncommon", "rare", "epic", "legendary", "artifact", "heirloom"}
-	slotNames    = []string{"none", "head", "neck", "shoulder", "shirt", "chest", "waist", "legs", "feet", "wrists", "hands",
+	slotNames    = []string{
+		"none", "head", "neck", "shoulder", "shirt", "chest", "waist", "legs", "feet", "wrists", "hands",
 		"finger", "trinket", "one-hand", "shield", "ranged", "back", "two-hand", "bag", "tabard", "robe", "main hand",
-		"off hand", "held in off-hand", "ammo", "thrown", "ranged (right)", "quiver", "relic"}
-	statNames = map[int]string{0: "mana", 1: "health", 3: "agility", 4: "strength", 5: "intellect", 6: "spirit",
-		7: "stamina", 31: "hit", 32: "crit", 35: "resilience", 36: "haste", 38: "attack power", 45: "spell power", 43: "mp5"}
+		"off hand", "held in off-hand", "ammo", "thrown", "ranged (right)", "quiver", "relic",
+	}
+	statNames = map[int]string{
+		0: "mana", 1: "health", 3: "agility", 4: "strength", 5: "intellect", 6: "spirit",
+		7: "stamina", 31: "hit", 32: "crit", 35: "resilience", 36: "haste", 38: "attack power", 45: "spell power", 43: "mp5",
+	}
 )
 
 // pick is list[n], or nil out of range (a JS array lookup).
@@ -100,8 +115,10 @@ func lootEntries(table string, item float64) loot {
 		frontier = idsOf(q(fmt.Sprintf("SELECT DISTINCT Entry FROM reference_loot_template WHERE Reference IN (%s)", inList(frontier))), "Entry")
 		refs = append(append([]float64{}, refs...), frontier...)
 	}
-	return loot{direct: fmt.Sprintf("%s.Item = %s AND %s.Reference = 0", table, jsStr(item), table),
-		viaRef: fmt.Sprintf("%s.Reference IN (%s)", table, inList(refs)), refs: refs}
+	return loot{
+		direct: fmt.Sprintf("%s.Item = %s AND %s.Reference = 0", table, jsStr(item), table),
+		viaRef: fmt.Sprintf("%s.Reference IN (%s)", table, inList(refs)), refs: refs,
+	}
 }
 
 func withSpawns(rows []*obj, table string, lim int) []*obj {
@@ -767,10 +784,12 @@ var spellBook = sync.OnceValue(func() *spelltext.Book {
 })
 
 // smartEvents names the SmartAI event types that start a creature's casts (SmartScriptMgr.h SMART_EVENT_*).
-var smartEvents = map[float64]string{0: "in_combat", 1: "out_of_combat", 2: "health_pct", 3: "mana_pct", 4: "aggro",
+var smartEvents = map[float64]string{
+	0: "in_combat", 1: "out_of_combat", 2: "health_pct", 3: "mana_pct", 4: "aggro",
 	5: "kill", 6: "death", 7: "evade", 8: "spell_hit", 9: "range", 10: "ooc_los", 12: "target_health_pct",
 	13: "victim_casting", 14: "friendly_health", 15: "friendly_is_cc", 16: "friendly_missing_buff", 23: "has_aura",
-	24: "target_buffed", 25: "reset", 26: "ic_los", 32: "damaged"}
+	24: "target_buffed", 25: "reset", 26: "ic_los", 32: "damaged",
+}
 
 // npcCasts: the spells a creature's SmartAI script casts (cast, self cast, cross cast, invoker cast), named from
 // Spell.dbc. The script rows' comment column is free text written by the DB's authors and can name another spell.

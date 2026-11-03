@@ -308,7 +308,8 @@ func (b *Bot) offerDone(t *tradeState, sent time.Time) *script.Outcome {
 }
 
 // tradeEnds: TradeStatus codes that refuse or end a trade (WorldSession::HandleInitiateTradeOpcode, Player::TradeCancel)
-var tradeEnds = map[uint32][2]string{client.TradeStatusBusy: {"busy", "they're busy (already trading)"},
+var tradeEnds = map[uint32][2]string{
+	client.TradeStatusBusy:          {"busy", "they're busy (already trading)"},
 	client.TradeStatusTradeCanceled: {"cancelled", "the trade was cancelled"}, client.TradeStatusBusy2: {"busy", "they're busy"},
 	client.TradeStatusNoTarget: {"no_target", "no such player online"}, client.TradeStatusTradeRejected: {"rejected", "they declined"},
 	client.TradeStatusTargetTooFar: {"too_far", "too far apart (within ~10 yd, neither of you on a flight)"},
@@ -320,7 +321,8 @@ var tradeEnds = map[uint32][2]string{client.TradeStatusBusy: {"busy", "they're b
 	client.TradeStatusTargetLogout: {"target_logging_out", "they're logging out"},
 	client.TradeStatusTrialAccount: {"trial_account", "trial accounts can't trade"},
 	client.TradeStatusWrongRealm:   {"wrong_realm", "only conjured items can be traded across realms"},
-	client.TradeStatusNotOnTapList: {"not_on_taplist", "that item is bound: only players there when it dropped can have it"}}
+	client.TradeStatusNotOnTapList: {"not_on_taplist", "that item is bound: only players there when it dropped can have it"},
+}
 
 // refused records a status that ends the trade or refuses its last step (t.mu held). An accept the server undoes
 // (CLOSE_WINDOW with an inventory result, TARGET_TO_FAR) and a refused item leave the trade open. A refused item or

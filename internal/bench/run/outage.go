@@ -77,8 +77,10 @@ func (p *player) outage(why string) {
 	r := p.r
 	rec, outcome, held := types.DiagnosticOutage{Start: time.Now().UnixMilli()}, "", int64(0)
 	defer func() {
-		p.harnessEvent(types.Diagnostic{Kind: "outage", Code: outageCode(why), Outcome: outcome, DurationMS: held,
-			Details: types.DiagnosticDetails{Component: "agent", Outage: &rec}})
+		p.harnessEvent(types.Diagnostic{
+			Kind: "outage", Code: outageCode(why), Outcome: outcome, DurationMS: held,
+			Details: types.DiagnosticDetails{Component: "agent", Outage: &rec},
+		})
 	}()
 	r.alert(p, fmt.Sprintf("provider outage (%s): logging out at a safe moment, clock held until the provider answers", why))
 	p.runtimeState("supervisor", types.StatePause)

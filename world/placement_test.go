@@ -65,8 +65,10 @@ func TestPlacementMatchesVmaps(t *testing.T) {
 			m = &clientdata.Model{}
 			for i := 0; i < n; i++ {
 				o := off + i*12
-				m.Verts = append(m.Verts, [3]float32{math.Float32frombits(binary.LittleEndian.Uint32(raw[o:])),
-					math.Float32frombits(binary.LittleEndian.Uint32(raw[o+4:])), math.Float32frombits(binary.LittleEndian.Uint32(raw[o+8:]))})
+				m.Verts = append(m.Verts, [3]float32{
+					math.Float32frombits(binary.LittleEndian.Uint32(raw[o:])),
+					math.Float32frombits(binary.LittleEndian.Uint32(raw[o+4:])), math.Float32frombits(binary.LittleEndian.Uint32(raw[o+8:])),
+				})
 			}
 			m.Tris = [][3]uint32{}
 			for i := 0; i+2 < n; i += 3 {

@@ -154,9 +154,11 @@ func ridingSkill(spells []int) int {
 }
 
 // skills the proficiency spells teach: weapons (5 per level) and armour (1)
-var spellSkill = map[int][2]int{196: {44, 5}, 197: {172, 5}, 264: {45, 5}, 266: {46, 5}, 198: {54, 5}, 199: {160, 5},
+var spellSkill = map[int][2]int{
+	196: {44, 5}, 197: {172, 5}, 264: {45, 5}, 266: {46, 5}, 198: {54, 5}, 199: {160, 5},
 	200: {229, 5}, 201: {43, 5}, 202: {55, 5}, 227: {136, 5}, 15590: {473, 5}, 1180: {173, 5}, 2567: {176, 5},
-	5011: {226, 5}, 5009: {228, 5}, 9078: {415, 0}, 9077: {414, 0}, 8737: {413, 0}, 750: {293, 0}, 9116: {433, 0}}
+	5011: {226, 5}, 5009: {228, 5}, 9078: {415, 0}, 9077: {414, 0}, 8737: {413, 0}, 750: {293, 0}, 9116: {433, 0},
+}
 
 // applyKit puts a kit on an offline character: level, money, spells (with trained, those the class trainers teach
 // and the class quests reward up to the level; and the kit's own), the skills that rise with level at their cap, gear, bags and items. Items it replaces are deleted. New items

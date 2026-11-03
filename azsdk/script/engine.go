@@ -262,7 +262,7 @@ func (e *Engine) Call(name string, args []any) (any, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	defer e.deadline(e.L)()
-	var fn lua.LValue = e.L.GetGlobal(name)
+	fn := e.L.GetGlobal(name)
 	if ns, field, ok := strings.Cut(name, "."); ok {
 		fn = lua.LNil
 		if t, ok := e.L.GetGlobal(ns).(*lua.LTable); ok {
@@ -444,6 +444,7 @@ func (e *Engine) InternalFunc(name, sig string, fn any) {
 	}
 	e.registerFunc(name, sig, "", fn, true)
 }
+
 func (e *Engine) registerFunc(name, sig, desc string, fn any, internal bool) {
 	v := reflect.ValueOf(fn)
 	contract, err := ParseSignature(sig)
@@ -651,8 +652,10 @@ func (e *Engine) TasksHeld() []types.TaskInfo {
 	out := []types.TaskInfo{}
 	for _, id := range ids {
 		t := e.tasks[id]
-		ti := types.TaskInfo{ID: t.ID, Name: t.Name, State: t.State, Status: t.Status, Error: t.Err, Seconds: int(time.Since(t.Started).Seconds()),
-			BusyMS: int(t.busy.Milliseconds())}
+		ti := types.TaskInfo{
+			ID: t.ID, Name: t.Name, State: t.State, Status: t.Status, Error: t.Err, Seconds: int(time.Since(t.Started).Seconds()),
+			BusyMS: int(t.busy.Milliseconds()),
+		}
 		if t.State == "waiting" {
 			switch t.wait.kind {
 			case "sleep":
@@ -977,8 +980,10 @@ func (e *Engine) runTasks() {
 					if res != nil {
 						op, _ = res["op"].(string)
 					}
-					args = []lua.LValue{toLua(e.L, map[string]any{"id": w.req, "op": op, "ok": false,
-						"error": map[string]any{"code": "wait_timeout", "message": "stopped waiting; the request may still finish"}})}
+					args = []lua.LValue{toLua(e.L, map[string]any{
+						"id": w.req, "op": op, "ok": false,
+						"error": map[string]any{"code": "wait_timeout", "message": "stopped waiting; the request may still finish"},
+					})}
 				} else {
 					continue
 				}
@@ -1177,8 +1182,10 @@ func (e *Engine) finish(t *Task) {
 	e.endTaskDiagnostics(t, code)
 	delete(e.byThread, t.co)
 	if !t.Handler {
-		go e.Emit("task_finished", types.TaskEvent{Task: t.ID, Name: t.Name, State: t.State,
-			Seconds: int(t.Ended.Sub(t.Started).Seconds()), Error: t.Err})
+		go e.Emit("task_finished", types.TaskEvent{
+			Task: t.ID, Name: t.Name, State: t.State,
+			Seconds: int(t.Ended.Sub(t.Started).Seconds()), Error: t.Err,
+		})
 	}
 	// keep finished tasks around briefly for task.list(); handlers go at once
 	if t.Handler {

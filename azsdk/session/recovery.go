@@ -27,6 +27,7 @@ type recoveryCoordinator struct {
 func recoveryFailure(code string, attempts int) *script.Outcome {
 	return script.Fail(code, "recovery stopped: "+code, map[string]any{"state": "attention", "attempts": attempts})
 }
+
 func (c *recoveryCoordinator) begin(task int, seconds float64) map[string]any {
 	c.poll()
 	c.mu.Lock()
@@ -44,6 +45,7 @@ func (c *recoveryCoordinator) begin(task int, seconds float64) map[string]any {
 	}
 	return map[string]any{"owner": owner, "id": c.active.id, "request": map[string]any{"id": c.active.id, "op": "act.recover", "pending": true}}
 }
+
 func (c *recoveryCoordinator) finish(task, id int, out *script.Outcome) {
 	c.poll()
 	c.mu.Lock()
@@ -55,6 +57,7 @@ func (c *recoveryCoordinator) finish(task, id int, out *script.Outcome) {
 	c.mu.Unlock()
 	c.reqs.Resolve(id, out)
 }
+
 func (c *recoveryCoordinator) check(task, id int) map[string]any {
 	c.poll()
 	c.mu.Lock()
@@ -69,6 +72,7 @@ func (c *recoveryCoordinator) check(task, id int) map[string]any {
 	}
 	return map[string]any{"ok": false, "op": "act.recover", "error": map[string]any{"code": "recovery_cancelled", "message": "recovery attempt is no longer active"}, "data": map[string]any{"state": "attention"}}
 }
+
 func (c *recoveryCoordinator) progress(task, attempts int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -76,6 +80,7 @@ func (c *recoveryCoordinator) progress(task, attempts int) {
 		c.active.attempts = attempts
 	}
 }
+
 func (c *recoveryCoordinator) abort(task int, reason string) {
 	c.mu.Lock()
 	a := c.active
@@ -90,6 +95,7 @@ func (c *recoveryCoordinator) abort(task int, reason string) {
 	}
 	c.reqs.Resolve(a.id, recoveryFailure(reason, a.attempts))
 }
+
 func (c *recoveryCoordinator) poll() {
 	c.mu.Lock()
 	a := c.active
@@ -105,12 +111,14 @@ func (c *recoveryCoordinator) poll() {
 	}
 	c.reqs.Resolve(a.id, recoveryFailure("recovery_timeout", a.attempts))
 }
+
 func (c *recoveryCoordinator) close() {
 	c.mu.Lock()
 	c.closed = true
 	c.mu.Unlock()
 	c.abort(0, "session_closed")
 }
+
 func (b *Bot) setupRecovery() {
 	e := b.lua
 	c := &recoveryCoordinator{reqs: e.Reqs, now: time.Now, cancelMovement: func(id int, reason string) {
@@ -142,6 +150,7 @@ func (b *Bot) setupRecovery() {
 		}
 	})
 }
+
 func (c *recoveryCoordinator) attach(e *script.Engine) {
 	inactive, closeSession, poll := e.OnTaskInactive, e.OnClose, e.OnPoll
 	e.OnTaskInactive = func(id int, reason string) {
@@ -163,6 +172,7 @@ func (c *recoveryCoordinator) attach(e *script.Engine) {
 		c.poll()
 	}
 }
+
 func (c *recoveryCoordinator) register(e *script.Engine) {
 	e.InternalFunc("death._recovery_begin", "(timeout_s) → RecoveryJoin", func(seconds float64) map[string]any { id, _, _ := e.CurrentTaskIdentity(); return c.begin(id, seconds) })
 	e.InternalFunc("death._recovery_check", "(id) → ActResult", func(id int) map[string]any { task, _, _ := e.CurrentTaskIdentity(); return c.check(task, id) })

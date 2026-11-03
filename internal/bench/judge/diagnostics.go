@@ -2,10 +2,11 @@ package judge
 
 import (
 	"encoding/json"
-	"github.com/pthm/leeroy/runfiles"
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/pthm/leeroy/runfiles"
 
 	"github.com/pthm/leeroy/azsdk/types"
 	"github.com/pthm/leeroy/internal/bench/diagnostics"
@@ -112,10 +113,12 @@ func teamDiagnostics(cards []map[string]any) map[string]any {
 				failed[a.Class] += a.Count
 			}
 		}
-		agents = append(agents, map[string]any{"agent": c["agent"], "coverage": d.Coverage.Status, "actions": actions,
+		agents = append(agents, map[string]any{
+			"agent": c["agent"], "coverage": d.Coverage.Status, "actions": actions,
 			"failures": failed["failure"], "combat_outcomes": failed["combat_outcome"], "preempted": failed["preempted"],
 			"episodes": len(d.Episodes), "cost_status": d.Coverage.CostStatus,
-			"tool_coverage": d.Tools.Status, "tool_timeouts": d.Tools.ObservedTimeouts, "tool_denials": d.Tools.ObservedDenials})
+			"tool_coverage": d.Tools.Status, "tool_timeouts": d.Tools.ObservedTimeouts, "tool_denials": d.Tools.ObservedDenials,
+		})
 	}
 	return map[string]any{"schema": 1, "agents": agents}
 }
@@ -165,7 +168,7 @@ func SaveUsage(dir string) error {
 		// IDs are filenames in runtime-owned stores; reject path/glob syntax from malformed artifacts.
 		valid := true
 		for _, c := range id {
-			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') {
+			if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '-' {
 				valid = false
 			}
 		}
@@ -235,8 +238,10 @@ func codexUsage(thread string) []map[string]any {
 	var out []map[string]any
 	for _, e := range jsonl(codexRollout(thread)) {
 		if p := get(e, "payload"); get(p, "type") == "token_count" {
-			out = append(out, map[string]any{"timestamp": e["timestamp"], "thread": thread,
-				"last_token_usage": get(get(p, "info"), "last_token_usage"), "rate_limits": get(p, "rate_limits")})
+			out = append(out, map[string]any{
+				"timestamp": e["timestamp"], "thread": thread,
+				"last_token_usage": get(get(p, "info"), "last_token_usage"), "rate_limits": get(p, "rate_limits"),
+			})
 		}
 	}
 	return out

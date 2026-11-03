@@ -5,13 +5,14 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/pthm/leeroy/runfiles"
 	"math"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/pthm/leeroy/runfiles"
 
 	"github.com/pthm/leeroy/world"
 )
@@ -28,8 +29,10 @@ var (
 type Ev = map[string]any
 
 // classIDs: the SDK's class names as Class indexes.
-var classIDs = map[string]int{"warrior": 1, "paladin": 2, "hunter": 3, "rogue": 4, "priest": 5, "death_knight": 6,
-	"shaman": 7, "mage": 8, "warlock": 9, "druid": 11}
+var classIDs = map[string]int{
+	"warrior": 1, "paladin": 2, "hunter": 3, "rogue": 4, "priest": 5, "death_knight": 6,
+	"shaman": 7, "mage": 8, "warlock": 9, "druid": 11,
+}
 
 // Unit is a unit in an event (types.UnitRef: guid, name, entry for a creature, level, player), nil if none.
 func Unit(e Ev, k string) map[string]any { u, _ := e[k].(map[string]any); return u }
@@ -51,6 +54,7 @@ func N(e Ev, k string) float64 {
 	f, _ := e[k].(float64)
 	return f
 }
+
 func S(e Ev, k string) string {
 	s, _ := e[k].(string)
 	return s
@@ -195,9 +199,11 @@ func RunSources(dir string) (games, scores, transcripts []Transcript) {
 
 // chatKinds are the chat kinds the viewer keeps (the SDK's kinds): what players say, and NPC speech. The game's own
 // lines (system, loot, money, xp, skill...) are left out: their events say it.
-var chatKinds = map[string]bool{"say": true, "party": true, "raid": true, "raid_warning": true, "battleground": true,
+var chatKinds = map[string]bool{
+	"say": true, "party": true, "raid": true, "raid_warning": true, "battleground": true,
 	"guild": true, "officer": true, "yell": true, "whisper": true, "whisper_sent": true, "emote": true, "channel": true,
-	"npc_say": true, "npc_party": true, "npc_yell": true, "npc_whisper": true, "npc_emote": true}
+	"npc_say": true, "npc_party": true, "npc_yell": true, "npc_whisper": true, "npc_emote": true,
+}
 
 // ChatSides is who said a chat event (a player, or an NPC: npc) and, for a whisper, who it went to, from the SDK's
 // chat: from is the speaker, except on the character's own lines (self: from is the character) and a whisper it

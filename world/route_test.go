@@ -18,9 +18,11 @@ func flatRouteSource() routeSource {
 		threats: func(context.Context, float64, float64, float64, float64, float64, bool) []threat { return nil },
 	}
 }
+
 func routeFixture() routeRequest {
 	return routeRequest{From: [3]float64{0, 0, 20}, To: [3]float64{80, 0, -20}, Map: 530, Level: 7, ExplicitZ: true}
 }
+
 func assertRouteCode(t *testing.T, r *obj, want string) {
 	t.Helper()
 	if r.get("status") != "failed" || r.get("reason") != want {
@@ -33,6 +35,7 @@ func assertRouteCode(t *testing.T, r *obj, want string) {
 		t.Fatal("failed planning published a usable-looking route")
 	}
 }
+
 func TestTerrainPlanPreservesRequestedFloors(t *testing.T) {
 	req := routeFixture()
 	plan := planRoute(context.Background(), req, flatRouteSource())
@@ -54,6 +57,7 @@ func TestTerrainPlanPreservesRequestedFloors(t *testing.T) {
 		t.Fatal("invalid JSON")
 	}
 }
+
 func TestTwoDimensionalPlanUsesTerrainWithoutCertification(t *testing.T) {
 	req := routeFixture()
 	req.ExplicitZ = false
@@ -65,6 +69,7 @@ func TestTwoDimensionalPlanUsesTerrainWithoutCertification(t *testing.T) {
 		t.Fatalf("%s", toJSON(plan))
 	}
 }
+
 func TestTerrainMissingAndDisconnectedAreDistinct(t *testing.T) {
 	req := routeFixture()
 	req.From[0] = -40
@@ -82,6 +87,7 @@ func TestTerrainMissingAndDisconnectedAreDistinct(t *testing.T) {
 	}
 	assertRouteCode(t, planRoute(context.Background(), req, src), "terrain_unreachable")
 }
+
 func TestThreatCostCannotMakeFlatTerrainUnreachable(t *testing.T) {
 	src := flatRouteSource()
 	src.threats = func(context.Context, float64, float64, float64, float64, float64, bool) []threat {
@@ -96,6 +102,7 @@ func TestThreatCostCannotMakeFlatTerrainUnreachable(t *testing.T) {
 		t.Fatalf("%s", toJSON(exposure))
 	}
 }
+
 func TestTerrainCancellationStopsSampling(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -111,6 +118,7 @@ func TestTerrainCancellationStopsSampling(t *testing.T) {
 		t.Fatalf("continued sampling after cancellation: %d", calls)
 	}
 }
+
 func TestTerrainDeadlineReachesDataSource(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
@@ -134,6 +142,7 @@ func TestTerrainDeadlineReachesDataSource(t *testing.T) {
 		t.Fatalf("%s", toJSON(got))
 	}
 }
+
 func TestTerrainDeadlineIncludesAdmission(t *testing.T) {
 	routeSlot <- struct{}{}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
@@ -147,6 +156,7 @@ func TestTerrainDeadlineIncludesAdmission(t *testing.T) {
 	<-routeSlot
 	assertRouteCode(t, plan, "route_timeout")
 }
+
 func TestTerrainLimitsBeforeIOAndOutputBound(t *testing.T) {
 	src := flatRouteSource()
 	src.sample = func(context.Context, uint32, float64, float64) (float64, float64, uint16) {
@@ -172,14 +182,17 @@ func TestTerrainLimitsBeforeIOAndOutputBound(t *testing.T) {
 		t.Fatalf("long plan: %v", plan)
 	}
 }
+
 func TestRouteCLIRejectsAmbiguousAndMalformedInputs(t *testing.T) {
 	cases := [][]string{
-		{"route"}, {"route", "0", "0", "1", "1", "5", "--level", "7"},
+		{"route"},
+		{"route", "0", "0", "1", "1", "5", "--level", "7"},
 		{"route", "0", "0", "0", "1", "1", "0", "0", "--map", "0", "--level", "7"},
 		{"route", "0", "0", "1", "1", "--level", "7", "--typo", "3"},
 		{"route", "0", "0", "1", "1", "--level", "7", "--map", "-1"},
 		{"route", "0", "0", "1", "1", "--level", "7", "--map", "0.5"},
-		{"route", "0", "0", "1", "1"}, {"route", "0", "0", "1", "1", "--level", "0"},
+		{"route", "0", "0", "1", "1"},
+		{"route", "0", "0", "1", "1", "--level", "0"},
 		{"route", "0", "0", "NaN", "1", "--level", "7"},
 		{"route", "0", "0", "0", "5000", "0", "0", "0", "--level", "7"},
 	}

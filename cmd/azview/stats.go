@@ -40,8 +40,10 @@ const (
 	dead
 )
 
-var stateName = map[int][2]string{idle: {"idle", "#4a4a47"}, moving: {"moving", "#3f8f5a"}, combat: {"in combat", "#e04848"}, ghost: {"ghost", "#8fb8ff"}, dead: {"dead", "#8a8985"}}
-var stateOrder = []int{combat, moving, idle, ghost, dead}
+var (
+	stateName  = map[int][2]string{idle: {"idle", "#4a4a47"}, moving: {"moving", "#3f8f5a"}, combat: {"in combat", "#e04848"}, ghost: {"ghost", "#8fb8ff"}, dead: {"dead", "#8a8985"}}
+	stateOrder = []int{combat, moving, idle, ghost, dead}
+)
 
 func stateOf(a Sample, b *Sample) int {
 	if !a.Alive {
@@ -247,8 +249,10 @@ type grid struct {
 	nb           int
 }
 
-var steps = []float64{1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400}
-var periods = []float64{10, 60, 300, 900, 3600} // what the rate chart can be per, in seconds
+var (
+	steps   = []float64{1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400}
+	periods = []float64{10, 60, 300, 900, 3600} // what the rate chart can be per, in seconds
+)
 
 func (s *Store) grid(t0, t1 float64, n int, fixed float64) grid {
 	step := fixed
@@ -614,8 +618,10 @@ func (s *Store) Stats(q Query) map[string]any {
 			bs = bs[:10]
 		}
 		for _, x := range bs {
-			parts = append(parts, StatRow{Name: x.n, Color: s.color(q.Sel), Value: fmtStat(m, x.v), Width: 100 * x.v / bs[0].v,
-				Pct: fmt.Sprintf("%.0f%%", math.Round(100*x.v/math.Max(1, ptot)))})
+			parts = append(parts, StatRow{
+				Name: x.n, Color: s.color(q.Sel), Value: fmtStat(m, x.v), Width: 100 * x.v / bs[0].v,
+				Pct: fmt.Sprintf("%.0f%%", math.Round(100*x.v/math.Max(1, ptot))),
+			})
 		}
 	}
 	total := ""

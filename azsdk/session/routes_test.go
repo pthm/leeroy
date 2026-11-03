@@ -104,6 +104,7 @@ func (n *clearanceNavigator) FindPathContext(_ context.Context, _ uint32, a, b n
 	n.calls++
 	return &navigation.PathResult{Found: n.state == "clear", Partial: n.partial, Points: []navigation.Point3D{a, b}, Collision: &pathfinding.CollisionCheck{State: n.state}}, nil
 }
+
 func TestReachUnknownAndPartialDoNotCertifyArrival(t *testing.T) {
 	b := testBot()
 	defer b.lua.Close()

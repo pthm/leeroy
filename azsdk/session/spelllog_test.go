@@ -53,9 +53,19 @@ func TestMeleeOutcome(t *testing.T) {
 		state uint8
 		want  string
 	}{
-		{0x10, 0, "miss"}, {0x2, 1, "hit"}, {0x202, 1, "crit"}, {0x12002, 1, "block"}, {0x10002, 1, "glancing"},
-		{0x20002, 1, "crushing"}, {0x22, 1, "absorb"}, {0x82, 1, "resist"}, {0x3002, 5, "block"}, {0, 2, "dodge"},
-		{0, 3, "parry"}, {0, 6, "evade"}, {0, 7, "immune"},
+		{0x10, 0, "miss"},
+		{0x2, 1, "hit"},
+		{0x202, 1, "crit"},
+		{0x12002, 1, "block"},
+		{0x10002, 1, "glancing"},
+		{0x20002, 1, "crushing"},
+		{0x22, 1, "absorb"},
+		{0x82, 1, "resist"},
+		{0x3002, 5, "block"},
+		{0, 2, "dodge"},
+		{0, 3, "parry"},
+		{0, 6, "evade"},
+		{0, 7, "immune"},
 	} {
 		if got := meleeOutcome(c.hit, c.state); got != c.want {
 			t.Errorf("hitInfo %#x state %d: %s, want %s", c.hit, c.state, got, c.want)
@@ -160,8 +170,10 @@ func TestEngaged(t *testing.T) {
 	mob := func(g uint64, target types.GUID, alive bool, reaction string) types.Creature {
 		return types.Creature{Unit: types.Unit{GUID: types.GUID(g), Target: target, Alive: alive, Reaction: reaction, Fleeing: g == 4}}
 	}
-	cs := []types.Creature{mob(1, me, true, "hostile"), mob(2, 0, true, "hostile"), mob(3, other, true, "hostile"),
-		mob(4, 0, true, "neutral"), mob(5, me, false, "hostile"), mob(6, me, true, "friendly")}
+	cs := []types.Creature{
+		mob(1, me, true, "hostile"), mob(2, 0, true, "hostile"), mob(3, other, true, "hostile"),
+		mob(4, 0, true, "neutral"), mob(5, me, false, "hostile"), mob(6, me, true, "friendly"),
+	}
 	threat := map[uint64][]threatRef{2: {{pal, 50}}, 3: {{other, 90}}, 4: {{other, 90}, {pal, 40}, {me, 10}}}
 	var got []string
 	for _, e := range engagedWith(cs, threat, ours) {

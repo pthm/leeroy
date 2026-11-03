@@ -40,18 +40,23 @@ func (f *fakeSender) record(at time.Time, typ string, x, y, z, o float32) {
 func (f *fakeSender) MoveStartForward(at time.Time, x, y, z, o float32) {
 	f.record(at, "START", x, y, z, o)
 }
+
 func (f *fakeSender) MoveStop(at time.Time, x, y, z, o float32) {
 	f.record(at, "STOP", x, y, z, o)
 }
+
 func (f *fakeSender) SetFacing(at time.Time, x, y, z, o float32) {
 	f.record(at, "SET_FACING", x, y, z, o)
 }
+
 func (f *fakeSender) SetFacingMoving(at time.Time, x, y, z, o float32) {
 	f.record(at, "SET_FACING", x, y, z, o)
 }
+
 func (f *fakeSender) SendHeartbeat(at time.Time, x, y, z, o float32) {
 	f.record(at, "HB", x, y, z, o)
 }
+
 func (f *fakeSender) SendMovementHeartbeat(at time.Time, x, y, z, o float32) {
 	f.record(at, "HB_MOVE", x, y, z, o)
 }
@@ -60,11 +65,12 @@ func (f *fakeSender) SendMovementHeartbeatWithJump(at time.Time, x, y, z, o floa
 	// Record as special HB_MOVE_JUMP for the test trace; still a moving heartbeat.
 	f.record(at, "HB_MOVE_JUMP", x, y, z, o)
 }
+
 func (f *fakeSender) SendFallLand(at time.Time, x, y, z, o float32) {
 	f.record(at, "FALL_LAND", x, y, z, o)
 }
 
-func (f *fakeSender) SendRouteJump(at time.Time, x, y, z, o float32, sinAngle, cosAngle, xyspeed float32) {
+func (f *fakeSender) SendRouteJump(at time.Time, x, y, z, o, sinAngle, cosAngle, xyspeed float32) {
 	f.record(at, "JUMP", x, y, z, o)
 }
 
@@ -81,6 +87,7 @@ func (n fakeHeightNavigator) FindPathContext(ctx context.Context, mapID uint32, 
 	}
 	return n.FindPath(mapID, start, dest)
 }
+
 func (n fakeHeightNavigator) FindPath(mapID uint32, start, dest navigation.Point3D) (*navigation.PathResult, error) {
 	return nil, fmt.Errorf("not implemented")
 }
@@ -118,6 +125,7 @@ func (n *fakeRandomNavigator) FindPathContext(ctx context.Context, mapID uint32,
 	}
 	return n.FindPath(mapID, start, dest)
 }
+
 func (n *fakeRandomNavigator) FindPath(mapID uint32, start, dest navigation.Point3D) (*navigation.PathResult, error) {
 	return nil, fmt.Errorf("not implemented")
 }
@@ -978,6 +986,7 @@ func (n cancelledHeightNavigator) GetHeightContext(ctx context.Context, _ uint32
 	n.cancel()
 	return 0, false
 }
+
 func TestGroundHeightCancellationDoesNotFallBack(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

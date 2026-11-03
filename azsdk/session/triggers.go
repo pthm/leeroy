@@ -38,8 +38,10 @@ func loadAreaTriggers(dataDir string) []areaTrigger {
 	out := make([]areaTrigger, 0, n)
 	for i := uint32(0); i < n; i++ {
 		rec := b[20+i*rs:]
-		out = append(out, areaTrigger{le.Uint32(rec), le.Uint32(rec[4:]), f(rec, 2), f(rec, 3), f(rec, 4), f(rec, 5),
-			f(rec, 6), f(rec, 7), f(rec, 8), f(rec, 9)})
+		out = append(out, areaTrigger{
+			le.Uint32(rec), le.Uint32(rec[4:]), f(rec, 2), f(rec, 3), f(rec, 4), f(rec, 5),
+			f(rec, 6), f(rec, 7), f(rec, 8), f(rec, 9),
+		})
 	}
 	return out
 }

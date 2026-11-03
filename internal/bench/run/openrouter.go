@@ -14,7 +14,7 @@ var openrouterURL = "https://openrouter.ai/api/v1/key"
 
 // openrouterUsage: what the OPENROUTER_API_KEY has spent so far, in USD.
 func openrouterUsage() (float64, error) {
-	req, _ := http.NewRequest("GET", openrouterURL, nil)
+	req, _ := http.NewRequest("GET", openrouterURL, http.NoBody)
 	req.Header.Set("Authorization", "Bearer "+os.Getenv("OPENROUTER_API_KEY"))
 	c := http.Client{Timeout: 15 * time.Second}
 	resp, err := c.Do(req)

@@ -103,8 +103,10 @@ func (b *Bench) agents(t *Task, key string, m Model, names map[string]string) ([
 	var out []Agent
 	for i, p := range t.Party {
 		char := names[seat(t.Name, key, i)]
-		a := Agent{Name: strings.ToLower(char), Char: char, Race: p.Race, Class: p.Class, Spec: p.Spec,
-			Runtime: m.Runtime, Model: m.Model, Effort: m.Effort, Provider: m.Provider}
+		a := Agent{
+			Name: strings.ToLower(char), Char: char, Race: p.Race, Class: p.Class, Spec: p.Spec,
+			Runtime: m.Runtime, Model: m.Model, Effort: m.Effort, Provider: m.Provider,
+		}
 		if p.Kit != "" {
 			k, err := b.LoadKit(p.Kit)
 			if err != nil {

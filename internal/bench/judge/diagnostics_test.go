@@ -1,6 +1,7 @@
 package judge
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,9 +14,9 @@ func TestPausedReportPreservesProvisionalScores(t *testing.T) {
 	m, _ := f.ReadManifest()
 	m.Status = "paused"
 	f.WriteManifest(m)
-	os.WriteFile(f.Meta("a1"), []byte(`{"agent":"a1","char":"Tester"}`), 0600)
-	os.WriteFile(f.Samples("Tester"), []byte(`{"t":1000,"elapsed_s":0,"value":10,"score":10}`+"\n"), 0600)
-	os.WriteFile(f.Diagnostics("a1"), []byte(`{"schema":1,"seq":1,"t":1000,"agent":"a1","session":"s1","kind":"action_finished","op":"act.accept","outcome":"failed","code":"timeout","details":{}}`+"\n"), 0600)
+	os.WriteFile(f.Meta("a1"), []byte(`{"agent":"a1","char":"Tester"}`), 0o600)
+	os.WriteFile(f.Samples("Tester"), []byte(`{"t":1000,"elapsed_s":0,"value":10,"score":10}`+"\n"), 0o600)
+	os.WriteFile(f.Diagnostics("a1"), []byte(`{"schema":1,"seq":1,"t":1000,"agent":"a1","session":"s1","kind":"action_finished","op":"act.accept","outcome":"failed","code":"timeout","details":{}}`+"\n"), 0o600)
 	dir := string(f)
 	Report(dir) // includes a player whose agent never wrote a transcript
 	r := readJSON(f.Report())
@@ -37,7 +38,7 @@ func TestPausedReportPreservesProvisionalScores(t *testing.T) {
 	before, _ := os.ReadFile(f.Report())
 	Report(dir)
 	after, _ := os.ReadFile(f.Report())
-	if string(before) != string(after) {
+	if !bytes.Equal(before, after) {
 		t.Fatal("saved report changes without new artifacts")
 	}
 }
@@ -47,9 +48,9 @@ func TestSavedUsageIndependentOfRuntimeHome(t *testing.T) {
 	t.Setenv("HOME", home)
 	dir := t.TempDir()
 	logs := filepath.Join(home, ".codex/sessions/2026/10/30")
-	os.MkdirAll(logs, 0755)
-	os.WriteFile(filepath.Join(dir, "transcript.jsonl"), []byte(`{"type":"thread.started","thread_id":"abc-123"}`+"\n"), 0600)
-	os.WriteFile(filepath.Join(logs, "rollout-test-abc-123.jsonl"), []byte(`{"payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":30}}}}`+"\n"), 0600)
+	os.MkdirAll(logs, 0o755)
+	os.WriteFile(filepath.Join(dir, "transcript.jsonl"), []byte(`{"type":"thread.started","thread_id":"abc-123"}`+"\n"), 0o600)
+	os.WriteFile(filepath.Join(logs, "rollout-test-abc-123.jsonl"), []byte(`{"payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":30}}}}`+"\n"), 0o600)
 	if err := SaveUsage(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -68,8 +69,8 @@ func TestSavedUsageIndependentOfRuntimeHome(t *testing.T) {
 
 func TestMissingUsageNeverBecomesFreeCost(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "meta.json"), []byte(`{"agent":"a1","runtime":"claude","model":"claude-sonnet-4-5"}`), 0600)
-	os.WriteFile(filepath.Join(dir, "transcript.jsonl"), []byte(`{"type":"result","session_id":"s1","total_cost_usd":3}`+"\n"), 0600)
+	os.WriteFile(filepath.Join(dir, "meta.json"), []byte(`{"agent":"a1","runtime":"claude","model":"claude-sonnet-4-5"}`), 0o600)
+	os.WriteFile(filepath.Join(dir, "transcript.jsonl"), []byte(`{"type":"result","session_id":"s1","total_cost_usd":3}`+"\n"), 0o600)
 	c := card(agentRun{agent: "a1", char: "Tester", run: dir}, nil, nil, nil)
 	b, _ := json.Marshal(c)
 	var m map[string]any
@@ -77,7 +78,7 @@ func TestMissingUsageNeverBecomesFreeCost(t *testing.T) {
 	if m["cost_usd"] != nil || get(get(m["diagnostics"], "coverage"), "cost_status") != "unavailable" {
 		t.Fatalf("missing token counts: %s", b)
 	}
-	os.WriteFile(filepath.Join(dir, "openrouter.json"), []byte(`{"start":10,"end":12}`), 0600)
+	os.WriteFile(filepath.Join(dir, "openrouter.json"), []byte(`{"start":10,"end":12}`), 0o600)
 	b, _ = json.Marshal(teamResults(dir, 1, []map[string]any{{"provider": "openrouter", "cost_usd": nil}}))
 	json.Unmarshal(b, &m)
 	if get(m["openrouter"], "estimated_usd") != nil {
@@ -95,7 +96,7 @@ func TestShortPauseExcludedFromSampledTime(t *testing.T) {
 		b, _ := json.Marshal(map[string]any{"kind": "runtime_state", "t": v.t, "details": map[string]any{"component": "judge", "state": v.state}})
 		lines = append(append(lines, b...), '\n')
 	}
-	os.WriteFile(filepath.Join(dir, "harness.jsonl"), lines, 0600)
+	os.WriteFile(filepath.Join(dir, "harness.jsonl"), lines, 0o600)
 	played := intervalPlayed(filepath.Join(dir, "harness.jsonl"))
 	for _, v := range []struct {
 		a, b int64
@@ -109,8 +110,8 @@ func TestShortPauseExcludedFromSampledTime(t *testing.T) {
 
 func TestMissingRecordStillReportsAgent(t *testing.T) {
 	f := testRun(t, [2]string{"a1", "Tester"})
-	os.WriteFile(f.Meta("a1"), []byte(`{"agent":"a1","char":"Tester"}`), 0600)
-	os.WriteFile(f.Result("Tester"), []byte(`{"met":true,"score":10}`), 0600)
+	os.WriteFile(f.Meta("a1"), []byte(`{"agent":"a1","char":"Tester"}`), 0o600)
+	os.WriteFile(f.Result("Tester"), []byte(`{"met":true,"score":10}`), 0o600)
 	Report(string(f))
 	r := readJSON(f.Report())
 	agents := r["agents"].([]any)
@@ -134,17 +135,17 @@ func TestCodexUsageFile(t *testing.T) {
 	t.Setenv("HOME", home)
 	dir := t.TempDir()
 	logs := filepath.Join(home, ".codex/sessions/2026/10/30")
-	os.MkdirAll(logs, 0755)
-	os.WriteFile(filepath.Join(dir, "transcript.jsonl"), []byte(`{"type":"thread.started","thread_id":"abc-123"}`+"\n"), 0600)
+	os.MkdirAll(logs, 0o755)
+	os.WriteFile(filepath.Join(dir, "transcript.jsonl"), []byte(`{"type":"thread.started","thread_id":"abc-123"}`+"\n"), 0o600)
 	tc := func(ts string, used float64) string {
 		return `{"timestamp":"` + ts + `","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":30},"last_token_usage":{"input_tokens":10,"output_tokens":3}},"rate_limits":{"primary":{"used_percent":` + fmt.Sprint(used) + `}}}}` + "\n"
 	}
 	rollout := filepath.Join(logs, "rollout-test-abc-123.jsonl")
-	os.WriteFile(rollout, []byte(tc("2026-10-30T21:00:00Z", 42)+`{"type":"other"}`+"\n"), 0600)
+	os.WriteFile(rollout, []byte(tc("2026-10-30T21:00:00Z", 42)+`{"type":"other"}`+"\n"), 0o600)
 	if err := SaveUsage(dir); err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(rollout, []byte(tc("2026-10-30T21:00:00Z", 42)+tc("2026-10-30T22:00:00Z", 43)), 0600)
+	os.WriteFile(rollout, []byte(tc("2026-10-30T21:00:00Z", 42)+tc("2026-10-30T22:00:00Z", 43)), 0o600)
 	if err := SaveUsage(dir); err != nil {
 		t.Fatal(err)
 	}

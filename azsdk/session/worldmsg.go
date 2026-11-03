@@ -33,13 +33,15 @@ type worldMsgs struct {
 }
 
 // TransferAbortReason (Player.h)
-var transferAborts = map[uint8][2]string{1: {"error", "transfer failed"}, 2: {"instance_full", "the instance is full"},
+var transferAborts = map[uint8][2]string{
+	1: {"error", "transfer failed"}, 2: {"instance_full", "the instance is full"},
 	3: {"not_found", "instance not found"}, 4: {"too_many_instances", "you've entered too many instances recently"},
 	6: {"encounter_in_progress", "an encounter is in progress"}, 7: {"expansion_required", "that needs a newer expansion"},
 	8: {"difficulty_unavailable", "that difficulty isn't available"}, 9: {"unique_message", "you can't leave this place yet"},
 	0x0A: {"too_many_realm_instances", "no more instances can be launched right now"}, 0x0B: {"need_group", "you need a group"},
 	0x0C: {"not_found", "instance not found"}, 0x0D: {"not_found", "instance not found"}, 0x0E: {"not_found", "instance not found"},
-	0x0F: {"realm_only", "everyone in the party must be from this realm"}, 0x10: {"map_not_allowed", "that map can't be entered now"}}
+	0x0F: {"realm_only", "everyone in the party must be from this realm"}, 0x10: {"map_not_allowed", "that map can't be entered now"},
+}
 
 func (b *Bot) watchWorldMessages() *worldMsgs {
 	m := &worldMsgs{factions: map[uint32][2]uint32{}}
@@ -166,8 +168,10 @@ func repRank(v int32) string {
 	return "hated"
 }
 
-var bgStatus = map[uint32]string{client.BattlegroundStatusNone: "none", client.BattlegroundStatusWaitQueue: "queued",
-	client.BattlegroundStatusWaitJoin: "invited", client.BattlegroundStatusInProgress: "in_progress", client.BattlegroundStatusWaitLeave: "leaving"}
+var bgStatus = map[uint32]string{
+	client.BattlegroundStatusNone: "none", client.BattlegroundStatusWaitQueue: "queued",
+	client.BattlegroundStatusWaitJoin: "invited", client.BattlegroundStatusInProgress: "in_progress", client.BattlegroundStatusWaitLeave: "leaving",
+}
 
 func (b *Bot) setupWorldMessages() {
 	w, e, m := b.world, b.lua, b.wm
@@ -184,15 +188,17 @@ func (b *Bot) setupWorldMessages() {
 			return b.refuse("group.ready", nil, "not_in_group", "you aren't in a group")
 		}
 		v := byte(1)
-		if ready == false {
+		if !ready {
 			v = 0
 		}
 		return b.sent("group.ready", nil, w.SendPacketRaw(msgRaidReadyCheck, []byte{v}))
 	})
 
 	w.AddSummonRequestHook(func(s client.SummonRequest) {
-		b.emit("summon_request", types.SummonRequest{From: b.ref(s.SummonerGUID), Zone: areaNames()[s.ZoneID],
-			SecondsLeft: float64(s.AutoDecline) / 1000})
+		b.emit("summon_request", types.SummonRequest{
+			From: b.ref(s.SummonerGUID), Zone: areaNames()[s.ZoneID],
+			SecondsLeft: float64(s.AutoDecline) / 1000,
+		})
 	})
 	summon := func(op string, agree bool) map[string]any {
 		s := w.PendingSummon()

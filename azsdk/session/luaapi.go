@@ -57,8 +57,10 @@ type UnitInfo struct {
 // gs: a GUID for request args (a string; nil for none)
 func gs(g uint64) any { return types.GUID(g) }
 
-var goTypes = map[uint32]string{0: "door", 1: "button", 2: "questgiver", 3: "chest", 5: "generic", 6: "trap", 8: "spell_focus",
-	10: "goober", 11: "elevator", 15: "ship", 17: "fishing_bobber", 19: "mailbox", 22: "portal", 23: "meeting_stone", 25: "fishing_pool"}
+var goTypes = map[uint32]string{
+	0: "door", 1: "button", 2: "questgiver", 3: "chest", 5: "generic", 6: "trap", 8: "spell_focus",
+	10: "goober", 11: "elevator", 15: "ship", 17: "fishing_bobber", 19: "mailbox", 22: "portal", 23: "meeting_stone", 25: "fishing_pool",
+}
 
 // GOState (SharedDefines.h): GO_STATE_ACTIVE, GO_STATE_READY, GO_STATE_ACTIVE_ALTERNATIVE
 var goStates = map[uint32]string{0: "open", 1: "closed", 2: "alternate"}
@@ -96,8 +98,10 @@ func (b *Bot) object(o *client.WorldObject) types.Object {
 		go b.world.SendPacketRaw(cmsgGameObjectQuery, binary.LittleEndian.AppendUint64(body, o.GUID))
 	}
 	creatures.Unlock()
-	ob := types.Object{GUID: types.GUID(o.GUID), Entry: entry, Name: goName, Type: name(goTypes, (o.Value(fieldGOBytes1)>>8)&0xFF), State: name(goStates, o.Value(fieldGOBytes1)&0xFF),
-		Place: types.Place{X: round1(x), Y: round1(y), Z: round1(z), Distance: round1(float32(math.Sqrt(float64((x-mx)*(x-mx) + (y-my)*(y-my) + (z-mz)*(z-mz)))))}}
+	ob := types.Object{
+		GUID: types.GUID(o.GUID), Entry: entry, Name: goName, Type: name(goTypes, (o.Value(fieldGOBytes1)>>8)&0xFF), State: name(goStates, o.Value(fieldGOBytes1)&0xFF),
+		Place: types.Place{X: round1(x), Y: round1(y), Z: round1(z), Distance: round1(float32(math.Sqrt(float64((x-mx)*(x-mx) + (y-my)*(y-my) + (z-mz)*(z-mz)))))},
+	}
 	m := b.me3()
 	relate(m.x, m.y, m.z, m.o, &ob.Place)
 	objectNeeds(b.world, o, &ob, tmpl)
@@ -474,13 +478,15 @@ func (b *Bot) snapshot() types.Status {
 	hc, hm := b.GetHealth()
 	pc, pm := b.GetPower()
 	x, y, z, o, m := w.Position()
-	st := types.Status{Name: b.config.CharacterName, Class: name(classNames, b.GetClass()), Race: name(raceNames, b.GetRace()),
+	st := types.Status{
+		Name: b.config.CharacterName, Class: name(classNames, b.GetClass()), Race: name(raceNames, b.GetRace()),
 		Level: b.GetLevel(), Health: types.Resource{Current: hc, Max: hm},
 		Power: types.Resource{Current: pc, Max: pm, Type: name(powerNames, b.GetPowerType())},
 		Money: w.Money(), Position: types.Position{X: round1(x), Y: round1(y), Z: round1(z), O: facing(o), Map: m},
 		Alive: b.IsAlive(), Ghost: b.IsGhost(), InCombat: b.InCombat(), FreeSlots: freeSlots(w),
 		Quests: b.questLog(), Threats: []types.Hostile{}, NPCs: []types.NearbyNPC{}, BagUpgrades: []types.Upgrade{},
-		Tasks: b.lua.TasksHeld()}
+		Tasks: b.lua.TasksHeld(),
+	}
 	if o := w.GetObject(me); o != nil {
 		st.XP = types.XP{Current: o.Value(0x027A), Next: o.Value(0x027B)}
 		st.Resting = o.Value(fieldPlayerFlags)&0x20 != 0
@@ -521,8 +527,10 @@ func (b *Bot) snapshot() types.Status {
 	}
 	pet := b.GetPetGUID()
 	for _, c := range b.threats() {
-		h := types.Hostile{GUID: c.GUID, Name: c.Name, Level: c.Level, Place: c.Place, ThreatPct: c.ThreatPct,
-			Elite: c.Elite, Evading: c.Evading, Casting: c.Casting}
+		h := types.Hostile{
+			GUID: c.GUID, Name: c.Name, Level: c.Level, Place: c.Place, ThreatPct: c.ThreatPct,
+			Elite: c.Elite, Evading: c.Evading, Casting: c.Casting,
+		}
 		if c.MaxHealth > 0 {
 			h.HealthPct = math.Round(float64(c.Health) / float64(c.MaxHealth) * 100)
 		}

@@ -22,8 +22,10 @@ const (
 )
 
 // SpellMissInfo
-var missReasons = map[uint8]string{1: "miss", 2: "resist", 3: "dodge", 4: "parry", 5: "block", 6: "evade", 7: "immune",
-	8: "immune", 9: "deflect", 10: "absorb", 11: "reflect"}
+var missReasons = map[uint8]string{
+	1: "miss", 2: "resist", 3: "dodge", 4: "parry", 5: "block", 6: "evade", 7: "immune",
+	8: "immune", 9: "deflect", 10: "absorb", 11: "reflect",
+}
 
 // meleeOutcome: SMSG_ATTACKERSTATEUPDATE's HITINFO_* flags and VICTIMSTATE_* (Unit::CalculateMeleeDamage).
 func meleeOutcome(hitInfo uint32, state uint8) string {

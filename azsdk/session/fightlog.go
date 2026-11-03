@@ -94,15 +94,19 @@ func (b *Bot) sampleFightLog() {
 	}
 	me := b.me3()
 	hc, hm := b.GetHealth()
-	spots := []spotRec{{guid: b.world.CharGUID(), name: b.config.CharacterName, level: uint32(b.GetLevel()), kind: "you",
-		x: me.x, y: me.y, z: me.z, hp: frac(hc, hm), alive: b.IsAlive() && !b.IsGhost(), target: b.world.TargetGUID()}}
+	spots := []spotRec{{
+		guid: b.world.CharGUID(), name: b.config.CharacterName, level: uint32(b.GetLevel()), kind: "you",
+		x: me.x, y: me.y, z: me.z, hp: frac(hc, hm), alive: b.IsAlive() && !b.IsGhost(), target: b.world.TargetGUID(),
+	}}
 	myFaction := uint32(0)
 	if o := b.world.GetObject(b.world.CharGUID()); o != nil {
 		myFaction = o.Value(fieldUnitFaction)
 	}
 	add := func(u UnitInfo, kind string) {
-		spots = append(spots, spotRec{guid: u.GUID, target: u.Target, name: u.Name, level: u.Level, kind: kind,
-			x: float64(u.PosX), y: float64(u.PosY), z: float64(u.PosZ), hp: frac(u.Health, u.MaxHealth), alive: u.IsAlive})
+		spots = append(spots, spotRec{
+			guid: u.GUID, target: u.Target, name: u.Name, level: u.Level, kind: kind,
+			x: float64(u.PosX), y: float64(u.PosY), z: float64(u.PosZ), hp: frac(u.Health, u.MaxHealth), alive: u.IsAlive,
+		})
 	}
 	for _, u := range b.GetNearbyUnits(fightRadius) {
 		if u.Flags&0x2000000 == 0 {
@@ -360,8 +364,10 @@ func buildFight(id int, sum *types.FightSummary, start, end time.Time, frames []
 	return f
 }
 
-var enemyLabels = "ABCDEFGHIJKLMN"
-var playerLabels = "PQRSTUVWXYZ"
+var (
+	enemyLabels  = "ABCDEFGHIJKLMN"
+	playerLabels = "PQRSTUVWXYZ"
+)
 
 func round2(v float64) float64 { return math.Round(v*100) / 100 }
 
@@ -488,8 +494,10 @@ func positioning(f types.Fight, first map[uint64]time.Time, enemies []uint64, la
 
 // header is a fight's line in the list.
 func header(f types.Fight) types.FightHeader {
-	h := types.FightHeader{ID: f.ID, Start: f.Start, Seconds: f.Summary.Seconds, Outcome: f.Summary.Outcome,
-		DamageDealt: f.Summary.DamageDealt, DamageTaken: f.Summary.DamageTaken, Enemies: []string{}}
+	h := types.FightHeader{
+		ID: f.ID, Start: f.Start, Seconds: f.Summary.Seconds, Outcome: f.Summary.Outcome,
+		DamageDealt: f.Summary.DamageDealt, DamageTaken: f.Summary.DamageTaken, Enemies: []string{},
+	}
 	count := map[string]int{}
 	var order []string
 	for _, a := range f.Actors {

@@ -118,15 +118,19 @@ func ParseADT(b []byte, bigAlpha bool) (*ADT, error) {
 	}
 	for o := 0; o+36 <= len(mddf); o += 36 {
 		e := mddf[o:]
-		a.Models = append(a.Models, Placement{Name: strAt(mmdx, mmid, le.Uint32(e)), UniqueID: le.Uint32(e[4:]),
+		a.Models = append(a.Models, Placement{
+			Name: strAt(mmdx, mmid, le.Uint32(e)), UniqueID: le.Uint32(e[4:]),
 			Pos: [3]float32{f32(e, 8), f32(e, 12), f32(e, 16)}, Rot: [3]float32{f32(e, 20), f32(e, 24), f32(e, 28)},
-			Scale: float32(le.Uint16(e[32:])) / 1024})
+			Scale: float32(le.Uint16(e[32:])) / 1024,
+		})
 	}
 	for o := 0; o+64 <= len(modf); o += 64 {
 		e := modf[o:]
-		a.WMOs = append(a.WMOs, Placement{Name: strAt(mwmo, mwid, le.Uint32(e)), UniqueID: le.Uint32(e[4:]),
+		a.WMOs = append(a.WMOs, Placement{
+			Name: strAt(mwmo, mwid, le.Uint32(e)), UniqueID: le.Uint32(e[4:]),
 			Pos: [3]float32{f32(e, 8), f32(e, 12), f32(e, 16)}, Rot: [3]float32{f32(e, 20), f32(e, 24), f32(e, 28)}, Scale: 1,
-			DoodadSet: int(le.Uint16(e[58:]))})
+			DoodadSet: int(le.Uint16(e[58:])),
+		})
 	}
 	return a, nil
 }

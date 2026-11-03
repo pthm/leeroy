@@ -33,11 +33,15 @@ const (
 )
 
 // quest giver markers (QuestGiverStatus): what a real client draws over the NPC
-var questStatuses = map[uint8]string{1: "unavailable", 2: "available_low_level", 3: "reward", 4: "available_low_level",
-	5: "incomplete", 6: "reward", 7: "available_repeatable", 8: "available", 9: "reward", 10: "reward"}
+var questStatuses = map[uint8]string{
+	1: "unavailable", 2: "available_low_level", 3: "reward", 4: "available_low_level",
+	5: "incomplete", 6: "reward", 7: "available_repeatable", 8: "available", 9: "reward", 10: "reward",
+}
 
-var gossipIcons = map[uint8]string{0: "chat", 1: "vendor", 2: "taxi", 3: "trainer", 4: "interact", 5: "interact", 6: "banker",
-	7: "talk", 8: "tabard", 9: "battle", 10: "dot"}
+var gossipIcons = map[uint8]string{
+	0: "chat", 1: "vendor", 2: "taxi", 3: "trainer", 4: "interact", 5: "interact", 6: "banker",
+	7: "talk", 8: "tabard", 9: "battle", 10: "dot",
+}
 
 var trainerStates = map[uint8]string{0: "available", 1: "unavailable", 2: "known"}
 
@@ -235,8 +239,10 @@ func (s *npcState) onPacket(op uint16, data []byte) {
 
 func (b *Bot) setupNPC() {
 	w := b.world
-	s := &npcState{trainers: map[uint64]types.Trainer{}, trainAt: map[uint64]time.Time{}, texts: map[uint32]string{},
-		status: map[uint64]uint8{}, send: func(op uint16, body []byte) { w.SendPacketRaw(op, body) }}
+	s := &npcState{
+		trainers: map[uint64]types.Trainer{}, trainAt: map[uint64]time.Time{}, texts: map[uint32]string{},
+		status: map[uint64]uint8{}, send: func(op uint16, body []byte) { w.SendPacketRaw(op, body) },
+	}
 	b.npc = s
 	w.AddPacketHook(func(op uint16, data []byte) { s.onPacket(op, data) })
 	e := b.lua
