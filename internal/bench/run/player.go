@@ -334,8 +334,11 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 		// mise keeps its tools and trusted configs in the XDG dirs too: pin it to its own first, or opencode run through
 		// a mise shim (the run servers) fails with "config files … are not trusted"
 		home, _ := os.UserHomeDir()
-		for _, d := range [][3]string{{"MISE_CONFIG_DIR", "XDG_CONFIG_HOME", ".config"}, {"MISE_DATA_DIR", "XDG_DATA_HOME", ".local/share"},
-			{"MISE_STATE_DIR", "XDG_STATE_HOME", ".local/state"}} {
+		for _, d := range [][3]string{
+			{"MISE_CONFIG_DIR", "XDG_CONFIG_HOME", ".config"},
+			{"MISE_DATA_DIR", "XDG_DATA_HOME", ".local/share"},
+			{"MISE_STATE_DIR", "XDG_STATE_HOME", ".local/state"},
+		} {
 			if os.Getenv(d[0]) == "" {
 				env = append(env, d[0]+"="+filepath.Join(cmp.Or(os.Getenv(d[1]), filepath.Join(home, d[2])), "mise"))
 			}
@@ -534,7 +537,9 @@ func (p *player) exited(cmd *exec.Cmd) {
 	f, _ := os.Open(filepath.Join(p.dir, "transcript.jsonl"))
 	if f != nil {
 		p.mu.Lock()
-		f.Seek(p.since, io.SeekStart) // this agent's lines, not an error an earlier one was resumed from
+		if _, err := f.Seek(p.since, io.SeekStart); err != nil { // this agent's lines, not an error an earlier one was resumed from
+			p.logf("transcript: %v", err)
+		}
 		p.mu.Unlock()
 		sc := bufio.NewScanner(f)
 		sc.Buffer(make([]byte, 1<<20), 1<<26)

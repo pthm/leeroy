@@ -46,7 +46,7 @@ func TestZoneCheckpoints(t *testing.T) {
 		`{"t":91000,"type":"area_changed","data":{"zone":"Ironforge","area":"","zone_id":1537,"area_id":1537}}`,
 		`{"t":151000,"type":"area_changed","data":{"zone":"Stormwind City","area":"","zone_id":1519,"area_id":1519}}`, // back again: the first counts
 	}
-	var evs []metrics.Event
+	evs := make([]metrics.Event, 0, len(lines))
 	for _, l := range lines {
 		e, ok := metrics.Decode([]byte(l))
 		if !ok {

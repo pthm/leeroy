@@ -16,8 +16,10 @@ func TestPlanJourneys(t *testing.T) {
 	if data == "" {
 		t.Skip("PLAN_DATA not set")
 	}
-	b := &Bot{nav: navigation.NewEmbeddedNavigator(data), areaTriggers: loadAreaTriggers(data),
-		trs: &transportsState{recs: map[uint64]*transportRec{}, paths: map[uint32]*transportPath{}}}
+	b := &Bot{
+		nav: navigation.NewEmbeddedNavigator(data), areaTriggers: loadAreaTriggers(data),
+		trs: &transportsState{recs: map[uint64]*transportRec{}, paths: map[uint32]*transportPath{}},
+	}
 	queries := 0
 	planTrace = func(a, c planNode, s float64) {
 		queries++

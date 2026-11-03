@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/goccy/go-yaml v1.19.2
-	github.com/pthm/leeroy/azsdk v0.1.0
+	github.com/pthm/leeroy/azsdk v0.2.0
 	golang.org/x/exp/eval v0.0.0-20261014143641-f0251eb4aa3e
 )
 

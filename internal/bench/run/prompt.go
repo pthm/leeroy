@@ -87,7 +87,7 @@ func goalText(goal string, mins int, cps []config.Checkpoint) string {
 func scoreText(goal string, cps []config.Checkpoint) (score, stop string) {
 	kind, _, _ := strings.Cut(goal, ":")
 	if len(cps) > 0 && kind != "checkpoints" {
-		var names []string
+		names := make([]string, 0, len(cps))
 		for _, c := range cps {
 			names = append(names, c.Name)
 		}

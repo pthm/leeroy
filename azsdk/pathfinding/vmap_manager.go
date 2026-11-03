@@ -1034,7 +1034,6 @@ func (s *StaticMapTree) modelForInstanceContext(ctx context.Context, mi *ModelIn
 		s.dataMu.RUnlock()
 		return nil, false
 	}
-	name := mi.spawn.name // the cache's key: the file, <name>.vmo, is only built to load it (a lookup per collision test)
 	s.dataMu.RUnlock()
 
 	// Serialize lazy model loads and cache mutation. Without this, hundreds of
@@ -1052,7 +1051,7 @@ func (s *StaticMapTree) modelForInstanceContext(ctx context.Context, mi *ModelIn
 		s.dataMu.RUnlock()
 		return nil, false
 	}
-	name = mi.spawn.name
+	name := mi.spawn.name // the cache's key: the file, <name>.vmo, is only built to load it (a lookup per collision test)
 	s.dataMu.RUnlock()
 
 	if entry := s.modelCache[name]; entry != nil {

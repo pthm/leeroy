@@ -146,8 +146,7 @@ func (b *Bot) plan(ctx context.Context, m uint32, from [3]float32, tm uint32, to
 	links := planLinks(b.areaTriggers)
 	exitNode := map[int]int{} // a portal's exit
 	for li, l := range links {
-		nodes = append(nodes, planNode{m: l.fromMap, p: l.enter, stop: -1, link: li})
-		nodes = append(nodes, planNode{m: l.toMap, p: l.exit, stop: -1, link: -1})
+		nodes = append(nodes, planNode{m: l.fromMap, p: l.enter, stop: -1, link: li}, planNode{m: l.toMap, p: l.exit, stop: -1, link: -1})
 		exitNode[li] = len(nodes) - 1
 	}
 	dist := func(a, c [3]float32) float64 { return math.Hypot(float64(a[0]-c[0]), float64(a[1]-c[1])) }
@@ -234,8 +233,10 @@ func (b *Bot) plan(ctx context.Context, m uint32, from [3]float32, tm uint32, to
 				wait, ride := b.rideSeconds(tt, n.stopI, sj, l.t)
 				for c := range nodes {
 					if nodes[c].stop == n.stop && nodes[c].stopI == sj {
-						push(&planLabel{node: c, t: l.t + wait + ride, prev: indexOf(labels, l), kind: "ride", verified: true,
-							ride: [3]int{n.stop, n.stopI, sj}, wait: wait})
+						push(&planLabel{
+							node: c, t: l.t + wait + ride, prev: indexOf(labels, l), kind: "ride", verified: true,
+							ride: [3]int{n.stop, n.stopI, sj}, wait: wait,
+						})
 					}
 				}
 			}

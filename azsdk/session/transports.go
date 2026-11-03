@@ -86,14 +86,28 @@ func (b *Bot) transportPathOf(entry uint32) *transportPath {
 	return tp
 }
 
-// transportState is where transport guid is at now, its stored routine, the table stop it waits at (-1 while it
+// transportNow is a transport at a moment: where it is, its stored routine, the table stop it waits at (-1 while it
 // moves) and, for each table stop, the ms until it next arrives there and leaves it (0 arriving: it's there).
-func (b *Bot) transportState(guid uint64, now time.Time) (pose transportPose, tt *tableTransport, at int, arrive, depart []uint32, ok bool) {
+type transportNow struct {
+	pose           transportPose
+	tt             *tableTransport
+	at             int
+	arrive, depart []uint32
+}
+
+// transportState is transport guid now; false if it hasn't been seen or its path can't be built.
+func (b *Bot) transportState(guid uint64, now time.Time) (transportNow, bool) {
+	var (
+		pose           transportPose
+		tt             *tableTransport
+		at             int
+		arrive, depart []uint32
+	)
 	b.trs.mu.Lock()
 	r := b.trs.recs[guid]
 	b.trs.mu.Unlock()
 	if r == nil {
-		return transportPose{}, nil, -1, nil, nil, false
+		return transportNow{at: -1}, false
 	}
 	tt, at = r.table, -1
 	pp := r.pp + uint32(now.Sub(r.at).Milliseconds())
@@ -109,11 +123,11 @@ func (b *Bot) transportState(guid uint64, now time.Time) (pose transportPose, tt
 			}
 			arrive, depart = append(arrive, a), append(depart, d)
 		}
-		return pose, tt, at, arrive, depart, true
+		return transportNow{pose, tt, at, arrive, depart}, true
 	}
 	tp := b.transportPathOf(r.entry)
 	if tp == nil {
-		return transportPose{}, tt, -1, nil, nil, false
+		return transportNow{tt: tt, at: -1}, false
 	}
 	pose = tp.at(pp)
 	frames := []int{} // its stops: the table's, else the path's
@@ -135,18 +149,19 @@ func (b *Bot) transportState(guid uint64, now time.Time) (pose transportPose, tt
 		}
 		arrive, depart = append(arrive, a), append(depart, d)
 	}
-	return pose, tt, at, arrive, depart, true
+	return transportNow{pose, tt, at, arrive, depart}, true
 }
 
 // transportAt is where transport guid is at now (for our position while aboard).
 func (b *Bot) transportAt(guid uint64, now time.Time) (transportPose, bool) {
-	pose, _, _, _, _, ok := b.transportState(guid, now)
-	return pose, ok
+	st, ok := b.transportState(guid, now)
+	return st.pose, ok
 }
 
 // transportView is a transport for scripts.
 func (b *Bot) transportView(guid uint64, now time.Time, aboard uint64) (types.Transport, bool) {
-	pose, tt, at, arrive, depart, ok := b.transportState(guid, now)
+	st, ok := b.transportState(guid, now)
+	pose, tt, at, arrive, depart := st.pose, st.tt, st.at, st.arrive, st.depart
 	if !ok {
 		return types.Transport{}, false
 	}
@@ -235,11 +250,15 @@ func (b *Bot) setupTransports() {
 				if len(tt.Anim) == 0 || tt.Map != m || seen[tt] {
 					continue
 				}
-				v := types.Transport{Entry: tt.Entry, Name: tt.Name, Kind: tt.Kind, Map: tt.Map, X: round1f(float64(tt.Spawn[0])),
-					Y: round1f(float64(tt.Spawn[1])), Z: round1f(float64(tt.Spawn[2])), PeriodS: float64(tt.period()) / 1000, Stops: []types.TransportStop{}}
+				v := types.Transport{
+					Entry: tt.Entry, Name: tt.Name, Kind: tt.Kind, Map: tt.Map, X: round1f(float64(tt.Spawn[0])),
+					Y: round1f(float64(tt.Spawn[1])), Z: round1f(float64(tt.Spawn[2])), PeriodS: float64(tt.period()) / 1000, Stops: []types.TransportStop{},
+				}
 				for _, st := range tt.Stops {
-					v.Stops = append(v.Stops, types.TransportStop{Map: st.Map, X: round1f(float64(st.At[0])), Y: round1f(float64(st.At[1])), Z: round1f(float64(st.At[2])),
-						Wait: &types.Position{X: round1f(float64(st.Wait[0])), Y: round1f(float64(st.Wait[1])), Z: round1f(float64(st.Wait[2])), Map: st.Map}})
+					v.Stops = append(v.Stops, types.TransportStop{
+						Map: st.Map, X: round1f(float64(st.At[0])), Y: round1f(float64(st.At[1])), Z: round1f(float64(st.At[2])),
+						Wait: &types.Position{X: round1f(float64(st.Wait[0])), Y: round1f(float64(st.Wait[1])), Z: round1f(float64(st.Wait[2])), Map: st.Map},
+					})
 				}
 				out = append(out, v)
 			}
@@ -250,7 +269,8 @@ func (b *Bot) setupTransports() {
 		func(guid uint64) map[string]any {
 			args := map[string]any{"transport": gs(guid)}
 			b.scanTransports()
-			_, tt, _, _, _, ok := b.transportState(guid, time.Now())
+			ts, ok := b.transportState(guid, time.Now())
+			tt := ts.tt
 			if !ok {
 				return b.refuse("transports.board", args, "not_found", "no such transport seen (transports.list)")
 			}
@@ -273,7 +293,8 @@ func (b *Bot) setupTransports() {
 			started := false
 			return b.request("transports.board", args, b.roundTimeout(guid), func() *script.Outcome {
 				if !started {
-					pose, _, at, _, depart, ok := b.transportState(guid, time.Now())
+					ts, ok := b.transportState(guid, time.Now())
+					pose, at, depart := ts.pose, ts.at, ts.depart
 					if !ok || at != stop {
 						return nil // not here yet
 					}
@@ -317,7 +338,8 @@ func (b *Bot) setupTransports() {
 			if guid == 0 {
 				return b.refuse("transports.leave", nil, "not_aboard", "you're not on a transport")
 			}
-			_, tt, _, _, _, ok := b.transportState(guid, time.Now())
+			ts, ok := b.transportState(guid, time.Now())
+			tt := ts.tt
 			if !ok || tt == nil {
 				return b.refuse("transports.leave", nil, "no_route", "no stored routine for leaving it")
 			}
@@ -331,7 +353,8 @@ func (b *Bot) setupTransports() {
 			b.trs.mu.Unlock()
 			return b.request("transports.leave", map[string]any{"transport": gs(guid)}, b.roundTimeout(guid), func() *script.Outcome {
 				if !started {
-					_, tt, at, _, depart, ok2 := b.transportState(guid, time.Now())
+					ts, ok2 := b.transportState(guid, time.Now())
+					tt, at, depart := ts.tt, ts.at, ts.depart
 					if ok && at != boarded {
 						ok = false // it has left the stop you boarded at: any stop from here on
 					}
@@ -392,26 +415,4 @@ func (b *Bot) roundTimeout(guid uint64) time.Duration {
 		}
 	}
 	return time.Duration(period)*time.Millisecond + 30*time.Second
-}
-
-// nearestFloor: the nearest point with navmesh floor within r yd of (x, y) at about height z (8 yd up or down): rings
-// of 16 points 2 yd apart.
-func (b *Bot) nearestFloor(x, y, z, r float32) ([3]float32, bool) {
-	fn, ok := b.nav.(interface {
-		FloorHeight(mapID uint32, x, y, hint float32) (float32, bool)
-	})
-	if !ok || b.nav == nil {
-		return [3]float32{}, false
-	}
-	_, _, _, _, m := b.world.Position()
-	for d := float32(2); d <= r; d += 2 {
-		for k := 0; k < 16; k++ {
-			s, c := math.Sincos(float64(k) * math.Pi / 8)
-			px, py := x+d*float32(c), y+d*float32(s)
-			if h, ok := fn.FloorHeight(m, px, py, z); ok {
-				return [3]float32{px, py, h}, true
-			}
-		}
-	}
-	return [3]float32{}, false
 }

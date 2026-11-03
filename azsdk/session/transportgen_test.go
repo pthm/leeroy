@@ -107,8 +107,10 @@ func TestGenerateTransportTable(t *testing.T) {
 				continue
 			}
 			pose := tp.restingAt(i)
-			st := tableStop{Frame: i, Map: pose.mapID, At: [3]float32{float32(pose.x), float32(pose.y), float32(pose.z)},
-				Arrive: tp.frames[i].arrive, Depart: tp.frames[i].depart}
+			st := tableStop{
+				Frame: i, Map: pose.mapID, At: [3]float32{float32(pose.x), float32(pose.y), float32(pose.z)},
+				Arrive: tp.frames[i].arrive, Depart: tp.frames[i].depart,
+			}
 			bestR := math.Inf(1)
 			for _, s := range crew[r[5]] {
 				w := pose.toWorld([4]float32{s[0], s[1], s[2], 0})
@@ -143,9 +145,11 @@ func TestGenerateTransportTable(t *testing.T) {
 		if f64(r[8]) < 0 {
 			sign = -1
 		}
-		tt := tableTransport{Entry: entry, Name: r[2], Kind: kindOf(r[2], 11), Map: u32(r[3]),
+		tt := tableTransport{
+			Entry: entry, Name: r[2], Kind: kindOf(r[2], 11), Map: u32(r[3]),
 			Spawn:   [4]float32{f32(r[4]), f32(r[5]), f32(r[6]), f32(r[7])},
-			PathRot: float32(sign * 2 * math.Acos(math.Max(-1, math.Min(1, f64(r[9]))))), Anim: a, Period: uint32(a[len(a)-1][0])}
+			PathRot: float32(sign * 2 * math.Acos(math.Max(-1, math.Min(1, f64(r[9]))))), Anim: a, Period: uint32(a[len(a)-1][0]),
+		}
 		for _, p := range pauses(a) {
 			at := tt.staticAt(p[0])
 			st := tableStop{Frame: -1, Map: tt.Map, At: at, Arrive: p[0], Depart: p[1]}
