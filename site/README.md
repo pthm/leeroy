@@ -14,6 +14,7 @@ just site-check     # build, then check every internal link and anchor
 
 | | |
 |---|---|
+| `.env.production` | `PUBLIC_ASSETS_URL`: the R2 assets bucket (`https://assets.leeroy.dev`), for run pages' downloads (`just upload` puts the files there) |
 | `src/data/runs/*.json` | one file per published run, written by `bin/azbench publish <run dir> --task <task>` (needs the server's database up, for names); never edited by hand |
 | `src/assets/runs/*` | the maps behind a run's routes, written by `publish`: the viewer's detail map in grey (continents, `.jpg`) or the navmesh floor plan (instances, `.png`) |
 | `src/lib/results.ts` | the runs grouped by task and model; `TASKS` titles and describes each task |

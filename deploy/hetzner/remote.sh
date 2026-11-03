@@ -19,7 +19,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 . deploy/lib.sh
 
-: "${LEEROY_LOCATION:=fsn1}"
+: "${LEEROY_LOCATION:=hil}"        # Hillsboro, Oregon (US West)
 : "${LEEROY_TYPE:=ccx33}"          # run servers
 : "${LEEROY_IMAGE_TYPE:=ccx23}"    # the snapshot's builder: its disk (160 GB) is the smallest a run server can have
 : "${LEEROY_MAX_HOURS:=26}"        # a run server deletes itself after this long, whatever state it's in

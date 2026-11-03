@@ -14,12 +14,13 @@ runs on a schedule.
 
 1. **Hetzner Cloud.** Make a project for LEEROY and an API token (read and write) in it.
 2. **Cloudflare R2.** Make two buckets: `leeroy-runs` (private: whole runs) and `leeroy-assets` (public: what run pages
-   link to; give it a custom domain once there is one, `assets.<domain>`, or its `r2.dev` address to try it). Make an
+   link to: give it the custom domain `assets.leeroy.dev`, which `site/.env.production` points run pages at). Make an
    R2 API token with Object Read & Write on both, and note its S3 access key, secret and the account id.
 3. **Keys.** `cp .env.example .env` and fill it in. Claude Code's login on macOS is in the Keychain, so run
    `claude setup-token` once for a long-lived token; Codex's login (`~/.codex/auth.json`) is copied as it is.
 4. **Tools.** `mise install` (hcloud, rclone and jq are in `mise.toml`).
-5. **The snapshot.** `just remote-image`: a builder server gets this checkout, the AzerothCore source and your `data/`
+5. **The snapshot.** `just remote-image`: a builder server in Hillsboro, Oregon (`hil`, US West; `LEEROY_LOCATION`
+   for another) gets this checkout, the AzerothCore source and your `data/`
    (about 8 GB, uploaded from here), installs Docker and the pinned tools, builds the server images, imports the
    databases and the `wowbench` schema, and is snapshotted, then deleted. About an hour. Again whenever the server,
    `data/` or `mise.toml` change; the newest two snapshots are kept.
