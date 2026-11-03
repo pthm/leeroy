@@ -34,3 +34,17 @@ func TestOutageCode(t *testing.T) {
 		}
 	}
 }
+
+// an error exit is told to carry on unless it's the account's: a content filter's refusal is, a quota isn't
+func TestAccountError(t *testing.T) {
+	for why, want := range map[string]bool{
+		`{"code":403,"message":"SAFETY","metadata":{"error_type":"content_policy_violation"}}`: false,
+		"You've hit your usage limit":       true,
+		"invalid api key":                   true,
+		"prompt is too long: 210000 tokens": true,
+	} {
+		if got := accountError(why); got != want {
+			t.Errorf("accountError(%q) = %v, want %v", why, got, want)
+		}
+	}
+}

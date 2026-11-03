@@ -31,6 +31,12 @@ var (
 	fatalRe = regexp.MustCompile(`(?i)quota|usage limit|insufficient|billing|credit|payment|unauthori[sz]ed|authentication|invalid (api )?key|forbidden|\b(401|403)\b|not found|does not exist|context length|too long`)
 )
 
+// accountError: an error from the account (its quota, credit or credentials) or the request's size: telling the
+// agent to carry on would fail the same way.
+func accountError(why string) bool {
+	return regexp.MustCompile(`(?i)quota|usage limit|insufficient|billing|credit|payment|unauthori[sz]ed|authentication|invalid (api )?key|context length|too long`).MatchString(why)
+}
+
 // transientError: whether an agent's exit error is a provider outage to wait out.
 func transientError(why string) bool {
 	return why != "" && transientRe.MatchString(why) && !fatalRe.MatchString(why)

@@ -37,21 +37,23 @@ type player struct {
 	ws, dir     string // workspace (var/workspaces/<name>), its files in the run (<run>/agents/<name>)
 	version     string // the runtime's (cliVersion), once meta has read it
 
-	mu        sync.Mutex
-	state     string // starting, ready, playing, done, paused, failed
-	session   *exec.Cmd
-	agent     *exec.Cmd
-	agentEnd  time.Time     // when its agent must stop: the run's clock
-	continues int           // times its agent was told to carry on after stopping early (exited)
-	hold      bool          // a provider outage: logged out, its judge's clock held (outage.go)
-	result    []byte        // the judge's final line
-	agentDone chan struct{} // closed after transcript drain, usage snapshot and exit diagnostics
-	agentStop *time.Timer   // stops the agent at agentEnd
-	tools     *toolDiagnostics
-	diagMu    sync.Mutex
-	metaMu    sync.Mutex // meta.json
-	diagSeq   uint64
-	diagInit  bool
+	mu         sync.Mutex
+	state      string // starting, ready, playing, done, paused, failed
+	session    *exec.Cmd
+	agent      *exec.Cmd
+	agentEnd   time.Time     // when its agent must stop: the run's clock
+	continues  int           // times its agent was told to carry on after stopping early (exited)
+	errResumes int           // times it was told to carry on after stopping on an error (exited)
+	since      int64         // the transcript's size when its agent last started: the exit's error is after it
+	hold       bool          // a provider outage: logged out, its judge's clock held (outage.go)
+	result     []byte        // the judge's final line
+	agentDone  chan struct{} // closed after transcript drain, usage snapshot and exit diagnostics
+	agentStop  *time.Timer   // stops the agent at agentEnd
+	tools      *toolDiagnostics
+	diagMu     sync.Mutex
+	metaMu     sync.Mutex // meta.json
+	diagSeq    uint64
+	diagInit   bool
 }
 
 func (p *player) setState(s string) {
@@ -405,6 +407,11 @@ func (p *player) startAgent(text, resume string, end time.Time) error {
 	if err != nil {
 		return err
 	}
+	if fi, err := out.Stat(); err == nil {
+		p.mu.Lock()
+		p.since = fi.Size()
+		p.mu.Unlock()
+	}
 	cmd := agentCommand(p, text, resume)
 	cmd.Stdin = nil
 	pr, stamp := io.Pipe()
@@ -523,6 +530,9 @@ func (p *player) exited(cmd *exec.Cmd) {
 	why := ""
 	f, _ := os.Open(filepath.Join(p.dir, "transcript.jsonl"))
 	if f != nil {
+		p.mu.Lock()
+		f.Seek(p.since, io.SeekStart) // this agent's lines, not an error an earlier one was resumed from
+		p.mu.Unlock()
 		sc := bufio.NewScanner(f)
 		sc.Buffer(make([]byte, 1<<20), 1<<26)
 		for sc.Scan() {
@@ -559,10 +569,16 @@ func (p *player) exited(cmd *exec.Cmd) {
 		return
 	}
 	p.mu.Lock()
-	n := p.continues
+	n, limit := p.continues, maxContinues
 	resume := why == "" && n < maxContinues
-	if resume {
+	if why != "" && !accountError(why) { // a refusal, a provider error: once more, a few times (an account's won't pass)
+		n, limit = p.errResumes, maxErrorResumes
+		resume = n < maxErrorResumes
+	}
+	if resume && why == "" {
 		p.continues++
+	} else if resume {
+		p.errResumes++
 	}
 	end := p.agentEnd
 	p.mu.Unlock()
@@ -571,7 +587,7 @@ func (p *player) exited(cmd *exec.Cmd) {
 		p.r.alert(p, msg)
 		return
 	}
-	p.r.alert(p, fmt.Sprintf("%s: told to carry on (%d of %d)", msg, n+1, maxContinues))
+	p.r.alert(p, fmt.Sprintf("%s: told to carry on (%d of %d)", msg, n+1, limit))
 	go func() { // not in the old agent's goroutine: whatever waits for it to finish needn't wait for this
 		time.Sleep(5 * time.Second)
 		p.mu.Lock()
@@ -586,8 +602,12 @@ func (p *player) exited(cmd *exec.Cmd) {
 	}()
 }
 
-// maxContinues: how many times an agent that stops early is told to carry on (exited)
-const maxContinues = 5
+// maxContinues: how many times an agent that stops early is told to carry on (exited); maxErrorResumes: how many
+// times one that stops on an error (not an outage or the account's: a provider's content filter, say) is
+const (
+	maxContinues    = 5
+	maxErrorResumes = 3
+)
 
 // continueText resumes an agent that stopped early ($LEFT: minutes left).
 const continueText = `The run isn't over: $LEFT minutes are left. Your character and session are where you left them. Carry on;

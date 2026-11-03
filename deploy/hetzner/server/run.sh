@@ -10,10 +10,21 @@ set -a
 . /etc/leeroy/agents.env # the agents' keys and LEEROY_HOST_*; the ops keys stay out of their environment
 set +a
 log "run $task $*"
-# once a server: a second start (the unit started again: by what, the journal in the log says) would make a new run over
-# the remains of the first; finish what's there instead
+# a second start (the unit started again: by what, the journal in the log says) resumes the run it interrupted: the
+# characters, workspaces and conversations are all still here; the clock didn't run while it was down. At most 3 times.
 if [ -e /var/lib/leeroy/started ]; then
-	log "started again (first at $(cat /var/lib/leeroy/started)): not running twice; finishing"
+	run=$(ls -d var/runs/*/ 2>/dev/null | tail -1 | sed 's|/$||')
+	n=$(cat /var/lib/leeroy/resumes 2>/dev/null || echo 0)
+	if [ -z "$run" ] || [ "$n" -ge 3 ] || ! { just up && wait_ready; }; then
+		log "started again (first at $(cat /var/lib/leeroy/started)), resumed $n times: finishing"
+		exec bash /opt/leeroy/deploy/hetzner/server/finish.sh "done"
+	fi
+	echo $((n + 1)) >/var/lib/leeroy/resumes
+	log "started again (first at $(cat /var/lib/leeroy/started)): resuming $run ($((n + 1)) of 3)"
+	printf '%s\n' "The run was interrupted (the benchmark's harness restarted, nothing you did) and is resuming: \$LEFT minutes are left," \
+		"the time it was down didn't count. Your character is logging back in where it was. Carry on." >/var/lib/leeroy/resume.txt
+	bin/azbench resume "$run" --message /var/lib/leeroy/resume.txt --no-build --monitor 10s
+	log "azbench exited $?"
 	exec bash /opt/leeroy/deploy/hetzner/server/finish.sh "done"
 fi
 mkdir -p /var/lib/leeroy && date -u +%FT%TZ >/var/lib/leeroy/started
