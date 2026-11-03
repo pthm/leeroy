@@ -196,7 +196,7 @@ azbench *args: build
 site-install:
     cd site && npm ci
 
-[doc("The site with live reload on http://localhost:4321/leeroy/")]
+[doc("The site with live reload on http://localhost:4321/")]
 [group('site')]
 site-dev:
     cd site && npm run dev

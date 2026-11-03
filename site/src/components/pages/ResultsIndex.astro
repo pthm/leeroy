@@ -39,7 +39,14 @@ const summary = [
     >
       <VersionPicker version={version} />
     </SectionHeader>
-    <ul class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+    {all.length === 0 && (
+      <p class="max-w-2xl rounded border border-hairline bg-raised p-5 text-sm leading-relaxed text-muted">
+        No results are published yet. Runs are under way, and results will appear here as they are checked. In the
+        meantime, the <a class="underline" href={url('/blog/deadmines-from-level-1')}>Deadmines write-up</a> describes
+        one long run.
+      </p>
+    )}
+    <ul class:list={['grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6', all.length === 0 && 'hidden']}>
       {summary.map(t => (
         <li class="rounded border border-hairline bg-raised px-4 py-3">
           <b class="block font-mono text-lg font-semibold whitespace-nowrap text-fg tabular-nums">{t.v}</b>
@@ -48,6 +55,7 @@ const summary = [
       ))}
     </ul>
   </Section>
+  {all.length > 0 && <>
   <Section>
     <SectionHeader eyebrow="Leaderboard" title="Every model on every task" description="One row per model and reasoning effort. Shading shows where an entry ranks within each task. Click a column to sort." />
     <CrossTask version={version} />
@@ -87,4 +95,5 @@ const summary = [
       })}
     </ul>
   </Section>
+  </>}
 </Layout>

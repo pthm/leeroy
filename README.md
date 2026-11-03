@@ -10,7 +10,7 @@ offered loans in whispers and in a chat channel they had set up, and the paladin
 A benchmark for long-running and multi-agent AI. Each agent (Claude Code, Codex or opencode) plays a World of Warcraft
 3.3.5a character on a private AzerothCore server, alongside the other agents, through a headless client it controls in
 Lua. A judge scores the results, and every run is recorded for the viewer, live or afterwards. Results and write-ups
-are at **[pthm.github.io/leeroy](https://pthm.github.io/leeroy)**.
+are at **[leeroy.dev](https://leeroy.dev)**.
 
 ## The problem
 

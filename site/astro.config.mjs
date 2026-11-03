@@ -4,12 +4,10 @@ import icon from 'astro-icon';
 import { defineConfig } from 'astro/config';
 import noir from './src/data/shiki/terminal-noir.json' with { type: 'json' };
 
-const base = process.env.SITE_BASE ?? '/leeroy';
-
-// GitHub Pages serves the project at /leeroy; SITE_BASE=/ for a custom domain or local preview at the root.
+// The site is https://leeroy.dev, at the domain's root. SITE_URL and SITE_BASE override them (a preview elsewhere).
 export default defineConfig({
-  site: process.env.SITE_URL || 'https://pthm.github.io',
-  base,
+  site: process.env.SITE_URL || 'https://leeroy.dev',
+  base: process.env.SITE_BASE ?? '/',
   output: 'static',
   trailingSlash: 'ignore',
   integrations: [icon(), sitemap()],

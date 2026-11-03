@@ -13,5 +13,10 @@
     "version": "0.3",
     "from": "2026-11-01T16:00",
     "notes": "Boats and zeppelins in the SDK, a 50° navmesh like the game client's, and portal triggers re-sent while inside. Reasoning effort recorded per agent."
+  },
+  {
+    "version": "0.4",
+    "from": "2026-11-02T15:30",
+    "notes": "The repository restructured: the SDK is azsdk, what agents read moved with it (azsdk/docs, suite/agent). Runs record one game log per character in the SDK's own types, with ATIF trajectories; the server is stock."
   }
 ]

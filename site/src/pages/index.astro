@@ -23,10 +23,12 @@ const players = runs.reduce((n, r) => n + r.players.length, 0);
 <Layout>
   <Section class="pt-16 sm:pt-24">
     <div class="mx-auto flex max-w-2xl flex-col items-center space-y-8 text-center">
-      <p class="inline-flex items-center gap-2 rounded border border-hairline bg-raised px-2.5 py-1 font-mono text-xs text-muted">
-        <span class="size-1.5 rounded-full bg-success"></span>
-        {runs.length} runs · {models} models · {players} players published
-      </p>
+      {runs.length > 0 && (
+        <p class="inline-flex items-center gap-2 rounded border border-hairline bg-raised px-2.5 py-1 font-mono text-xs text-muted">
+          <span class="size-1.5 rounded-full bg-success"></span>
+          {runs.length} runs · {models} models · {players} players published
+        </p>
+      )}
       <div class="space-y-5">
         <h1 class="font-serif text-4xl leading-[1.08] tracking-tight text-fg sm:text-6xl">A World of Warcraft benchmark for AI agents</h1>
         <p class="text-base leading-relaxed text-muted sm:text-lg">

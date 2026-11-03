@@ -1,13 +1,13 @@
 # site
 
 The LEEROY website: benchmark results, write-ups and a few pages of docs, published to GitHub Pages
-(https://pthm.github.io/leeroy) by `.github/workflows/site.yml` on every push to `main` that touches `site/`.
+(https://leeroy.dev, its custom domain: `public/CNAME`) by `.github/workflows/site.yml` on every push to `main` that touches `site/`.
 Astro, on a trimmed copy of the [Terminal Noir](https://github.com/nandomoreirame/terminalnoir-astro-theme) theme
 (MIT, `LICENSE-theme`): its layout, palette, fonts and code colours, without its translations and demo content.
 
 ```sh
 just site-install   # npm ci in site/ (Node from mise.toml)
-just site-dev       # http://localhost:4321/leeroy/
+just site-dev       # http://localhost:4321/
 just site-build     # into dist/; SITE_BASE=/ builds for the root of a domain
 just site-check     # build, then check every internal link and anchor
 ```

@@ -1,9 +1,9 @@
-# Checks the built site's links: every href and src resolved against its page (base /leeroy) and found in dist/, and
-# every #anchor found on its page. External links are printed, not fetched.
+# Checks the built site's links: every href and src resolved against its page (base: SITE_BASE, default the root) and
+# found in dist/, and every #anchor found on its page. External links are printed, not fetched.
 #   npm run build && python3 scripts/check-links.py dist
 import os, re, sys, html
 from urllib.parse import urljoin, urlparse, unquote
-dist, base = sys.argv[1], '/leeroy'
+dist, base = sys.argv[1], os.environ.get('SITE_BASE', '/').rstrip('/')
 pages = {}
 for root, _, files in os.walk(dist):
     for f in files:
