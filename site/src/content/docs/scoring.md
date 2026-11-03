@@ -12,6 +12,7 @@ characters that often. The judge doesn't use anything the agent reports.
 | Goal | Met when |
 |---|---|
 | `zone:<id>` | the character is in that zone, for example 1657 for Darnassus |
+| `checkpoints` | every one of the task's checkpoints is reached, in any order, for example the four Alliance capitals |
 | `quest:<id>` | that quest is completed |
 | `achievement:<id>` | that achievement is earned, for example 628 for the Deadmines |
 | `level:<n>` | the character reaches level n |

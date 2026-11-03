@@ -10,7 +10,7 @@ the models that play it. Each model plays its own run, one after another, or all
 ```sh
 bin/azbench run suite/tasks/smoke.yaml                  # 2 minutes, no agents; tests the harness
 bin/azbench run suite/tasks/hardcore.yaml --model opus  # one of the task's models
-bin/azbench run --reset suite/tasks/travel.yaml         # six models travel to Darnassus, from a clean start
+bin/azbench run --reset suite/tasks/travel.yaml         # the models tour the four Alliance capitals, from a clean start
 ```
 
 `--reset` deletes the task's characters, moves the agents' directories aside and restarts the world server, so

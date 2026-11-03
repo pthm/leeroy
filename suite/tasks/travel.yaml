@@ -1,13 +1,31 @@
 description: >
-  Getting around: one new level-30 Human warrior in Northshire per model, all in one world, with one goal: reach
-  Darnassus (zone 1657), on another continent. Level 30 so the way there is mostly travel, not fighting. Scored on
-  time to arrive.
-goal: zone:1657
-minutes: 90
+  Getting around: one new level-30 Human warrior in Northshire per model, all in one world, with one goal: visit all
+  four Alliance capitals, Stormwind, Ironforge, Darnassus and the Exodar, in any order. They span two continents and
+  an island, so the way is a tram, boats, a portal and some walking, and the order is the agent's to plan. Level 30
+  so the way is mostly travel, not fighting. Scored on time to the last city; each city is a checkpoint, so a run
+  that doesn't finish shows how far it got.
+goal: checkpoints
+minutes: 120
+checkpoints: # the cities to visit (zone ids), in any order
+  - {name: Stormwind City, zone: 1519}
+  - {name: Ironforge, zone: 1537}
+  - {name: Darnassus, zone: 1657}
+  - {name: The Exodar, zone: 3557}
 start: northshire
 level: 30
 require_fresh: true
 party:
   - {class: warrior}
-models: [haiku, sonnet, opus, luna, terra, sol, or-opus, or-sonnet, or-haiku, or-sol, or-terra, or-luna, or-argon, or-flash, or-flash-lite, or-deepseek]
+models: [haiku, sonnet, opus, opus-xhigh, luna, terra, sol, sol-xhigh, or-argon, or-argon-high, or-flash, or-flash-lite, or-deepseek, or-grok, or-mistral, or-muse]
 together: true
+page:
+  title: Travel to the four Alliance capitals
+  short: Travel
+  summary: >-
+    A new level-30 Human warrior starts in Northshire and has to visit Stormwind, Ironforge, Darnassus and the
+    Exodar, in any order, across two continents and an island: the tram, three boats, a portal and the roads between.
+    Each model plays one character, all at the same time, with 120 minutes.
+  scoring: >-
+    Whether the character reaches all four, then how long it takes; a run that doesn't counts the cities it reached.
+    Cost is at list prices.
+  order: 1

@@ -126,20 +126,28 @@ func finalScore(goal string, minutes float64, cps []config.Checkpoint, samples [
 	if kind == "item" || kind == "quality" || kind == "quest" || kind == "achievement" || kind == "zone" {
 		need = 1
 	}
+	if kind == "checkpoints" {
+		need = float64(len(cps))
+	}
 	f := obj{{"value", l["value"]}, {"rate", l["rate"]}, {"recent_rate", l["recent_rate"]}, {"best_window", l["best_window"]}, {"pace", l["pace"]}}
 	score := l["score"]
 	met := fnum(l["value"]) >= need
-	var ttg any
-	if binaryGoal(goal) || kind == "duels" {
-		var at float64
-		if met, at = goalVerdict(goal, need, evs, recs); met {
-			ttg = at
-		}
-	}
 	reached := map[string]float64{}
 	var cpList []obj
 	if len(cps) > 0 {
 		cpList = checkpoints(cps, evs, recs, reached)
+	}
+	var ttg any
+	if binaryGoal(goal) || kind == "duels" {
+		var at float64
+		if kind == "checkpoints" {
+			met, at = allReached(reached, len(cps))
+		} else {
+			met, at = goalVerdict(goal, need, evs, recs)
+		}
+		if met {
+			ttg = at
+		}
 	}
 	switch {
 	case kind == "duels":

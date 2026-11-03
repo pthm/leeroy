@@ -39,6 +39,35 @@ func TestCheckpoints(t *testing.T) {
 	}
 }
 
+func TestZoneCheckpoints(t *testing.T) {
+	cps := []config.Checkpoint{{Name: "Stormwind City", Zone: 1519}, {Name: "Ironforge", Zone: 1537}, {Name: "Darnassus", Zone: 1657}}
+	lines := []string{
+		`{"t":31000,"type":"area_changed","data":{"zone":"Stormwind City","area":"Trade District","zone_id":1519,"area_id":5150}}`,
+		`{"t":91000,"type":"area_changed","data":{"zone":"Ironforge","area":"","zone_id":1537,"area_id":1537}}`,
+		`{"t":151000,"type":"area_changed","data":{"zone":"Stormwind City","area":"","zone_id":1519,"area_id":1519}}`, // back again: the first counts
+	}
+	var evs []metrics.Event
+	for _, l := range lines {
+		e, ok := metrics.Decode([]byte(l))
+		if !ok {
+			t.Fatalf("decode %s", l)
+		}
+		evs = append(evs, e)
+	}
+	reached := map[string]float64{}
+	clock := []record{{T: 1000, ElapsedS: 0}, {T: 1_000_000, ElapsedS: 999}}
+	got, _ := json.Marshal(checkpoints(cps, evs, clock, reached))
+	if want := `[{"name":"Stormwind City","at_s":30},{"name":"Ironforge","at_s":90},{"name":"Darnassus","at_s":null}]`; string(got) != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+	if met, _ := allReached(reached, len(cps)); met {
+		t.Fatal("met with Darnassus unvisited")
+	}
+	if met, at := allReached(reached, 2); !met || at != 90 {
+		t.Fatalf("all of two: met %v at %v, want at 90", met, at)
+	}
+}
+
 func TestCheckpointScore(t *testing.T) {
 	// two bosses of five on a two-hour clock: 2/5 of finishing as it runs out (0.5)
 	if s := checkpointScore(2, 5, 7200); s != 0.2 {

@@ -7,6 +7,7 @@
 //	| skill:<id>:<n> (that skill line at n or more, e.g. skill:164:75 = Blacksmithing 75)
 //	| achievement:<id> (that achievement earned, e.g. 628 = Deadmines: Edwin VanCleef killed)
 //	| zone:<id> (the character is in that zone, an AreaTable id: e.g. 1657 = Darnassus)
+//	| checkpoints (every one of Options.Checkpoints reached, in any order: e.g. zones to visit; met when the last is)
 //	| kills:<n> (n creatures killed since the judge started: the game's own statistic)
 //	| duels:<n> (n duels fought to a result, won or lost; scored on the duels won: duels in the result lists each)
 //	| achpoints:<n> (achievement points earned since the judge started; needs bin/azworld setup.
@@ -60,7 +61,7 @@ import (
 // binaryGoal: a goal that is met or not (an achievement, a quest, an item, an item quality). Its score is by time.
 func binaryGoal(goal string) bool {
 	kind, _, _ := strings.Cut(goal, ":")
-	return kind == "achievement" || kind == "quest" || kind == "item" || kind == "quality" || kind == "zone" || kind == "kills"
+	return kind == "achievement" || kind == "quest" || kind == "item" || kind == "quality" || kind == "zone" || kind == "kills" || kind == "checkpoints"
 }
 
 // timeScore is a binary goal's score: 3600 / time_to_goal_s (1 = met in an hour), 0 while unmet.
@@ -86,9 +87,9 @@ type failure string
 
 func fail(f string, a ...any) { panic(failure(fmt.Sprintf(f, a...))) }
 
-const usage = "usage: judge <character> <level|item|quality|money|quests|quest|achievement|achpoints|zone|kills|duels|score>:<n> | skill:<id>:<n> [--timeout 4h] [--every 15s] [--samples f] [--resume f] [--board dir] [--events f] [--role r] [--runtime r] [--hardcore]\n       judge signals <character>"
+const usage = "usage: judge <character> <level|item|quality|money|quests|quest|achievement|achpoints|zone|kills|duels|score>:<n> | skill:<id>:<n> | checkpoints [--timeout 4h] [--every 15s] [--samples f] [--resume f] [--board dir] [--events f] [--role r] [--runtime r] [--hardcore]\n       judge signals <character>"
 
-var goalRe = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|zone|kills|duels|score):\d+|skill:\d+:\d+)$`)
+var goalRe = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|zone|kills|duels|score):\d+|skill:\d+:\d+|checkpoints)$`)
 
 func dur(s string) time.Duration {
 	m := regexp.MustCompile(`^(\d+)([smh])$`).FindStringSubmatch(s)
@@ -292,6 +293,8 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		need = 1
 	case "skill":
 		need, _ = strconv.ParseFloat(parts[2], 64)
+	case "checkpoints":
+		need = float64(len(o.Checkpoints))
 	}
 
 	nowMs := func() int64 { return time.Now().UnixMilli() }
@@ -326,8 +329,18 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 			team.read()
 		}
 		recs = append(recs, record{T: now, ElapsedS: elapsedS})
+		var evs []metrics.Event
+		if team != nil {
+			evs = team.evs[char]
+		}
+		var cps []obj
+		if len(o.Checkpoints) > 0 && team != nil {
+			cps = checkpoints(o.Checkpoints, evs, recs, reached)
+		}
 		var value float64
 		switch kind {
+		case "checkpoints":
+			value = float64(len(reached))
 		case "score":
 			value = composite(sig, base, w)
 		case "kills":
@@ -347,16 +360,10 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 		level, xp, money := num(lxm[0]), num(lxm[1]), num(lxm[2])
 		recs[len(recs)-1].Value = value
 		r := curve.Add(elapsedS/3600, value)
-		var evs []metrics.Event
-		if team != nil {
-			evs = team.evs[char]
-		}
-		var cps []obj
-		if len(o.Checkpoints) > 0 && team != nil {
-			cps = checkpoints(o.Checkpoints, evs, recs, reached)
-		}
 		met, at := value >= need, elapsedS
-		if verdictGoal {
+		if kind == "checkpoints" {
+			met, at = allReached(reached, len(o.Checkpoints))
+		} else if verdictGoal {
 			met, at = goalVerdict(goal, need, evs, recs)
 		}
 		score := round1(r.Score)
@@ -491,17 +498,24 @@ func Run(ctx context.Context, o Options) (result []byte, met bool, err error) {
 	}
 }
 
-// checkpoints records in reached (name -> seconds on the clock) each checkpoint whose creature first dies in evs (the
-// character's kill and party_kill events, timed through the samples: eventSecond), and returns them all in order:
-// {name, at_s}, at_s null until reached.
+// checkpoints records in reached (name -> seconds on the clock) each checkpoint first reached in evs: its creature
+// dies (the character's kill and party_kill events) or the character enters its zone (area_changed), timed through
+// the samples (eventSecond). It returns them all in order: {name, at_s}, at_s null until reached.
 func checkpoints(cps []config.Checkpoint, evs []metrics.Event, samples []record, reached map[string]float64) []obj {
 	for _, e := range evs {
-		k, ok := e.Data.(types.Kill)
-		if !ok || (e.Type != "kill" && e.Type != "party_kill") {
-			continue
+		var kill, zone uint32
+		switch d := e.Data.(type) {
+		case types.Kill:
+			if e.Type == "kill" || e.Type == "party_kill" {
+				kill = d.Victim.Entry
+			}
+		case types.Location:
+			if e.Type == "area_changed" {
+				zone = d.ZoneID
+			}
 		}
 		for _, c := range cps {
-			if _, done := reached[c.Name]; !done && k.Victim.Entry == c.Kill {
+			if _, done := reached[c.Name]; !done && ((kill != 0 && kill == c.Kill) || (zone != 0 && zone == c.Zone)) {
 				reached[c.Name] = eventSecond(e.T, samples)
 			}
 		}
@@ -515,6 +529,14 @@ func checkpoints(cps []config.Checkpoint, evs []metrics.Event, samples []record,
 		out = append(out, obj{{"name", c.Name}, {"at_s", at}})
 	}
 	return out
+}
+
+// allReached is the checkpoints goal's verdict: met once all total checkpoints are reached, at the last of them.
+func allReached(reached map[string]float64, total int) (met bool, at float64) {
+	for _, t := range reached {
+		at = math.Max(at, t)
+	}
+	return total > 0 && len(reached) >= total, at
 }
 
 // duelsOf lists the first most duels in a character's events fought to a result (duel_ended beaten or fled; cancelled

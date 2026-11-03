@@ -61,10 +61,12 @@ type Conditions struct {
 	RequireFresh bool `yaml:"require_fresh"`
 }
 
-// Checkpoint is reached when the character or its party kills a creature (judge.Options.Checkpoints).
+// Checkpoint is reached when the character or its party kills a creature, or when the character enters a zone
+// (judge.Options.Checkpoints): one of Kill and Zone.
 type Checkpoint struct {
 	Name string `yaml:"name" json:"name"`
-	Kill uint32 `yaml:"kill" json:"kill"` // a creature entry
+	Kill uint32 `yaml:"kill,omitempty" json:"kill,omitempty"` // a creature entry
+	Zone uint32 `yaml:"zone,omitempty" json:"zone,omitempty"` // an AreaTable zone id
 }
 
 // Agent is one player: an agent (its workspace, var/workspaces/<name>) and the character it plays.
@@ -189,7 +191,7 @@ func ID(m map[string]int, s string) (int, error) {
 
 var (
 	nameRe  = regexp.MustCompile(`^[A-Za-z]{2,12}$`)
-	goalRe  = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|zone|kills|duels|score):\d+|skill:\d+:\d+)$`)
+	goalRe  = regexp.MustCompile(`^((level|item|quality|money|quests|quest|achievement|achpoints|zone|kills|duels|score):\d+|skill:\d+:\d+|checkpoints)$`)
 	agentRe = regexp.MustCompile(`^[a-z0-9-]{1,16}$`)
 )
 
@@ -306,6 +308,9 @@ func (b *Bench) Check(s *Scenario) error {
 	}
 	if !goalRe.MatchString(s.Goal) {
 		return fmt.Errorf("%s: goal %q: want level:<n>, score:<n>, quest:<id>, skill:<id>:<n> or the like", s.Name, s.Goal)
+	}
+	if s.Goal == "checkpoints" && len(s.Checkpoints) == 0 {
+		return fmt.Errorf("%s: goal checkpoints needs checkpoints", s.Name)
 	}
 	if s.Spread < 0 || (s.Spread > 0 && s.Start == nil && slices.ContainsFunc(s.Agents, func(a Agent) bool { return a.Start == nil })) {
 		return fmt.Errorf("%s: spread needs a start and can't be negative", s.Name)
