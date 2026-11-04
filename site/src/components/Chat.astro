@@ -1,0 +1,21 @@
+---
+// A line of player chat quoted in a post, styled like the game's chat frame: the time into the run, the channel in
+// its chat colour, the speaker in their class colour (.cc-<class>, global.css), then what they said, verbatim.
+// Consecutive lines join into one box.
+interface Props {
+  at: string; // time into the run, h:mm:ss
+  kind: 'party' | 'whisper' | 'channel' | 'say';
+  from: string;
+  cls: string; // the speaker's class: warrior, priest, ...
+  to?: string; // a whisper's recipient
+  channel?: string; // a custom channel's name
+}
+
+const { at, kind, from, cls, to, channel } = Astro.props;
+const tag = { party: 'Party', whisper: `To ${to ?? '?'}`, channel: channel ?? 'Channel', say: 'Say' }[kind];
+---
+
+<div class:list={['chat', `chat-${kind}`]}>
+  <span class="chat-at">{at}</span>
+  <span class="chat-msg"><span class="chat-tag">[{tag}]</span> <span class:list={['chat-from', `cc-${cls}`]}>[{from}]</span>: <slot /></span>
+</div>

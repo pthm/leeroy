@@ -26,3 +26,31 @@ const { Content } = await render(post);
     </article>
   </Section>
 </Layout>
+
+<script>
+  // A paragraph holding only an image is a screenshot: wide (global.css, .shot), its alt text as the caption, and a
+  // click opens it in a lightbox (the Popover API; a click on the backdrop closes it).
+  document.querySelectorAll<HTMLImageElement>('.prose p > img:only-child').forEach((img, i) => {
+    const p = img.parentElement!, id = `shot-${i + 1}`;
+    if (p.textContent!.trim()) return;
+    const fig = document.createElement('figure');
+    fig.className = 'shot';
+    fig.innerHTML = `<button type="button" class="shot-open" popovertarget="${id}"></button>
+      <figcaption class="shot-caption"></figcaption>
+      <div id="${id}" popover role="dialog" class="lightbox">
+        <button type="button" class="lightbox-close" popovertarget="${id}" popovertargetaction="hide" aria-label="Close">✕</button>
+      </div>`;
+    const [open, caption, box] = [fig.querySelector('button')!, fig.querySelector('figcaption')!, fig.querySelector<HTMLElement>('.lightbox')!];
+    open.setAttribute('aria-label', `Enlarge: ${img.alt}`);
+    box.setAttribute('aria-label', img.alt);
+    caption.textContent = img.alt;
+    const big = img.cloneNode() as HTMLImageElement;
+    big.loading = 'eager';
+    box.append(big);
+    open.append(img);
+    box.addEventListener('click', event => {
+      if (event.target === box) box.hidePopover();
+    });
+    p.replaceWith(fig);
+  });
+</script>

@@ -117,6 +117,9 @@
     font-size: 0.8rem;
     line-height: 1.6;
   }
+  .prose blockquote {
+    overflow-wrap: anywhere; /* the agents' chat drops its spaces */
+  }
   .prose-nested h2 {
     margin-top: 1.75rem;
     font-size: 1.2rem;
@@ -124,6 +127,84 @@
 }
 
 
+
+/* Screenshots in posts (a paragraph holding only an image; the blog page's script adds the caption and lightbox):
+   wider than the text, up to 64rem, centred on it. */
+.prose .shot {
+  width: min(64rem, 100vw - 2rem);
+  margin-inline: calc(50% - min(32rem, 50vw - 1rem));
+  margin-block: 2rem;
+}
+.shot-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--color-hairline);
+  border-radius: 4px;
+  background: none;
+  cursor: zoom-in;
+  transition: border-color 0.15s;
+}
+.shot-open:hover,
+.shot-open:focus-visible {
+  border-color: var(--color-accent);
+}
+.shot-open img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 3px;
+}
+.shot-caption {
+  max-width: 42rem;
+  margin: 0.5rem auto 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--color-faint);
+  text-align: center;
+}
+
+/* Charts in posts: as wide as the screenshots. */
+.prose .wide {
+  width: min(64rem, 100vw - 2rem);
+  margin-inline: calc(50% - min(32rem, 50vw - 1rem));
+  margin-block: 2rem;
+  overflow-x: auto; /* a chart's fixed columns on a phone scroll inside it, not the page */
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.prose .wide h3 {
+  margin-top: 0;
+}
+.prose .wide > * + * {
+  margin-top: 1rem;
+}
+
+/* Chat quoted in posts (Chat.astro), in the game's chat colours. */
+.chat {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  gap: 0.75rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--color-hairline);
+  background: var(--color-raised);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere; /* the agents' chat drops its spaces */
+}
+.prose .chat + .chat {
+  margin-top: 0;
+  border-top: 0;
+}
+.chat:not(.chat + .chat) { border-top-left-radius: 4px; border-top-right-radius: 4px; }
+.chat:not(:has(+ .chat)) { border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; }
+.chat-at { color: var(--color-faint); }
+.chat-party .chat-msg { color: #aaaaff; }
+.chat-whisper .chat-msg { color: #ff80ff; }
+.chat-channel .chat-msg { color: #ffc0c0; }
+.chat-say .chat-msg { color: #ffffff; }
 
 /* Screenshot lightbox (Popover API). */
 html:has(.lightbox:popover-open),

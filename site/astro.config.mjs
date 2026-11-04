@@ -1,6 +1,7 @@
 import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
 import icon from 'astro-icon';
+import mdx from '@astrojs/mdx';
 import { defineConfig } from 'astro/config';
 import noir from './src/data/shiki/terminal-noir.json' with { type: 'json' };
 
@@ -10,7 +11,7 @@ export default defineConfig({
   base: process.env.SITE_BASE ?? '/',
   output: 'static',
   trailingSlash: 'ignore',
-  integrations: [icon(), sitemap()],
+  integrations: [icon(), sitemap(), mdx()],
   markdown: {
     shikiConfig: { theme: noir },
   },
