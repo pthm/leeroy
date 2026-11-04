@@ -286,10 +286,20 @@ remote-runs:
 remote-fetch *runs:
     deploy/hetzner/remote.sh fetch {{ runs }}
 
-[doc("Upload published runs' assets (icons, maps, trajectories, game logs) from var/assets to the public assets bucket (default: the newest run)")]
+[doc("Upload published runs' assets (icons, maps, trajectories, game logs) from var/assets to the public assets bucket (default: the newest run; media: only the icons and the site's media)")]
 [group('bench')]
 upload *runs:
     deploy/upload.sh {{ runs }}
+
+[doc("Pack a published run for a pull request (contributors): its JSON, assets and the evidence, into var/submissions/<run>.tar.gz")]
+[group('bench')]
+submit run:
+    deploy/submit.sh {{ run }}
+
+[doc("Unpack a contributor's submitted run (an archive or its URL) for review: checks it, its assets into var/assets; then just upload it")]
+[group('bench')]
+intake src:
+    deploy/intake.sh {{ src }}
 
 # ---------- release ----------
 

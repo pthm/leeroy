@@ -8,7 +8,8 @@ runs on a schedule.
 | [`hetzner/remote.sh`](hetzner/remote.sh) | Remote runs on Hetzner Cloud (`just remote-*`): one server per run, made from a snapshot, deleted when the run is uploaded |
 | [`hetzner/server/`](hetzner/server) | What runs on those servers: the snapshot's setup, a run, its end (upload, delete) |
 | [`upload.sh`](upload.sh) | `just upload <run>`: a published run's assets (from `var/assets`: icons, map images, trajectories, game logs) to the public assets bucket, `leeroy-assets`; never the private runs bucket, `leeroy-runs`, which stages whole runs between the run servers and this machine |
-| `lib.sh` | `.env` and R2 (through rclone), for both |
+| [`submit.sh`](submit.sh), [`intake.sh`](intake.sh) | Contributors' runs: `just submit <run>` packs a published run for a pull request; `just intake <archive>` checks and unpacks it for a maintainer to upload ([CONTRIBUTING.md](../CONTRIBUTING.md#submitting-benchmark-results)) |
+| `lib.sh` | `.env` and R2 (through rclone), for all of them |
 
 ## Once
 
