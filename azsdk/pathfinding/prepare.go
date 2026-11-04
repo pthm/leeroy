@@ -39,6 +39,87 @@ const navmeshWins = float32(2.0)
 func (s *PathFindingService) PrepareWalkingContext(ctx context.Context, m uint32, r *PathResult, body BodyProfile) (*PreparedPath, error) {
 	ctx, cancel := context.WithTimeout(ctx, QueryTimeout)
 	defer cancel()
+	if completePath(r) && pathLength(r.Points) > prepareStretch*1.5 {
+		return s.prepareStretches(ctx, m, r, body)
+	}
+	return s.prepareWhole(ctx, m, r, body)
+}
+
+// prepareStretch: the yards of a long route prepared at a time (prepareStretches)
+const prepareStretch = 1000
+
+func pathLength(points []Point3D) float32 {
+	d := float32(0)
+	for i := 1; i < len(points); i++ {
+		d += dist2D(points[i], points[i-1])
+	}
+	return d
+}
+
+// prepareStretches prepares a long route a stretch at a time, each routed afresh between its ends on the route and
+// checked (and replanned round what blocks it) on its own, then joins them: checked whole, a long route meets some
+// model somewhere that every alternative to all of it meets too (a fence by Northshire refused a walk to Menethil
+// whose stretches each pass), and each replan around one obstacle was a new route to the end.
+func (s *PathFindingService) prepareStretches(ctx context.Context, m uint32, r *PathResult, body BodyProfile) (*PreparedPath, error) {
+	cuts := []int{0} // the route's points where its stretches meet
+	d := float32(0)
+	for i := 1; i < len(r.Points); i++ {
+		d += dist2D(r.Points[i], r.Points[i-1])
+		if d >= prepareStretch && len(r.Points)-i > 1 {
+			cuts, d = append(cuts, i), 0
+		}
+	}
+	if last := len(r.Points) - 1; cuts[len(cuts)-1] != last {
+		cuts = append(cuts, last)
+	}
+	surface := &PathResult{Type: r.Type, RequestedStart: r.RequestedStart, RequestedEnd: r.RequestedEnd, ProjectedStart: r.ProjectedStart, ProjectedEnd: r.ProjectedEnd}
+	out := &PreparedPath{Surface: surface, Collision: CollisionCheck{State: "clear"}}
+	for k := 0; k+1 < len(cuts); k++ {
+		from, to := r.Points[cuts[k]], r.Points[cuts[k+1]]
+		if k == 0 {
+			from = r.RequestedStart
+		}
+		if k+2 == len(cuts) {
+			to = r.RequestedEnd
+		}
+		leg, err := s.FindPathContext(ctx, m, from, to)
+		if err != nil || !completePath(leg) {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return s.prepareWhole(ctx, m, r, body) // a stretch Detour won't route on its own: the route as it is
+		}
+		p, err := s.prepareWhole(ctx, m, leg, body)
+		skip := 0 // a stretch starts where the last one ended: that point once
+		if len(out.Points) > 0 {
+			skip = 1
+		}
+		if err != nil {
+			if p != nil {
+				p.Collision.Segment += max(0, len(out.Points)-skip) // counted along the whole route
+			}
+			return p, err
+		}
+		base := len(out.Points) - skip
+		for _, j := range p.Jumps {
+			out.Jumps = append(out.Jumps, Jump{Start: j.Start + base, End: j.End + base, Speed: j.Speed})
+		}
+		out.Points = append(out.Points, p.Points[skip:]...)
+		out.Swimming = append(out.Swimming, p.Swimming[skip:]...)
+		out.NavmeshWins += p.NavmeshWins
+		out.Replanned = out.Replanned || p.Replanned
+		ls := p.Surface
+		surface.Points = append(surface.Points, ls.Points[min(skip, len(ls.Points)):]...)
+		surface.PointPolys = append(surface.PointPolys, ls.PointPolys[min(skip, len(ls.PointPolys)):]...)
+		surface.Transitions = append(surface.Transitions, ls.Transitions[min(skip, len(ls.Transitions)):]...)
+		surface.Corridor = append(surface.Corridor, ls.Corridor...)
+	}
+	return out, nil
+}
+
+// prepareWhole prepares a route as one: its surface checked, then walking, centred corridors, detours round the
+// first obstacle, jumps, and the navmesh trusted over short disagreements, in that order.
+func (s *PathFindingService) prepareWhole(ctx context.Context, m uint32, r *PathResult, body BodyProfile) (*PreparedPath, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
