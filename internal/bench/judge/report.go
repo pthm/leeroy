@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -155,6 +156,31 @@ type call struct {
 	cmd  string
 }
 
+// opencodeStarts is when each of an opencode agent's tool calls really started (part id -> unix ms), from its
+// database's part updates: the transcript's start is the last update's (opencode 1.18 resets it on every update of a
+// running call, so a 30 s wait reads as a few ms). Empty without the database or the sqlite3 CLI: the transcript's then.
+func opencodeStarts(db string) map[string]int64 {
+	out := map[string]int64{}
+	if _, err := os.Stat(db); err != nil {
+		return out
+	}
+	b, err := exec.Command("sqlite3", "-readonly", "-separator", " ", db, `select json_extract(data,'$.part.id'),
+		min(json_extract(data,'$.part.state.time.start')) from event where type like 'message.part.updated%'
+		and json_extract(data,'$.part.type')='tool' group by 1`).Output()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "opencode call starts: %s: %v (the transcript's used)\n", db, err)
+		return out
+	}
+	for _, l := range strings.Split(string(b), "\n") {
+		var id string
+		var t int64
+		if n, _ := fmt.Sscan(l, &id, &t); n == 2 {
+			out[id] = t
+		}
+	}
+	return out
+}
+
 func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]metrics.Coop, pos map[string][]metrics.Pos) obj {
 	meta := readJSON(filepath.Join(ar.run, "meta.json"))
 	var score []map[string]any // the judge's samples, every 15 s
@@ -182,6 +208,7 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 	var threads []string           // Codex threads: their usage is only in the session log (~/.codex/sessions)
 	var oc tokens                  // opencode: each step's final usage, in its step_finish
 	ocSeen := false
+	var ocStarts map[string]int64 // opencode: its calls' real starts, read once on the first call
 	for _, e := range jsonl(filepath.Join(ar.run, "transcript.jsonl")) {
 		t := isoMs(str(e["timestamp"]))
 		typ := str(e["type"])
@@ -232,7 +259,14 @@ func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]me
 			if cmd == "" {
 				cmd = str(get(e["part"], "tool"))
 			}
-			calls = append(calls, call{int64(fnum(get(get(st, "time"), "start"))), int64(fnum(get(get(st, "time"), "end"))), cmd})
+			if ocStarts == nil {
+				ocStarts = opencodeStarts(filepath.Join(ar.run, "opencode", "data", "opencode", "opencode.db"))
+			}
+			start := int64(fnum(get(get(st, "time"), "start")))
+			if s, ok := ocStarts[str(get(e["part"], "id"))]; ok {
+				start = s
+			}
+			calls = append(calls, call{start, int64(fnum(get(get(st, "time"), "end"))), cmd})
 		case typ == "step_finish":
 			tk := get(e["part"], "tokens")
 			oc.in += fnum(get(tk, "input"))

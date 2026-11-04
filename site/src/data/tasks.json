@@ -28,10 +28,10 @@
     "order": 2
   },
   "travel": {
-    "title": "Travel from Northshire to Darnassus",
+    "title": "Travel to the four Alliance capitals",
     "short": "Travel",
-    "summary": "A new level-30 Human warrior starts in Northshire and has to reach Darnassus on the other continent. The route needs two boats and a portal. Each model plays one character, all at the same time, with 90 minutes.",
-    "scoring": "Whether the character arrives, then how long it takes. Cost is at list prices.",
+    "summary": "A new level-30 Human warrior starts in Northshire and has to visit Stormwind, Ironforge, Darnassus and the Exodar, in any order, across two continents and an island: the tram, three boats, a portal and the roads between. Each model plays one character, all at the same time, with 120 minutes.",
+    "scoring": "Whether the character reaches all four, then how long it takes; a run that doesn't counts the cities it reached. Cost is at list prices.",
     "order": 1
   },
   "ubrs": {

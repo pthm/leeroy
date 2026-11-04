@@ -197,18 +197,19 @@ export const metricName = (task: string) => (isTotal(task) ? 'total XP' : 'XP pe
 
 // claude-sonnet-5-5 -> Sonnet 5.5, gpt-6.1-terra -> GPT-6.1 Terra
 export function modelName(model: string): string {
-  model = model.replace(/^openrouter\//, '').replace(/^(anthropic|openai|google|deepseek|moonshotai|x-ai)\//, '');
+  model = model.replace(/^openrouter\//, '').replace(/^[^/]+\//, ''); // the provider's prefix, whoever it is (meta/, mistralai/)
   const dotted = model.match(/^claude-([a-z]+)-(\d+)\.(\d+)/); // claude-sonnet-5.5 (OpenRouter's spelling)
   if (dotted) return `${dotted[1][0].toUpperCase()}${dotted[1].slice(1)} ${dotted[2]}.${dotted[3]}`;
   const claude = model.match(/^claude-([a-z]+)-(\d+)-(\d+)/);
   if (claude) return `${claude[1][0].toUpperCase()}${claude[1].slice(1)} ${claude[2]}.${claude[3]}`;
   const gpt = model.match(/^gpt-([\d.]+)-?(.*)$/);
   if (gpt) return `GPT-${gpt[1]}${gpt[2] ? ' ' + gpt[2][0].toUpperCase() + gpt[2].slice(1) : ''}`;
-  // gemini-4-argon -> Gemini 4 Argon, deepseek-v4-pro -> DeepSeek V4 Pro
+  // gemini-4-argon -> Gemini 4 Argon, deepseek-v4-pro -> DeepSeek V4 Pro, mistral-large-4-0 -> Mistral Large 4.0
   return model
     .split('-')
     .map(w => (w === 'deepseek' ? 'DeepSeek' : /^v\d/.test(w) ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1)))
-    .join(' ');
+    .join(' ')
+    .replace(/(\d) (?=\d+(?: |$))/g, '$1.'); // a version in parts (4 0) is one number
 }
 
 export const harnessName = (runtime: string) =>
@@ -420,8 +421,9 @@ export function meanRate(ps: Player[]): number | undefined {
   return rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : undefined;
 }
 
-// A leaderboard entry is a model at a reasoning effort: the same model at high and low effort rank apart.
-export const effortOf = (p: Player) => (p.effort && p.effort !== 'default' ? p.effort : undefined);
+// A leaderboard entry is a model at a reasoning effort: the same model at high and low effort rank apart. "default"
+// (the provider's own, unrecorded) is shown too, so a missing effort never reads as an oversight.
+export const effortOf = (p: Player) => p.effort || undefined;
 export const entryKey = (p: Player) => (effortOf(p) ? `${p.model}|${effortOf(p)}` : p.model);
 export const entryName = (r: { model: string; effort?: string }) => (r.effort ? `${modelName(r.model)} · ${r.effort}` : modelName(r.model));
 // Who played a character, for a tooltip on its name: "GPT-6 Luna · xhigh (Codex CLI)".

@@ -2,8 +2,9 @@
 // What the run cost: cumulative cost over the run, one line per player (a crosshair shows everyone's spend at a moment),
 // cost per player, and a table of tokens, calls, cost and cost per hour. The cost series is rebuilt from the
 // transcripts by azbench publish and ends at the run's reported cost.
+import PlayerName from './PlayerName.astro';
 import Figure from './Figure.astro';
-import { colors, dollars, timeTicks, thousands, type Run, playerTip } from '../lib/results';
+import { colors, dollars, timeTicks, thousands, type Run } from '../lib/results';
 
 interface Props {
   run: Run;
@@ -32,7 +33,7 @@ const perHour = (p: Run['players'][number]) => (p.cost_usd != null && p.hours ? 
   {withSeries.length > 0 && (
     <Figure title="Cost over the run" note={`Cumulative cost at list prices, ${dollars(total)} in all; rebuilt from each agent's transcript and scaled to end at the run's reported cost.`}>
       <Fragment slot="legend">
-        {withSeries.map(p => <button type="button" class={color[p.char]} data-toggle={p.char} aria-pressed="true">● <span class="text-muted" title={playerTip(p)}>{p.char}</span></button>)}
+        {withSeries.map(p => <button type="button" class={color[p.char]} data-toggle={p.char} aria-pressed="true">● <PlayerName p={p} class="text-muted" /></button>)}
       </Fragment>
       <svg viewBox={`0 0 ${W} ${H}`} class="w-full" role="img" aria-label="Each player's cumulative cost over the run" data-series={seriesData}>
         {yTicks.map(v => (
@@ -57,8 +58,8 @@ const perHour = (p: Run['players'][number]) => (p.cost_usd != null && p.hours ? 
   <Figure title="Cost per player" note="Each player's total at the provider's list prices (models.dev).">
     <ul class="space-y-2">
       {run.players.map(p => (
-        <li class="grid grid-cols-[6.5rem_1fr_3.5rem] items-center gap-3 text-xs" title={`${p.char}: ${dollars(p.cost_usd)}`}>
-          <span class:list={['truncate', color[p.char]]} title={playerTip(p)}>{p.char}</span>
+        <li class="grid grid-cols-[14rem_1fr_3.5rem] items-center gap-3 text-xs" title={`${p.char}: ${dollars(p.cost_usd)}`}>
+          <PlayerName p={p} class={`truncate ${color[p.char]}`} />
           <span class="h-2.5 rounded-sm bg-accent" style={`width:${((p.cost_usd ?? 0) / maxCost) * 100}%`} />
           <span class="text-right font-mono text-fg">{dollars(p.cost_usd)}</span>
         </li>
@@ -84,7 +85,7 @@ const perHour = (p: Run['players'][number]) => (p.cost_usd != null && p.hours ? 
       <tbody>
         {run.players.map(p => (
           <tr>
-            <td class:list={[color[p.char]]} title={playerTip(p)}>{p.char}</td>
+            <td class:list={[color[p.char]]}><PlayerName p={p} /></td>
             <td class="num text-muted">{p.hours ?? '–'}</td>
             <td class="num text-muted">{thousands(p.tokens?.input)}</td>
             <td class="num text-muted">{thousands(p.tokens?.cache_read)}</td>

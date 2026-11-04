@@ -35,7 +35,7 @@ func TestRuntimeCommandsAndGeneratedContract(t *testing.T) {
 						Bash map[string]string `json:"bash"`
 					} `json:"permission"`
 				}
-				if err := json.Unmarshal([]byte(opencodeConfig(dir, p.ws)), &v); err != nil {
+				if err := json.Unmarshal([]byte(opencodeConfig(dir, p.ws, "", "")), &v); err != nil {
 					t.Fatal(err)
 				}
 				for _, name := range agentCommands {

@@ -1,8 +1,9 @@
 ---
 // Level over the run, one line per player, and under it a row per player with a tick at each death. Shaded: time
 // inside an instance (amber) and party wipes (red). From the judge's samples and the recordings (azbench publish).
+import PlayerName from './PlayerName.astro';
 import Figure from './Figure.astro';
-import { colors, duration, instanceTime, type Run, timeTicks, wipes, playerTip } from '../lib/results';
+import { colors, duration, instanceTime, type Run, timeTicks, wipes, playerTip, entryName, effortOf } from '../lib/results';
 
 interface Props {
   run: Run;
@@ -14,7 +15,7 @@ const color = colors(run);
 const end = Math.max(...ps.map(p => p.series!.at(-1)![0]));
 const levels = ps.flatMap(p => p.series!.map(s => s[1]));
 const lo = Math.floor(Math.min(...levels)), hi = Math.ceil(Math.max(...levels));
-const W = 900, L = 76, R = 16, T = 12, CH = 260, ROW = 18, GAP = 34;
+const W = 900, L = 210, R = 16, T = 12, CH = 260, ROW = 18, GAP = 34;
 const H = T + CH + GAP + ps.length * ROW + 24;
 const x = (s: number) => L + (Math.min(s, end) / end) * (W - L - R);
 const y = (lvl: number) => T + CH - ((lvl - lo) / Math.max(1, hi - lo)) * CH;
@@ -38,7 +39,7 @@ const seriesData = JSON.stringify({
 
 <Figure title="Level over time" note={note}>
   <Fragment slot="legend">
-    {ps.map(p => <button type="button" class={color[p.char]} data-toggle={p.char} aria-pressed="true">● <span class="text-muted" title={playerTip(p)}>{p.char}</span></button>)}
+    {ps.map(p => <button type="button" class={color[p.char]} data-toggle={p.char} aria-pressed="true">● <PlayerName p={p} class="text-muted" /></button>)}
     {inside.length > 0 && <span><span class="text-accent">▮</span> in a dungeon</span>}
     {wiped.length > 0 && <span><span class="text-error">▮</span> {wiped.length} wipes</span>}
     <button type="button" class="enlarge-btn" data-enlarge>Enlarge</button>
@@ -72,7 +73,7 @@ const seriesData = JSON.stringify({
         return (
           <g class={color[p.char]} data-key={p.char}>
             <line x1={L} x2={W - R} y1={cy} y2={cy} stroke="var(--color-hairline)" />
-            <text x={L - 8} y={cy + 4} text-anchor="end" class="fill-current font-mono text-[11px]"><title>{playerTip(p)}</title>{p.char}</text>
+            <text x={L - 8} y={cy + 4} text-anchor="end" class="fill-current font-mono text-[11px]"><title>{playerTip(p)}</title>{p.char}<tspan class="text-faint" fill="currentColor"> {entryName({ model: p.model, effort: effortOf(p) })}</tspan></text>
             {(p.deaths_at ?? []).map(s => (
               <line x1={x(s)} x2={x(s)} y1={cy - 6} y2={cy + 6} stroke="currentColor" stroke-width="2">
                 <title>{p.char} died at {duration(s)}</title>

@@ -2,7 +2,7 @@
 // Time to the goal, one bar per player, fastest first; players who didn't make it are listed after. Claude Code in
 // amber, Codex in blue.
 import Figure from './Figure.astro';
-import { duration, harnessColor, modelName, type Run } from '../lib/results';
+import { duration, effortOf, entryName, harnessColor, type Run } from '../lib/results';
 
 interface Props {
   run: Run;
@@ -18,8 +18,8 @@ const color = (runtime: string) => harnessColor(runtime).bg;
 <Figure title="Time to the goal" note="Fastest first, then those who didn’t reach it. Bars are coloured by harness.">
   <ul class="space-y-2.5">
     {ps.map(p => (
-      <li class="grid grid-cols-[9rem_1fr_5.5rem] items-center gap-3 font-mono text-xs" data-key={p.char} title={`${p.char} (${modelName(p.model)}): ${p.met ? duration(p.time_to_goal_s) : 'not met'}, ${p.deaths ?? 0} deaths, $${(p.cost_usd ?? 0).toFixed(2)}`}>
-        <span class="truncate text-fg">{p.char} <span class="text-faint">{modelName(p.model)}</span></span>
+      <li class="grid grid-cols-[17rem_1fr_5.5rem] items-center gap-3 font-mono text-xs" data-key={p.char} title={`${p.char} (${entryName({ model: p.model, effort: effortOf(p) })}): ${p.met ? duration(p.time_to_goal_s) : 'not met'}, ${p.deaths ?? 0} deaths, $${(p.cost_usd ?? 0).toFixed(2)}`}>
+        <span class="truncate text-fg">{p.char} <span class="text-faint">{entryName({ model: p.model, effort: effortOf(p) })}</span></span>
         <span class="h-2.5 rounded-sm bg-elevated">
           {p.met && <span class:list={['block h-full rounded-sm', color(p.runtime)]} style={`width:${((p.time_to_goal_s ?? 0) / max) * 100}%`} />}
         </span>

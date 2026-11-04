@@ -344,7 +344,7 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 			}
 		}
 		env = append(env, "XDG_CONFIG_HOME="+cfg, "XDG_DATA_HOME="+filepath.Join(cfg, "data"), "XDG_STATE_HOME="+filepath.Join(cfg, "state"),
-			"XDG_CACHE_HOME="+filepath.Join(cfg, "cache"), "OPENCODE_CONFIG_CONTENT="+opencodeConfig(repo, p.ws))
+			"XDG_CACHE_HOME="+filepath.Join(cfg, "cache"), "OPENCODE_CONFIG_CONTENT="+opencodeConfig(repo, p.ws, p.a.Model, p.a.Effort))
 	}
 	env = append(env, "PATH="+filepath.Join(repo, "suite", "agent", "bin")+":"+os.Getenv("PATH"),
 		"CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "WOWBENCH_BOARD="+p.r.f().Board(),
@@ -368,7 +368,10 @@ var agentCommands = []string{
 // source, and run only the agent's tools and a few read-only commands. "ask" can't be answered in opencode run, so
 // everything is allow or deny; doom_loop (the same call three times in a row) is allowed, since wow wait is that.
 // No snapshots: they're for undo, and copy the repo's state at every step.
-func opencodeConfig(repo, ws string) string {
+// opencodeConfig is the agent's opencode config: its permissions, and for an OpenRouter model with an effort, a variant
+// of that name sending it as OpenRouter's reasoning effort (opencode's own are only low, medium and high there, so a
+// provider's default such as minimal needs its own).
+func opencodeConfig(repo, ws, model, effort string) string {
 	bash := map[string]string{"*": "deny"}
 	for _, c := range agentCommands {
 		bash[c], bash[c+" *"] = "allow", "allow"
@@ -379,10 +382,16 @@ func opencodeConfig(repo, ws string) string {
 	}
 	// edit rules match paths relative to the git root (the repo), not absolute ones
 	rel, _ := filepath.Rel(repo, ws)
-	b, _ := json.Marshal(map[string]any{"autoupdate": false, "share": "disabled", "snapshot": false, "permission": map[string]any{
+	c := map[string]any{"autoupdate": false, "share": "disabled", "snapshot": false, "permission": map[string]any{
 		"bash": bash, "external_directory": ext, "edit": map[string]string{"*": "deny", rel + "/**": "allow"},
 		"webfetch": "deny", "websearch": "deny", "codesearch": "deny", "doom_loop": "allow",
-	}})
+	}}
+	if id, ok := strings.CutPrefix(model, "openrouter/"); ok && effort != "" {
+		c["provider"] = map[string]any{"openrouter": map[string]any{"models": map[string]any{id: map[string]any{
+			"variants": map[string]any{effort: map[string]any{"reasoning": map[string]string{"effort": effort}}},
+		}}}}
+	}
+	b, _ := json.Marshal(c)
 	return string(b)
 }
 
@@ -642,7 +651,7 @@ func (p *player) meta(spec config.Spec) {
 		if i > 0 {
 			time.Sleep(2 * time.Second)
 		}
-		effort = DetectEffort(p.a.Runtime, filepath.Join(p.dir, "transcript.jsonl"))
+		effort = DetectEffort(p.a.Runtime, model, filepath.Join(p.dir, "transcript.jsonl"))
 	}
 	version := cliVersion(p.a.Runtime)
 	p.mu.Lock()
@@ -692,8 +701,12 @@ func cliVersion(runtime string) string {
 }
 
 // DetectEffort is the reasoning effort a runtime used when none was set: Codex writes it in its session file
-// ("effort"); Claude Code and opencode don't say, so "default".
-func DetectEffort(runtime, transcript string) string {
+// ("effort"); opencode sends OpenRouter high for Gemini 3 models unasked (1.18's ProviderTransform.options); else
+// the provider's own, unrecorded: "default".
+func DetectEffort(runtime, model, transcript string) string {
+	if runtime == "opencode" && strings.HasPrefix(model, "openrouter/") && strings.Contains(model, "gemini-3") {
+		return "high"
+	}
 	if f := codexSession(runtime, transcript); f != "" {
 		b, _ := os.ReadFile(f)
 		if x := regexp.MustCompile(`"effort":"([^"]*)"`).FindSubmatch(b); x != nil {

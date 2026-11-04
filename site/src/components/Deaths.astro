@@ -1,7 +1,8 @@
 ---
 // Who killed the players and where, from the recordings: a bar per killer and per place, split by player.
+import PlayerName from './PlayerName.astro';
 import Figure from './Figure.astro';
-import { colors, type Run, playerTip } from '../lib/results';
+import { colors, type Run } from '../lib/results';
 
 interface Props {
   run: Run;
@@ -35,7 +36,7 @@ const max = Math.max(...killers.rows.map(r => r.n), ...places.rows.map(r => r.n)
     ].map(({ title, note, t }) => (
       <Figure title={title} note={t.more > 0 ? `${note} The top 12; ${t.more} more not shown.` : note}>
         <Fragment slot="legend">
-          {run.players.map(p => <button type="button" class={color[p.char]} data-toggle={p.char} aria-pressed="true">● <span class="text-muted" title={playerTip(p)}>{p.char}</span></button>)}
+          {run.players.map(p => <button type="button" class={color[p.char]} data-toggle={p.char} aria-pressed="true">● <PlayerName p={p} class="text-muted" /></button>)}
         </Fragment>
         <ul class="space-y-1.5">
           {t.rows.map(r => (

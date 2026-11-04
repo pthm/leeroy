@@ -40,7 +40,7 @@ import {
   thousands,
   type Run,
 } from '../../../lib/results';
-import { asset, hasAssets, resultsUrl } from '../../../lib/url';
+import { hasAssets, resultsUrl } from '../../../lib/url';
 
 export function getStaticPaths() {
   return allRuns().map(run => ({ params: { task: run.task, run: run.id }, props: { run } }));
@@ -113,7 +113,6 @@ const tiles = kv.runTiles(run).filter(tile => levelled || tile.k !== 'quests com
             {levelled && <th class="num">Quests</th>}
             <th class="num">Cost</th>
             <th class="num">Output</th>
-            {hasDownloads && <th>Downloads</th>}
           </tr>
         </thead>
         <tbody>
@@ -129,13 +128,6 @@ const tiles = kv.runTiles(run).filter(tile => levelled || tile.k !== 'quests com
               {levelled && <td class="num text-muted">{p.series?.at(-1)?.[4] ?? '–'}</td>}
               <td class="num text-muted">{dollars(p.cost_usd)}</td>
               <td class="num text-muted">{thousands(p.tokens?.output)}</td>
-              {hasDownloads && (
-                <td class="whitespace-nowrap text-muted">
-                  {p.downloads?.trajectory && <a class="underline hover:text-fg" href={asset(p.downloads.trajectory)} download title="The agent's trajectory (ATIF JSON)">trajectory</a>}
-                  {p.downloads?.trajectory && p.downloads?.game_log && ' · '}
-                  {p.downloads?.game_log && <a class="underline hover:text-fg" href={asset(p.downloads.game_log)} download title="The character's game log (JSON lines, gzipped)">game log</a>}
-                </td>
-              )}
             </tr>
           ))}
         </tbody>
@@ -165,8 +157,8 @@ const tiles = kv.runTiles(run).filter(tile => levelled || tile.k !== 'quests com
         {run.maps!.map(box => (
           <RouteMap
             box={box}
-            routes={run.players.map(p => ({ key: p.char, name: p.char, cls: color[p.char], track: p.track ?? [], deaths: p.death_list ?? [] }))}
-            legend={run.players.map(p => ({ key: p.char, name: p.char, cls: color[p.char] }))}
+            routes={run.players.map(p => ({ key: p.char, name: `${p.char} · ${entryName({ model: p.model, effort: effortOf(p) })}`, cls: color[p.char], track: p.track ?? [], deaths: p.death_list ?? [] }))}
+            legend={run.players.map(p => ({ key: p.char, name: `${p.char} · ${entryName({ model: p.model, effort: effortOf(p) })}`, cls: color[p.char] }))}
           />
         ))}
       </div>

@@ -1,8 +1,9 @@
 ---
 // A run's files to download, from the assets bucket (just upload puts them there): each agent's trajectory and each
 // character's game log, from the assets bucket (asset()). Drawn only when the site is built with PUBLIC_ASSETS_URL set.
+import PlayerName from './PlayerName.astro';
 import Figure from './Figure.astro';
-import { colors, type Run, playerTip } from '../lib/results';
+import { colors, type Run } from '../lib/results';
 import { asset, hasAssets } from '../lib/url';
 
 interface Props {
@@ -25,7 +26,7 @@ const repo = 'https://github.com/pthm/leeroy/blob/main';
       <tbody>
         {ps.map(p => (
           <tr>
-            <td class:list={['font-medium', color[p.char]]} title={playerTip(p)}>{p.char}</td>
+            <td class:list={['font-medium', color[p.char]]}><PlayerName p={p} /></td>
             <td>{p.downloads!.trajectory ? <a class="underline" href={asset(p.downloads!.trajectory)} download>trajectory.json</a> : '–'}</td>
             <td>{p.downloads!.game_log ? <a class="underline" href={asset(p.downloads!.game_log)} download>events.jsonl.gz</a> : '–'}</td>
           </tr>

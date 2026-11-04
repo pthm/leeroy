@@ -1,0 +1,14 @@
+---
+// A player as the run pages name one: its character, then the model that played it (and its effort), fainter; on
+// hover, the model and harness (playerTip). A character's name alone says nothing about who played it.
+import { effortOf, entryName, playerTip, type Player } from '../lib/results';
+
+interface Props {
+  p: Player;
+  class?: string;
+}
+
+const { p, class: cls } = Astro.props;
+---
+
+<span class:list={[cls]} title={playerTip(p)}>{p.char} <span class="text-faint">{entryName({ model: p.model, effort: effortOf(p) })}</span></span>

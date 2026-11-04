@@ -173,7 +173,7 @@ func publish(root, runDir, task, out string) (string, error) {
 				p["outages"] = outs
 			}
 			if p["effort"] == nil || p["effort"] == "" || p["effort"] == "default" { // unrecorded, or read before Codex wrote it: its session says
-				p["effort"] = run.DetectEffort(fmt.Sprint(p["runtime"]), f.Transcript(a.Name))
+				p["effort"] = run.DetectEffort(fmt.Sprint(p["runtime"]), fmt.Sprint(p["model"]), f.Transcript(a.Name))
 			}
 			if t := callsPerMinute(f.Events(char), started.UnixMilli()); len(t) > 0 {
 				p["trajectory"] = t

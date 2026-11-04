@@ -9,7 +9,7 @@ apt-get update -qq
 # each run server boots from the snapshot. needrestart may restart services here, before anything runs
 NEEDRESTART_MODE=a apt-get full-upgrade -y -qq -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold >/dev/null
 apt-get autoremove -y -qq >/dev/null
-apt-get install -y -qq ca-certificates curl git jq rsync zstd >/dev/null
+apt-get install -y -qq ca-certificates curl git jq rsync sqlite3 zstd >/dev/null
 # no unattended upgrades on the run servers (needrestart would restart a run's unit mid-run; run.sh does it too)
 systemctl disable --now -q apt-daily.timer apt-daily-upgrade.timer unattended-upgrades.service 2>/dev/null || true
 mkdir -p /etc/needrestart/conf.d && echo "\$nrconf{restart} = 'l';" >/etc/needrestart/conf.d/leeroy.conf

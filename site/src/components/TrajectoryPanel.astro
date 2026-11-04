@@ -2,8 +2,9 @@
 // What each agent asked the game to do over the run: a lane per player of SDK calls per interval (failed calls stacked
 // on top in the warning colour, each bar's tooltip naming the interval's most frequent failure), with deaths and
 // level-ups marked; then each player's most frequent errors. From the sessions' event logs, by azbench publish.
+import PlayerName from './PlayerName.astro';
 import Figure from './Figure.astro';
-import { barInterval, clock, colors, intervalName, timeTicks, type Run, playerTip } from '../lib/results';
+import { barInterval, clock, colors, intervalName, timeTicks, type Run, playerTip, entryName, effortOf } from '../lib/results';
 
 interface Props {
   run: Run;
@@ -14,7 +15,7 @@ const color = colors(run);
 const ps = run.players.filter(p => p.trajectory?.length);
 const endMin = Math.max(1, ...ps.map(p => p.trajectory!.at(-1)![0] + 1));
 const per = barInterval(endMin * 60, 120); // minutes per column
-const W = 900, L = 96, R = 8, LANE = 60, GAP = 14, T = 8;
+const W = 900, L = 220, R = 8, LANE = 60, GAP = 14, T = 8;
 const H = T + ps.length * (LANE + GAP) + 18;
 const span = Math.ceil(endMin / per) * per; // the axis, in whole columns
 const colW = ((W - L - R) * per) / span;
@@ -54,7 +55,7 @@ const errs = run.players.filter(p => p.failures?.length);
           const h = (n: number) => Math.min(1, n / top) * (LANE - 10);
           return (
             <g>
-              <text x={L - 10} y={base - LANE / 2 + 4} text-anchor="end" class:list={['font-mono text-[11px]', color[p.char]]} fill="currentColor"><title>{playerTip(p)}</title>{p.char}</text>
+              <text x={L - 10} y={base - LANE / 2 + 4} text-anchor="end" class:list={['font-mono text-[11px]', color[p.char]]} fill="currentColor"><title>{playerTip(p)}</title>{p.char}<tspan class="text-faint" fill="currentColor"> {entryName({ model: p.model, effort: effortOf(p) })}</tspan></text>
               <line x1={L} x2={W - R} y1={base} y2={base} stroke="var(--color-hairline)" />
               {cols.map(([c, b]) => {
                 const top1 = [...b.why.entries()].sort((a, z) => z[1] - a[1])[0];
@@ -93,7 +94,7 @@ const errs = run.players.filter(p => p.failures?.length);
       <ul class="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
         {errs.map(p => (
           <li class="text-xs">
-            <span class={color[p.char]} title={playerTip(p)}>{p.char}</span>
+            <PlayerName p={p} class={color[p.char]} />
             <ul class="mt-1 space-y-0.5 font-mono text-[11px]">
               {p.failures!.map(f => (
                 <li class="flex justify-between gap-3">

@@ -1,7 +1,7 @@
 # Who plays: the models tasks list (suite/tasks), by key. Each is a runtime, its model and the reasoning effort,
 # recorded with every run. The base key is the provider's default effort (its API's, set explicitly so a CLI or
 # config default can't move it); flagships also play one step up, as <key>-<effort>. Effort is required for claude
-# and codex; opencode takes the provider's variant names, or none for the provider's default.
+# and codex; opencode takes OpenRouter's reasoning efforts (minimal ... xhigh), or none for whatever it sends.
 
 # Claude Code: medium is the API default for the 5.5 models
 haiku: {runtime: claude, model: claude-haiku-5-5, effort: medium}
@@ -17,14 +17,17 @@ sol-xhigh: {runtime: codex, model: gpt-6.1-sol, effort: xhigh}
 
 # opencode through OpenRouter (OPENROUTER_API_KEY): one harness for every lab, so the model is all that differs.
 # Grok and Muse refuse requests from outside the US (403): run them on the remote servers (Hillsboro), not from the EU.
-or-argon: {runtime: opencode, provider: openrouter, model: google/gemini-4-argon}
+# Each effort is the lab's API default, sent as OpenRouter's reasoning effort: without one opencode sends Gemini 3
+# models high and others nothing, and OpenRouter doesn't say what the provider then chose. Muse has no default (it
+# picks per request): medium.
+or-argon: {runtime: opencode, provider: openrouter, model: google/gemini-4-argon, effort: medium}
 or-argon-high: {runtime: opencode, provider: openrouter, model: google/gemini-4-argon, effort: high}
-or-flash: {runtime: opencode, provider: openrouter, model: google/gemini-3.8-flash}
-or-flash-lite: {runtime: opencode, provider: openrouter, model: google/gemini-3.5-flash-lite}
-or-deepseek: {runtime: opencode, provider: openrouter, model: deepseek/deepseek-v4-pro}
-or-grok: {runtime: opencode, provider: openrouter, model: x-ai/grok-4.7}
-or-mistral: {runtime: opencode, provider: openrouter, model: mistralai/mistral-large-4-0}
-or-muse: {runtime: opencode, provider: openrouter, model: meta/muse-wonder}
+or-flash: {runtime: opencode, provider: openrouter, model: google/gemini-3.8-flash, effort: medium}
+or-flash-lite: {runtime: opencode, provider: openrouter, model: google/gemini-3.5-flash-lite, effort: minimal}
+or-deepseek: {runtime: opencode, provider: openrouter, model: deepseek/deepseek-v4-pro, effort: high}
+or-grok: {runtime: opencode, provider: openrouter, model: x-ai/grok-4.7, effort: high}
+or-mistral: {runtime: opencode, provider: openrouter, model: mistralai/mistral-large-4-0, effort: high}
+or-muse: {runtime: opencode, provider: openrouter, model: meta/muse-wonder, effort: medium}
 
 # others
 none: {runtime: none} # no agent: the sessions and judges only

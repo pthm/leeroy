@@ -1,8 +1,9 @@
 ---
 // Each player's fighting over the run, from the game log (the report's combat totals): damage dealt and taken, healing
 // done, killing blows and kills its party made, each with a bar against the run's highest.
+import PlayerName from './PlayerName.astro';
 import Figure from './Figure.astro';
-import { colors, thousands, type Run, playerTip } from '../lib/results';
+import { colors, thousands, type Run } from '../lib/results';
 
 interface Props {
   run: Run;
@@ -33,7 +34,7 @@ const max = Object.fromEntries(cols.map(c => [c.k, Math.max(1, ...ps.map(p => (p
       <tbody>
         {ps.map(p => (
           <tr>
-            <td class:list={['font-medium', color[p.char]]} title={playerTip(p)}>{p.char}</td>
+            <td class:list={['font-medium', color[p.char]]}><PlayerName p={p} /></td>
             {cols.map(c => {
               const v = (p.combat as any)[c.k] ?? 0;
               return (

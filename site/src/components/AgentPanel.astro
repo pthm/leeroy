@@ -2,8 +2,9 @@
 // How each agent worked, from the run's report: for progress tasks, its progress per hour by what it was doing; then
 // its gaps with no script running, stalls, how much of its useful fighting helped a teammate, and how often the
 // tooling got in its way (movement taken over, routes timed out, death recovery attempts), per hour played.
+import PlayerName from './PlayerName.astro';
 import Figure from './Figure.astro';
-import { colors, isProgress, rate, type Run, playerTip } from '../lib/results';
+import { colors, isProgress, rate, type Run } from '../lib/results';
 
 interface Props {
   run: Run;
@@ -33,7 +34,7 @@ const ps = run.players.filter(p => p.idle_gaps || p.reliability || p.coop);
         <tbody>
           {byState.map(p => (
             <tr>
-              <td class:list={['font-medium', color[p.char]]} title={playerTip(p)}>{p.char}</td>
+              <td class:list={['font-medium', color[p.char]]}><PlayerName p={p} /></td>
               {states.map(s => <td class="num text-muted">{p.progress_per_hour_by_state?.[s.k] == null ? '–' : rate(p.progress_per_hour_by_state[s.k]!, run.task)}</td>)}
             </tr>
           ))}
@@ -60,7 +61,7 @@ const ps = run.players.filter(p => p.idle_gaps || p.reliability || p.coop);
             const g = p.idle_gaps, r = p.reliability;
             return (
               <tr>
-                <td class:list={['font-medium', color[p.char]]} title={playerTip(p)}>{p.char}</td>
+                <td class:list={['font-medium', color[p.char]]}><PlayerName p={p} /></td>
                 <td class="num text-muted" title={g?.n ? `median ${g.median_s} s, 90th percentile ${g.p90_s} s` : undefined}>{g && g.n ? `${g.total_min} min in ${g.n}` : '–'}</td>
                 <td class="num text-muted">{p.stalls ? (p.stalls.no_xp ?? 0) + p.stalls.slow : '–'}</td>
                 {party && <td class="num text-muted">{p.coop ? `${Math.round(p.coop.assist_share * 100)}%` : '–'}</td>}

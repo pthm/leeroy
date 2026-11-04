@@ -1,8 +1,9 @@
 ---
 // How each player's time went, twice: the character (fighting, travelling, idle, dead, from the recordings) and the
 // agent (thinking, a script running while it waits, in a call, or nothing running, from the harness).
+import PlayerName from './PlayerName.astro';
 import Figure from './Figure.astro';
-import { colors, type Run, playerTip } from '../lib/results';
+import { colors, type Run } from '../lib/results';
 
 interface Props {
   run: Run;
@@ -45,8 +46,8 @@ const agentNote = (p: (typeof ps)[number]) => (p.think_median_s != null ? `${p.t
         </Fragment>
         <ul class="space-y-2">
           {ps.map(p => (
-            <li class="grid grid-cols-[6rem_1fr_7.5rem] items-center gap-3 text-xs">
-              <span class:list={['truncate', color[p.char]]} title={playerTip(p)}>{p.char}</span>
+            <li class="grid grid-cols-[14rem_1fr_7.5rem] items-center gap-3 text-xs">
+              <PlayerName p={p} class={`truncate ${color[p.char]}`} />
               <span class="flex h-3 overflow-hidden rounded-sm bg-elevated">
                 {parts.map(part => {
                   const v = get(p, part.k);
