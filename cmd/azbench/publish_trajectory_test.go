@@ -40,3 +40,19 @@ func TestPlayOf(t *testing.T) {
 		t.Fatalf("cost %v", c)
 	}
 }
+
+func TestScrub(t *testing.T) {
+	for in, want := range map[string]string{
+		`{"file_path": "/Users/pat/leeroy/var/workspaces/a/x.lua"}`: `{"file_path": "~/leeroy/var/workspaces/a/x.lua"}`,
+		`dofile(\"/home/pat/leeroy/x.lua\")`:                        `dofile(\"~/leeroy/x.lua\")`,
+		"cd /Users/pat && ls":                                       "cd ~ && ls",
+		`"Found 2 matches\n/Users/pat/leeroy/a.lua"`:                `"Found 2 matches\n~/leeroy/a.lua"`,
+		`"\u003e/home/pat/leeroy"`:                                  `"\u003e~/leeroy"`,
+		"/home/pat/.claude/settings.json":                           "~/.claude/settings.json",
+		"https://example.com/home/page and /usr/local/bin":          "https://example.com/home/page and /usr/local/bin",
+	} {
+		if got := string(scrub([]byte(in))); got != want {
+			t.Errorf("scrub(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

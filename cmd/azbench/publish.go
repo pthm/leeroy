@@ -252,7 +252,7 @@ func publish(root, runDir, task, out string) (string, error) {
 	}
 	dst := filepath.Join(out, id+".json")
 	data, _ := json.Marshal(doc) // compact: routes and series are thousands of numbers
-	return dst, os.WriteFile(dst, append(data, '\n'), 0o644)
+	return dst, os.WriteFile(dst, append(scrub(data), '\n'), 0o644)
 }
 
 // benign: failures that are the SDK working as meant (a script replacing its own move, a swing that missed, a spell

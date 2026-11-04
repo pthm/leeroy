@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -186,14 +187,14 @@ func downloads(f runfiles.Run, id, agent, char string, t *atif.Trajectory, asset
 	}
 	if b, err := os.ReadFile(f.Trajectory(agent)); err == nil {
 		path := "runs/" + id + "/trajectories/" + agent + ".json"
-		if put(assets, path, b) == nil {
+		if put(assets, path, scrub(b)) == nil {
 			out["trajectory"] = path
 		}
 	}
 	if b, err := os.ReadFile(f.Events(char)); err == nil {
 		var z bytes.Buffer
 		w, _ := gzip.NewWriterLevel(&z, gzip.BestCompression)
-		_, _ = w.Write(b)
+		_, _ = w.Write(scrub(b))
 		path := "runs/" + id + "/game/" + char + ".jsonl.gz"
 		if w.Close() == nil && put(assets, path, z.Bytes()) == nil {
 			out["game_log"] = path
@@ -201,6 +202,15 @@ func downloads(f runfiles.Run, id, agent, char string, t *atif.Trajectory, asset
 	}
 	return out
 }
+
+// homeDir: a home directory starting a path (/Users/<name>, /home/<name>), in agents' tool calls and the client's logs:
+// it names the account that ran the run, which publishing leaves out.
+// It starts a path after a space, quote, bracket or separator, or a JSON escape (\n, \u003e), not after a word (a URL's
+// /home/ stays).
+var homeDir = regexp.MustCompile(`(^|[\s"'(\[=:,;|>` + "`" + `]|\\[ntr"]|\\u00[0-9a-f]{2})/(?:Users|home)/[^/"'\\\s]+`)
+
+// scrub: b with every home directory written ~ (/Users/pat/leeroy/var -> ~/leeroy/var), for what publish makes public.
+func scrub(b []byte) []byte { return homeDir.ReplaceAll(b, []byte("${1}~")) }
 
 // put writes b to path under the assets dir.
 func put(assets, path string, b []byte) error {
