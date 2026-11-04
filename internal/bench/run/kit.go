@@ -186,7 +186,12 @@ var spellSkill = map[int][2]int{
 // and the class quests reward up to the level; and the kit's own), the skills that rise with level at their cap, gear, bags and items. Items it replaces are deleted. New items
 // take guids 100000 above the highest in the database: the worldserver counts item guids up from the highest it saw
 // at startup, so items written while it runs must stay clear of the ones it will make.
+// ponytail: one supervisor's kits; two supervisors on one database (rounds at once) would need a lock in the database
+var kitMu sync.Mutex
+
 func applyKit(k *config.Kit, char string, class int) error {
+	kitMu.Lock() // the players' kits go on one at a time: each takes its guids from the highest item's, so two at once collide
+	defer kitMu.Unlock()
 	db := chars()
 	r, err := world.Rows(db, "SELECT guid FROM characters WHERE name = ?", char)
 	if err != nil || len(r) == 0 {
