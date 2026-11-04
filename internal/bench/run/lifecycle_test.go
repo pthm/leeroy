@@ -181,7 +181,7 @@ func TestAgentHelper(t *testing.T) {
 }
 
 // the goal's wrap-up: a goal_met event to the session, the agent's stop moved past the run's clock, and it returns
-// after the wrap-up (or at a pause)
+// after the wrap-up (or when its agent stops, or at a pause)
 func TestWrapUp(t *testing.T) {
 	dir := t.TempDir()
 	var got struct {
@@ -225,6 +225,15 @@ func TestWrapUp(t *testing.T) {
 	if ev := harnessEvents(t, runfiles.Run(dir).Diagnostics("a1")); len(ev) != 1 || ev[0].Details.State != types.StateWrapUp {
 		t.Fatalf("harness events: %+v", ev)
 	}
+	stopped := make(chan struct{}) // an agent that stops ends it at once
+	close(stopped)
+	p.agentDone = stopped
+	start = time.Now()
+	r.wrapUp(p, time.Minute)
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("wrap-up after the agent stopped took %v", took)
+	}
+	p.agentDone = nil
 	r.cancel() // a pause ends it at once
 	start = time.Now()
 	r.wrapUp(p, time.Minute)
@@ -287,5 +296,15 @@ func TestMaintenance(t *testing.T) {
 	if got.Method != "events.harness" || got.Params.Type != "maintenance" || got.Params.Data.At != at.UnixMilli() ||
 		got.Params.Data.Message != "the run pauses for a deploy" {
 		t.Fatalf("notify: %+v", got)
+	}
+}
+
+// a pause ends a failed logon's wait at once
+func TestRetryWait(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	if err := retryWait(ctx, 5); err == nil || time.Since(start) > 100*time.Millisecond {
+		t.Fatalf("retryWait after a pause: %v in %v", err, time.Since(start))
 	}
 }

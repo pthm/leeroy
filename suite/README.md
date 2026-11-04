@@ -66,8 +66,8 @@ bin/azview live --run var/runs/<time>-levelling-party-opus    # watch it: http:/
 bin/azbench status var/runs/<time>-levelling-party-opus
 ```
 
-One supervisor process owns the run. For each agent, logins staggered 10 s apart (concurrent logins time out on
-the auth server), on ports 8090, 8091, ...:
+One supervisor process owns the run. For each agent, all at once (a logon the auth server times out tries again
+after a growing wait with jitter, 6 tries), on ports 8090, 8091, ...:
 1. refreshes `workspaces/<agent>/AGENTS.md`, copies `example.lua` and creates `NOTES.md` if missing (see
    [The agent](#the-agent)), and creates a non-GM account named after the agent (password = account name);
 2. with starting conditions (`start`, `level`, `money`, `setup`): creates the character with a short login if it's

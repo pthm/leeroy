@@ -126,6 +126,7 @@ type agentRun struct {
 	result      string          // judge/<char>/result.json
 	diag        string          // diagnostics/<agent>.jsonl
 	paused      bool            // run.json's status: the run is paused
+	player      runfiles.Player // its run.json entry: the runtime, model and effort when it has no meta.json (it never started)
 	scenario    config.Scenario // scenario.yaml: the goal, clock and checkpoints its score is computed from
 }
 
@@ -145,7 +146,7 @@ func reportAgents(dir string) []agentRun {
 		out = append(out, agentRun{
 			agent: p.Agent, char: p.Char, run: f.Agent(p.Agent),
 			events: f.Events(p.Char), samples: f.Samples(p.Char), result: f.Result(p.Char), diag: f.Diagnostics(p.Agent),
-			paused: m.Status == "paused", scenario: sc,
+			paused: m.Status == "paused", scenario: sc, player: p,
 		})
 	}
 	return out
@@ -183,6 +184,9 @@ func opencodeStarts(db string) map[string]int64 {
 
 func card(ar agentRun, teamEvents map[string][]metrics.Event, coop map[string]metrics.Coop, pos map[string][]metrics.Pos) obj {
 	meta := readJSON(filepath.Join(ar.run, "meta.json"))
+	if len(meta) == 0 { // its session never came up (a name the server refused): run.json says what would have played
+		meta = map[string]any{"runtime": ar.player.Runtime, "model": ar.player.Model, "effort": ar.player.Effort}
+	}
 	var score []map[string]any // the judge's samples, every 15 s
 	for _, e := range jsonl(ar.samples) {
 		if e["t"] != nil {

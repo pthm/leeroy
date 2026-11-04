@@ -270,9 +270,9 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 	}
 	r.logf("run %s: %d players, %s, %d minutes", r.dir, len(r.players), r.s.Goal, r.s.Minutes)
 
-	// every session up first (logins staggered: concurrent ones time out on the auth server), then one clock
+	// every session up first, all at once (a logon the auth server times out tries again: retryWait), then one clock
 	var wg sync.WaitGroup
-	for i, p := range r.players {
+	for _, p := range r.players {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -296,12 +296,6 @@ func (r *Runner) run(resume bool, message string, quiet bool) error {
 			p.setState(types.JudgeReady)
 			p.logf("session up on port %d", p.port)
 		}()
-		if i < len(r.players)-1 {
-			select {
-			case <-time.After(10 * time.Second):
-			case <-r.ctx.Done():
-			}
-		}
 	}
 	wg.Wait()
 	if r.ctx.Err() != nil {
@@ -437,7 +431,7 @@ func (r *Runner) play(p *player, resume bool, message string, left time.Duration
 
 // wrapUp: the judge recorded p's goal, so its score is final and its run is over: a goal_met event tells the agent,
 // and its session ends the run (its scripts stop and game actions fail run_over; the others play on). The agent keeps
-// wrap to look back and write its notes, unless the run pauses first.
+// wrap to look back and write its notes, unless it stops sooner or the run pauses.
 func (r *Runner) wrapUp(p *player, wrap time.Duration) {
 	end := time.Now().Add(wrap)
 	p.extendAgent(end)
@@ -449,9 +443,13 @@ func (r *Runner) wrapUp(p *player, wrap time.Duration) {
 		p.logf("goal_met: %v", err)
 	}
 	p.logf("goal met: run over for it, stopping in %.0f min", wrap.Minutes())
+	p.mu.Lock()
+	done := p.agentDone // nil without an agent: the wrap's time then
+	p.mu.Unlock()
 	select {
 	case <-time.After(wrap):
 	case <-r.ctx.Done():
+	case <-done: // it wrote its notes and stopped (it isn't resumed in the wrap-up): a round waited out the 5 min
 	}
 }
 

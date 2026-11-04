@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -180,7 +181,7 @@ func alive(c *exec.Cmd) bool {
 	return c != nil && c.ProcessState == nil && c.Process.Signal(syscall.Signal(0)) == nil
 }
 
-// login starts the session and waits for its API, three tries (the auth server sometimes times out the logon).
+// login starts the session and waits for its API, loginTries tries (the auth server sometimes times out the logon).
 func (p *player) login(ctx context.Context) error {
 	for try := 1; ; try++ {
 		cmd, err := p.daemon()
@@ -204,10 +205,27 @@ func (p *player) login(ctx context.Context) error {
 			}
 		}
 		p.logf("session login failed (try %d), see %s", try, p.r.f().SessionLog(p.a.Char))
-		if try == 3 {
+		if try == loginTries {
 			return fmt.Errorf("session login failed")
 		}
-		time.Sleep(time.Duration(try*5) * time.Second)
+		if err := retryWait(ctx, try); err != nil {
+			return err
+		}
+	}
+}
+
+// Every player logs in at once, and the auth server times some logons out when many arrive together: a failed one
+// tries again after a growing wait with jitter (about 2, 4, 8, 16, 30 s), which spreads them out, loginTries in all.
+const loginTries = 6
+
+func retryWait(ctx context.Context, try int) error {
+	d := min(time.Second<<try, 30*time.Second)
+	d += rand.N(d / 2)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d):
+		return nil
 	}
 }
 
@@ -225,14 +243,16 @@ func (p *player) prepare(ctx context.Context) error {
 	}
 	s := p.r.s
 	if s.Level > 0 || s.Money > 0 || s.Start != nil || p.a.Start != nil || len(s.Setup) > 0 || p.a.Kit != nil {
-		for try := 1; !charExists(p.a.Char) && try <= 3; try++ { // concurrent logins can time out on the auth server
+		for try := 1; !charExists(p.a.Char) && try <= loginTries; try++ { // concurrent logins can time out on the auth server
 			if cmd, err := p.daemon("-duration", "8s"); err == nil {
 				for alive(cmd) {
 					time.Sleep(500 * time.Millisecond)
 				}
 			}
-			if !charExists(p.a.Char) {
-				time.Sleep(time.Duration(try*5) * time.Second)
+			if !charExists(p.a.Char) && try < loginTries {
+				if err := retryWait(ctx, try); err != nil {
+					return err
+				}
 			}
 		}
 		if !charExists(p.a.Char) {

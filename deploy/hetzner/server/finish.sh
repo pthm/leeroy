@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The end of a remote run, once (a lock): the newest run uploaded to R2 (runs/<run>.tar.zst) with the server's log, then
+# The end of a remote run, once (a lock): every run on it uploaded to R2 (runs/<run>.tar.zst; a versus task makes one per round), the newest with the server's log, then
 # the server deleted, if the run finished or was paused (just remote-stop). A run that ended otherwise (its supervisor
 # died, the server or build failed) keeps its server, for just remote-resume, until LEEROY_KEEP_HOURS (the leeroy-keep
 # timer). `finish.sh deadline` (that timer, or leeroy-deadline's LEEROY_MAX_HOURS) pauses a run still going first and
@@ -33,16 +33,18 @@ ok=1
 	journalctl --no-pager -o short-iso -u leeroy-run -u leeroy-view -u leeroy-deadline -u apt-daily-upgrade -u unattended-upgrades -t needrestart
 	journalctl --no-pager -o short-iso -k -p warning | tail -n 50
 } 2>&1
-if [ -n "$run" ]; then
-	name=$(basename "$run")
-	mkdir -p "$run/server" && cp /var/log/leeroy-run.log "$run/server/remote.log"
+[ -n "$run" ] && mkdir -p "$run/server" && cp /var/log/leeroy-run.log "$run/server/remote.log"
+# every run on the server, not only the newest: a versus task is a run per round (14 rounds of a tournament were
+# lost with their server when only the last was uploaded)
+for d in var/runs/*/; do
+	name=$(basename "$d")
 	if tar -C var/runs -cf - "$name" | zstd -T0 -10 -q | r2 rcat "r2:$R2_RUNS_BUCKET/runs/$name.tar.zst"; then
 		log "uploaded $name"
 	else
 		ok=0
 		log "the upload of $name failed"
 	fi
-fi
+done
 r2 copyto /var/log/leeroy-run.log "r2:$R2_RUNS_BUCKET/logs/$host.log" || true
 if [ $ok = 0 ]; then
 	if [ "$why" = deadline ]; then
