@@ -69,7 +69,7 @@ func main() {
 
 	navi := navigation.NewEmbeddedNavigator(data)
 	var points []navigation.Point3D
-	var legs []int // points in each group's walk
+	legs := make([]int, 0, len(groups)) // points in each group's walk
 	for _, g := range groups {
 		if len(g) < 2 {
 			fmt.Fprintln(os.Stderr, "each walk needs two waypoints")
