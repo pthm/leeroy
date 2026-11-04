@@ -262,7 +262,12 @@ one per thing the agent deals with: the game, the world's data, and its score.
 | `standings` | the score (`internal/bench/tools`) | every player's rank, score, rates, level, role stats, cooperation, item level and money from `$WOWBENCH_BOARD`, plus a faction total and the minutes left in the run |
 
 The agent's environment: `PATH` with `agent/bin/` first, `WOW_PORT`, `WOWBENCH_BOARD` (the board directory) and
-`WOWBENCH_CHAR` (its character).
+`WOWBENCH_CHAR` (its character). Nothing else passes from azbench's environment except an allowlist
+(`agentEnv`, `internal/bench/run/player.go`): the system's basics (`HOME`, `USER`, locale, temp dir, proxies and
+certificates, `XDG_*`, `MISE_*`), `LEEROY_DATA` and `LEEROY_DB_ADDR`, and only its own runtime's credentials (Claude
+Code's token or Anthropic key, Codex's OpenAI key, or the provider's key for opencode and anything served through
+OpenRouter). The agent's shell inherits its runtime's environment and its trajectory is published, so other keys
+(R2's, Hetzner's, other providers') must not reach it.
 
 ### Sandbox
 

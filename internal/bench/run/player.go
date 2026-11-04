@@ -313,16 +313,7 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 		cmd = exec.Command("claude", args...)
 	}
 	cmd.Dir = p.ws
-	env := os.Environ()
-	if a.Provider == "openrouter" && a.Runtime == "claude" {
-		// OpenRouter's Anthropic-compatible endpoint; the model is its slug (anthropic/claude-opus-5.5), also for
-		// Claude Code's background calls, which would otherwise ask for a Haiku id OpenRouter may not route
-		env = slices.DeleteFunc(env, func(kv string) bool {
-			return strings.HasPrefix(kv, "ANTHROPIC_AUTH_TOKEN=") || strings.HasPrefix(kv, "CLAUDE_CODE_OAUTH_TOKEN=")
-		})
-		env = append(env, "ANTHROPIC_BASE_URL=https://openrouter.ai/api", "ANTHROPIC_API_KEY="+os.Getenv("OPENROUTER_API_KEY"),
-			"ANTHROPIC_DEFAULT_HAIKU_MODEL="+a.Model)
-	}
+	env := agentEnv(os.Environ(), a)
 	if a.Runtime == "opencode" {
 		// its own empty config dir, so the user's opencode config (plugins, providers, AGENTS.md) stays out of the run,
 		// and its own data, state and cache: opencode keeps its sessions in one SQLite database there, and agents
@@ -355,6 +346,67 @@ func (p *player) agentCmd(text, resume string) *exec.Cmd {
 	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // so stopping it stops its tools too
 	return cmd
+}
+
+// agentBasics: what every agent's runtime gets from azbench's environment when it's set: the system's basics, proxies
+// and certificates, mise's settings for the shims the runtimes run through, and the SDK tools' settings (LEEROY_DATA,
+// LEEROY_DB_ADDR: azworld's data and database). A name ending in _ is a prefix.
+var agentBasics = []string{
+	"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TERM", "LANG", "LC_", "TZ", "XDG_",
+	"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
+	"SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS", "MISE_",
+	"LEEROY_DATA", "LEEROY_DB_ADDR",
+}
+
+// agentKeys: the credentials and settings an agent's runtime needs for its provider, by environment variable name.
+// Claude Code: its subscription token or an API key; Codex: an OpenAI key (or ~/.codex's login); opencode: the
+// provider's key, by the model's provider (openrouter/google/... or a provider of openrouter: OPENROUTER_API_KEY).
+func agentKeys(a config.Agent) []string {
+	switch {
+	case a.Provider == "openrouter":
+		return []string{"OPENROUTER_API_KEY"}
+	case a.Runtime == "codex":
+		return []string{"OPENAI_API_KEY", "OPENAI_BASE_URL", "CODEX_HOME"}
+	case a.Runtime == "opencode":
+		prefix, _, _ := strings.Cut(a.Model, "/")
+		switch prefix {
+		case "google":
+			return []string{"GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY"}
+		case "":
+			return nil
+		}
+		return []string{strings.ToUpper(strings.ReplaceAll(prefix, "-", "_")) + "_API_KEY"}
+	}
+	return []string{"CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CONFIG_DIR"}
+}
+
+// agentEnv: the environment an agent's runtime starts with, from azbench's (environ): the basics (agentBasics) and its
+// own provider's credentials (agentKeys), nothing else. The agent's shell inherits it and an agent can print what it
+// sees into its trajectory, which is published: other keys (R2's, Hetzner's, other providers') and whatever else is in
+// the shell that started azbench stay out.
+func agentEnv(environ []string, a config.Agent) []string {
+	allow := append(slices.Clone(agentBasics), agentKeys(a)...)
+	var env []string
+	for _, kv := range environ {
+		k, _, _ := strings.Cut(kv, "=")
+		if slices.ContainsFunc(allow, func(n string) bool {
+			return k == n || (strings.HasSuffix(n, "_") && strings.HasPrefix(k, n))
+		}) {
+			env = append(env, kv)
+		}
+	}
+	if a.Provider == "openrouter" && a.Runtime == "claude" {
+		// OpenRouter's Anthropic-compatible endpoint; the model is its slug (anthropic/claude-opus-5.5), also for
+		// Claude Code's background calls, which would otherwise ask for a Haiku id OpenRouter may not route
+		key := ""
+		for _, kv := range environ {
+			if v, ok := strings.CutPrefix(kv, "OPENROUTER_API_KEY="); ok {
+				key = v
+			}
+		}
+		env = append(env, "ANTHROPIC_BASE_URL=https://openrouter.ai/api", "ANTHROPIC_API_KEY="+key, "ANTHROPIC_DEFAULT_HAIKU_MODEL="+a.Model)
+	}
+	return env
 }
 
 // agentCommands: the shell commands an agent may run (suite/agent/AGENTS.md lists them): its three tools and
