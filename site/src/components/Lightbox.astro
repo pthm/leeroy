@@ -4,7 +4,9 @@ import { Icon } from 'astro-icon/components';
 interface Props {
   id: string;
   image: string;
+  srcset?: string; // smaller versions of image for the page; the popover shows image itself, once opened
   alt: string;
+  priority?: boolean; // above the fold: load it first, not lazily
   openLabel?: string;
   closeLabel?: string;
   class?: string;
@@ -12,7 +14,7 @@ interface Props {
 
 // Native Popover API: Esc and a click outside close it, and focus returns to
 // the button that opened it, with no client script.
-const { id, image, alt, openLabel = 'Enlarge', closeLabel = 'Close', class: className } = Astro.props;
+const { id, image, srcset, alt, priority = false, openLabel = 'Enlarge', closeLabel = 'Close', class: className } = Astro.props;
 ---
 
 <button
@@ -21,7 +23,17 @@ const { id, image, alt, openLabel = 'Enlarge', closeLabel = 'Close', class: clas
   aria-label={openLabel}
   class:list={[className, "group relative block w-full cursor-zoom-in rounded border border-transparent transition-colors hover:border-accent focus-visible:border-accent"]}
 >
-  <img src={image} alt={alt} width="1600" height="1000" class="w-full rounded border border-hairline" loading="lazy" />
+  <img
+    src={image}
+    srcset={srcset}
+    sizes="(min-width: 64rem) 61rem, 100vw"
+    alt={alt}
+    width="1600"
+    height="1000"
+    class="w-full rounded border border-hairline"
+    loading={priority ? 'eager' : 'lazy'}
+    fetchpriority={priority ? 'high' : undefined}
+  />
   <span
     aria-hidden="true"
     class="absolute right-3 bottom-3 flex items-center gap-1.5 rounded border border-hairline bg-raised/90 px-2 py-1 font-mono text-[11px] text-muted transition-colors group-hover:text-accent"
@@ -42,7 +54,7 @@ const { id, image, alt, openLabel = 'Enlarge', closeLabel = 'Close', class: clas
   >
     <Icon name="lucide:x" class="size-4" aria-hidden="true" />
   </button>
-  <img src={image} alt={alt} />
+  <img src={image} alt={alt} loading="lazy" />
 </div>
 
 <script>

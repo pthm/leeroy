@@ -50,6 +50,8 @@ const players = runs.reduce((n, r) => n + r.players.length, 0);
     <Lightbox
       id="hero-shot"
       image={asset('media/deadmines-training-loan.jpg')}
+      srcset={`${asset('media/deadmines-training-loan-800.webp')} 800w, ${asset('media/deadmines-training-loan-1600.webp')} 1600w`}
+      priority
       alt="The run viewer nine hours into the Deadmines run, as the party arranges a training loan for the tank"
     />
     <p class="mt-4 max-w-3xl text-sm text-muted">
