@@ -521,7 +521,7 @@ Garwina
 Garwyn
 Garys
 Gawain
-Fulke
+Geoffrey
 Gerard
 Gervase
 Gilard
@@ -553,8 +553,8 @@ Gilwyn
 Gilys
 Giselle
 Gisli
-Gerwald
-Ivetta
+Godric
+Godwin
 Goscelin
 Griselda
 Guthrum
@@ -609,8 +609,8 @@ Herith
 Herleva
 Hermer
 Hermund
-Kendric
-Mabyn
+Herold
+Herond
 Herred
 Herric
 Herulf
@@ -1145,7 +1145,7 @@ Sigwina
 Sigwyn
 Sigys
 Simeon
-Sewald
+Sirona
 Solveig
 Steinar
 Stephanus
@@ -1245,7 +1245,7 @@ Ulwin
 Ulwina
 Ulwyn
 Ulys
-Tamsin
+Umfrey
 Urian
 Ursula
 Vaelin
