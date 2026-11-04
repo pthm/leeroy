@@ -54,6 +54,11 @@ const navLink = (active: boolean) => [
     <meta property="og:image" content={ogImage} />
     <meta name="twitter:card" content="summary_large_image" />
     <style is:inline set:html={themeCss} />
+    {import.meta.env.PROD && (
+      // Fathom analytics (https://usefathom.com/docs/script/embed): page views, no cookies; production builds only,
+      // so the dev server's visits aren't counted
+      <script is:inline src="https://cdn.usefathom.com/script.js" data-site="OWDHXCZN" defer></script>
+    )}
   </head>
   <body class="flex min-h-screen flex-col bg-base text-fg">
     <a
