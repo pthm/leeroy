@@ -169,7 +169,7 @@ Branred
 Branric
 Branulf
 Branwald
-Branwen
+Brannoc
 Branwin
 Branwina
 Branwyn
@@ -416,7 +416,7 @@ Elys
 Emmeline
 Engelram
 Enid
-Eolande
+Corwen
 Erland
 Ermengarde
 Esmond
@@ -521,7 +521,7 @@ Garwina
 Garwyn
 Garys
 Gawain
-Geoffrey
+Fulke
 Gerard
 Gervase
 Gilard
@@ -553,8 +553,8 @@ Gilwyn
 Gilys
 Giselle
 Gisli
-Godric
-Godwin
+Gerwald
+Ivetta
 Goscelin
 Griselda
 Guthrum
@@ -609,8 +609,8 @@ Herith
 Herleva
 Hermer
 Hermund
-Herold
-Herond
+Kendric
+Mabyn
 Herred
 Herric
 Herulf
@@ -725,7 +725,7 @@ Jolecia
 Jorard
 Joraric
 Jorbert
-Jordan
+Piran
 Jordred
 Jorella
 Joreth
@@ -1011,7 +1011,7 @@ Oswyn
 Osys
 Otto
 Owain
-Pagan
+Quenild
 Perard
 Peraric
 Perbert
@@ -1145,7 +1145,7 @@ Sigwina
 Sigwyn
 Sigys
 Simeon
-Sirona
+Sewald
 Solveig
 Steinar
 Stephanus
@@ -1245,7 +1245,7 @@ Ulwin
 Ulwina
 Ulwyn
 Ulys
-Umfrey
+Tamsin
 Urian
 Ursula
 Vaelin

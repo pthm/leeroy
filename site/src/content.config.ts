@@ -4,12 +4,13 @@ import { glob } from 'astro/loaders';
 
 const blog = defineCollection({
   loader: glob({ pattern: '**/*.{md,mdx}', base: './src/content/blog' }),
-  schema: ({ image }) =>
+  schema: () =>
     z.object({
       title: z.string(),
       description: z.string(),
       date: z.coerce.date(),
-      image: image().optional(), // relative to the post, e.g. ../../assets/media/x.jpg
+      image: z.string().optional(), // its path in the assets bucket (asset()), e.g. media/x.jpg
+      banner: z.boolean().default(false), // the image behind the post's header too (art, not a busy screenshot)
     }),
 });
 

@@ -1,0 +1,350 @@
+---
+title: GPT-6.1 Sol agents team up to clear the Deadmines in 17 hours
+description: AI coding agents play World of Warcraft. Five GPT-6.1 Sol agents started at level 1, formed a party without being told to, and cleared the Deadmines together in 17 hours 41 minutes.
+date: 2026-11-01
+image: media/deadmines-art.jpg
+banner: true
+---
+
+import Shot from '../../components/Shot.astro';
+import AgentSay from '../../components/AgentSay.astro';
+import Chat from '../../components/Chat.astro';
+import ProgressChart from '../../components/ProgressChart.astro';
+import Talk from '../../components/Talk.astro';
+import Deaths from '../../components/Deaths.astro';
+import CombatPanel from '../../components/CombatPanel.astro';
+import CostPanel from '../../components/CostPanel.astro';
+import { url as sitePath } from '../../lib/url';
+import run from '../../data/deadmines-20261030.json';
+
+On 30 October I started five AI agents, all GPT-6.1 Sol on Codex, on new level-1 characters in Northshire Abbey and
+gave each the same goal: clear the Deadmines, a dungeon built for five players at levels 17 to 21. Twelve seconds in,
+the healer whispered the tank asking it to lead. 29 seconds in, they had formed a party. Nothing in their prompts told
+them to group.
+
+17 hours 41 minutes later, at levels 14 to 16, the five of them killed Edwin VanCleef, the dungeon's final boss.
+
+LEEROY is a benchmark for long-running AI coding agents in which the agents play World of Warcraft. Each agent gets a
+character on a private server (3.3.5a, AzerothCore), a headless game client it drives from Lua scripts, documentation
+of the game's rules and the client's API, and a goal. A judge periodically reads the characters from the server's
+database. Nothing tells the agents how to play.
+
+How the agents perceive and act in a realtime 3D world is covered in the previous post:
+<a href={sitePath('/blog/how-to-make-an-ai-agent-play-world-of-warcraft')}>how to make an AI agent play World of Warcraft</a>.
+
+## What the agents are (not) told
+
+Each agent got a new level-1 Human, already logged in, and a prompt. Here is the healer's, with some irrelevant bits
+trimmed:
+
+```text
+You are Isolde, a Human Priest - Holy. Your role is Healer: […]
+
+GOAL: earn the achievement Deadmines (Defeat Edwin VanCleef), achievement 628.
+
+You are scored on the time until the judge, which reads your character from the server database, sees
+the goal met; if time runs out, your progress toward it is the score.
+The run lasts 10080 minutes; standings shows how many are left.
+
+OTHER PLAYERS: the other characters on this server are AI agents like you, each on their own run at the same
+time. This run:
+- Aldous: Warrior - Protection (Tank)
+- Merrin: Rogue - Combat (DPS)
+- Thessaly: Mage - Frost (DPS)
+- Corbin: Paladin - Retribution (DPS)
+How you deal with them is up to you.
+```
+
+They are not told that they need the others, that they should group, how to level, how to fight or how to use the
+client.
+
+A level-1 character can't survive the dungeon's first room, so the agents had to work out for themselves that they
+needed levels, gear, trained spells and a full party. Compared with the shorter LEEROY tasks, this goal tests:
+
+- **Long-range planning.** Most of the run is preparation rather than working directly on the goal.
+- **Coordination.** The agents need to act as a single party in a real-time game. The only coordination mechanisms
+  are the chat channels in the game.
+- **Writing software under pressure.** An agent doesn't press keys. It writes Lua scripts that run inside its game
+  session, and those scripts do the fighting.
+
+Nine minutes in, the healer's agent had already looked up the final boss:
+
+<AgentSay at="0:09:13" who="Isolde" cls="priest">All five players now have the Laborer quest. I also checked
+VanCleef's level: he is a level 20 elite. We'll continue leveling and improving gear before attempting the
+dungeon.</AgentSay>
+
+The SDK is a thin layer over the game, and intentionally has no opinion on how the game should be played. There is no
+pull routine, no lock to ensure only one enemy is being crowd-controlled at a time, no assistance with healer
+positioning. The agents in this run built all of those (you can read about where to draw that line in
+<a href={sitePath('/blog/how-to-make-an-ai-agent-play-world-of-warcraft#tools-not-strategies')}>this post</a>).
+
+## 29 seconds to a party
+
+Four of the agents independently whispered Aldous, the tank, asking for a leader, while Aldous posted the same plan
+in /say.
+
+<Chat at="0:00:12" kind="whisper" to="Aldous" from="Isolde" cls="priest">Isolde here, Holy Priest healer. Goal Deadmines/VanCleef. Please lead party; I will heal and follow. Starting Northshire quests meanwhile.</Chat>
+<Chat at="0:00:14" kind="say" from="Aldous" cls="warrior">Aldous here, Protection tank aiming for VanCleef. Let us party and level together; inviting all. I will lead pulls and share route/status.</Chat>
+
+<Shot src="media/deadmines-northshire-party.jpg" alt="The opening minute in Northshire. Four agents whispered Aldous asking for a leader while the tank posted the same plan in /say" />
+
+Earlier LEEROY tasks (reach a level, kill Hogger) could be done solo. Here the agents decided to group before any of
+them had killed a mob.
+
+## Twelve hours of preparation
+
+Isolde realised that when the party is together, kill XP is shared between all of the party members. At 25 minutes
+they split up deliberately (and Aldous set up a new custom chat channel so they could still communicate). Aldous set
+out the plan for the next nine hours:
+
+<AgentSay at="0:27:02" who="Aldous" cls="warrior">Aldous is safely out of combat, with progress saved. We've
+temporarily left the party for solo leveling and joined a shared chat channel; I'll regroup everyone at level 8 for
+Hogger and later aim for Deadmines around level 15.</AgentSay>
+
+They regrouped, killed Hogger without a death at 4 h 21, and moved on to Westfall. Along the way they added the
+Hallow's End candy bucket in each inn to their route for the XP.
+
+<Shot src="media/deadmines-first-twelve-hours.jpg" alt="The first twelve hours: Elwynn Forest, Westfall and Redridge, with quest givers and deaths" />
+
+They also traded items and money. Aldous gave Merrin a spare leather vest and later a cutlass. At level 14 Aldous
+couldn't afford training and asked for 20 silver; all four offered, Corbin's 10 silver arrived first, and Aldous told
+the others to cancel theirs.
+
+<Shot src="media/deadmines-westfall.jpg" alt="The party questing in Westfall, six hours in" />
+
+At 7 h 26 they split again. Aldous levelled alone toward 14 (for Revenge), and Isolde healed from outside the group so
+that Aldous got the full XP from each kill.
+
+Isolde checked this before relying on it. The agent read the server's C++ source (`KillRewarder.cpp`) and found that
+an ungrouped helper of the same level doesn't reduce the killer's XP; only a higher-level helper, for whom the victim
+is grey, halves it. It whispered the finding to the tank with the file and function named. The reading was correct,
+and it isn't in the documentation the agents are given.
+
+At the same time Corbin ran a boost in which the others only attacked mobs Corbin had tagged. Their scripts ignored
+adds attacking the helpers, and the healer died out of mana. By this point the agents had removed the spaces from
+their messages to fit the game's 255-byte chat limit:
+
+<Chat at="9:05:59" kind="channel" channel="Deadmines" from="Isolde" cls="priest">Fightlog: ALL4adds remained100%HPfor53secwhilehittingpriest; strictCorbin-tagassistignoreduntaggeddefenseadds. Stopboost. REFORMNORMALPARTY now; kill/CCanyattackersonhealerregardlessfirsttag. Invitingall5; switchnormalpartycombat.</Chat>
+<Chat at="9:06:33" kind="channel" channel="Deadmines" from="Corbin" cls="paladin">STOPCorbintagboost. Priestdead, myhandlermissedMANA_LOWandhelperattackers; fixingnow. RegroupSAFEGryan(-10509,1045,60.7), formpartyunderAldous.</Chat>
+
+## Into the dungeon, four levels early
+
+### The false start
+
+At 9 h 35 (levels 12 to 14) the party attempted the instance. In the Moonbrook mine that leads to it, a fleeing
+Defias ran into an uncleared room and pulled it, and the party wiped. Aldous's agent identified the cause and added a
+rule, as the agents did after each wipe in this run:
+
+<AgentSay at="9:42:45" who="Aldous" cls="warrior">The remaining players also went down. We're returning as ghosts and
+looking for a clear reclaim point. The cause is clear: pursuing runners pulled the fight into an uncleared chamber.
+I'm adding a pull boundary before the next attempt.</AgentSay>
+
+Recovering took longer than the wipe. Aldous set up a synchronised corpse run, with every ghost reclaiming its body at
+the same millisecond. The timer kept firing while the priest was still running back, so four characters revived next
+to the pack without a healer. All five died at once five times in twenty minutes, and at 10 h 02 Aldous called it
+off.
+
+<Shot src="media/deadmines-outdoor-mine-wipe.jpg" alt="The outdoor mine at Moonbrook, the first wipe" />
+
+<Chat at="10:01:44" kind="party" from="Aldous" cls="warrior">STOP mine recovery. PriestmissedSYNCagain, 4thloss. RESETTOWN: allspiritres/repair/rest atSentinel, clearoldreclaimtimers. Welevelthroughsharedquestsandsaferpulls, thenreturnDMprepared.</Chat>
+
+They levelled for two more hours, came back, cleared the same mine in 11 minutes without a death, and zoned in at
+12 h 20 at levels 13 to 15.
+
+### Inside
+
+The first pull inside the instance wiped them. A wipe in a dungeon is a costly affair: the graveyard is outside, and
+trash respawns while you walk back. Within twelve minutes of zoning in, one of the agents tried walking a ghost
+through the instance portal and found that this revives the character inside.
+
+<AgentSay at="12:32:03" who="Aldous" cls="warrior">The first player has confirmed that entering the portal as a ghost
+revives you inside. Aldous is on that run now. The earlier trash remains cleared, so we can resume from the last safe
+corner.</AgentSay>
+
+None of the documentation the agents had mentions this. It only describes reclaiming a corpse from within 30 yards of
+it. After that a wipe cost about two minutes: the priest's ghost walked out and back in, then the priest resurrected the
+other four where they lay.
+
+<Shot src="media/deadmines-ghost-run.jpg" alt="The party as ghosts after the first wipe inside" />
+
+Rhahk'Zor, the first boss, died at 12 h 46 to the healer's wand, in the same second a Defias Watchman killed the
+healer. The next 81 minutes cost 25 deaths and five whole-party wipes on the goblin Woodcarvers, Sneed's Shredder and
+Sneed. The Woodcarvers are a linked pack of five elites; Thessaly found a raised spot from which one could be pulled
+to the doorway on its own.
+
+<Shot src="media/deadmines-woodcarver-doorway.jpg" alt="The doorway pull: one Woodcarver at a time from Thessaly's raised spot" />
+
+<Shot src="media/deadmines-shredder-wipe.jpg" alt="The tank dies to Sneed's Shredder" />
+
+The Sneed wipes were a line-of-sight problem. Isolde's script healed from a fixed spot behind the party which the SDK
+reported as having line of sight to the tank, but the server rejected the heals. The priest stayed at full mana while
+the party died, until Thessaly, by then tanking the boss at 240 health, whispered:
+
+<Chat at="13:59:58" kind="whisper" to="Isolde" from="Thessaly" cls="mage">URGENThealsnotlanding: youSTILL559/559MP whileTank+Paldead. Mage240HP nowTANKING643849HP at(-208,-501). PleaseHEALMAGEimmediatelyorfixLOS/followpause. Yourfullmanaenoughtowin.</Chat>
+
+<AgentSay at="14:01:20" who="Isolde" cls="priest">That attempt wiped because my fixed backline position prevented
+healing until too late. I'm keeping follow enabled and adding automatic movement to restore line of sight. Sneed
+remains the only required phase here.</AgentSay>
+
+<Shot src="media/deadmines-sneed-line-of-sight.jpg" alt="The Sneed wipe: the priest at full mana with no line of sight, and the whispers it produced" />
+
+On the next attempt Isolde stood beside the tank, and Sneed died with all five alive. The healer kept that position
+for the rest of the run.
+
+An off-floor pull in the foundry linked eight enemies and wiped them again. With their gear breaking, they walked out
+to repair and train in Stormwind (Shield Block for Aldous, Renew for Isolde). Back inside, Thessaly pulled the goblin
+engineers one at a time up a ramp to the party, which took 44 minutes with no deaths.
+
+The gunpowder chest needed a different Opening spell from the one the SDK chose, a problem Merrin and Aldous had
+already solved on a Westfall wardrobe seven and a half hours earlier. The SDK's `items.use` couldn't target a game
+object, so Merrin built the packet to fire the cannon by hand, and it worked on the first attempt.
+
+<Shot src="media/deadmines-cannon.jpg" alt="Preparing to fire the cannon at the docks" />
+
+Mr. Smite and Cookie died without a wipe. During the Cookie fight the agents' tool calls began failing because the
+`wow` command had exhausted the machine's local ports, and shortly afterwards the game server's network connection
+dropped. The scripts kept running without the agents, and Corbin and Isolde later confirmed Cookie's death from their
+session logs: the boss was killed by code the agents had written earlier, with none of them able to watch or step in.
+
+<Shot src="media/deadmines-outage.jpg" alt="After Cookie: the tools are failing, the scripts are still running" />
+
+On the ship a fleeing pirate pulled Captain Greenskin's patrol into the fight on the ramp. Greenskin died on the next
+attempt, but the party wiped to two Squallshapers. Thessaly's script kept moving Polymorph between the two, and each
+time it moved, the freed caster healed itself to full.
+
+<Shot src="media/deadmines-greenskin.jpg" alt="Greenskin at 12%, with the tank and healer already dead" />
+
+<Chat at="17:21:11" kind="party" from="Aldous" cls="warrior">GREENSKINDEADhealth0VERIFIED! 5069+5074deadtoo. ONLY2270+2275castersremainbeforeVC. ALLnormalportalRECOVERNOWthenfullrally/returncamp. MageCCmustLOCKONEguid275, neveralternatePolybetweenboth(fullheals).</Chat>
+
+### 139 seconds on VanCleef
+
+Before the VanCleef pull each agent changed its script. Aldous's switched focus between the guards, the boss and the
+Blackguards the boss summons; Thessaly's kept Polymorph on one target; Isolde's stayed outside the Squallshapers' Fire
+Blast range; Corbin's raised its backup-heal threshold; and Merrin saved both charges of a Bag of Marbles for the
+boss. VanCleef died at 17 h 41, 139 seconds into the fight, with all five alive, and all five received the
+achievement at the same moment.
+
+<Chat at="17:41:31" kind="party" from="Aldous" cls="warrior">ALL4GUARDSDEAD. VC1132HP FINALBURN. Tank135HPShieldBlockACTIVE, nohealthpots. Palheal/HoPTankNOWifneeded, otherDPSfinish. IfTankdiesHOLDbody/keepburningboss; noreset.</Chat>
+<Chat at="17:41:36" kind="party" from="Merrin" cls="rogue">Achievement628 Deadmines confirmed earned on Merrin. VanCleef defeated!</Chat>
+
+<Shot src="media/deadmines-vancleef.jpg" alt="VanCleef dies and all five receive the achievement" />
+
+The whole run, level by level, with every death:
+
+<div class="wide">
+  <ProgressChart run={run} />
+</div>
+
+The amber band is the 5 h 22 min inside the instance. Levelling was steady until the false start, then flat for most of the
+dungeon, because Defias trash gave little XP compared with quest turn-ins. The cluster of wipes between 12 h 30 and
+14 h is the Woodcarvers, the Shredder and Sneed.
+
+## Observations
+
+### Chat as a protocol
+
+Party chat became a command language that the agents' scripts parsed. Aldous's script posted a beacon at every stage
+(`TANK 15: Dungeon pull Goblin Woodcarver at -285,-487,50.1. Follow Aldous; next stage call follows.`) 834 times.
+Thessaly's script announced each Polymorph (251 of them), Isolde's the healer's mana state, and Aldous's kill targets
+by GUID with `FOCUS`. Most of the party fed the tank's commands directly into their own controllers. The SDK only
+sends and receives chat; the protocol on top of it is entirely the agents' own. The spaceless
+style also appears in the notes files the agents kept in their workspaces, where no byte limit applies.
+
+<div class="wide">
+  <Talk run={run} />
+</div>
+
+Party chat volume rose inside the instance, where every pull and every crowd-control break was announced. The gaps in
+the time-together chart are the two deliberate splits. Inside the dungeon the five stayed within 40 yards of each
+other almost the whole time.
+
+### Learning from wipes
+
+Each wipe produced a rule the agents kept for the rest of the run: recover through the portal as a ghost, keep the
+healer next to the tank, pull one pack at a time, treat a fleeing mob as still in combat, and keep Polymorph on one
+target. Deaths inside fell from 43 in the first 3 h 45 to 12 in the last 1 h 36. All five rules are standard practice
+among human players; the agents learned each one from a wipe.
+
+<div class="wide">
+  <Deaths run={run} />
+</div>
+
+Sneed and the Shredder killed more of them than anything else. The outdoor Defias mine killed 20, nearly as many as
+all of Westfall's quests, most of them during the twenty minutes of the false start.
+
+### Context compaction
+
+I expected compaction to be the main risk over a run this long. Each agent's context was compacted six or seven
+times (34 in all), a little over two hours apart. Every compaction is followed by a message restating the party's position and
+next step ("I'm checking the party's current progress and resuming the push toward Deadmines."), and no agent lost the
+goal, forgot the party or repeated finished work afterwards. A likely reason is that all five, unprompted, kept a
+notes file in the workspace, rewritten 38 to 55 times over the run, with the current state, gear, agreed plan and the
+rules learned so far.
+
+### Leadership and roles
+
+Aldous led throughout: 1,700 party messages, 680 of the 1,511 whispers received, and the decisions to abandon the
+outdoor mine and to take a training break. Aldous also took half of the damage taken inside the instance. Isolde did
+70% of the healing; Corbin, specced for damage, did most of the rest and also dealt the most damage of anyone.
+Thessaly cast Polymorph 284 times.
+
+<div class="wide">
+  <CombatPanel run={run} />
+</div>
+
+### SDK bugs
+
+The most significant was in the global cooldown. The SDK restarted it at the end of each cast as well as at the
+start, so casters waited about 1.5 seconds longer between spells than the server required. Aldous noticed the
+symptom, Isolde found the line that restarts the timer on the server's spell-launch packet (which, for a spell with a
+cast time, arrives when the cast finishes), and the priest, mage and paladin each patched around it in their own
+scripts:
+
+<AgentSay at="13:02:17" who="Thessaly" cls="mage">The logs confirm an extra cooldown wait after completed casts. I'm
+removing that client-side delay for Frostbolt, Fireball, and Polymorph while keeping the normal global cooldown and
+server validation.</AgentSay>
+
+They found and worked around four more:
+
+- The SDK picked the wrong Opening spell for some locks (the Furlbrow wardrobe, the gunpowder chest).
+- Using an item couldn't target a game object (the Deadmines cannon).
+- A function for the current stance always returned 0.
+- The item search only found items whose name matched exactly.
+
+### Cost
+
+The run cost about $307 at list prices. Corbin cost $77, against $55 to $59 for each of the others, over the same seventeen hours and goal. The difference
+comes from how Corbin's agent listened: it subscribed to party chat, and the party's scripts woke it 224 times. That
+accounts for about 800 extra model calls and most of the gap between Corbin's 4,074 calls and the mage's 2,601.
+
+<div class="wide">
+  <CostPanel run={run} />
+</div>
+
+### Data caveats
+
+The charts were produced after the run from its own files (the judge's samples every 15 seconds, each character's
+game events, the client recordings and the agents' Codex transcripts), which the harness wasn't yet designed to chart.
+Known issues:
+
+- The judge counted 115 deaths; the game events have 117, because the client reported a death when Aldous reclaimed
+  a corpse and when Merrin logged back in already dead. The charts of killers and places use the events.
+- The level chart marks a wipe at three or more deaths within two minutes, which also catches partial wipes and the
+  corpse-run deaths after one. Counting only the times all five were dead at once gives 14.
+- The judge's clock leaves out six pauses (about 11 minutes); the charts are in wall-clock time.
+- Cost over time is priced per request at list rates and scaled to the harness's total, so the shape is reliable but
+  individual points are estimates.
+- The judge's own score was 2.1 for every agent, from a formula built for levelling runs (goals are now scored by
+  time to the goal), so none of these charts use it.
+
+## What's next
+
+The run produced 47 findings: SDK defects found by the agents, harness failures and gaps in the scoring. The SDK now
+exposes the state the agents had to extract from raw packets (every creature in combat with the party, crowd-control
+auras on a unit, door and chest state). It still has no pull helper or crowd-control lock; those remain the agents'
+job.
+
+No other model has cleared the level-1 version yet. At a few hundred dollars and most of a day per run, it's too
+expensive to repeat for every model, so the regular tasks are shorter (see <a href={sitePath('/results')}>results</a>).
+The Deadmines task now starts at level 20 with a kit and records each boss as a checkpoint. The level-1 run is kept as
+a reference.

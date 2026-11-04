@@ -1,0 +1,277 @@
+---
+title: How to make an AI agent play World of Warcraft
+description: "How LEEROY lets AI coding agents play World of Warcraft without a screen: a headless Go client that speaks the server's protocol, the world as JSON, Lua scripts, a navmesh, and the line between a tool and a strategy."
+date: 2026-10-31
+image: media/blackrock-navmesh-banner.jpg
+banner: true
+---
+
+import Shot from '../../components/Shot.astro';
+import { asset, url as sitePath } from '../../lib/url';
+
+Nine and a half hours into a LEEROY run, five AI agents on their way to the Deadmines were fighting Defias in the mine
+at Moonbrook when one of the Defias fled into a room the party hadn't cleared and came back with everything in it. The
+party wiped. World of Warcraft runs in real time, and a fight like that turns in a few seconds. A language model works
+in turns, each of which takes anywhere from a few seconds to a minute.
+
+In LEEROY, AI coding agents play characters on a private World of Warcraft server (3.3.5a, AzerothCore), with goals
+that take from an hour to a few days. For that to work, the agents needed a way to see the world and act in it while
+they were still thinking. I also needed a way to see what they were up to, and to decide how much help the client
+should give them. That run is written up in the next post:
+<a href={sitePath('/blog/gpt-6-1-sol-agents-clear-the-deadmines')}>five agents starting at level 1 and clearing the Deadmines</a>.
+
+## Learning from RuneBench
+
+[RuneBench](https://maxbittker.github.io/runebench/), by Max Bittker, Surya Narreddi, Rob Haisfield and Sean Lee, is
+the main inspiration for LEEROY. I borrowed several of its ideas: agents write code against an SDK instead of
+simulating keypresses, play on a private emulator, get the game wiki as a folder of Markdown files, and are scored on
+how quickly they gain XP rather than how long they keep running.
+
+Not all of them carried over. RuneScape is a sandbox, with dozens of skills and no set route through them, whereas
+World of Warcraft lays out its quests, zones and dungeons for particular level ranges. Scoring by XP per hour works
+for levelling, but it couldn't tell dungeon runs apart (every agent that cleared the Deadmines scored the same 2.1),
+so the tasks became goals with a time limit.
+
+The upside of all that structure is that WoW comes with ready-made objectives. The Deadmines is designed for five
+players at levels 17 to 21, so a goal of clearing it requires the agents to cooperate without the benchmark having to
+ask them to.
+
+## Starting from AzerothGhost
+
+[AzerothGhost](https://github.com/azerothcore/AzerothGhost), by walkline, is an MIT-licensed headless 3.3.5a client
+in Go that logs into an AzerothCore server and keeps characters online. LEEROY's client started as a 500-line patch
+against it, adding a few endpoints so agents could run Lua and receive messages. That was enough to kill kobolds, but
+pathfinding didn't work: the navmesh was being rejected, so every route was a straight line, often into terrain.
+
+Fixing that turned the patch into a fork, `azsdk`. It keeps AzerothGhost's protocol layer (SRP6 login, the encrypted
+world session and the object model built from update packets) and its Go port of Recast/Detour, patched to read
+AzerothCore's navmesh tiles. The bot AI went, since an agent being measured has to make its own decisions about combat
+and loot. I rebuilt movement and pathfinding, and added the Lua runtime, task scheduler, event subscriptions and a
+recorded game log so that agents could play and I could see what happened. Because the client only decodes what a
+stock server sends, nothing on the server side knows it is talking to an agent.
+
+## The world as data
+
+There is no screen. A vision model would have to work out positions, distances and threats from images, even though
+the server already sends all of that to the client, and a few screenshots a minute is too slow to follow a moving
+creature. Raw packets aren't much better: a creature's position arrives as a movement update, its level and health as
+numbered fields in an object update, and its hostility as a faction to look up in a table. So the client assembles
+them into JSON describing whatever a player could see in the 3D view or the game's windows. Here is part of what
+`wow status` returned for Merrin, the rogue, in Jasperlode Mine two hours into the Deadmines run:
+
+```json
+{
+  "name": "Merrin", "class": "rogue", "level": 6,
+  "health": {"current": 130, "max": 130},
+  "location": {"zone": "Elwynn Forest", "area": "Jasperlode Mine"},
+  "in_combat": false,
+  "danger": [
+    {"name": "Kobold Geomancer", "level": 8, "distance": 25, "clock": 6, "dz": -3.3,
+     "aggro_radius": 22, "margin": 3, "in_aggro": false, "in_sight": true, "pack": 0,
+     "reachable": true, "path_distance": 25.2},
+    {"name": "Kobold Miner", "level": 6, "distance": 28.4, "clock": 9, "dz": -0.7,
+     "aggro_radius": 20, "margin": 8, "in_aggro": false, "in_sight": true, "pack": 0,
+     "reachable": true, "path_distance": 28.7}
+  ],
+  "group": {
+    "leader": "Aldous", "spread": 91,
+    "members": [
+      {"name": "Isolde", "class": "priest", "level": 6, "distance": 15.3,
+       "health": {"current": 171, "max": 171}, "power": {"current": 322, "max": 322, "type": "mana"}},
+      {"name": "Corbin", "class": "paladin", "level": 7, "distance": 90.9, "in_combat": true,
+       "health": {"current": 190, "max": 206}, "power": {"current": 246, "max": 253, "type": "mana"}}
+    ]
+  },
+  "objects": [{"type": "chest", "entry": 1618, "distance": 33.7, "clock": 12, "reachable": true}],
+  "gear": {"avg_item_level": 2, "grade": "poor", "weakest": ["legs", "off_hand", "hands"]},
+  "money": 281
+}
+```
+
+The first entry under `danger` is a Kobold Geomancer 25 yards behind the rogue and three yards below, which can see
+the rogue but won't attack unless it comes three yards closer. Corbin is 91 yards away and already fighting. The full
+status also lists nearby NPCs offering quests or services, other players, auras, the quest log and bags.
+
+When the layout of a place matters more than a list, `wow look` draws a top-down text map. This is Aldous's in the
+Moonbrook mine during the wipes described above (legend trimmed). Almost every cell is inside some Defias's aggro
+range, and the Conjurer marked A already has Aldous inside its own:
+
+```text
+north up, 2 yd across a cell, 4 down; you (@) at -11222 1564 33 facing S
+ground: . level  ^ 4+ yd higher  v 4+ yd lower  # no floor at your height (wall, water, building)  : a hostile's aggro range
+units: A-Z hostile, a-z neutral or friendly, 1-9 players, x corpse
+^::::::::::::::::::::::::::::::::::::::::
+^::::::::::I::::::::::::::::H::::::::::::
+^:::::::::::::::::::D::::::::::::::::::::
+^.::::::::::::::::::::::::::::::G::::K:::
+^..::::::::::::::::::::::::::::::::::::::
+^....::::::::::::::::::::::::::::::::::::
+^.......:::::::::::::::::::::::::::::::::
+^^^^^^^.^......:::::::::::^::::::::::::::
+::::::::::............:::::::::::::::::::
+::::::::::::........::::::::::::::::::^^^
+:::::::::::::::....1@::::::::::::::::::::
+:::::::::::::::::.:::x:::::::::::::::::::
+:::::::::::::::::::::::::::A:::::::::::::
+:::E:::::::::::::::::::::::::::::::::::::
+:::::::::::::::::::::::::::::::::B:::::::
+::::::::C:::::::::::::::2::::::::::::::::
+::::::::::::::::::::::::::::::::::::::3::
+:::::::::::::::::::::::::::::::::::::::::
+::::::J:::::L::::::::::::::::::::::::::::
+::::::::::::::::::::::::::::.:::::::::...
+::::::::::::::::F:::::::::::....vvvvv...^
+x Defias Digger L16 corpse, 3 yd SE (12 o'clock), lootable
+A Defias Conjurer L15 hostile, 18 yd SE (11 o'clock), aggro 21 yd (you're inside)
+B Defias Worker L16 hostile, 30 yd SE (11 o'clock), 5 yd below, aggro 22 yd, out of sight
+I Defias Digger L16 hostile, 41 yd NW (6 o'clock), 7 yd below, aggro 22 yd
+L Defias Highwayman L18 hostile, 50 yd SW (2 o'clock), 33 yd above, aggro 24 yd, out of sight
+1 Thessaly L12 player, 2 yd NW (5 o'clock)
+2 Corbin L14 player, 23 yd S (12 o'clock)
+3 Isolde L12 player, 42 yd SE (11 o'clock), 5 yd below
+1 hostile(s) have you in aggro range
+```
+
+## Scripts, not keystrokes
+
+An agent that looks at a fight once a turn can't react to it, so instead it writes Lua scripts that run as tasks
+inside its game session and keep going while it reads and plans. The scripts use a typed API (`me`, `units`,
+`combat`, `group`, `trade`, …) with generated reference docs, run in a sandbox with a step limit so a runaway loop
+can't stall the game, and can wake the agent on events such as a party message, a death or a script error. A few
+entries from the reference:
+
+| Function | |
+|---|---|
+| `task.keep(name, fn, ...) → id` | run fn as a task and run it again whenever it finishes or fails (backing off while it fails fast, waiting while you're dead); task.stop(name) ends it |
+| `group.info() → Group?` | your party: who leads it, and each member's class, level, health, power, state and where they are (the others, not you); nil when you're solo |
+| `units.threats() → Creature[]` | hostile creatures attacking you, your pet or anyone in your group, nearest first: what a tank has to pick up and a healer has to watch |
+| `combat.threat(guid) → Threat[]` | a creature's threat table as the server sends it to everyone near: who it would attack, highest first, with each one's threat as a % of the one it attacks … |
+
+In a dungeon, five agents' scripts have to work together: the tank picks a target, the healer keeps the tank alive,
+and the damage dealers attack it. Party chat is the only way to coordinate them. Aldous's agent wrote this script to
+post the tank's position and current stage to the party every 20 to 60 seconds, and most of the party's scripts
+parsed it:
+
+```lua
+task.keep('leader_beacon',function()
+ while true do
+  local p=me.position()
+  local msg=string.format('TANK %d: %s at %.0f,%.0f,%.1f. Follow Aldous; next stage call follows.',me.level(),S.stage or 'regroup',p.x,p.y,p.z)
+  if group.info() then chat.party(msg) elseif S.buddy_guid then chat.channel('Deadmines',msg) end
+  wait(S.buddy_guid and 20 or 60)
+ end
+end)
+```
+
+## Moving and knowing
+
+The client carries the server's navmesh, the walkable surface of every map, and checks each route against the world's
+collision models before walking it, so `move.to` either finds a way or says why there isn't one. Here is the walk from
+the bridge outside Stormwind's gate to the city's gryphon master: 533 yards to cover 265 in a straight line, through
+the Valley of Heroes, over the canal and up to the platform in the Trade District. The cyan triangles are the navmesh
+the search runs over, and the buildings are the collision models the walk is checked against.
+
+<Shot src="media/stormwind-navmesh-route.jpg" alt="The route from Stormwind's gate to the gryphon master over the navmesh, with the city's collision models drawn as glass" />
+
+Longer journeys can be planned across boats, zeppelins and the tram. For everything else there's `azworld`, which
+answers questions from the game's static database: who gives a quest and where its targets are, what drops an item,
+which trainer teaches a spell, which mobs of a given level are nearby.
+
+Movement has caused more bugs than anything else. Until swimming was implemented, characters walked across lake beds
+at running speed, and one path in Warsong Gulch dropped 325 yards underground before coming back up.
+
+Some of the fixes went in during the Deadmines run. In the first fifteen minutes the agents hit about 140 refused
+routes in Northshire, nearly all at the mine entrance and the Abbey steps, where a tree's canopy was registering as
+ground under the road. Separately, the SDK's movement model allowed a 0.6-yard step and 50° slopes where the server's
+navmesh allows 1.6 yards and 60°, which left one character stuck at the foot of a staircase. Last came the vineyard
+fences, 1.53 yards high, which characters now jump as a player would, using the client's own jump arc (7.96 yd/s
+upward, 1.64 yards at the peak). With all three fixed, 205 of the 209 previously refused routes passed.
+
+## Tools, not strategies
+
+The rule I use for the SDK comes from the game client: if a player can see something or do something, the SDK can
+too, but the decisions stay with the agent.
+
+A tool can suggest how to play just by existing. A `pull` helper would imply that pulling one pack at a time is the
+right way to fight; a crowd-control registry would imply that crowd control needs coordinating, and how. Even a field
+description can carry advice. The `pack` count in the kobold's entry was once documented as "what comes along if you
+pull it". The reference now says only:
+
+```text
+pack    number    other hostile creatures within 10 yd of it, the server's assistance radius
+```
+
+Line of sight was harder to call. A player judges it by looking and an agent can't, so the SDK reports it, and later
+gained `world.los_spot` to find a position from which a target is visible. That's more than reporting what the
+character sees, since it nudges the agent to move. In the Deadmines run a party wiped on a boss before working out
+that its healer needed to move, and I've been cautious about adding helpers that would solve problems like that for
+them.
+
+Early agents got a 1,100-word prompt full of coaching and a 20,000-word guide. I cut both. Advice turns the score
+partly into a measure of how well a model follows my advice, and it builds in my own assumptions (gear first, when
+grouping pays) where I wanted to see what agents work out for themselves. The docs can state any rule of the game
+("creatures linked in a formation enter combat together"), but never as an instruction ("pull one at a time").
+
+## The harness and the judge
+
+`azbench` runs and supervises the agents, their game sessions and the judge. Claude Code, Codex and opencode all get
+the same sandbox, the same commands and the same text, and cost is counted at list price for each. The commands are
+subcommands of `wow`, which talks to the agent's game session (from `wow help`, trimmed):
+
+```text
+wow 'return me.level()'              evaluate Lua in the live session (shared with your running scripts), print JSON
+wow -f grind.lua                    (re)load a script file
+wow status                          what you'd see on screen: you, your fight, NPCs and mobs around you, quests, what to improve
+wow fights [n]                      your last fights: when, how long, outcome, enemies, damage, adds
+wow look [radius]                   a top-down text map of what's around you (world.look; radius in yards, default 40)
+wow tasks [--all]                   your running script tasks (state, status, what each waits for) and each name's latest failure
+wow wait [--types chat:whisper,death] [--match text] [seconds]
+                                    block until a matching event happens (default: your subscription), max 25 seconds
+```
+
+Most of the harness's failures only showed up on long runs: a clock that kept running for a character whose
+connection had dropped, a supervisor that crashed while its agents played on unjudged, and error messages that all
+pointed at line 22 of the same internal file. One agent stuck in a crash loop spent six minutes reading the SDK's
+source to work out which code that line 22 belonged to.
+
+Across six versions the judge dropped achievements, item level, wealth, quest difficulty and elite kills, each of
+which rewarded behaviour I had chosen rather than something the agent worked out. XP per hour was what was left when
+the tasks moved to goals with time limits.
+
+The Deadmines run exposed problems with pausing. I paused it six times, once for a network outage and five times to
+deploy SDK fixes the agents had run into (the fences, corpse runs inside instances, the wand's first shot). Each pause
+stopped every agent and restarted every game session, killing tool calls in progress and every running script, and
+the agents rebuilt their tasks by hand each time. That's too many deploys for a scored run, and pausing now works
+differently: an agent's tool calls finish before it stops, the scripts it was running are recorded, the session runs
+the agent's `autorun.lua` on restart, and the agent's first message afterwards tells it what was lost and what changed
+in the SDK.
+
+## Watching without a game client
+
+Five JSON streams and five agent transcripts make a wipe slow to diagnose; nothing in them says plainly that the
+healer is standing behind a wall. So I built `azview`, which draws the world from the game's map files and dungeon
+floor plans from the navmesh, with each character's position, trail, target and nearby creatures on top. Beside the
+map, a timestamped feed of combat, chat, agent messages and script errors lets me compare what an agent thought was
+happening with what its character actually did. A Stats tab charts damage, healing and XP over time and splits each
+character's time into moving, fighting, idle and dead.
+
+<Shot src="media/deadmines-stats.jpg" alt="The viewer's Stats panel at the end of the Deadmines run" />
+
+It can follow a live run or replay a finished one, jump to a death or a quest completion, overlay the navmesh and
+aggro ranges to investigate a bad route, and link to the moment of a wipe. Every screenshot in these posts comes from
+it, and so does most of what I know about the bugs above, usually found by scrubbing to the moment an agent reported a
+problem and watching what its character did.
+
+## They are still just players
+
+The agents play ordinary characters on an ordinary server, visible to anyone nearby. You can watch a run by
+installing the game, making an account and walking over.
+
+<figure class="shot">
+  <video class="shot-video" src={asset('media/spectate-blackrock.mp4')} poster={asset('media/spectate-blackrock.jpg')} autoplay muted loop playsinline aria-label="A spectator character in Blackrock Mountain watching a party of agent-driven characters run along the lava"></video>
+  <figcaption class="shot-caption">Spectating a run from inside the game: an ordinary client logged into the same
+  server, watching agent-driven characters go past.</figcaption>
+</figure>
+
+Watching from inside the game is also a check on the client, because anything a character does that a real client
+couldn't is an SDK bug, and much easier to spot on video than in a stream of coordinates.

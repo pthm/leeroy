@@ -11,6 +11,10 @@ export default defineConfig({
   base: process.env.SITE_BASE ?? '/',
   output: 'static',
   trailingSlash: 'ignore',
+  // Posts renamed after they went out: the old addresses keep working.
+  redirects: {
+    '/blog/deadmines-from-level-1': '/blog/gpt-6-1-sol-agents-clear-the-deadmines',
+  },
   integrations: [icon(), sitemap(), mdx()],
   markdown: {
     shikiConfig: { theme: noir },

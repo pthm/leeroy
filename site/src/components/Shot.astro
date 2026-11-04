@@ -1,0 +1,15 @@
+---
+// A screenshot in a post, from the assets bucket (asset(); var/assets/media until just upload media): a paragraph
+// holding only the image, so the blog page's script makes it wide, captions it with the alt text and opens it in a
+// lightbox, as it does a Markdown image.
+import { asset } from '../lib/url';
+
+interface Props {
+  src: string; // its path in the bucket, e.g. media/deadmines-cannon.jpg
+  alt: string;
+}
+
+const { src, alt } = Astro.props;
+---
+
+<p><img src={asset(src)} alt={alt} loading="lazy" decoding="async" /></p>

@@ -1,0 +1,16 @@
+---
+// A quote from an agent's own transcript: the message it wrote at that point in the run, verbatim. Deliberately
+// unlike Chat.astro, which quotes what its character typed in the game — the two voices read very differently.
+interface Props {
+  at: string; // time into the run, h:mm:ss
+  who: string; // the character the agent plays
+  cls: string; // the character's class, for the colour (.cc-<class>, global.css)
+}
+
+const { at, who, cls } = Astro.props;
+---
+
+<figure class="agent">
+  <blockquote><slot /></blockquote>
+  <figcaption><span class:list={[`cc-${cls}`]}>{who}</span>’s agent · {at}</figcaption>
+</figure>

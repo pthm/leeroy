@@ -155,6 +155,13 @@
   height: auto;
   border-radius: 3px;
 }
+.shot-video {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--color-hairline);
+  border-radius: 4px;
+}
 .shot-caption {
   max-width: 42rem;
   margin: 0.5rem auto 0;
@@ -163,6 +170,47 @@
   line-height: 1.6;
   color: var(--color-faint);
   text-align: center;
+}
+
+/* A post's image as a banner behind its header: the page's full width, straight under the nav, fading into the page
+   at both sides and the bottom so the title reads over it. */
+.post-banner {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  min-height: min(34rem, 75vw);
+  overflow: hidden;
+}
+.post-banner-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 0; /* cropped on a wide screen: keep the top, above the title (render banners that way) */
+  mask-image: linear-gradient(to right, transparent, #000 22%, #000 78%, transparent);
+}
+.post-banner::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, var(--color-base) 10%, color-mix(in oklab, var(--color-base) 75%, transparent) 42%,
+    color-mix(in oklab, var(--color-base) 10%, transparent) 75%);
+}
+.post-banner .post-head-text {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 45rem; /* the article's 42rem column, lined up with it, plus the padding */
+  margin-inline: auto;
+  padding: 10rem 1.5rem 0; /* the image shows above the title, on a phone too */
+}
+
+/* Code blocks in posts: as wide as the screenshots. */
+.prose > pre {
+  width: min(64rem, 100vw - 2rem);
+  margin-inline: calc(50% - min(32rem, 50vw - 1rem));
+  margin-block: 2rem;
 }
 
 /* Charts in posts: as wide as the screenshots. */
@@ -205,6 +253,23 @@
 .chat-whisper .chat-msg { color: #ff80ff; }
 .chat-channel .chat-msg { color: #ffc0c0; }
 .chat-say .chat-msg { color: #ffffff; }
+
+/* An agent's own transcript quoted in a post (AgentSay.astro), in the post's own voice rather than the game's. */
+.prose .agent {
+  margin-block: 1.5rem;
+  padding: 0.1rem 0 0.1rem 1rem;
+  border-left: 2px solid var(--color-accent);
+}
+.prose .agent blockquote {
+  margin: 0;
+  color: var(--color-fg);
+}
+.prose .agent figcaption {
+  margin-top: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-faint);
+}
 
 /* Screenshot lightbox (Popover API). */
 html:has(.lightbox:popover-open),

@@ -9,8 +9,7 @@ import SectionHeader from '../components/SectionHeader.astro';
 import Layout from '../layouts/Layout.astro';
 import { postDate } from '../lib/posts';
 import { LATEST, allRuns, tasks, versionLabel } from '../lib/results';
-import { REPO, url } from '../lib/url';
-import loanShot from '../assets/media/deadmines-training-loan.jpg';
+import { REPO, asset, url } from '../lib/url';
 
 const posts = (await getCollection('blog')).toSorted((a, b) => +b.data.date - +a.data.date).slice(0, 3);
 const runs = allRuns();
@@ -50,7 +49,7 @@ const players = runs.reduce((n, r) => n + r.players.length, 0);
   <Section>
     <Lightbox
       id="hero-shot"
-      image={loanShot.src}
+      image={asset('media/deadmines-training-loan.jpg')}
       alt="The run viewer nine hours into the Deadmines run, as the party arranges a training loan for the tank"
     />
     <p class="mt-4 max-w-3xl text-sm text-muted">
@@ -75,12 +74,12 @@ const players = runs.reduce((n, r) => n + r.players.length, 0);
 
   {posts.length > 0 && (
     <Section last>
-      <SectionHeader eyebrow="Blog" title="Run write-ups" />
+      <SectionHeader eyebrow="Blog" title="From the project" />
       <ul class="grid grid-cols-1 gap-4 md:grid-cols-3">
         {posts.map(p => (
           <li class="overflow-hidden rounded border border-hairline bg-raised">
             <a href={url(`/blog/${p.id}`)} class="group block">
-              {p.data.image && <img src={p.data.image.src} alt="" class="aspect-[16/10] w-full border-b border-hairline object-cover" loading="lazy" />}
+              {p.data.image && <img src={asset(p.data.image)} alt="" class="aspect-[16/10] w-full border-b border-hairline object-cover" loading="lazy" />}
               <div class="p-5">
                 <time class="font-mono text-[11px] text-faint">{postDate(p.data.date)}</time>
                 <h3 class="mt-2 font-serif text-xl text-fg group-hover:text-accent">{p.data.title}</h3>

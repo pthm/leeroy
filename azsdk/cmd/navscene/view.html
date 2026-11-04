@@ -1,0 +1,244 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Navmesh route</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0B0B0C; overflow: hidden; }
+  canvas { display: block; }
+  .label { position: absolute; font: 600 13px/1.2 ui-monospace, Menlo, monospace; color: #F4F4F5;
+    padding: 3px 7px; border: 1px solid #F5A623; border-radius: 3px; background: rgba(11,11,12,.8);
+    transform: translate(-50%, -140%); white-space: nowrap; pointer-events: none; }
+  #hud { position: absolute; left: 10px; bottom: 8px; font: 11px ui-monospace, monospace; color: #86868F; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="hud"></div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+const q = new URLSearchParams(location.search);
+const num = (k, d) => (q.get(k) ?? d).split(',').map(Number);
+const meta = await (await fetch('scene.json')).json();
+const f32 = async n => new Float32Array(await (await fetch(n + '.f32')).arrayBuffer());
+const [path, models, terrain, water, navmesh] = await Promise.all(['path', 'models', 'terrain', 'water', 'navmesh'].map(f32));
+
+// WoW: x north, y west, z up. Scene: x east, y up, z south, centred on the box.
+const [xMin, xMax, yMin, yMax] = meta.bounds;
+const cx = (xMin + xMax) / 2, cy = (yMin + yMax) / 2, cz = meta.start.Z;
+const toScene = (x, y, z) => [-(y - cy), z - cz, -(x - cx)];
+function sceneArray(src) {
+  const out = new Float32Array(src.length);
+  for (let i = 0; i < src.length; i += 3) out.set(toScene(src[i], src[i + 1], src[i + 2]), i);
+  return out;
+}
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Number(q.get('dpr') ?? devicePixelRatio));
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0B0B0C);
+scene.fog = new THREE.Fog(0x0B0B0C, Number(q.get("fog") ?? 650), 1400);
+const camera = new THREE.PerspectiveCamera(Number(q.get('fov') ?? 35), innerWidth / innerHeight, 1, 3000);
+camera.position.set(...num('cam', '-150,260,330'));
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(...num('look', '0,0,0'));
+controls.update();
+
+scene.add(new THREE.HemisphereLight(0x9aa4b8, 0x0b0b0c, 1.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(-200, 400, 150);
+scene.add(sun);
+
+// Terrain and water: grids of heights, triangles only where all corners exist.
+function gridMesh(h, keep, material, lift = 0) {
+  const { nx, ny, step } = meta.grid;
+  const pos = new Float32Array(nx * ny * 3), idx = [];
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const k = j * nx + i;
+    pos.set(toScene(xMin + i * step, yMin + j * step, (Number.isNaN(h[k]) ? cz : h[k]) + lift), k * 3);
+  }
+  for (let j = 0; j + 1 < ny; j++) for (let i = 0; i + 1 < nx; i++) {
+    const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
+    if ([a, b, c, d].every(keep)) idx.push(a, c, b, b, c, d);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return new THREE.Mesh(g, material);
+}
+const tclip = Number(q.get('tclip') ?? 1e9);
+scene.add(gridMesh(terrain, k => !Number.isNaN(terrain[k]) && terrain[k] < tclip,
+  new THREE.MeshStandardMaterial({ color: Number(q.get('tcolor') ?? 0x1c1d22), roughness: 1, flatShading: true, side: THREE.DoubleSide,
+    transparent: q.has('topac'), opacity: Number(q.get('topac') ?? 1), depthWrite: !q.has('topac') })));
+scene.add(gridMesh(water, k => !Number.isNaN(water[k]) && !(water[k] < terrain[k]),
+  new THREE.MeshBasicMaterial({ color: 0x1d3b5c, transparent: true, opacity: 0.55, depthWrite: false }), 0.05));
+
+// Buildings, walls and trees: x-ray glass with their creases drawn.
+const mg = new THREE.BufferGeometry();
+mg.setAttribute('position', new THREE.BufferAttribute(sceneArray(models), 3));
+mg.computeVertexNormals();
+scene.add(new THREE.Mesh(mg, new THREE.MeshLambertMaterial({ color: 0x8a94a8, transparent: true,
+  opacity: Number(q.get('glass') ?? 0.12), depthWrite: false, side: THREE.DoubleSide })));
+scene.add(new THREE.LineSegments(new THREE.EdgesGeometry(mg, 35),
+  new THREE.LineBasicMaterial({ color: 0xa9b4c8, transparent: true, opacity: Number(q.get('edges') ?? 0.32), depthWrite: false })));
+
+// The navmesh near the route: the walkable triangles the search runs over, faint, with their edges.
+const corridor = Number(q.get('corridor') ?? 45);
+const near = [];
+for (let i = 0; i < path.length; i += 30) near.push([path[i], path[i + 1]]);
+function nearRoute(x, y) {
+  for (const [px, py] of near) if ((x - px) ** 2 + (y - py) ** 2 < corridor * corridor) return true;
+  return false;
+}
+if (q.get('nav') !== '0') {
+  const kept = [];
+  for (let i = 0; i < navmesh.length; i += 9) {
+    const x = (navmesh[i] + navmesh[i + 3] + navmesh[i + 6]) / 3, y = (navmesh[i + 1] + navmesh[i + 4] + navmesh[i + 7]) / 3;
+    if (corridor <= 0 || nearRoute(x, y)) for (let k = 0; k < 9; k++) kept.push(navmesh[i + k]);
+  }
+  const ng = new THREE.BufferGeometry();
+  ng.setAttribute('position', new THREE.BufferAttribute(sceneArray(new Float32Array(kept)), 3));
+  ng.translate(0, 0.15, 0);
+  scene.add(new THREE.Mesh(ng, new THREE.MeshBasicMaterial({ color: 0x39C5CF, transparent: true,
+    opacity: Number(q.get('navop') ?? 0.06), depthWrite: false })));
+  scene.add(new THREE.LineSegments(new THREE.WireframeGeometry(ng), new THREE.LineBasicMaterial({ color: 0x39C5CF,
+    transparent: true, opacity: Number(q.get('navwire') ?? 0.22), depthWrite: false })));
+}
+
+// The route: a glowing tube a little above the ground, a core and a halo; each walk its own, a ride (a lift, a boat)
+// a straight one between them.
+const core = new THREE.MeshBasicMaterial({ color: 0xffe3b0 });
+const halo = new THREE.MeshBasicMaterial({ color: 0xF5A623, transparent: true, opacity: 0.35, depthWrite: false });
+const tube = (curve, segs) => {
+  const w = Number(q.get('width') ?? 1); // thicker for a big scene seen from far off
+  scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve, segs, 0.55 * w, 8), core));
+  scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve, segs, 1.4 * w, 12), halo));
+};
+const at = i => new THREE.Vector3(...toScene(path[3 * i], path[3 * i + 1], path[3 * i + 2] + 0.9));
+const all = [];
+let first = 0, prevEnd = null;
+for (const n of meta.legs ?? [path.length / 3]) {
+  const pts = [];
+  for (let i = first; i < first + n; i++) {
+    const v = at(i);
+    if (!pts.length || v.distanceTo(pts[pts.length - 1]) > 1.5) pts.push(v);
+  }
+  pts.push(at(first + n - 1));
+  if (prevEnd) tube(new THREE.LineCurve3(prevEnd, pts[0]), 8);
+  tube(new THREE.CatmullRomCurve3(pts, false, 'centripetal'), pts.length * 3);
+  all.push(...pts);
+  prevEnd = pts[pts.length - 1];
+  first += n;
+}
+
+// The camera: cam and look as given, or az (degrees from north, clockwise), el (degrees up) and dist (times the
+// route's size) round the route's middle.
+if (q.has('az')) {
+  const box = new THREE.Box3().setFromPoints(all), mid = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3()).length() * Number(q.get('dist') ?? 1.1);
+  const az = Number(q.get('az')) * Math.PI / 180, el = Number(q.get('el') ?? 35) * Math.PI / 180;
+  // north is -z, east +x: an azimuth clockwise from north
+  camera.position.set(mid.x + size * Math.cos(el) * Math.sin(az), mid.y + size * Math.sin(el), mid.z - size * Math.cos(el) * Math.cos(az));
+  controls.target.copy(mid);
+  if (q.has('look')) controls.target.add(new THREE.Vector3(...num('look', '0,0,0')));
+  controls.update();
+}
+
+// shift=x,y moves the picture across and up by those fractions of the frame without moving the camera (a shift lens):
+// the same perspective, the subject placed. 0.1,0.1: the scene a tenth of the width left and a tenth of the height up.
+if (q.has('shift')) {
+  const [sx, sy] = num('shift', '0,0');
+  camera.setViewOffset(innerWidth, innerHeight, sx * innerWidth, sy * innerHeight, innerWidth, innerHeight);
+}
+
+// fill (a fraction of the width) frames the route: centred across, its middle at fy (screen fraction from the top,
+// 0.5 the middle; a banner wants it high, above the title), as wide as asked and no taller than fillh (of the height):
+// pan, then dolly, a few times over.
+if (q.has('fill')) {
+  const fill = Number(q.get('fill')), fy = Number(q.get('fy') ?? 0.5);
+  const right = new THREE.Vector3(), up = new THREE.Vector3(), p = new THREE.Vector3();
+  for (let k = 0; k < 8; k++) {
+    camera.updateMatrixWorld();
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const v of all) {
+      p.copy(v).project(camera);
+      x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+    }
+    const dist = camera.position.distanceTo(controls.target);
+    const halfH = dist * Math.tan(camera.fov * Math.PI / 360), halfW = halfH * camera.aspect;
+    right.setFromMatrixColumn(camera.matrixWorld, 0);
+    up.setFromMatrixColumn(camera.matrixWorld, 1);
+    const shift = right.clone().multiplyScalar((x0 + x1) / 2 * halfW)
+      .add(up.clone().multiplyScalar(((y0 + y1) / 2 - (1 - 2 * fy)) * halfH));
+    camera.position.add(shift);
+    controls.target.add(shift);
+    const scale = Math.max(((x1 - x0) / 2) / fill, ((y1 - y0) / 2) / Number(q.get('fillh') ?? 0.8));
+    camera.position.sub(controls.target).multiplyScalar(scale).add(controls.target);
+    controls.update();
+  }
+}
+
+// Ends: a beam of light at each.
+for (const p of [meta.start, meta.dest]) {
+  const [x, y, z] = toScene(p.X, p.Y, p.Z);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 30, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xF5A623, transparent: true, opacity: 0.6, depthWrite: false }));
+  beam.position.set(x, y + 15, z);
+  scene.add(beam);
+}
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight),
+  Number(q.get('bloom') ?? 0.9), 0.5, Number(q.get('thresh') ?? 0.6)));
+composer.addPass(new OutputPass());
+// Dither: the glow's faint gradients over near-black band in 8 bits (and worse once compressed); noise of a step or so
+// hides them.
+composer.addPass(new ShaderPass({
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+    float rand(vec2 c) { return fract(sin(dot(c, vec2(12.9898, 78.233))) * 43758.5453); }
+    void main() { vec4 c = texture2D(tDiffuse, vUv); c.rgb += (rand(gl_FragCoord.xy) - 0.5) * 3.0 / 255.0; gl_FragColor = c; }`,
+}));
+
+const labels = [];
+if (q.get('labels') !== '0') for (const [p, text] of [[meta.start, q.get('from') ?? 'Stormwind gate'], [meta.dest, q.get('to') ?? 'Gryphon master']]) {
+  const el = document.createElement('div');
+  el.className = 'label';
+  el.textContent = text;
+  document.body.appendChild(el);
+  labels.push([new THREE.Vector3(...toScene(p.X, p.Y, p.Z + 30)), el]);
+}
+const hud = document.getElementById('hud');
+function frame() {
+  controls.update();
+  composer.render();
+  for (const [v, el] of labels) {
+    const s = v.clone().project(camera);
+    el.style.left = `${(s.x + 1) / 2 * innerWidth}px`;
+    el.style.top = `${(1 - s.y) / 2 * innerHeight}px`;
+  }
+  if (q.get('hud') !== '0') hud.textContent = `cam=${camera.position.toArray().map(Math.round)} look=${controls.target.toArray().map(Math.round)}`;
+  requestAnimationFrame(frame);
+}
+frame();
+window.ready = true;
+</script>
+</body>
+</html>
