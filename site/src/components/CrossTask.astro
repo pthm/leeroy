@@ -73,7 +73,7 @@ const cellValue = (t: string, r: ModelRow) => view(t, version).value(r);
                 title={`${entryName(r)} in ${taskTitle(t)}: ${cellText(t, r)} (${cellSub(t, r)}); ranks ${Math.round(p * 100)}th percentile`}
               >
                 <span class="block">{cellText(t, r)}</span>
-                <span class="block text-[10px] text-muted">{cellSub(t, r)}</span>
+                <span class="block text-[10px] text-fg/75">{cellSub(t, r)}</span>
               </td>
             ) : (
               <td class="num text-faint" data-v="-1e12">·</td>
