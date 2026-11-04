@@ -51,6 +51,8 @@ type BotEvent struct {
 
 // Bot implements the WoW client bot logic with behavior tree AI.
 type Bot struct {
+	planMu           sync.Mutex
+	planWalks        map[planWalkKey]float64 // the planner's routed walks (plan.go)
 	castSequences    castSequences
 	pet              petBar                       // the pet's bar (pet.go)
 	totems           totemSlots                   // a shaman's totems (totems.go)

@@ -89,7 +89,13 @@ func TestGenerateTransportTable(t *testing.T) {
 	}
 	for _, r := range mo {
 		entry, path, speed, accel := u32(r[0]), u32(r[2]), u32(r[3]), u32(r[4])
-		tt := tableTransport{Entry: entry, Name: r[1], Kind: kindOf(r[1], 15)}
+		tt := tableTransport{Entry: entry, Name: r[7], Kind: kindOf(r[1], 15)} // the transports table's name: its route and side
+		switch {
+		case strings.Contains(r[7], ", Horde"):
+			tt.Faction = "horde"
+		case strings.Contains(r[7], ", Alliance"):
+			tt.Faction = "alliance"
+		}
 		if tt.Kind == "gunship" { // they fly a battle over Icecrown, no stop for passengers
 			continue
 		}

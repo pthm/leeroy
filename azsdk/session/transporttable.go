@@ -25,6 +25,7 @@ type tableTransport struct {
 	Entry   uint32       `json:"entry"`
 	Name    string       `json:"name"`
 	Kind    string       `json:"kind"`               // ship, zeppelin, elevator, tram
+	Faction string       `json:"faction,omitempty"`  // alliance or horde: the other side's guards attack at its docks; else anyone's
 	Map     uint32       `json:"map,omitempty"`      // elevators and trams: where it is
 	Spawn   [4]float32   `json:"spawn,omitempty"`    // elevators and trams: where it's spawned (x, y, z, o)
 	PathRot float32      `json:"path_rot,omitempty"` // elevators and trams: its path's rotation

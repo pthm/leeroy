@@ -35,9 +35,10 @@ var crossLinks = []struct {
 }
 
 const (
-	portalSeconds = 5   // walking into a portal and the loading screen after it
-	stepSeconds   = 3   // stepping on and off a transport
-	planReach     = 6.0 // a walk that ends further than this from where it was going didn't get there
+	planTimeout   = 90 * time.Second // a plan's deadline: a continent's first plan routes a hundred walks or more
+	portalSeconds = 5                // walking into a portal and the loading screen after it
+	stepSeconds   = 3                // stepping on and off a transport
+	planReach     = 6.0              // a walk that ends further than this from where it was going didn't get there
 )
 
 type planLink struct {
@@ -131,12 +132,14 @@ func (b *Bot) rideSeconds(tt *tableTransport, i, j int, in float64) (wait, ride 
 	return float64(d) / 1000, ride
 }
 
-// plan: the fastest journey from (m, from) to (tm, to); local: lifts, trams and portals only (no boats or zeppelins)
-func (b *Bot) plan(ctx context.Context, m uint32, from [3]float32, tm uint32, to [3]float32, local bool) (*types.Plan, error) {
+// plan: the fastest journey from (m, from) to (tm, to); local: lifts, trams and portals only (no boats or zeppelins);
+// faction (alliance, horde, or "" for any): the other side's boats and zeppelins aren't taken (their docks' guards
+// attack you)
+func (b *Bot) plan(ctx context.Context, m uint32, from [3]float32, tm uint32, to [3]float32, local bool, faction string) (*types.Plan, error) {
 	nodes := []planNode{{m: m, p: from, stop: -1, link: -1}, {m: tm, p: to, stop: -1, link: -1}}
 	for ti := range transportTable {
 		tt := &transportTable[ti]
-		if local && len(tt.Anim) == 0 {
+		if local && len(tt.Anim) == 0 || tt.Faction != "" && faction != "" && tt.Faction != faction {
 			continue
 		}
 		for si, s := range tt.Stops {
@@ -152,23 +155,34 @@ func (b *Bot) plan(ctx context.Context, m uint32, from [3]float32, tm uint32, to
 	dist := func(a, c [3]float32) float64 { return math.Hypot(float64(a[0]-c[0]), float64(a[1]-c[1])) }
 	lower := planLowerBounds(nodes, exitNode, dist)
 	h := func(n int) float64 { return lower[n] }
-	walks := map[[2]int]float64{}
 	walk := func(a, c int) float64 { // navmesh route length at run speed; +Inf if it can't get there
-		if v, ok := walks[[2]int{a, c}]; ok {
+		key := planWalkKey{nodes[a].m, roundPt(nodes[a].p), roundPt(nodes[c].p)}
+		b.planMu.Lock()
+		v, ok := b.planWalks[key]
+		b.planMu.Unlock()
+		if ok {
 			return v
 		}
 		pa, pc := nodes[a].p, nodes[c].p
 		t0 := time.Now()
 		defer func() { planQueryTime += time.Since(t0) }()
 		res, err := b.routePath(ctx, nodes[a].m, navigation.Point3D{X: pa[0], Y: pa[1], Z: pa[2]}, navigation.Point3D{X: pc[0], Y: pc[1], Z: pc[2]})
-		v := math.Inf(1)
+		if ctx.Err() != nil {
+			return math.Inf(1) // cut short: not remembered as unwalkable
+		}
+		v = math.Inf(1)
 		if err == nil && res != nil && res.Found && len(res.Points) > 0 {
 			end := res.Points[len(res.Points)-1]
 			if math.Hypot(float64(end.X-pc[0]), float64(end.Y-pc[1])) <= planReach && math.Abs(float64(end.Z-pc[2])) <= planReach {
 				v = b.walkSeconds(nodes[a].m, navigation.Point3D{X: pa[0], Y: pa[1], Z: pa[2]}, res.Points)
 			}
 		}
-		walks[[2]int{a, c}] = v
+		b.planMu.Lock()
+		if b.planWalks == nil || len(b.planWalks) >= 8192 {
+			b.planWalks = map[planWalkKey]float64{}
+		}
+		b.planWalks[key] = v
+		b.planMu.Unlock()
 		if planTrace != nil {
 			planTrace(nodes[a], nodes[c], v)
 		}
@@ -289,6 +303,28 @@ var planTrace func(from, to planNode, seconds float64)
 
 var planQueryTime time.Duration // tests: time spent routing walks
 
+// planWalkKey: a walk the planner has routed (map, from, to, to the yard), remembered for the session's later plans:
+// piers, stops and portals are the same each time
+type planWalkKey struct {
+	m        uint32
+	from, to [3]int32
+}
+
+func roundPt(p [3]float32) [3]int32 {
+	return [3]int32{int32(math.Round(float64(p[0]))), int32(math.Round(float64(p[1]))), int32(math.Round(float64(p[2])))}
+}
+
+// factionOf: the side a race is on (alliance or horde)
+func factionOf(race uint8) string {
+	switch race {
+	case 1, 3, 4, 7, 11:
+		return "alliance"
+	case 2, 5, 6, 8, 10:
+		return "horde"
+	}
+	return ""
+}
+
 // planLowerBounds: for each node, a lower bound on the time from it to the target (node 1), never more than the real
 // time: walks as the crow flies, rides without waiting. A search guided by it heads for the target across maps instead
 // of trying every pier, and still finds the fastest journey.
@@ -408,7 +444,7 @@ func (b *Bot) setupPlan(r *routeRequests) {
 		args := map[string]any{"x": x, "y": y, "z": z, "map": tm}
 		return r.submit(task, op, args, types.Plan{}, func(ctx context.Context, j *routeRequest) *script.Outcome {
 			b.scanTransports()
-			p, err := b.plan(ctx, m, [3]float32{px, py, pz}, tm, [3]float32{x, y, z}, local)
+			p, err := b.plan(ctx, m, [3]float32{px, py, pz}, tm, [3]float32{x, y, z}, local, factionOf(b.GetRace()))
 			if err != nil {
 				return script.Fail("route_timeout", err.Error(), nil)
 			}
@@ -418,7 +454,7 @@ func (b *Bot) setupPlan(r *routeRequests) {
 			return script.Ok(*p)
 		})
 	}
-	e.Func("world.plan", "(x, y, z [, map]) → Request<Plan>", "plan the fastest journey from where you are to (x, y, z) on map (default yours): legs to walk (act.go_to), transports to ride (stand at the leg's from, transports.board, then transports.leave{stop = leave_stop}) and portals to walk into, with each leg's estimated seconds and the total. A ride's wait is from the transport's timetable once you've seen it (transports.list), else half its round. Walks are navmesh routes; elevators and the Deeprun Tram on the way are legs too (act.go_to takes those itself). route_unreachable: no way found",
+	e.Func("world.plan", "(x, y, z [, map]) → Request<Plan>", "plan the fastest journey from where you are to (x, y, z) on map (default yours): legs to walk (act.go_to), transports to ride (stand at the leg's from, transports.board, then transports.leave{stop = leave_stop}) and portals to walk into, with each leg's estimated seconds and the total. A ride's wait is from the transport's timetable once you've seen it (transports.list), else half its round. Walks are navmesh routes; elevators and the Deeprun Tram on the way are legs too (act.go_to takes those itself). Your side's boats and zeppelins and neutral ones only (the other side's docks are guarded). Deadline 90 s (a continent's first plan routes its walks; later ones remember them). route_unreachable: no way found",
 		func(x, y, z float32, m any) any {
 			_, _, _, _, here := b.world.Position()
 			tm := here

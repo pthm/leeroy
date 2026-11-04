@@ -68,7 +68,11 @@ func (r *routeRequests) submit(task int, op string, args map[string]any, data an
 		r.reqs.Resolve(id, queryFailure(data, code, message))
 		return h
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
+	limit := r.timeout
+	if op == "world.plan" || op == "world._plan_local" { // a journey routes many walks: its own, longer deadline
+		limit = planTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	j := &routeRequest{id: id, task: task, op: op, started: time.Now(), ctx: ctx, cancel: cancel, data: data}
 	r.jobs[id] = j
 	r.mu.Unlock()

@@ -356,7 +356,7 @@ function A.go_to(o)
   local function planned()
     if o.no_plan then return nil end
     o.no_plan = true
-    local p = await(world._plan_local(o.x, o.y, z), 90)
+    local p = await(world._plan_local(o.x, o.y, z), 120)
     if p.ok and rides(p.data) then return follow(o, p.data, fail) end
   end
   if A.dist(o.x, o.y) > 150 then

@@ -40,12 +40,15 @@ func TestPlanJourneys(t *testing.T) {
 		{"Orgrimmar to Thunder Bluff's mesa", 1, [3]float32{1300, -4400, 26}, 1, [3]float32{-1260, 120, 130}, true, []string{"elevator"}, nil},
 		{"Stormwind to Ironforge", 0, [3]float32{-8853, 650, 96}, 0, [3]float32{-4918, -955, 501}, true, []string{"tram"}, []string{"Deeprun Tram (from Stormwind)", "Deeprun Tram (to Ironforge)"}},
 		{"Goldshire to Moonbrook", 0, [3]float32{-9460, 64, 56}, 0, [3]float32{-11208, 1668, 26}, true, nil, nil},
+		{"Ratchet to Auberdine (Flash Lite's)", 1, [3]float32{-894, -3773, 11}, 1, [3]float32{6450, 483, 9}, false, nil, nil},
+		{"Theramore to Auberdine", 1, [3]float32{-3700, -4400, 11}, 1, [3]float32{6450, 483, 9}, false, nil, nil},
+		{"Theramore to Auberdine, planned again (walks remembered)", 1, [3]float32{-3700, -4400, 11}, 1, [3]float32{6450, 483, 9}, false, nil, nil},
 		{"Stormwind to Darnassus", 0, [3]float32{-8853, 650, 96}, 1, [3]float32{9945, 2616, 1316}, false, []string{"ship", "ship"}, []string{"Teddrassil - Darnassus"}},
 	} {
 		queries, planQueryTime = 0, 0
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		t0 := time.Now()
-		p, err := b.plan(ctx, c.m, c.from, c.tm, c.to, c.local)
+		p, err := b.plan(ctx, c.m, c.from, c.tm, c.to, c.local, "alliance")
 		cancel()
 		if err != nil || p == nil {
 			t.Errorf("%s: no plan (%v)", c.name, err)
