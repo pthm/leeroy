@@ -516,7 +516,7 @@ var EventTypes = map[string]EventType{
 	"duel_countdown":       {Duel{}, "the challenge was accepted: the duel starts in 3 seconds"},
 	"duel_out_of_bounds":   {Duel{}, "you're over 50 yd from the duel flag: back within 10 s or you lose"},
 	"duel_in_bounds":       {Duel{}, "you're back within 50 yd of the duel flag"},
-	"duel_ended":           {Duel{}, "a duel you were in ended: who won and how"},
+	"duel_ended":           {Duel{}, "a duel you were in ended: who won and how. Your session has stopped your auto-repeat, channel, cast, melee and pet (the server leaves them going, onto the loser)"},
 	"travel_refused":       {TravelRefused{}, "the server refused a portal or an instance (level, group, full, lockout...)"},
 	"battleground":         {Battleground{}, "a battleground queue changed: queued, invited, entered, left"},
 	"motd":                 {Notice{}, "the server's message of the day (at login)"},

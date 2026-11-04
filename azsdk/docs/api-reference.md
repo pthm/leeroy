@@ -2699,7 +2699,7 @@ An event is an [Event](#event) whose `data` is the type below.
 | `death` | Death | you died |
 | `dispel` | Dispel | auras dispelled or stolen from you, or by you |
 | `duel_countdown` | Duel | the challenge was accepted: the duel starts in 3 seconds |
-| `duel_ended` | Duel | a duel you were in ended: who won and how |
+| `duel_ended` | Duel | a duel you were in ended: who won and how. Your session has stopped your auto-repeat, channel, cast, melee and pet (the server leaves them going, onto the loser) |
 | `duel_in_bounds` | Duel | you're back within 50 yd of the duel flag |
 | `duel_out_of_bounds` | Duel | you're over 50 yd from the duel flag: back within 10 s or you lose |
 | `duel_requested` | Duel | a duel challenge, yours or someone's to you: duel.accept() or duel.decline() |

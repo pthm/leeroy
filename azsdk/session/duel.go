@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pthm/leeroy/azsdk/client"
 	"github.com/pthm/leeroy/azsdk/script"
 	"github.com/pthm/leeroy/azsdk/types"
 )
@@ -50,6 +51,7 @@ func (b *Bot) setupDuel() {
 		r := bytes.NewReader(data)
 		s.mu.Lock()
 		var ev string
+		stop := false
 		switch op {
 		case smsgDuelRequested:
 			var flag, from uint64
@@ -75,7 +77,7 @@ func (b *Bot) setupDuel() {
 		case smsgDuelComplete:
 			if c, _ := r.ReadByte(); c == 0 && s.d.State != "none" && s.d.State != "ended" {
 				s.d.State, s.d.Result, s.d.OutOfBounds, s.flag = "ended", "cancelled", false, 0
-				ev = "duel_ended"
+				ev, stop = "duel_ended", true
 			}
 		case smsgDuelWinner:
 			how, _ := r.ReadByte()
@@ -93,10 +95,13 @@ func (b *Bot) setupDuel() {
 				s.d.Opponent = winner
 			}
 			s.flag = 0
-			ev = "duel_ended"
+			ev, stop = "duel_ended", true
 		}
 		d := s.d
 		s.mu.Unlock()
+		if stop {
+			b.stopFighting() // before the event: a script waking on it finds its attacks stopped
+		}
 		if ev != "" {
 			b.emit(ev, d)
 		}
@@ -211,4 +216,28 @@ func (b *Bot) setupDuel() {
 		defer s.mu.Unlock()
 		return s.snapshot()
 	})
+}
+
+// stopFighting: a duel of ours ended. AzerothCore ends a duel without stopping either side's auto-repeat (a wand's
+// Shoot), channel (Arcane Missiles), cast or pet, and they land on the loser, at 1 health and no longer duelling: they
+// killed three losers in a 15-round tournament. So the session stops them, as the client's Escape and pet bar would.
+// A projectile already in flight still lands.
+func (b *Bot) stopFighting() {
+	w := b.world
+	_ = w.SendPacketRaw(cmsgCancelAutoRepeat, nil)
+	var channel uint32
+	if o := w.GetObject(w.CharGUID()); o != nil {
+		if channel = o.Value(client.UnitChannelSpell); channel != 0 {
+			_ = w.SendPacketRaw(cmsgCancelChannelling, binary.LittleEndian.AppendUint32(nil, channel))
+		}
+	}
+	if b.agent != nil {
+		if spell := b.agent.casting(); spell != 0 && spell != channel {
+			_ = w.CancelCast(spell)
+		}
+	}
+	_ = w.AttackStop()
+	if pet := b.GetPetGUID(); pet != 0 {
+		_ = w.PetAction(pet, uint32(actCommand)<<24|1, 0) // follow: it stops fighting (pet.follow)
+	}
 }
